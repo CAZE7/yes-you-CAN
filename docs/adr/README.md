@@ -14,3 +14,5 @@ er wird durch einen neuen ersetzt, der den alten als `superseded` markiert.
 | [0006](0006-web-stack.md) | Node HTTP + SSE + Vanilla ESM für die Oberfläche | accepted |
 | [0007](0007-session-storage.md) | JSON + NDJSON mit versionierten Migrationen | accepted |
 | [0008](0008-testing-without-framework.md) | node:test auf kompiliertem Output | accepted |
+| [0009](0009-ci-and-http-hardening.md) | CI/CD-Baseline und HTTP-Härtung | accepted |
+| [0010](0010-toolchain-modernization.md) | Schrittweise Toolchain-Modernisierung | proposed |
