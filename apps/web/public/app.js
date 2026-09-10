@@ -123,7 +123,8 @@ function renderConnection(data) {
   ]);
   kv('#session-info', [
     ['Session', data.sessionId],
-    ['Modus', data.demo ? 'Simulator' : 'real'],
+    ['Transport', data.mode === 'simulator' ? 'Simulator' : data.mode === 'replay' ? 'Replay' : 'Hardware'],
+    ['Adapter-Auswahl', `${data.adapterSelection.id}${data.adapterSelection.config.device ? ` · ${data.adapterSelection.config.device}` : ''}`],
     ['ECUs', data.ecus.length],
     ['DTCs', data.dtcs.length],
     ['Messwerte', data.samples.length],
@@ -302,6 +303,110 @@ function renderAnalysis(result) {
   }
 }
 
+/* --------------------------------------------------------------- adapters */
+
+/**
+ * Adapter panel (AGENTS 4, 29).
+ *
+ * The list comes from the backend, which probes the host without opening a bus.
+ * The form therefore shows exactly which settings an adapter needs and why it is
+ * (not) usable — no silent fallback to the simulator if a device is missing.
+ */
+const adapterState = { selected: null, entries: [], describes: [] };
+
+function renderAdapters(payload) {
+  adapterState.selected = payload.selected;
+  adapterState.entries = payload.adapters;
+  const select = $('#adapter-select');
+  select.replaceChildren();
+  for (const entry of payload.adapters) {
+    const option = el('option', { value: entry.id, text: entry.displayName });
+    if (entry.id === payload.selected.id) option.selected = true;
+    select.append(option);
+  }
+  const selected = payload.adapters.find((entry) => entry.id === payload.selected.id);
+  const bitrates = $('#adapter-bitrate');
+  bitrates.replaceChildren(el('option', { value: '', text: 'Standard' }));
+  for (const bitrate of selected?.supportedBitrates ?? []) bitrates.append(el('option', { value: bitrate, text: bitrate }));
+  bitrates.value = payload.selected.config.bitrate ?? '';
+
+  $('#adapter-device').value = payload.selected.config.device ?? payload.selected.config.channel ?? '';
+  $('#adapter-baud').value = payload.selected.config.baudRate ?? '';
+  $('#adapter-trace').value = payload.selected.config.trace ?? '';
+  $('#adapter-device').placeholder = selected?.requires.channel ? 'can0' : '/dev/ttyUSB0';
+
+  const probe = $('#adapter-probe');
+  probe.textContent = probe ? `${payload.mode} · ${selected?.probe.detail ?? ''}` : '';
+  probe.classList.toggle('out-of-range', selected?.probe.available === false);
+  const hints = $('#adapter-hints');
+  hints.replaceChildren();
+  for (const hint of selected?.probe.hints ?? []) hints.append(el('li', { text: hint }));
+
+  const body = $('#adapter-rows');
+  body.replaceChildren();
+  for (const entry of payload.adapters) {
+    const capabilities = Object.entries(entry.capabilities)
+      .filter(([, value]) => value === true)
+      .map(([key]) => key)
+      .join(', ');
+    const tr = row([
+      entry.displayName,
+      entry.kind,
+      entry.probe.available ? 'ja' : 'nein',
+      entry.probe.detail,
+      `${capabilities}${entry.capabilities.channels > 1 ? `, ${entry.capabilities.channels} Kanäle` : ''}`,
+    ]);
+    if (entry.probe.available) tr.classList.add('ok-row');
+    body.append(tr);
+  }
+}
+
+async function loadAdapters() {
+  try {
+    renderAdapters(await api('/api/adapters'));
+  } catch (error) {
+    logError(error);
+  }
+}
+
+function selectionFromForm() {
+  const id = $('#adapter-select').value;
+  const entry = adapterState.entries.find((candidate) => candidate.id === id);
+  const config = {};
+  const device = $('#adapter-device').value.trim();
+  const bitrate = $('#adapter-bitrate').value;
+  const baud = Number.parseInt($('#adapter-baud').value, 10);
+  const trace = $('#adapter-trace').value.trim();
+  if (device) {
+    if (entry?.requires.channel) config.channel = device;
+    else config.device = device;
+  }
+  if (bitrate) config.bitrate = bitrate;
+  if (Number.isFinite(baud)) config.baudRate = baud;
+  if (trace) config.trace = trace;
+  return { id, config };
+}
+
+$('#adapter-select').addEventListener('change', () => {
+  const id = $('#adapter-select').value;
+  const entry = adapterState.entries.find((candidate) => candidate.id === id);
+  $('#adapter-probe').textContent = entry?.description ?? '';
+  if (entry?.defaults?.device) $('#adapter-device').value = entry.defaults.device;
+  if (entry?.defaults?.channel && entry.requires.channel) $('#adapter-device').value = entry.defaults.channel;
+});
+
+$('#btn-adapter-apply').addEventListener('click', () => {
+  api('/api/adapter/select', { method: 'POST', body: JSON.stringify(selectionFromForm()) })
+    .then(async (result) => {
+      await loadAdapters();
+      // A selection change drops a running connection on purpose: the engine
+      // must never keep talking over a transport the operator just replaced.
+      if (result.reconnectRequired) await api('/api/start', { method: 'POST' }).then(applyState);
+      else applyState(await api('/api/state'));
+    })
+    .catch(logError);
+});
+
 /* ---------------------------------------------------------------- actions */
 
 $('#btn-start').addEventListener('click', () => {
@@ -358,3 +463,4 @@ $('#btn-analyze').addEventListener('click', () => {
 });
 
 connectStream();
+void loadAdapters();

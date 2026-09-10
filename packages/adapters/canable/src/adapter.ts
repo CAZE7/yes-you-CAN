@@ -18,8 +18,8 @@ export interface CanableOptions {
 }
 
 export class CanableAdapter implements CanBus {
-  readonly info: AdapterInfo;
-  readonly capabilities: AdapterCapabilities = {
+  /** Capabilities of this adapter class; static so the host can probe before opening (AGENTS 4). */
+  static readonly CAPABILITIES: AdapterCapabilities = {
     can: true,
     canFd: false,
     doip: false,
@@ -27,6 +27,9 @@ export class CanableAdapter implements CanBus {
     channels: 1,
     supportsFunctionalAddressing: true,
   };
+
+  readonly info: AdapterInfo;
+  readonly capabilities: AdapterCapabilities = CanableAdapter.CAPABILITIES;
 
   private readonly log: Logger;
   private readonly channel: string;

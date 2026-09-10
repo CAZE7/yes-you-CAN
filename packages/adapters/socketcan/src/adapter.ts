@@ -19,6 +19,20 @@ export interface SocketCanOptions {
 }
 
 export class SocketCanAdapter implements CanBus {
+  /**
+   * Capabilities of this adapter class. CAN-FD depends on both the interface and
+   * the binding, so the caller has to opt in explicitly — advertising FD by
+   * default would make the engine send frames the bus cannot carry.
+   */
+  static readonly CAPABILITIES: AdapterCapabilities = {
+    can: true,
+    canFd: false,
+    doip: false,
+    isoTpOffload: false,
+    channels: 1,
+    supportsFunctionalAddressing: true,
+  };
+
   readonly info: AdapterInfo;
   readonly capabilities: AdapterCapabilities;
 

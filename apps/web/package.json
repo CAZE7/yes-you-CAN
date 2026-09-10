@@ -14,15 +14,16 @@
     "demo": "node dist/src/server.js --demo"
   },
   "dependencies": {
-    "@vdp/shared": "0.1.0",
-    "@vdp/core": "0.1.0",
-    "@vdp/charts": "0.1.0",
-    "@vdp/definitions": "0.1.0",
-    "@vdp/storage": "0.1.0",
-    "@vdp/reports": "0.1.0",
+    "@vdp/adapter-host": "0.1.0",
     "@vdp/ai": "0.1.0",
+    "@vdp/charts": "0.1.0",
+    "@vdp/core": "0.1.0",
+    "@vdp/definitions": "0.1.0",
     "@vdp/protocols-uds": "0.1.0",
-    "@vdp/transport-can": "0.1.0",
-    "@vdp/simulators": "0.1.0"
+    "@vdp/reports": "0.1.0",
+    "@vdp/shared": "0.1.0",
+    "@vdp/simulators": "0.1.0",
+    "@vdp/storage": "0.1.0",
+    "@vdp/transport-can": "0.1.0"
   }
 }

@@ -1,0 +1,12 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": { "rootDir": ".", "outDir": "dist", "tsBuildInfoFile": "dist/.tsbuildinfo" },
+  "include": ["src/**/*.ts", "test/**/*.ts"],
+  "references": [
+    { "path": "../../shared" },
+    { "path": "../../transport/can" },
+    { "path": "../elm327" },
+    { "path": "../canable" },
+    { "path": "../socketcan" }
+  ]
+}

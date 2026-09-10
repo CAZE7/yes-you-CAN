@@ -31,6 +31,24 @@ export interface StoredSessionSummary {
   schemaVersion: number;
 }
 
+/**
+ * One line of the stored raw trace (`trace.ndjson`).
+ *
+ * This is the on-disk shape, not a protocol type: the payload is hex text
+ * because NDJSON has no byte type. Replay and offline analysis convert it back
+ * (AGENTS 18, 19) — the storage layer deliberately stays free of CAN types.
+ */
+export interface StoredTraceLine {
+  t: number;
+  canId: number;
+  direction: 'tx' | 'rx';
+  /** Uppercase, space separated hex bytes. */
+  payload: string;
+  channel?: string;
+  extended?: boolean;
+  fd?: boolean;
+}
+
 export interface SessionRepository {
   save(data: VehicleSessionData): Promise<void>;
   load(id: string): Promise<{ data: VehicleSessionData; appliedMigrations: string[] }>;
@@ -40,6 +58,8 @@ export interface SessionRepository {
   appendSamples(id: string, samples: readonly MeasurementSample[]): Promise<void>;
   appendLines(id: string, stream: 'trace' | 'log', lines: readonly string[]): Promise<void>;
   exportPackage(id: string): Promise<Uint8Array>;
+  /** Raw trace of a stored session, for replay and offline analysis (AGENTS 19). */
+  readTrace(id: string): Promise<StoredTraceLine[]>;
 }
 
 export interface FileSystemRepositoryOptions {
@@ -146,6 +166,24 @@ export class FileSystemSessionRepository implements SessionRepository {
     await appendFile(join(dir, file), `${lines.join('\n')}\n`, 'utf8');
   }
 
+  /**
+   * Read the stored raw trace.
+   *
+   * A trace is append-only and may end mid-line after a crash, so unreadable
+   * lines are skipped with a warning instead of failing the whole replay: the
+   * frames before the crash are still worth analysing.
+   */
+  async readTrace(id: string): Promise<StoredTraceLine[]> {
+    const path = join(this.dir(id), STREAM_FILES.trace);
+    let raw: string;
+    try {
+      raw = await readFile(path, 'utf8');
+    } catch {
+      return [];
+    }
+    return parseTraceLines(raw, (message, line) => this.log.warn('skipping unreadable trace line', { id, line, error: message }));
+  }
+
   /** ZIP session package with metadata and every stream (AGENTS 17). */
   async exportPackage(id: string): Promise<Uint8Array> {
     const dir = this.dir(id);
@@ -165,13 +203,26 @@ export class FileSystemSessionRepository implements SessionRepository {
 }
 
 /** In-memory repository for tests and for ephemeral environments. */
+export interface MemoryRepositoryOptions {
+  migrations?: MigrationRegistry;
+  logger?: Logger;
+}
+
 export class MemorySessionRepository implements SessionRepository {
   private readonly sessions = new Map<string, VehicleSessionData>();
   private readonly streams = new Map<string, Map<string, string[]>>();
   private readonly migrations: MigrationRegistry;
+  private readonly log: Logger;
 
-  constructor(migrations?: MigrationRegistry) {
-    this.migrations = migrations ?? new MigrationRegistry();
+  /**
+   * Accepts a bare `MigrationRegistry` for backwards compatibility as well as the
+   * options object, so both repositories are configured the same way.
+   */
+  constructor(options: MemoryRepositoryOptions | MigrationRegistry = {}) {
+    const isRegistry = options instanceof MigrationRegistry;
+    this.migrations = isRegistry ? options : (options.migrations ?? new MigrationRegistry());
+    this.log = (isRegistry ? undefined : options.logger) ?? createLogger('storage', { level: 'INFO' });
+    this.log.child('storage');
   }
 
   async save(data: VehicleSessionData): Promise<void> {
@@ -208,6 +259,11 @@ export class MemorySessionRepository implements SessionRepository {
     await this.append(id, stream, lines);
   }
 
+  async readTrace(id: string): Promise<StoredTraceLine[]> {
+    const lines = this.streams.get(id)?.get('trace') ?? [];
+    return parseTraceLines(lines.join('\n'));
+  }
+
   private async append(id: string, stream: string, lines: readonly string[]): Promise<void> {
     const map = this.streams.get(id) ?? new Map<string, string[]>();
     const existing = map.get(stream) ?? [];
@@ -232,6 +288,42 @@ export class MemorySessionRepository implements SessionRepository {
   streamOf(id: string, stream: 'measurements' | 'trace' | 'log'): string[] {
     return this.streams.get(id)?.get(stream) ?? [];
   }
+}
+
+/**
+ * Parse stored trace lines into `StoredTraceLine`, skipping anything unreadable.
+ *
+ * Shared by the filesystem and the in-memory repository so their behaviour
+ * cannot diverge. A trace is append-only and may end mid-line after a crash, so
+ * an unreadable line is reported and skipped instead of failing the whole
+ * replay: the frames before the crash are still worth analysing.
+ */
+export function parseTraceLines(raw: string, onError?: (message: string, line: string) => void): StoredTraceLine[] {
+  const parsed: StoredTraceLine[] = [];
+  for (const line of raw.split('\n')) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0) continue;
+    try {
+      const record = JSON.parse(trimmed) as Record<string, unknown>;
+      const payload =
+        typeof record['payload'] === 'string' ? record['payload'] : typeof record['payloadHex'] === 'string' ? record['payloadHex'] : '';
+      const canId =
+        typeof record['canId'] === 'number' ? record['canId'] : Number.parseInt(String(record['canIdHex'] ?? ''), 16);
+      if (!Number.isFinite(canId) || payload.length === 0) continue;
+      parsed.push({
+        t: typeof record['t'] === 'number' ? record['t'] : 0,
+        canId,
+        direction: record['direction'] === 'tx' ? 'tx' : 'rx',
+        payload,
+        ...(typeof record['channel'] === 'string' ? { channel: record['channel'] } : {}),
+        ...(typeof record['extended'] === 'boolean' ? { extended: record['extended'] } : {}),
+        ...(typeof record['fd'] === 'boolean' ? { fd: record['fd'] } : {}),
+      });
+    } catch (error) {
+      onError?.(error instanceof Error ? error.message : String(error), trimmed);
+    }
+  }
+  return parsed;
 }
 
 /**

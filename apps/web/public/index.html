@@ -37,6 +37,33 @@
   <!-- Verbindung -->
   <section class="view active" id="view-connection">
     <h2>Verbindung</h2>
+    <div class="card adapter-picker">
+      <h3>Adapter auswählen <span class="muted small">AGENTS 4 · 29</span></h3>
+      <div class="row">
+        <label class="field">Adapter
+          <select id="adapter-select"></select>
+        </label>
+        <label class="field">Gerät / Interface
+          <input id="adapter-device" type="text" placeholder="/dev/ttyUSB0" autocomplete="off" spellcheck="false" />
+        </label>
+        <label class="field">Bitrate
+          <select id="adapter-bitrate"></select>
+        </label>
+        <label class="field">Baud
+          <input id="adapter-baud" type="number" min="1200" step="1" placeholder="38400" />
+        </label>
+        <label class="field">Aufzeichnung (Replay)
+          <input id="adapter-trace" type="text" placeholder="Session-ID oder Export-Datei" autocomplete="off" spellcheck="false" />
+        </label>
+        <button id="btn-adapter-apply" class="primary">Adapter übernehmen</button>
+      </div>
+      <p id="adapter-probe" class="hint"></p>
+      <ul id="adapter-hints" class="plain hints"></ul>
+      <table class="grid">
+        <thead><tr><th>Adapter</th><th>Art</th><th>Verfügbar</th><th>Details</th><th>Capabilities</th></tr></thead>
+        <tbody id="adapter-rows"></tbody>
+      </table>
+    </div>
     <div class="cards">
       <div class="card">
         <h3>Adapter</h3>
@@ -52,7 +79,7 @@
       </div>
     </div>
     <div class="row">
-      <button id="btn-start" class="primary">Verbinden (Simulator)</button>
+      <button id="btn-start" class="primary">Verbinden</button>
       <button id="btn-identify">Identifikation lesen</button>
       <button id="btn-scan">Fehlerspeicher lesen</button>
     </div>

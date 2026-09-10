@@ -1,13 +1,24 @@
 /**
  * Demo backend (AGENTS 19: simulator instead of a real car).
  *
- * Owns the diagnostic engine and the virtual vehicle, and publishes already
- * decoded values to the UI. The front end never receives a CAN frame it would
- * have to interpret — it gets decoded signals plus raw trace entries that are
- * explicitly labelled raw (AGENTS 5, 34.3, 18).
+ * Owns the diagnostic engine and the transport it talks over, and publishes
+ * already decoded values to the UI. The front end never receives a CAN frame it
+ * would have to interpret — it gets decoded signals plus raw trace entries that
+ * are explicitly labelled raw (AGENTS 5, 34.3, 18).
+ *
+ * Three transport sources are supported, chosen through the adapter catalog
+ * (AGENTS 4, 29):
+ *
+ * - `simulator` — a virtual vehicle, so the workbench runs without hardware;
+ * - `replay`    — a recorded session, so a problem is reproducible without the car;
+ * - a real adapter (`elm327`, `slcan`, `socketcan`, …) opened by the host layer.
+ *
+ * The engine code path is identical for all three: the backend only decides
+ * which `CanBus` it hands over, which is exactly what ADR 0001 promises.
  */
 
-import { createLogger, type Logger } from '@vdp/shared';
+import { readFile } from 'node:fs/promises';
+import { AdapterUnsupportedError, TransportError, createLogger, type Logger } from '@vdp/shared';
 import {
   DiagnosticEngine,
   DtcScanner,
@@ -21,9 +32,18 @@ import {
 } from '@vdp/core';
 import type { DtcRecord } from '@vdp/protocols-uds';
 import { genericPackage, type DefinitionPackage } from '@vdp/definitions';
+import { ReplayTransport, recordingFromSessionJson, type CanBus, type ReplayRecording } from '@vdp/transport-can';
 import { DEFAULT_VIN, VirtualVehicle } from '@vdp/simulators';
+import {
+  AdapterCatalog,
+  validateSelection,
+  type AdapterDescription,
+  type AdapterProbe,
+  type AdapterSelection,
+} from '@vdp/adapter-host';
 import { AnalysisService, HeuristicAnalysisProvider, type AnalysisInput, type AnalysisResult } from '@vdp/ai';
 import { FileSystemSessionRepository, type SessionRepository, type StoredSessionSummary } from '@vdp/storage';
+import { REPLAY_ADAPTER_ID, SIMULATOR_ADAPTER_ID, createWebAdapterCatalog, isApplicationManaged } from './adapters.js';
 
 export interface EcuView {
   id: string;
@@ -108,12 +128,17 @@ export interface HistoryView {
 
 export interface AppState {
   connected: boolean;
-  demo: boolean;
+  /** Which transport source is selected (AGENTS 4, 29, 32). */
+  mode: BackendMode;
   sessionId: string;
   vin?: string;
   vehicle: string;
   mileageKm?: number;
   adapter: { id: string; name: string; kind: string; channels: string[] };
+  /** Adapter the user selected, including its settings, so the UI can show them. */
+  adapterSelection: AdapterSelection;
+  /** Live probe result of the selected adapter (never a guess). */
+  adapterProbe?: AdapterProbe;
   transport: { kind: string; channel: string; mtu: number };
   ecus: EcuView[];
   dtcs: DtcView[];
@@ -147,15 +172,43 @@ export interface BackendOptions {
   /** Where sessions are persisted (AGENTS 10, 29). Omitted disables persistence. */
   sessionDir?: string;
   repository?: SessionRepository;
+  /**
+   * Adapter catalog. Defaults to the workbench catalog (simulator, replay and
+   * every adapter this host can drive); tests inject their own.
+   */
+  adapters?: AdapterCatalog;
+  /** Adapter selected at startup; the simulator by default. */
+  selection?: AdapterSelection;
+  /**
+   * Pre-built bus (test/embedding hook): when set, the backend uses it instead
+   * of creating one from the selection. The catalog still describes the choice
+   * for the UI, so both views stay consistent.
+   */
+  bus?: CanBus;
+  /** Trace used by the replay adapter, as a file path or raw JSON text. */
+  trace?: string;
 }
 
 const MAX_TRACE = 800;
 
+/**
+ * Where the CAN traffic comes from.
+ *
+ * `simulator` and `replay` are application-owned transports; `hardware` means a
+ * real adapter builds the bus.
+ */
+export type BackendMode = 'simulator' | 'replay' | 'hardware';
+
 export class DemoBackend {
   readonly log: Logger;
   readonly analysisService: AnalysisService;
+  readonly adapters: AdapterCatalog;
   private vehicle?: VirtualVehicle;
+  private bus?: CanBus;
   private engine?: DiagnosticEngine;
+  private selection: AdapterSelection;
+  private mode: BackendMode;
+  private probe?: AdapterProbe;
   private readonly sessionLogger = new SessionLogger();
   private readonly listeners = new Set<(event: BackendEvent) => void>();
   private unsubscribeBus?: () => void;
@@ -179,9 +232,67 @@ export class DemoBackend {
     this.definitions = options.definitions ?? [genericPackage];
     this.dtcScanner = new DtcScanner({ definitions: this.definitions });
     this.analysisService = new AnalysisService({ providers: [new HeuristicAnalysisProvider()], logger: this.log });
+    this.adapters = options.adapters ?? createWebAdapterCatalog();
+    this.selection = options.selection ?? { id: SIMULATOR_ADAPTER_ID, config: {} };
+    this.mode = modeForSelection(this.selection, this.adapters);
     // Persistence is opt-in so tests and ephemeral runs stay side-effect free.
     if (options.repository) this.repository = options.repository;
     else if (options.sessionDir) this.repository = new FileSystemSessionRepository({ rootDir: options.sessionDir, logger: this.log });
+  }
+
+  /** Transport source currently selected. */
+  get currentMode(): BackendMode {
+    return this.mode;
+  }
+
+  /** Adapter the user selected, with its settings. */
+  get adapterSelection(): AdapterSelection {
+    return this.selection;
+  }
+
+  /**
+   * The bus the engine talks to. Exposed for tests and embedding so a caller can
+   * drive frames directly (e.g. the replay regression suites).
+   */
+  get canBus(): CanBus | undefined {
+    return this.bus;
+  }
+
+  /**
+   * Adapters this host can use, with a live probe result each.
+   *
+   * Probing never opens a bus, so listing is safe while a vehicle is connected
+   * — that is what lets the UI offer a different adapter without disconnecting
+   * first (AGENTS 4, 29).
+   */
+  async listAdapters(): Promise<AdapterDescription[]> {
+    const described = await this.adapters.describeAll(this.selection.config);
+    return described;
+  }
+
+  /**
+   * Select an adapter.
+   *
+   * Validation happens before anything is opened or closed: an unusable choice
+   * must leave the running session untouched rather than disconnect the user
+   * from a vehicle because of a typo.
+   */
+  async selectAdapter(selection: AdapterSelection): Promise<{ description: AdapterDescription; reconnectRequired: boolean }> {
+    const validation = validateSelection(this.adapters, selection);
+    if (!validation.ok) {
+      throw new AdapterUnsupportedError(`adapter selection rejected: ${validation.errors.join('; ')}`, {
+        adapterId: selection.id,
+        errors: validation.errors,
+      });
+    }
+    const wasConnected = this.connected;
+    if (wasConnected) await this.stop();
+    this.selection = selection;
+    this.mode = modeForSelection(selection, this.adapters);
+    const description = await this.adapters.describe(selection.id, selection.config, { logger: this.log });
+    this.probe = description.probe;
+    this.log.info('adapter selected', { adapter: selection.id, mode: this.mode, available: description.probe.available });
+    return { description, reconnectRequired: wasConnected };
   }
 
   /** Persist the current session, its samples and its raw trace (AGENTS 10, 29). */
@@ -234,11 +345,79 @@ export class DemoBackend {
     }
   }
 
-  /** Start the virtual vehicle and run ECU discovery. */
+  /** Open the selected transport and run ECU discovery. */
   async start(): Promise<AppState> {
     if (this.connected) return this.state();
-    this.log.info('starting demo backend', { vin: this.vin });
-    this.vehicle = new VirtualVehicle({
+    this.log.info('backend starting', { mode: this.mode, adapter: this.selection.id, vin: this.vin });
+    try {
+      // Probe first and report the result, but let the adapter itself produce the
+      // authoritative error: a probe is allowed to be more conservative than the
+      // real open (for example when a SocketCAN binding cannot list interfaces).
+      const described = await this.adapters.describe(this.selection.id, this.selection.config, { logger: this.log });
+      this.probe = described.probe;
+      if (!described.probe.available) {
+        this.log.warn('adapter probe reports unavailable', { adapter: this.selection.id, detail: described.probe.detail });
+      }
+      const bus = await this.openBus();
+      this.bus = bus;
+
+      // Raw trace: every frame on the bus is recorded verbatim (AGENTS 18).
+      this.unsubscribeBus = bus.subscribe((frame) => {
+        const entry = this.sessionLogger.recordFrame(frame);
+        this.emit('trace', toTraceView(entry));
+      });
+
+      this.engine = new DiagnosticEngine({ bus, definitions: this.definitions, logger: this.log });
+      const result = await this.engine.connect();
+      this.connected = true;
+      this.ecus = result.ecus.map((discovered) => this.toEcuView(discovered.rxId));
+      this.sessionLogger.log('backend', 'connected', { adapter: this.selection.id, ecus: result.ecus.length });
+      this.log.info('backend connected', { adapter: this.selection.id, ecus: result.ecus.length });
+      await this.identify();
+      return this.state();
+    } catch (error) {
+      // A failed start must not leave a half-open transport behind: the next
+      // attempt would then fail with "already open" instead of the real reason.
+      await this.teardown();
+      throw error;
+    }
+  }
+
+  /**
+   * Build the bus for the selected adapter.
+   *
+   * This is the single seam between the application and the transport layer
+   * (ADR 0001): everything above it — ISO-TP, UDS, measurement engine, session —
+   * is identical for simulator, replay and hardware.
+   */
+  private async openBus(): Promise<CanBus> {
+    if (this.options.bus) {
+      this.log.info('using the injected bus', { adapter: this.selection.id });
+      return this.options.bus;
+    }
+    if (this.mode === 'simulator') {
+      this.vehicle = this.createVirtualVehicle();
+      await this.vehicle.start();
+      return this.vehicle.testerBus;
+    }
+    if (this.mode === 'replay') {
+      return this.createReplayBus();
+    }
+    const entry = this.adapters.require(this.selection.id);
+    if (isApplicationManaged(entry)) {
+      throw new AdapterUnsupportedError(
+        `adapter "${entry.id}" is managed by the application and cannot be opened by the adapter layer`,
+        { adapterId: entry.id },
+      );
+    }
+    const probe = await this.adapters.describe(entry.id, this.selection.config, { logger: this.log });
+    this.probe = probe.probe;
+    this.log.info('opening adapter', { adapter: entry.id, detail: probe.probe.detail, config: this.selection.config });
+    return entry.create(this.selection.config, { logger: this.log });
+  }
+
+  private createVirtualVehicle(): VirtualVehicle {
+    return new VirtualVehicle({
       vin: this.vin,
       // The simulator takes a single package; the first one is the baseline.
       definitions: this.definitions[0] ?? genericPackage,
@@ -259,22 +438,77 @@ export class DemoBackend {
             },
           }),
     });
-    await this.vehicle.start();
+  }
 
-    // Raw trace: every frame on the tester bus is recorded verbatim (AGENTS 18).
-    this.unsubscribeBus = this.vehicle.testerBus.subscribe((frame) => {
-      const entry = this.sessionLogger.recordFrame(frame);
-      this.emit('trace', toTraceView(entry));
+  /**
+   * Replay a recorded session instead of talking to a vehicle (AGENTS 19).
+   *
+   * The recording is either a stored session (repository) or a session export
+   * file. Deviations are kept, not smoothed over: replay is a diagnostic tool,
+   * and a silent mismatch is worse than a reported one.
+   */
+  private async createReplayBus(): Promise<CanBus> {
+    const recording = await this.loadRecording();
+    const transport = new ReplayTransport(recording, { logger: this.log });
+    this.log.info('replay transport ready', { frames: recording.frames.length, channel: recording.channel });
+    return transport;
+  }
+
+  private async loadRecording(): Promise<ReplayRecording> {
+    const reference = this.selection.config.trace;
+    if (!reference) {
+      throw new AdapterUnsupportedError('replay needs a recording: pass a stored session id or a session export file');
+    }
+    // A stored session id is looked up in the repository; anything else is
+    // treated as a path to a session export and finally as inline JSON.
+    if (this.repository && (await this.repository.exists(reference))) {
+      const { data } = await this.repository.load(reference);
+      const trace = await this.repository.readTrace(reference);
+      if (trace.length === 0) {
+        throw new TransportError(`session ${reference} contains no raw trace to replay — was it saved without one?`, { id: reference });
+      }
+      this.log.info('replaying stored session', { id: reference, frames: trace.length, vin: data.vehicle?.vin });
+      return {
+        channel: data.transport.channel,
+        frames: trace.map((line) => ({
+          t: line.t,
+          canId: line.canId,
+          direction: line.direction,
+          payload: hexToBytes(line.payload),
+          ...(line.channel ? { channel: line.channel } : {}),
+          ...(line.extended === undefined ? {} : { extended: line.extended }),
+          ...(line.fd === undefined ? {} : { fd: line.fd }),
+        })),
+      };
+    }
+    const text = reference.trimStart().startsWith('{') ? reference : await readFile(reference, 'utf8').catch((error: unknown) => {
+      throw new TransportError(`cannot read recording "${reference}": ${messageOf(error)}`, { reference });
     });
+    return recordingFromSessionJson(text);
+  }
 
-    this.engine = new DiagnosticEngine({ bus: this.vehicle.testerBus, definitions: this.definitions, logger: this.log });
-    const result = await this.engine.connect();
-    this.connected = true;
-    this.ecus = result.ecus.map((discovered) => this.toEcuView(discovered.rxId));
-    this.sessionLogger.log('backend', 'connected', { ecus: result.ecus.length });
-    this.log.info('backend connected', { ecus: result.ecus.length });
-    await this.identify();
-    return this.state();
+  /**
+   * Close everything the current session owns.
+   *
+   * Idempotent on purpose: it runs after a failed start, on stop and before an
+   * adapter change, and every one of those paths must be safe to repeat.
+   */
+  private async teardown(): Promise<void> {
+    this.stopLive();
+    this.unsubscribeBus?.();
+    this.unsubscribeBus = undefined;
+    await this.engine?.disconnect().catch((error: unknown) => {
+      this.log.warn('engine disconnect failed', { error: messageOf(error) });
+    });
+    this.engine = undefined;
+    await this.vehicle?.stop().catch((error: unknown) => {
+      this.log.warn('simulator stop failed', { error: messageOf(error) });
+    });
+    this.vehicle = undefined;
+    this.bus = undefined;
+    this.connected = false;
+    this.ecus = [];
+    this.dtcs = [];
   }
 
   /** Read identification DIDs from every discovered ECU (read-only, AGENTS 34.11). */
@@ -438,7 +672,9 @@ export class DemoBackend {
       meta: {
         sessionId: this.session()?.id ?? 'unknown',
         vin: this.session()?.vehicle?.vin,
-        demo: true,
+        mode: this.mode,
+        adapter: this.selection.id,
+        adapterConfig: this.selection.config,
       },
       samples,
       markers,
@@ -459,7 +695,7 @@ export class DemoBackend {
     const trace = this.sessionLogger.snapshot().trace.slice(-200);
     return {
       connected: this.connected,
-      demo: true,
+      mode: this.mode,
       sessionId: session?.id ?? 'not-started',
       ...(identity?.vin ? { vin: identity.vin } : {}),
       vehicle: describe(identity),
@@ -467,6 +703,8 @@ export class DemoBackend {
       adapter: session
         ? { id: session.adapter.id, name: session.adapter.name, kind: session.adapter.kind, channels: session.adapter.channels }
         : { id: 'none', name: 'not connected', kind: 'none', channels: [] },
+      adapterSelection: this.selection,
+      ...(this.probe ? { adapterProbe: this.probe } : {}),
       transport: session ? { kind: session.transport.kind, channel: session.transport.channel, mtu: session.transport.mtu } : { kind: 'none', channel: '-', mtu: 0 },
       ecus: this.ecus,
       dtcs: this.dtcs,
@@ -547,13 +785,10 @@ export class DemoBackend {
     return this.engine;
   }
 
+  /** Close the transport and reset the session state; safe to call twice. */
   async stop(): Promise<void> {
-    this.stopLive();
-    this.unsubscribeBus?.();
-    await this.engine?.disconnect();
-    await this.vehicle?.stop();
-    this.connected = false;
-    this.log.info('backend stopped');
+    await this.teardown();
+    this.log.info('backend stopped', { mode: this.mode });
   }
 }
 
@@ -626,6 +861,24 @@ function describe(identity: { brand?: string; model?: string; modelYear?: number
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** Which transport source a selection implies (AGENTS 4, 29, 32). */
+function modeForSelection(selection: AdapterSelection, catalog: AdapterCatalog): BackendMode {
+  if (selection.id === SIMULATOR_ADAPTER_ID) return 'simulator';
+  if (selection.id === REPLAY_ADAPTER_ID) return 'replay';
+  // An unknown id stays "hardware": the catalog rejects it with a clear message
+  // when the bus is opened instead of silently falling back to the simulator.
+  void catalog;
+  return 'hardware';
+}
+
+/** Hex text (space separated or continuous) back into bytes. */
+function hexToBytes(hex: string): Uint8Array {
+  const compact = hex.replace(/[^0-9a-fA-F]/g, '');
+  const bytes = new Uint8Array(Math.floor(compact.length / 2));
+  for (let i = 0; i < bytes.length; i++) bytes[i] = Number.parseInt(compact.slice(i * 2, i * 2 + 2), 16);
+  return bytes;
 }
 
 export type { DecodedSignal };

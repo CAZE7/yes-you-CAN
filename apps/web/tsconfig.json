@@ -41,6 +41,9 @@
       "path": "../../packages/transport/can"
     },
     {
+      "path": "../../packages/adapters/host"
+    },
+    {
       "path": "../../tools/simulators"
     }
   ]

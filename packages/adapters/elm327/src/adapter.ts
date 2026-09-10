@@ -32,15 +32,26 @@ export interface Elm327Status {
 }
 
 export class Elm327Adapter implements CanBus {
-  readonly info: AdapterInfo;
-  readonly capabilities: AdapterCapabilities = {
+  /**
+   * Capabilities of this adapter class.
+   *
+   * Static because the host needs them *before* a device exists — the adapter
+   * catalog and the UI list what an adapter can do without opening it.
+   */
+  static readonly CAPABILITIES: AdapterCapabilities = {
     can: true,
     canFd: false,
     doip: false,
+    // ISO-TP runs in this platform, not in the ELM327 (AGENTS 5): the adapter
+    // only carries frames, so multi-frame messages behave the same on every
+    // adapter and stay part of the tested code path.
     isoTpOffload: false,
     channels: 1,
     supportsFunctionalAddressing: true,
   };
+
+  readonly info: AdapterInfo;
+  readonly capabilities: AdapterCapabilities = Elm327Adapter.CAPABILITIES;
 
   readonly status: Elm327Status = { commandsRun: 0, errors: [] };
 
