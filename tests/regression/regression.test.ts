@@ -259,3 +259,101 @@ test('REGRESSION: echoed transmissions were discovered as phantom ECUs', async (
     await vehicle.stop();
   }
 });
+
+test('REGRESSION: service probing during connect wiped part of the fault memory', async () => {
+  // Symptom: after connecting, a stored code with only the "confirmed" bit set
+  // (status 0x08) had disappeared from the fault memory. Cause: the service probe
+  // sent a truncated clear request (0x14 0x00) to every ECU to find out whether
+  // 0x14 is supported. A real ECU answers 0x13 (incorrectMessageLength) and does
+  // nothing; the simulator cleared all status bits, so probing changed vehicle
+  // state — the one thing a read-only platform must never do (AGENTS 34.11/34.12).
+  const vehicle = new VirtualVehicle({
+    definitions: genericPackage,
+    logger,
+    dtcs: { engine: [{ code: 'P0420', status: 0x2f }, { code: 'P0171', status: 0x08 }] },
+  });
+  await vehicle.start();
+  const engine = new DiagnosticEngine({ bus: vehicle.testerBus, definitions: [genericPackage], logger });
+  try {
+    await engine.connect({ windowMs: 60 });
+    const scanned = await engine.scanDtcs();
+    const codes = scanned.flatMap((entry) => entry.dtcs.map((dtc) => `${dtc.code}:${dtc.status}`));
+    assert.ok(codes.includes('P0171:8'), `the confirmed-only code must survive connect, got ${codes.join(', ')}`);
+
+    const engineEcu = engine.ecuHandles.find((handle) => handle.discovered.rxId === 0x7e8);
+    const probes = engineEcu?.session.record.serviceProbes ?? [];
+    assert.ok(probes.length > 0, 'service support has to be probed during connect (AGENTS 12)');
+    assert.equal(
+      probes.find((probe) => probe.service === 0x14)?.outcome,
+      'not-probed',
+      'a destructive service must never be probed',
+    );
+    assert.equal(engineEcu?.session.record.supportedServices.includes(0x22), true, 'non-destructive probes still report support');
+  } finally {
+    await engine.disconnect();
+    await vehicle.stop();
+  }
+});
+
+test('REGRESSION: a truncated clear request cleared instead of being rejected', async () => {
+  // Symptom: `14 00` (missing the three byte groupOfDTC) cleared the fault memory.
+  // ISO 14229-1 §11.3 defines the request as SID + groupOfDTC (3 bytes); a shorter
+  // request is a format error and must be answered with NRC 0x13.
+  const vehicle = new VirtualVehicle({
+    definitions: genericPackage,
+    logger,
+    dtcs: { engine: [{ code: 'P0420', status: 0x2f }, { code: 'P0171', status: 0x08 }] },
+  });
+  await vehicle.start();
+  const engine = new DiagnosticEngine({ bus: vehicle.testerBus, definitions: [genericPackage], logger });
+  try {
+    await engine.connect({ windowMs: 60 });
+    const handle = engine.handleFor(0x7e8);
+    assert.ok(handle, 'engine ECU must be reachable');
+
+    await assert.rejects(
+      () => handle.session.client.raw(fromHex('14 00')),
+      (error: unknown) => {
+        assert.match(String((error as { message?: string }).message), /incorrectMessageLength/);
+        return true;
+      },
+    );
+    const dtcs = await handle.session.readDtcs();
+    assert.equal(dtcs.find((dtc) => dtc.code === 'P0420')?.status, 0x2f, 'a rejected clear must not change anything');
+    assert.equal(dtcs.find((dtc) => dtc.code === 'P0171')?.status, 0x08, 'a rejected clear must not change anything');
+
+    await handle.session.client.clearDiagnosticInformation();
+    const after = await handle.session.readDtcs();
+    // A fault that is currently present cannot be cleared away: it comes back with
+    // reset status bits (testFailed + testFailedThisOperationCycle). The stored but
+    // not currently failing code is gone.
+    assert.deepEqual(
+      after.map((dtc) => `${dtc.code}:${dtc.status}`),
+      ['P0420:3'],
+    );
+  } finally {
+    await engine.disconnect();
+    await vehicle.stop();
+  }
+});
+
+test('REGRESSION: an invalid reset type was answered positively', async () => {
+  // Symptom: `11 00` (reset type 0x00 is unassigned in ISO 14229-1 §11.2) was
+  // answered with 0x51 0x00. A tester that probes ECU reset that way would report
+  // the service as supported *and* believe a reset happened.
+  const vehicle = new VirtualVehicle({ definitions: genericPackage, logger });
+  await vehicle.start();
+  const engine = new DiagnosticEngine({ bus: vehicle.testerBus, definitions: [genericPackage], logger });
+  try {
+    await engine.connect({ windowMs: 60 });
+    const handle = engine.handleFor(0x7e8);
+    assert.ok(handle);
+
+    await assert.rejects(() => handle.session.client.ecuReset(0x00), /subFunctionNotSupported/);
+    const response = await handle.session.client.ecuReset(0x03);
+    assert.equal(toHex(response), '51 03', 'a valid reset type is answered positively');
+  } finally {
+    await engine.disconnect();
+    await vehicle.stop();
+  }
+});

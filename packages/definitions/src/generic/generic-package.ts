@@ -41,18 +41,39 @@ export const genericPackage: DefinitionPackage = {
           description: 'Catalyst system efficiency below threshold (bank 1)',
           severity: 'major',
           hint: 'Compare upstream/downstream lambda sensor activity and check exhaust leaks before condemning the catalyst.',
+          relatedSignals: ['engine.short_term_fuel_trim', 'engine.long_term_fuel_trim', 'engine.load', 'engine.intake_air_temperature'],
+          // Snapshot record of this package: engine speed, load, coolant
+          // temperature and vehicle speed — the operating point the fault was
+          // stored at. The layout is declared, never guessed (AGENTS 13/20).
+          freezeFrame: [
+            { did: 0xf40c, name: 'Engine speed', signals: ['engine.rpm'] },
+            { did: 0xf404, name: 'Calculated load', signals: ['engine.load'] },
+            { did: 0xf405, name: 'Coolant temperature', signals: ['engine.coolant_temperature'] },
+            { did: 0xf40d, name: 'Vehicle speed', signals: ['vehicle.speed'] },
+          ],
         },
         {
           code: 'P0300',
           description: 'Random/multiple cylinder misfire detected',
           severity: 'critical',
           hint: 'Check ignition components and fuel trims; freeze frame RPM/load narrows the operating point down.',
+          relatedSignals: ['engine.rpm', 'engine.load', 'engine.timing_advance', 'engine.short_term_fuel_trim'],
+          freezeFrame: [
+            { did: 0xf40c, name: 'Engine speed', signals: ['engine.rpm'] },
+            { did: 0xf404, name: 'Calculated load', signals: ['engine.load'] },
+            { did: 0xf40d, name: 'Vehicle speed', signals: ['vehicle.speed'] },
+          ],
         },
         {
           code: 'P0171',
           description: 'System too lean (bank 1)',
           severity: 'major',
           hint: 'Look for unmetered air, fuel pressure or MAF issues; correlate with long term fuel trim.',
+          relatedSignals: ['engine.long_term_fuel_trim', 'engine.short_term_fuel_trim', 'engine.maf_airflow', 'engine.intake_manifold_pressure'],
+          freezeFrame: [
+            { did: 0xf40c, name: 'Engine speed', signals: ['engine.rpm'] },
+            { did: 0xf405, name: 'Coolant temperature', signals: ['engine.coolant_temperature'] },
+          ],
         },
       ],
       description: 'Engine control unit reachable via standard OBD identifiers.',

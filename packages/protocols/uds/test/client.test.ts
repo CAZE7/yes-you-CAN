@@ -153,14 +153,51 @@ test('freeze frame snapshot can be read per DTC', async () => {
   assert.equal(toHex(snapshot.data), '09 46 00 32 01 F4');
 });
 
-test('ClearDiagnosticInformation resets the low status nibble', async () => {
-  const { client } = createPair({ dids: BASE_DIDS, dtcs: [{ code: 'P0420', status: 0x2f }] });
+test('ClearDiagnosticInformation removes stored codes and resets the status of present faults', async () => {
+  // ISO 14229-1 §11.3: clearing resets the DTC status information. A code whose
+  // fault is stored but not currently failing leaves the fault memory; a code
+  // whose fault is still present comes back with testFailed/testFailedThisOperationCycle
+  // set again — which is exactly how a real ECU behaves and why a clear has to be
+  // verified by re-reading instead of trusting the positive response.
+  const { client } = createPair({
+    dids: BASE_DIDS,
+    dtcs: [
+      { code: 'P0420', status: 0x2f },
+      { code: 'P0171', status: 0x08 },
+    ],
+  });
   await client.clearDiagnosticInformation();
   const dtcs = await client.readDtcByStatusMask(0xff);
-  const catalyst = dtcs.find((d) => d.code === 'P0420');
+  assert.deepEqual(
+    dtcs.map((dtc) => `${dtc.code}:${dtc.status.toString(16)}`),
+    ['P0420:3'],
+  );
+  const catalyst = dtcs[0];
   assert.ok(catalyst);
-  assert.equal(catalyst.statusBits.testFailed, false);
-  assert.equal(catalyst.statusBits.confirmedDtc, false);
+  assert.equal(catalyst.statusBits.testFailed, true, 'a present fault sets testFailed again');
+  assert.equal(catalyst.statusBits.confirmedDtc, false, 'the confirmed bit was reset by the clear');
+});
+
+test('a clear request without the group of DTC is rejected instead of clearing', async () => {
+  const { client } = createPair({ dids: BASE_DIDS, dtcs: [{ code: 'P0420', status: 0x08 }] });
+  await assert.rejects(
+    () => client.raw(fromHex('14 00')),
+    (error: unknown) => {
+      assert.match(String((error as { message?: string }).message), /incorrectMessageLength/);
+      return true;
+    },
+  );
+  // An unknown group is out of range. 0xFFFFFF (all) and 0x000000 are defined
+  // generically; anything else is manufacturer specific and must not be guessed
+  // into a successful clear (AGENTS 20).
+  await assert.rejects(
+    () => client.raw(fromHex('14 12 34 56')),
+    (error: unknown) => {
+      assert.match(String((error as { message?: string }).message), /requestOutOfRange/);
+      return true;
+    },
+  );
+  assert.equal((await client.readDtcByStatusMask(0xff)).length, 1, 'a rejected clear changes nothing');
 });
 
 test('NRC 0x78 (ResponsePending) is followed until the final response within P2*', async () => {

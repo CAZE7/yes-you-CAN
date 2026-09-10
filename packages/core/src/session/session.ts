@@ -18,6 +18,20 @@ export interface EcuIdentification {
   value: string;
 }
 
+/**
+ * Outcome of probing one UDS service on an ECU (AGENTS 12 "Supported Services").
+ *
+ * `not-probed` is a first-class outcome: some services cannot be interrogated
+ * without side effects (clearing fault memory, security access), and reporting
+ * them as "supported" would be a guess while reporting them as "unsupported"
+ * would be wrong (AGENTS 24).
+ */
+export interface ServiceProbeResult {
+  service: number;
+  outcome: 'supported' | 'unsupported' | 'not-probed';
+  detail: string;
+}
+
 export interface EcuSession {
   id: string;
   /** Definition package ECU id, when one matched. */
@@ -28,7 +42,10 @@ export interface EcuSession {
   rxId: number;
   extended: boolean;
   identification: EcuIdentification[];
+  /** Services the ECU positively answers for, derived from `serviceProbes`. */
   supportedServices: number[];
+  /** Per-service probe outcome, including the ones deliberately not probed. */
+  serviceProbes?: ServiceProbeResult[];
   sessionType: number;
   timing: { p2Ms: number; p2StarMs: number };
   dtcs?: DtcRecord[];

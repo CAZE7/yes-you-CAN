@@ -20,11 +20,21 @@ import { MeasurementRecorder } from '../measurements/recorder.js';
 import { LiveDataEngine, type EcuReader, type LiveDataStats } from '../measurements/live.js';
 import { OemProtocolRegistry, type OemDtcInterpretation, type OemProtocol } from '@vdp/protocols-oem';
 import { SignalDecoder, type DecodedSignal } from '../measurements/decoder.js';
+import { DtcScanner, type EnrichedDtc } from '../dtc/scanner.js';
+import { DtcClearService, type ClearableEcu, type ClearDtcOptions, type ClearDtcResult } from '../dtc/clear.js';
+import type { FreezeFrame } from '../dtc/freeze-frame.js';
+import { SafetyManager, type VehicleState } from '../safety/safety-manager.js';
 
 export interface DiagnosticEngineOptions {
   bus: CanBus;
   definitions?: readonly DefinitionPackage[];
   logger?: Logger;
+  /**
+   * Safety manager for write operations. A private instance is created when none
+   * is passed in, so every engine has one and no write path can bypass it
+   * (AGENTS 26).
+   */
+  safety?: SafetyManager;
   /** Extra ISO-TP settings (padding, addressing, timing) applied to every ECU. */
   isoTpDefaults?: Partial<IsoTpOptions>;
   /** Poll interval used by startLiveData. */
@@ -52,8 +62,11 @@ export class DiagnosticEngine {
   readonly recorder: MeasurementRecorder;
   readonly decoder: SignalDecoder;
   readonly oemProtocols: OemProtocolRegistry;
+  readonly safety: SafetyManager;
 
   private readonly log: Logger;
+  private readonly dtcScanner: DtcScanner;
+  private readonly dtcClear: DtcClearService;
   private readonly handles = new Map<number, EcuHandle>();
   private session: VehicleSession | null = null;
   private liveEngine: LiveDataEngine | null = null;
@@ -63,6 +76,9 @@ export class DiagnosticEngine {
     this.recorder = new MeasurementRecorder(options.clock);
     this.decoder = new SignalDecoder({ logger: this.log });
     this.oemProtocols = new OemProtocolRegistry(options.oemProtocols ?? []);
+    this.safety = options.safety ?? new SafetyManager({ logger: this.log });
+    this.dtcScanner = new DtcScanner({ definitions: options.definitions ?? [] });
+    this.dtcClear = new DtcClearService({ safety: this.safety, scanner: this.dtcScanner, logger: this.log });
   }
 
   get vehicleSession(): VehicleSession | null {
@@ -113,6 +129,10 @@ export class DiagnosticEngine {
       try {
         const handle = this.attachEcu(ecu);
         await handle.session.readIdentification();
+        // Which services an ECU actually answers is discovered, not assumed
+        // (AGENTS 12 "Supported Services"). Failing probes only reduce the list.
+        const supported = await handle.session.probeSupportedServices();
+        this.log.info('ECU services probed', { ecu: handle.session.record.name, supported: supported.length });
         this.session.upsertEcu(handle.session.record);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -214,13 +234,89 @@ export class DiagnosticEngine {
     return undefined;
   }
 
+  /**
+   * Read and decode the freeze frame of one fault code (AGENTS 20 "Snapshot").
+   * Returns null when the ECU has no snapshot for that code.
+   */
+  async readDtcSnapshot(rxId: number, code: string, recordNumber = 0xff): Promise<FreezeFrame | null> {
+    const handle = this.handles.get(rxId);
+    if (!handle) throw new Error(`no ECU session for 0x${rxId.toString(16)} — call connect() first`);
+    return handle.session.readDtcSnapshot(code, recordNumber);
+  }
+
+  /**
+   * Pre-check a planned clear without writing anything (AGENTS 26).
+   * The UI uses it to show which precondition is missing before the operator
+   * confirms.
+   */
+  evaluateDtcClear(rxId: number, options: Pick<ClearDtcOptions, 'userConfirmed' | 'vehicleState'>): { ok: boolean; failed: string[]; warnings: string[] } {
+    return this.dtcClear.evaluate(this.clearableEcu(this.requireHandle(rxId)), {
+      ...options,
+      ...(this.activePackage?.version ? { definitionVersion: this.activePackage.version } : {}),
+    });
+  }
+
+  /**
+   * Adapt an ECU session to the write contract of the clear service.
+   *
+   * One place, so the pre-check and the actual clear can never drift apart — a
+   * pre-check that validates different conditions than the write is worse than no
+   * pre-check at all (AGENTS 26).
+   */
+  private clearableEcu(handle: EcuHandle): ClearableEcu {
+    const { session } = handle;
+    return {
+      id: session.record.id,
+      name: session.record.name,
+      sessionType: session.record.sessionType,
+      readDtcs: (mask) => session.readDtcs(mask),
+      clearDiagnosticInformation: (group) => session.clearDiagnosticInformation(group),
+      prepareWrite: () => session.ensureWritableSession(),
+    };
+  }
+
+  /**
+   * Clear the fault memory of one ECU (AGENTS 20).
+   *
+   * Requires an explicit confirmation and a passing safety check; the previous
+   * state is stored as a session snapshot so the result can be compared and, if
+   * necessary, audited later (AGENTS 25/26).
+   */
+  async clearDtcs(rxId: number, options: ClearDtcOptions): Promise<ClearDtcResult> {
+    const handle = this.requireHandle(rxId);
+    const session = this.session;
+    return this.dtcClear.clear(
+      this.clearableEcu(handle),
+      {
+        ...options,
+        ...(options.definitionVersion ?? this.activePackage?.version ? { definitionVersion: options.definitionVersion ?? this.activePackage?.version } : {}),
+        recordSnapshot: (records, label) => {
+          session?.addDtcSnapshot([...records], label);
+        },
+        recordAction: (action) => {
+          session?.recordAction(action);
+        },
+      },
+    );
+  }
+
+  /** ECU handle or a clear error — used by the read/write helpers above. */
+  private requireHandle(rxId: number): EcuHandle {
+    const handle = this.handles.get(rxId);
+    if (!handle) throw new Error(`no ECU session for 0x${rxId.toString(16)} — call connect() first`);
+    return handle;
+  }
+
   /** Read DTCs from every reachable ECU (AGENTS 20 "Scan all ECUs"). */
-  async scanDtcs(statusMask = 0xff): Promise<Array<{ ecu: EcuSession; dtcs: DtcRecord[]; interpretations: OemDtcInterpretation[] }>> {
+  async scanDtcs(statusMask = 0xff): Promise<Array<{ ecu: EcuSession; dtcs: EnrichedDtc[]; interpretations: OemDtcInterpretation[] }>> {
     if (!this.session) throw new Error('no session — call connect() first');
-    const results: Array<{ ecu: EcuSession; dtcs: DtcRecord[]; interpretations: OemDtcInterpretation[] }> = [];
+    const results: Array<{ ecu: EcuSession; dtcs: EnrichedDtc[]; interpretations: OemDtcInterpretation[] }> = [];
     for (const handle of this.handles.values()) {
       try {
-        const dtcs = await handle.session.readDtcs(statusMask);
+        // Enrichment (description, severity, first/last seen, related signals)
+        // happens once per scan and per ECU, so the tracker sees one scan of one
+        // ECU at a time and cannot mistake a response order for a history.
+        const dtcs = this.dtcScanner.enrich(await handle.session.readDtcs(statusMask), handle.session.record.name, handle.session.record.id);
         // Manufacturer hints are attached next to the codes, never merged into
         // them: a hint is interpretation, the code is the measured fact.
         const interpretations = dtcs
@@ -243,6 +339,7 @@ export class DiagnosticEngine {
     }
     const all = results.flatMap((r) => r.dtcs);
     if (all.length > 0) this.session.addDtcSnapshot(all, 'scan');
+    this.log.info('DTC scan complete', { ecus: results.length, codes: all.length });
     return results;
   }
 

@@ -15,6 +15,8 @@ const state = {
   trace: [],
   selectedSignals: new Set(),
   actions: [],
+  dtcs: [],
+  clearPrecheck: null,
 };
 
 /**
@@ -152,13 +154,38 @@ function renderEcus(ecus) {
 function renderDtcs(dtcs) {
   const body = $('#dtc-rows');
   body.replaceChildren();
+  state.dtcs = dtcs;
   for (const dtc of dtcs) {
     body.append(
-      row([dtc.code, dtc.description, dtc.ecu, dtc.status, dtc.severity, dtc.confirmed ? 'ja' : 'nein', dtc.pending ? 'ja' : 'nein', dtc.hint ?? '—'], [0, 3]),
+      row(
+        [
+          dtc.isNew ? `${dtc.code} (neu)` : dtc.code,
+          dtc.description,
+          dtc.ecu,
+          dtc.status,
+          dtc.severity,
+          dtc.confirmed ? 'ja' : 'nein',
+          dtc.pending ? 'ja' : 'nein',
+          dtc.hint ?? '—',
+          formatSeen(dtc),
+        ],
+        [0, 3, 8],
+      ),
     );
     const severityCell = body.lastElementChild?.children[4];
     if (severityCell) severityCell.className = `sev-${dtc.severity}`;
+    if (dtc.isNew) body.lastElementChild?.classList.add('is-new');
+
+    // Actions per row: "Details" opens the decoded entry and its freeze frame,
+    // "Löschen" fills the guarded write form below. The clear itself stays behind
+    // the explicit confirmation, never behind a single click (AGENTS 20, 25/26).
+    const actions = el('td', { class: 'dtc-actions' }, [
+      el('button', { text: 'Details', onclick: () => showDtcDetails(dtc) }),
+      el('button', { class: 'danger', text: 'Löschen', onclick: () => prepareClear(dtc) }),
+    ]);
+    body.lastElementChild?.append(actions);
   }
+  renderClearEcuOptions(dtcs);
   const counts = dtcs.reduce((acc, dtc) => {
     acc[dtc.severity] = (acc[dtc.severity] ?? 0) + 1;
     return acc;
@@ -249,6 +276,209 @@ function applyState(data) {
   state.trace = [];
   for (const entry of data.trace) appendTrace(entry);
 }
+
+
+/* ------------------------------------------------------- Freeze Frame (20) */
+
+/**
+ * Render one decoded freeze frame.
+ *
+ * The front end renders what it is given and never invents a field: the raw bytes
+ * of the record stay visible next to the decoded values, and the notes of the
+ * backend (truncated record, undocumented layout, leftover bytes) are shown as
+ * notes instead of being swallowed (AGENTS 5, 18, 34.3).
+ */
+async function showFreezeFrame(dtc) {
+  const panel = $('#dtc-detail');
+  const body = $('#dtc-detail-body');
+  $('#dtc-detail-title').textContent = `${dtc.code} · ${dtc.ecu}`;
+  panel.hidden = false;
+  body.replaceChildren(el('p', { class: 'muted small', text: 'Freeze Frame wird gelesen …' }));
+
+  let snapshot;
+  try {
+    ({ snapshot } = await api('/api/dtc/snapshot', {
+      method: 'POST',
+      body: JSON.stringify({ rxId: dtc.rxId, code: dtc.code }),
+    }));
+  } catch (error) {
+    body.replaceChildren(el('p', { class: 'out-of-range', text: `Freeze Frame nicht verfügbar: ${error.message}` }));
+    return;
+  }
+
+  const nodes = [];
+  const list = el('ul', { class: 'plain check-list' });
+  const documented = snapshot.documented;
+  list.append(el('li', { class: documented ? 'ok' : 'warn', text: documented ? 'Layout vollständig aus dem Definition-Paket dekodiert' : 'Layout nicht (vollständig) dokumentiert — Rohdaten bleiben erhalten' }));
+  for (const note of snapshot.notes) list.append(el('li', { class: 'info', text: note }));
+  if (snapshot.unassignedHex) list.append(el('li', { class: 'warn', text: `Nicht zugeordnete Bytes: ${snapshot.unassignedHex}` }));
+  nodes.push(list);
+
+  for (const field of snapshot.fields) {
+    const rows = field.values.map((value) =>
+      row([value.name, `${value.value}${value.unit ? ` ${value.unit}` : ''}`, value.rawHex, value.outOfRange ? 'außerhalb des definierten Bereichs' : 'in Ordnung'], [2]),
+    );
+    if (rows.length === 0) rows.push(row(['—', 'keine definierten Signale', field.rawHex, '—'], [2]));
+    const table = el('table', { class: 'grid' }, [
+      el('thead', {}, [el('tr', {}, [el('th', { text: 'Signal' }), el('th', { text: 'Wert' }), el('th', { text: 'Rohbytes' }), el('th', { text: 'Bewertung' })])]),
+      el('tbody', {}, rows),
+    ]);
+    nodes.push(
+      el('div', { class: 'freeze-field' }, [
+        el('h4', { text: `${field.name} · ${field.did}` }),
+        el('div', { class: 'freeze-raw', text: field.rawHex }),
+        table,
+      ]),
+    );
+  }
+  if (snapshot.fields.length === 0) {
+    nodes.push(el('p', { class: 'muted small', text: 'Für diesen Datensatz dokumentiert das Definition-Paket kein Layout.' }));
+  }
+  body.replaceChildren(...nodes);
+}
+
+
+/* ------------------------------------------------- DTC-Details (AGENTS 20) */
+
+function formatSeen(dtc) {
+  if (!dtc.firstSeen) return '—';
+  const first = new Date(dtc.firstSeen);
+  const last = new Date(dtc.lastSeen ?? dtc.firstSeen);
+  const same = Math.abs(last.getTime() - first.getTime()) < 1000;
+  return `${first.toLocaleTimeString('de-DE')}${same ? '' : ` → ${last.toLocaleTimeString('de-DE')}`}`;
+}
+
+/**
+ * Details of one fault code: definition data, session history and the freeze
+ * frame. Everything shown here comes from the backend; the front end adds no
+ * interpretation of its own (AGENTS 5, 34.3).
+ */
+function showDtcDetails(dtc) {
+  showFreezeFrame(dtc);
+  const panel = $('#dtc-detail');
+  panel.querySelector('h3').firstChild.textContent = `Fehlercode ${dtc.code} `;
+  const extra = el('ul', { class: 'plain check-list' }, [
+    el('li', { class: 'info', text: `ECU: ${dtc.ecu} · Status ${dtc.status} · Schwere ${dtc.severity}` }),
+    el('li', { class: 'info', text: `Bestätigt: ${dtc.confirmed ? 'ja' : 'nein'} · Pending: ${dtc.pending ? 'ja' : 'nein'} · Test fehlgeschlagen: ${dtc.testFailed ? 'ja' : 'nein'}` }),
+    el('li', { class: 'info', text: `Erstmals gesehen: ${dtc.firstSeen ? new Date(dtc.firstSeen).toLocaleString('de-DE') : 'unbekannt'}` }),
+    el('li', { class: 'info', text: `Zuletzt gesehen: ${dtc.lastSeen ? new Date(dtc.lastSeen).toLocaleString('de-DE') : 'unbekannt'}` }),
+    el('li', { class: dtc.hint ? 'ok' : 'warn', text: dtc.hint ? `Nächster Schritt: ${dtc.hint}` : 'Kein Hinweis im Definition-Paket dokumentiert' }),
+  ]);
+  const related = dtc.relatedSignals ?? [];
+  if (related.length > 0) {
+    extra.append(
+      el('li', { class: 'info', text: `Zugehörige Signale (Definition): ${related.map((entry) => entry.name).join(', ')}` }),
+    );
+  }
+  panel.querySelector('#dtc-detail-body').prepend(extra);
+  if (dtc.isNew) panel.querySelector('#dtc-detail-body').prepend(el('p', { class: 'hint', text: 'Dieser Code ist im aktuellen Scan neu aufgetreten.' }));
+}
+
+/** Put a row's ECU into the guarded clear form; the write itself needs the confirmation. */
+function prepareClear(dtc) {
+  $('#dtc-detail').hidden = true;
+  const select = $('#clear-ecu');
+  if (!Array.from(select.options).some((option) => option.value === dtc.rxId)) {
+    select.append(el('option', { value: dtc.rxId, text: `${dtc.ecu} (${dtc.rxId})` }));
+  }
+  select.value = dtc.rxId;
+  $('#dtc-clear').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  const status = $('#clear-status');
+  status.replaceChildren(el('li', { class: 'info', text: `Vorbereitet: Fehlerspeicher von ${dtc.ecu} — Vorbedingungen prüfen und Löschvorgang bestätigen.` }));
+  $('#clear-result').replaceChildren();
+  $('#clear-confirm').checked = false;
+  updateClearButton();
+}
+
+/* ------------------------------------------- Fehlerspeicher löschen (20/26) */
+
+function currentVehicleState() {
+  const voltage = Number.parseFloat($('#clear-voltage').value);
+  return {
+    stationary: $('#clear-stationary').checked,
+    ignitionOn: $('#clear-ignition').checked,
+    parkingBrake: $('#clear-parking').checked,
+    ...(Number.isFinite(voltage) ? { batteryVoltage: voltage } : {}),
+  };
+}
+
+/** One ECU option per ECU that currently reports a fault code. */
+function renderClearEcuOptions(dtcs) {
+  const select = $('#clear-ecu');
+  const previous = select.value;
+  const seen = new Map();
+  for (const dtc of dtcs) if (dtc.rxId != null) seen.set(dtc.rxId, dtc.ecu);
+  select.replaceChildren(
+    ...Array.from(seen, ([rxId, name]) => el('option', { value: rxId, text: `${name} (${rxId})` })),
+  );
+  if (previous && seen.has(previous)) select.value = previous;
+}
+
+function renderClearChecks(target, checks) {
+  target.replaceChildren();
+  for (const entry of checks.failed) target.append(el('li', { class: 'fail', text: entry }));
+  for (const entry of checks.warnings) target.append(el('li', { class: 'warn', text: entry }));
+  if (checks.failed.length === 0) target.append(el('li', { class: 'info', text: 'Alle geprüften Vorbedingungen sind erfüllt.' }));
+}
+
+function updateClearButton() {
+  const ready = state.clearPrecheck?.ok === true && $('#clear-confirm').checked;
+  $('#btn-clear-execute').disabled = !ready;
+}
+
+$('#btn-clear-precheck').addEventListener('click', () => {
+  const rxId = $('#clear-ecu').value;
+  if (!rxId) return logError(new Error('kein Steuergerät ausgewählt'));
+  api('/api/dtc/clear/precheck', { method: 'POST', body: JSON.stringify({ rxId, vehicleState: currentVehicleState() }) })
+    .then(({ precheck }) => {
+      state.clearPrecheck = precheck;
+      const status = $('#clear-status');
+      renderClearChecks(status, precheck);
+      // The confirmation stays disabled until the preconditions are met: the backend
+      // refuses a write anyway, and a UI that offers it would be lying (AGENTS 26).
+      $('#clear-confirm').disabled = !precheck.ok;
+      if (!precheck.ok) $('#clear-confirm').checked = false;
+      updateClearButton();
+    })
+    .catch(logError);
+});
+
+$('#clear-confirm').addEventListener('change', updateClearButton);
+
+$('#btn-clear-execute').addEventListener('click', () => {
+  const rxId = $('#clear-ecu').value;
+  if (!rxId || !$('#clear-confirm').checked) return;
+  const result = $('#clear-result');
+  result.replaceChildren(el('li', { class: 'info', text: 'Löschvorgang läuft …' }));
+  api('/api/dtc/clear', { method: 'POST', body: JSON.stringify({ rxId, confirmed: true, vehicleState: currentVehicleState() }) })
+    .then(({ result: cleared }) => {
+      const lines = [
+        el('li', { class: cleared.verified ? 'ok' : 'warn', text: `${cleared.ecu}: ${cleared.verified ? 'Löschvorgang durch erneutes Auslesen bestätigt' : 'Löschvorgang nicht bestätigt — Status unverändert'}` }),
+        el('li', { class: 'info', text: `vorher: ${cleared.before.join(', ') || 'keine Einträge'}` }),
+        el('li', { class: 'info', text: `nachher: ${cleared.after.join(', ') || 'keine Einträge'}` }),
+        el('li', { class: 'ok', text: `entfernt: ${cleared.removed.join(', ') || '—'}` }),
+      ];
+      if (cleared.stillFailing.length > 0) {
+        lines.push(el('li', { class: 'warn', text: `weiterhin gespeichert (Fehler liegt aktuell an): ${cleared.stillFailing.join(', ')}` }));
+      }
+      if (cleared.unchanged.length > 0) {
+        lines.push(el('li', { class: 'fail', text: `unverändert (Steuergerät hat nicht gelöscht): ${cleared.unchanged.join(', ')}` }));
+      }
+      result.replaceChildren(...lines);
+      state.clearPrecheck = null;
+      $('#clear-confirm').checked = false;
+      $('#clear-confirm').disabled = true;
+      updateClearButton();
+      return scan();
+    })
+    .catch((error) => {
+      result.replaceChildren(el('li', { class: 'fail', text: `Löschen abgelehnt: ${error.message}` }));
+    });
+});
+
+$('#btn-dtc-detail-close').addEventListener('click', () => {
+  $('#dtc-detail').hidden = true;
+});
 
 /* ------------------------------------------------------------------- SSE */
 

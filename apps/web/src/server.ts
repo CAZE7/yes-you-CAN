@@ -26,6 +26,7 @@ import {
 } from '@vdp/adapter-host';
 import { buildReport, renderHtml, renderPdf } from '@vdp/reports';
 import { DemoBackend } from './backend.js';
+import type { VehicleStateView } from './backend.js';
 import { SIMULATOR_ADAPTER_ID, createWebAdapterCatalog } from './adapters.js';
 
 export interface ServerOptions {
@@ -233,6 +234,30 @@ export class WebServer {
     if (path === '/api/identify' && method === 'POST') return this.sendJson(response, 200, { ecus: await this.backend.identify() });
     if (path === '/api/dtc/scan' && method === 'POST') return this.sendJson(response, 200, { dtcs: await this.backend.scanDtcs() });
 
+    // Fault details and the only write path so far (AGENTS 20, 25, 26).
+    if (path === '/api/dtc/snapshot' && method === 'POST') {
+      const body = await this.readBody<{ rxId?: string; code?: string; recordNumber?: number }>(request);
+      const rxId = parseCanId(body.rxId);
+      if (!body.code) throw new HttpError(400, 'a DTC code is required');
+      return this.sendJson(response, 200, {
+        snapshot: await this.backend.readFreezeFrame(rxId, body.code, body.recordNumber ?? 0xff),
+      });
+    }
+    if (path === '/api/dtc/clear/precheck' && method === 'POST') {
+      const body = await this.readBody<{ rxId?: string; vehicleState?: Record<string, unknown> }>(request);
+      const rxId = parseCanId(body.rxId);
+      return this.sendJson(response, 200, { precheck: await this.backend.precheckDtcClear(rxId, parseVehicleState(body.vehicleState)) });
+    }
+    if (path === '/api/dtc/clear' && method === 'POST') {
+      const body = await this.readBody<{ rxId?: string; confirmed?: boolean; vehicleState?: Record<string, unknown> }>(request);
+      const rxId = parseCanId(body.rxId);
+      const result = await this.backend.clearDtcs(rxId, {
+        confirmed: body.confirmed === true,
+        vehicleState: parseVehicleState(body.vehicleState),
+      });
+      return this.sendJson(response, 200, { result });
+    }
+
     if (path === '/api/live/start' && method === 'POST') {
       const body = await this.readBody<{ signalIds?: string[] }>(request);
       await this.backend.startLive(body.signalIds);
@@ -366,6 +391,35 @@ export class WebServer {
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** Parse a CAN identifier from the UI (`0x7E8`, `7e8` or `2024`). */
+function parseCanId(value: unknown): number {
+  if (typeof value === 'number' && Number.isInteger(value) && value >= 0) return value;
+  if (typeof value !== 'string' || value.trim().length === 0) throw new HttpError(400, 'an ECU response id (rxId) is required');
+  const text = value.trim().toLowerCase().replace(/^0x/, '');
+  const parsed = Number.parseInt(text, 16);
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 0x1fffffff) {
+    throw new HttpError(400, `"${value}" is not a CAN identifier`);
+  }
+  return parsed;
+}
+
+/**
+ * Read the operator's precondition assertions.
+ *
+ * Everything defaults to "not confirmed": a precondition that was not asserted is
+ * not met, so a UI bug can never silently turn into a write (AGENTS 26).
+ */
+function parseVehicleState(payload: Record<string, unknown> | undefined): VehicleStateView {
+  const record = payload ?? {};
+  const voltage = record['batteryVoltage'];
+  return {
+    stationary: record['stationary'] === true,
+    ignitionOn: record['ignitionOn'] === true,
+    parkingBrake: record['parkingBrake'] === true,
+    ...(typeof voltage === 'number' && Number.isFinite(voltage) ? { batteryVoltage: voltage } : {}),
+  };
 }
 
 /**

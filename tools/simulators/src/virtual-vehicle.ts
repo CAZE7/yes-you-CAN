@@ -10,7 +10,14 @@
 import { createLogger, toHex, type Logger } from '@vdp/shared';
 import { IsoTpConnection } from '@vdp/transport-iso-tp';
 import { SESSION, UdsServer, xorSeedKeyAlgorithm, type ServerDid, type ServerDtc, type UdsServerLink, type UdsServerOptions } from '@vdp/protocols-uds';
-import { indexPackage, type DefinitionPackage, type EcuDefinition, type SignalDefinition, type SignalIndex } from '@vdp/definitions';
+import {
+  indexPackage,
+  type DefinitionPackage,
+  type DtcDefinition,
+  type EcuDefinition,
+  type SignalDefinition,
+  type SignalIndex,
+} from '@vdp/definitions';
 import { genericPackage } from '@vdp/definitions/generic';
 import { encodeSignal } from '@vdp/core';
 import { createVirtualCanNetwork, VirtualCanBus, type VirtualCanOptions } from './virtual-can.js';
@@ -114,15 +121,32 @@ export class VirtualVehicle {
   }
 
   clearAllDtcs(): void {
-    for (const ecu of this.ecus) for (const dtc of this.dtcListOf(ecu)) ecu.server.setDtcStatus(dtc.code, 0x00);
+    for (const ecu of this.ecus) for (const dtc of this.dtcListOf(ecu.definition)) ecu.server.setDtcStatus(dtc.code, 0x00);
   }
 
   ecu(ecuId: string): VirtualEcu | undefined {
     return this.ecus.find((e) => e.definition.id === ecuId);
   }
 
-  private dtcListOf(ecu: VirtualEcu): ServerDtc[] {
-    return (this.initialDtcs[ecu.definition.id] ?? defaultDtcsFor(ecu.definition)).map((dtc) => ({ ...dtc }));
+  /**
+   * Fault memory of an ECU.
+   *
+   * Injected codes are merged over the definition-derived ones instead of
+   * replacing them: a test that only sets a status must not silently strip the
+   * freeze frame the definition declares (AGENTS 20).
+   */
+  private dtcListOf(definition: EcuDefinition): ServerDtc[] {
+    const byCode = new Map(defaultDtcsFor(definition, this.index.byId).map((dtc) => [dtc.code, dtc]));
+    const injected = this.initialDtcs[definition.id];
+    if (!injected) return [...byCode.values()];
+    for (const dtc of injected) {
+      const declared = byCode.get(dtc.code);
+      // Injected values win (a test injects the status it wants to see), but the
+      // declared fields survive: a code never loses its description, hint or
+      // freeze frame just because a test set a status (AGENTS 13, 20).
+      byCode.set(dtc.code, declared ? { ...declared, ...dtc } : { ...dtc });
+    }
+    return [...byCode.values()];
   }
 
   private createEcu(definition: EcuDefinition): VirtualEcu {
@@ -145,7 +169,7 @@ export class VirtualVehicle {
       name: definition.name,
       logger: this.log,
       dids: this.buildDids(definition, signals),
-      dtcs: this.initialDtcs[definition.id] ?? defaultDtcsFor(definition),
+      dtcs: this.dtcListOf(definition),
       sessions: [SESSION.DEFAULT, SESSION.EXTENDED, SESSION.PROGRAMMING],
       ...(definition.timing ? { timing: definition.timing } : {}),
       ...(this.pendingResponseServices.length > 0 ? { pendingResponseServices: this.pendingResponseServices } : {}),
@@ -305,15 +329,79 @@ function baselineFor(ecuId: string, signal: SignalDefinition): number {
   }
 }
 
-function defaultDtcsFor(definition: EcuDefinition): ServerDtc[] {
+/**
+ * Fault codes of an ECU definition, with a freeze frame whose layout matches the
+ * definition package (AGENTS 13, 20).
+ *
+ * The snapshot is encoded with the very same signal definitions the live DIDs
+ * use, so a decoder that works on live values works on freeze frames too — and a
+ * mismatch between definition and simulator shows up immediately in tests
+ * instead of being papered over by a hand-written byte blob.
+ */
+export function defaultDtcsFor(
+  definition: EcuDefinition,
+  signalById: ReadonlyMap<string, SignalDefinition> = new Map(),
+): ServerDtc[] {
   return (definition.dtcs ?? []).map((dtc, index) => ({
     code: dtc.code,
     // Give the first DTC an active status, the rest confirmed-only, so the UI and
     // reports have both cases to render.
     status: index === 0 ? 0x2f : 0x08,
-    ...(index === 0 ? { snapshot: new Uint8Array([0x09, 0x46, 0x00, 0x32, 0x01, 0xf4]) } : {}),
+    ...(buildFreezeFrame(dtc, signalById) ?? {}),
     extendedData: new Uint8Array([0x01, 0x02, 0x03]),
   }));
+}
+
+/**
+ * Operating point a stored fault is frozen at.
+ *
+ * A freeze frame records *where* the ECU was when the fault occurred, so it must
+ * not equal the idle baseline — otherwise the snapshot carries no information and
+ * a decoder bug would go unnoticed.
+ */
+function freezeFrameValue(signal: SignalDefinition): number {
+  switch (signal.id) {
+    case 'engine.rpm':
+      return 3120;
+    case 'vehicle.speed':
+      return 78;
+    case 'engine.load':
+      return 64;
+    case 'engine.coolant_temperature':
+      return 93;
+    case 'engine.throttle_position':
+      return 38;
+    default:
+      return signal.min ?? 0;
+  }
+}
+
+/** Encode the declared freeze frame fields into the record the server returns. */
+function buildFreezeFrame(
+  dtc: DtcDefinition,
+  signalById: ReadonlyMap<string, SignalDefinition>,
+): { snapshot: Uint8Array } | undefined {
+  const fields = dtc.freezeFrame ?? [];
+  if (fields.length === 0) return undefined;
+  const parts: number[] = [];
+  for (const field of fields) {
+    const fieldSignals = (field.signals ?? []).map((id) => signalById.get(id)).filter((s): s is SignalDefinition => s !== undefined);
+    if (fieldSignals.length === 0) {
+      // Undocumented value: emit zeros of the declared length so the record
+      // length still matches the declared layout.
+      for (let i = 0; i < (field.length ?? 0); i++) parts.push(0);
+      continue;
+    }
+    const length = field.length ?? fieldSignals.reduce((max, signal) => Math.max(max, signal.byteOffset + signal.length), 0);
+    const payload = new Uint8Array(length);
+    for (const signal of fieldSignals) {
+      const value = freezeFrameValue(signal);
+      const encoded = encodeSignal(signal, value, { payloadLength: length });
+      for (let i = 0; i < signal.length; i++) payload[signal.byteOffset + i] = encoded[signal.byteOffset + i] ?? 0;
+    }
+    for (const byte of payload) parts.push(byte);
+  }
+  return { snapshot: new Uint8Array(parts) };
 }
 
 function asciiBytes(text: string): Uint8Array {

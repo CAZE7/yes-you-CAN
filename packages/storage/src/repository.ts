@@ -60,6 +60,8 @@ export interface SessionRepository {
   exportPackage(id: string): Promise<Uint8Array>;
   /** Raw trace of a stored session, for replay and offline analysis (AGENTS 19). */
   readTrace(id: string): Promise<StoredTraceLine[]>;
+  /** Recorded measurement samples of a stored session (AGENTS 10, 30: Sitzungsvergleich). */
+  readSamples(id: string): Promise<MeasurementSample[]>;
 }
 
 export interface FileSystemRepositoryOptions {
@@ -184,6 +186,25 @@ export class FileSystemSessionRepository implements SessionRepository {
     return parseTraceLines(raw, (message, line) => this.log.warn('skipping unreadable trace line', { id, line, error: message }));
   }
 
+  /**
+   * Read the recorded measurement samples.
+   *
+   * Like the trace, the file is append-only: a crash can leave a partial last
+   * line, so unreadable lines are counted and skipped — the samples before the
+   * crash are still valid data, and dropping the whole recording because of the
+   * last byte would throw away a running measurement.
+   */
+  async readSamples(id: string): Promise<MeasurementSample[]> {
+    const path = join(this.dir(id), STREAM_FILES.measurements);
+    let raw: string;
+    try {
+      raw = await readFile(path, 'utf8');
+    } catch {
+      return [];
+    }
+    return parseSampleLines(raw, (message, line) => this.log.warn('skipping unreadable sample line', { id, line, error: message }));
+  }
+
   /** ZIP session package with metadata and every stream (AGENTS 17). */
   async exportPackage(id: string): Promise<Uint8Array> {
     const dir = this.dir(id);
@@ -264,6 +285,11 @@ export class MemorySessionRepository implements SessionRepository {
     return parseTraceLines(lines.join('\n'));
   }
 
+  async readSamples(id: string): Promise<MeasurementSample[]> {
+    const lines = this.streams.get(id)?.get('measurements') ?? [];
+    return parseSampleLines(lines.join('\n'));
+  }
+
   private async append(id: string, stream: string, lines: readonly string[]): Promise<void> {
     const map = this.streams.get(id) ?? new Map<string, string[]>();
     const existing = map.get(stream) ?? [];
@@ -318,6 +344,40 @@ export function parseTraceLines(raw: string, onError?: (message: string, line: s
         ...(typeof record['channel'] === 'string' ? { channel: record['channel'] } : {}),
         ...(typeof record['extended'] === 'boolean' ? { extended: record['extended'] } : {}),
         ...(typeof record['fd'] === 'boolean' ? { fd: record['fd'] } : {}),
+      });
+    } catch (error) {
+      onError?.(error instanceof Error ? error.message : String(error), trimmed);
+    }
+  }
+  return parsed;
+}
+
+/**
+ * Parse stored sample lines, skipping anything unreadable.
+ *
+ * A sample without a signal id or without a finite `t` cannot be placed on the
+ * shared time axis, so it is dropped rather than rendered at position zero.
+ */
+export function parseSampleLines(raw: string, onError?: (message: string, line: string) => void): MeasurementSample[] {
+  const parsed: MeasurementSample[] = [];
+  for (const line of raw.split('\n')) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0) continue;
+    try {
+      const record = JSON.parse(trimmed) as Partial<MeasurementSample>;
+      if (typeof record.signal !== 'string' || record.signal.length === 0) continue;
+      if (typeof record.t !== 'number' || !Number.isFinite(record.t)) continue;
+      if (record.value === undefined) continue;
+      parsed.push({
+        timestamp: typeof record.timestamp === 'string' ? record.timestamp : new Date(0).toISOString(),
+        t: record.t,
+        signal: record.signal,
+        value: record.value,
+        rawValue: record.rawValue ?? record.value,
+        rawHex: typeof record.rawHex === 'string' ? record.rawHex : '',
+        ...(typeof record.unit === 'string' ? { unit: record.unit } : {}),
+        ...(typeof record.enumText === 'string' ? { enumText: record.enumText } : {}),
+        outOfRange: record.outOfRange === true,
       });
     } catch (error) {
       onError?.(error instanceof Error ? error.message : String(error), trimmed);

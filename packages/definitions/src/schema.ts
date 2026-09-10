@@ -71,6 +71,30 @@ export interface EcuTiming {
   s3Ms?: number;
 }
 
+/**
+ * One environment value inside a freeze frame snapshot record (AGENTS 20).
+ *
+ * ISO 14229-1 defines the *service* that returns a snapshot record
+ * (0x19 0x04, `reportDTCSnapshotRecordByDTCNumber`), but it deliberately leaves
+ * the record layout to the manufacturer. The record therefore has to be
+ * described by the definition package: this is exactly the kind of OEM knowledge
+ * that must not be guessed in code (AGENTS 13, 34.18).
+ */
+export interface FreezeFrameField {
+  /** Data identifier the ECU reports inside the snapshot record. */
+  did: number;
+  /** Label for the report/UI; defaults to the DID in hex. */
+  name?: string;
+  /**
+   * Length of the value in bytes. Optional when `signals` is given (the signals
+   * determine the length); required for a field without decoded signals so the
+   * record can still be split correctly.
+   */
+  length?: number;
+  /** Signal ids (of this package) to decode from the value bytes. */
+  signals?: string[];
+}
+
 export interface DtcDefinition {
   /** ISO 14229-1 character form, e.g. "P0420". */
   code: string;
@@ -79,6 +103,18 @@ export interface DtcDefinition {
   severity?: 'info' | 'minor' | 'major' | 'critical';
   /** Suggested next diagnostic step (feeds reports and the AI layer). */
   hint?: string;
+  /**
+   * Environment data recorded by the ECU when the fault was stored, in the order
+   * the ECU reports it. Absent means "not documented" — the reader then keeps the
+   * snapshot raw instead of inventing a layout.
+   */
+  freezeFrame?: FreezeFrameField[];
+  /**
+   * Signal ids (of this package) that belong to diagnosing this fault (AGENTS 20
+   * "Related Signals"): they drive the live-data suggestion in the UI and the
+   * analysis, and they are only ever the package's own signals.
+   */
+  relatedSignals?: string[];
 }
 
 export interface EcuDefinition {

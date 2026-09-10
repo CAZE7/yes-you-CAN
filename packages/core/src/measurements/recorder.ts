@@ -7,49 +7,12 @@
 
 import { toHex } from '@vdp/shared';
 import type { DecodedSignal } from './decoder.js';
+import { summarizeSamples } from './statistics.js';
+import type { MeasurementSample, Marker, RecordingWindow, SignalStatistics } from './types.js';
 
-export interface MeasurementSample {
-  /** ISO-8601 with millisecond precision (AGENTS 15 requires precise timestamps). */
-  timestamp: string;
-  /** Monotonic milliseconds since recording start — used for the shared chart axis. */
-  t: number;
-  signal: string;
-  value: number | string | boolean;
-  rawValue: number | string | boolean;
-  rawHex: string;
-  unit?: string;
-  enumText?: string;
-  outOfRange: boolean;
-}
-
-export interface SignalStatistics {
-  signal: string;
-  name: string;
-  unit?: string;
-  samples: number;
-  min: number | null;
-  max: number | null;
-  average: number | null;
-  /** max - min over the recorded window (AGENTS 16 "Delta"). */
-  delta: number | null;
-  first: number | null;
-  last: number | null;
-  outOfRangeCount: number;
-}
-
-export interface Marker {
-  id: string;
-  t: number;
-  timestamp: string;
-  label: string;
-  kind: 'dtc' | 'action' | 'note' | 'user';
-  detail?: string;
-}
-
-export interface RecordingWindow {
-  fromT: number;
-  toT: number;
-}
+// Re-exported so the existing importers keep working; the definitions themselves
+// live in `types.ts` to keep this module free of cycles (statistics.ts needs them).
+export type { MeasurementSample, Marker, RecordingWindow, SignalStatistics } from './types.js';
 
 export class MeasurementRecorder {
   private readonly samples: MeasurementSample[] = [];
@@ -136,40 +99,7 @@ export class MeasurementRecorder {
   }
 
   statistics(signalId: string, window?: RecordingWindow): SignalStatistics {
-    const values = this.samplesFor(signalId, window)
-      .map((s) => s.value)
-      .filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
-    const outOfRangeCount = this.samplesFor(signalId, window).filter((s) => s.outOfRange).length;
-    if (values.length === 0) {
-      return {
-        signal: signalId,
-        name: this.names.get(signalId) ?? signalId,
-        ...(this.units.get(signalId) ? { unit: this.units.get(signalId) } : {}),
-        samples: 0,
-        min: null,
-        max: null,
-        average: null,
-        delta: null,
-        first: null,
-        last: null,
-        outOfRangeCount,
-      };
-    }
-    const min = Math.min(...values);
-    const max = Math.max(...values);
-    return {
-      signal: signalId,
-      name: this.names.get(signalId) ?? signalId,
-      ...(this.units.get(signalId) ? { unit: this.units.get(signalId) } : {}),
-      samples: values.length,
-      min,
-      max,
-      average: values.reduce((sum, v) => sum + v, 0) / values.length,
-      delta: max - min,
-      first: values[0] ?? null,
-      last: values[values.length - 1] ?? null,
-      outOfRangeCount,
-    };
+    return summarizeSamples(signalId, this.samplesFor(signalId, window), { names: this.names, units: this.units });
   }
 
   statisticsForAll(window?: RecordingWindow): SignalStatistics[] {

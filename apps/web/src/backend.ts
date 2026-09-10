@@ -21,11 +21,12 @@ import { readFile } from 'node:fs/promises';
 import { AdapterUnsupportedError, TransportError, createLogger, type Logger } from '@vdp/shared';
 import {
   DiagnosticEngine,
-  DtcScanner,
   SessionLogger,
+  type FreezeFrame,
   type DecodedSignal,
   type Marker,
   type MeasurementSample,
+  type EnrichedDtc,
   type RawTraceEntry,
   type SignalStatistics,
   type VehicleSessionData,
@@ -60,9 +61,70 @@ export interface EcuView {
   lastError?: string;
 }
 
+/**
+ * Freeze frame of a fault code, as shown in the UI (AGENTS 20).
+ *
+ * Decoded values and raw bytes both travel to the front end so an operator can
+ * see that a value came from a byte range, not from a guess.
+ */
+export interface FreezeFrameView {
+  code: string;
+  recordNumber: number;
+  documented: boolean;
+  notes: string[];
+  unassignedHex: string;
+  fields: Array<{
+    did: string;
+    name: string;
+    rawHex: string;
+    values: Array<{ signal: string; name: string; value: string; unit?: string; rawHex: string; outOfRange: boolean }>;
+  }>;
+}
+
+/**
+ * Vehicle preconditions for a write, as asserted by the operator (AGENTS 26).
+ *
+ * They are asserted, not measured: the workbench cannot see whether the car is
+ * stationary, so the operator confirms each one and the safety layer records who
+ * asserted what. A value that a real adapter *can* measure (battery voltage via
+ * ATRV) is passed through when it is known.
+ */
+export interface VehicleStateView {
+  stationary: boolean;
+  ignitionOn: boolean;
+  parkingBrake?: boolean;
+  batteryVoltage?: number;
+}
+
+/** Result of a cleared fault memory, including the before/after comparison. */
+export interface DtcClearView {
+  ecu: string;
+  cleared: boolean;
+  /** The re-read confirms that the clear took effect. */
+  verified: boolean;
+  before: string[];
+  after: string[];
+  /** Codes that are gone after the clear. */
+  removed: string[];
+  /** Codes that are still stored because the fault condition is still present. */
+  stillFailing: string[];
+  /** Codes whose status did not change at all — the ECU ignored the clear. */
+  unchanged: string[];
+}
+
+export interface DtcClearPrecheck {
+  rxId: string;
+  ecu: string;
+  ok: boolean;
+  failed: string[];
+  warnings: string[];
+}
+
 export interface DtcView {
   code: string;
   raw: string;
+  /** Response id of the ECU that reported the code, so the UI can address it. */
+  rxId: string;
   /** Description from the definition package, or the raw protocol fallback. */
   description: string;
   severity: string;
@@ -73,6 +135,19 @@ export interface DtcView {
   testFailed: boolean;
   /** Next diagnostic step from the definition package, when one is documented. */
   hint?: string;
+  /** First scan in this session that saw the code (AGENTS 20). */
+  firstSeen?: string;
+  /** Most recent scan that saw the code (AGENTS 20). */
+  lastSeen?: string;
+  /** True when the code appeared for the first time in the latest scan. */
+  isNew?: boolean;
+  /** Signals the definition package relates to this code (AGENTS 20). */
+  relatedSignals?: Array<{ id: string; name: string }>;
+  /**
+   * Whether reading a freeze frame for this code is meaningful: the ECU returned
+   * a snapshot record before, or the definition documents a layout.
+   */
+  freezeFrame?: boolean;
   /** Provenance of the description — never present invented knowledge (AGENTS 24). */
   provenance?: string;
 }
@@ -224,13 +299,11 @@ export class DemoBackend {
    * from definition packages only — a code nobody documented stays undescribed
    * instead of being guessed (AGENTS 13, 20, 24).
    */
-  private readonly dtcScanner: DtcScanner;
 
   constructor(private readonly options: BackendOptions = {}) {
     this.log = (options.logger ?? createLogger('web', { level: 'INFO' })).child('backend');
     this.vin = options.vin ?? DEFAULT_VIN;
     this.definitions = options.definitions ?? [genericPackage];
-    this.dtcScanner = new DtcScanner({ definitions: this.definitions });
     this.analysisService = new AnalysisService({ providers: [new HeuristicAnalysisProvider()], logger: this.log });
     this.adapters = options.adapters ?? createWebAdapterCatalog();
     this.selection = options.selection ?? { id: SIMULATOR_ADAPTER_ID, config: {} };
@@ -544,11 +617,12 @@ export class DemoBackend {
     const scanned = await engine.scanDtcs();
     this.dtcs = [];
     for (const entry of scanned) {
-      // Enrichment happens here, not in the protocol layer: the UDS client
-      // reports codes, the definition packages describe them (AGENTS 13/20).
-      const enriched = this.dtcScanner.enrich(entry.dtcs, entry.ecu.name, entry.ecu.id);
-      for (const dtc of enriched) {
-        const view = toDtcView(dtc, entry.ecu.name);
+      // The engine already enriched the codes with the definition package
+      // (description, severity, first/last seen, related signals); the backend
+      // only maps them to the view shape the UI consumes (AGENTS 13/20).
+      const rxId = formatCanId(entry.ecu.rxId);
+      for (const dtc of entry.dtcs) {
+        const view = toDtcView(dtc, entry.ecu.name, rxId);
         this.dtcs.push(view);
         this.emit('dtc', view);
         // The DTC markers themselves are written by the diagnostic engine while
@@ -561,6 +635,75 @@ export class DemoBackend {
     // open graphs show them immediately without waiting for a history reload.
     this.emit('markers', toMarkerViews(engine.recorder.markers));
     return this.dtcs;
+  }
+
+  /**
+   * Read the freeze frame of one fault code from one ECU (AGENTS 20 "Snapshot").
+   *
+   * The response always carries the raw bytes as well: a snapshot whose layout no
+   * definition documents is still evidence and must not be dropped.
+   */
+  async readFreezeFrame(rxId: number, code: string, recordNumber = 0xff): Promise<FreezeFrameView> {
+    const engine = this.requireEngine();
+    const frame = await engine.readDtcSnapshot(rxId, code, recordNumber);
+    if (!frame) throw new Error(`ECU 0x${rxId.toString(16)} has no freeze frame for ${code}`);
+    this.sessionLogger.log('dtc', `freeze frame ${code}`, { ecu: `0x${rxId.toString(16)}`, documented: frame.documented });
+    return toFreezeFrameView(frame);
+  }
+
+  /**
+   * What the safety layer would require for clearing an ECU (AGENTS 26).
+   * The UI asks this before showing the confirmation so the operator sees the
+   * missing preconditions instead of a refusal afterwards.
+   */
+  async precheckDtcClear(rxId: number, vehicleState: VehicleStateView): Promise<DtcClearPrecheck> {
+    const engine = this.requireEngine();
+    const handle = engine.handleFor(rxId);
+    if (!handle) throw new Error(`no ECU session for 0x${rxId.toString(16)}`);
+    const checks = engine.evaluateDtcClear(rxId, {
+      // `userConfirmed: false` is intentional: the precheck lists everything that
+      // still has to happen, including the confirmation itself.
+      userConfirmed: false,
+      vehicleState,
+    });
+    return {
+      rxId: formatCanId(rxId),
+      ecu: handle.session.record.name,
+      // `userConfirmed: false` is intentional: the precheck lists everything that
+      // still has to happen, including the confirmation itself.
+      ok: checks.ok,
+      failed: checks.failed,
+      warnings: checks.warnings,
+    };
+  }
+
+  /**
+   * Clear the fault memory of one ECU.
+   *
+   * This is the platform's only write operation so far, and it runs through the
+   * whole safety chain: backup snapshot → explicit confirmation → write →
+   * verification by re-read → audit log (AGENTS 20, 25, 26).
+   */
+  async clearDtcs(rxId: number, request: { confirmed: boolean; vehicleState: VehicleStateView }): Promise<DtcClearView> {
+    const engine = this.requireEngine();
+    const result = await engine.clearDtcs(rxId, {
+      userConfirmed: request.confirmed,
+      vehicleState: request.vehicleState,
+    });
+    // The table has to reflect the new state, not the pre-clear one.
+    await this.scanDtcs();
+    this.emit('marker', toMarkerViews([engine.recorder.addMarker(`Fehlerspeicher ${result.ecuName} gelöscht`, 'action', result.verified ? 'verifiziert' : 'nicht bestätigt')].filter((m): m is Marker => m !== null))[0]);
+    this.log.info('fault memory cleared', { ecu: result.ecuName, removed: result.comparison.removed.length, verified: result.verified });
+    return {
+      ecu: result.ecuName,
+      cleared: result.cleared,
+      verified: result.verified,
+      before: result.before.map((dtc) => dtc.code),
+      after: result.after.map((dtc) => dtc.code),
+      removed: result.comparison.removed.map((dtc) => dtc.code),
+      stillFailing: result.comparison.changed.map((dtc) => dtc.code),
+      unchanged: result.comparison.unchanged.map((dtc) => dtc.code),
+    };
   }
 
   /** Start polling the selected signals. */
@@ -792,6 +935,29 @@ export class DemoBackend {
   }
 }
 
+function toFreezeFrameView(frame: FreezeFrame): FreezeFrameView {
+  return {
+    code: frame.dtcCode,
+    recordNumber: frame.recordNumber,
+    documented: frame.documented,
+    notes: frame.notes,
+    unassignedHex: frame.unassignedHex,
+    fields: frame.fields.map((field) => ({
+      did: `0x${field.did.toString(16).toUpperCase()}`,
+      name: field.name,
+      rawHex: field.rawHex,
+      values: field.values.map((value) => ({
+        signal: value.signalId,
+        name: value.name,
+        value: formatValue(value.value),
+        ...(value.unit ? { unit: value.unit } : {}),
+        rawHex: value.rawHex,
+        outOfRange: value.outOfRange,
+      })),
+    })),
+  };
+}
+
 function toSampleView(sample: MeasurementSample, name: string): SampleView {
   return {
     signal: sample.signal,
@@ -831,10 +997,16 @@ function toTraceView(entry: RawTraceEntry): TraceView {
   };
 }
 
-function toDtcView(dtc: DtcRecord & { description?: string; hint?: string }, ecuName: string): DtcView {
+/** CAN identifier as it is displayed and sent back by the UI (e.g. `0x7E8`). */
+function formatCanId(id: number): string {
+  return `0x${id.toString(16).toUpperCase()}`;
+}
+
+function toDtcView(dtc: EnrichedDtc, ecuName: string, rxId: string): DtcView {
   return {
     code: dtc.code,
     raw: dtc.raw,
+    rxId,
     // A code without a definition stays honest: the raw failure type is shown
     // instead of an invented description (AGENTS 24).
     description: dtc.description ?? `Fehlertyp 0x${dtc.failureType}`,
@@ -845,6 +1017,11 @@ function toDtcView(dtc: DtcRecord & { description?: string; hint?: string }, ecu
     confirmed: dtc.statusBits.confirmedDtc,
     pending: dtc.statusBits.pendingDtc,
     testFailed: dtc.statusBits.testFailed,
+    ...(dtc.firstSeen ? { firstSeen: dtc.firstSeen } : {}),
+    ...(dtc.lastSeen ? { lastSeen: dtc.lastSeen } : {}),
+    ...(dtc.firstSeenInThisScan ? { isNew: true } : {}),
+    ...(dtc.relatedSignals ? { relatedSignals: dtc.relatedSignals } : {}),
+    freezeFrame: (dtc.snapshot?.length ?? 0) > 0,
   };
 }
 
