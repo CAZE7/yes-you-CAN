@@ -13,7 +13,8 @@
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { extname, join, normalize } from 'node:path';
+import { dirname, extname, join, normalize } from 'node:path';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { createLogger, type Logger } from '@vdp/shared';
 import { buildReport, renderHtml, renderPdf } from '@vdp/reports';
@@ -70,6 +71,25 @@ class HttpError extends Error {
 const PUBLIC_DIR = process.env.VDP_PUBLIC_DIR
   ? process.env.VDP_PUBLIC_DIR
   : fileURLToPath(new URL('../../public/', import.meta.url));
+
+/**
+ * Directory served as `/lib/` — the compiled, unit-tested chart core
+ * (`@vdp/charts`). The browser imports the very module the tests run against,
+ * so zoom, cursor and statistics rules cannot drift apart between backend and
+ * front end (AGENTS 16, 34.8; ADR 0002 keeps it dependency-free).
+ *
+ * Resolved through the package name so the same code works in the workspace and
+ * in an installed dependency.
+ */
+function resolveChartLibDir(): string {
+  try {
+    return dirname(createRequire(import.meta.url).resolve('@vdp/charts'));
+  } catch {
+    return fileURLToPath(new URL('../../packages/charts/dist/src/', import.meta.url));
+  }
+}
+
+const LIB_DIR = process.env.VDP_LIB_DIR ? process.env.VDP_LIB_DIR : resolveChartLibDir();
 
 export class WebServer {
   readonly backend: DemoBackend;
@@ -145,6 +165,7 @@ export class WebServer {
     }
     if (path.startsWith('/api/')) return this.api(request, response, path);
     if (request.method !== 'GET') throw new HttpError(405, 'method not allowed');
+    if (path.startsWith('/lib/')) return this.libraryFile(response, path.slice('/lib/'.length));
     return this.staticFile(response, path);
   }
 
@@ -172,6 +193,10 @@ export class WebServer {
     const method = request.method ?? 'GET';
 
     if (path === '/api/state' && method === 'GET') return this.sendJson(response, 200, this.backend.state());
+    // Complete recording for the graph view: the live stream only carries the
+    // newest samples, the graphs also have to show what happened before the
+    // browser was opened (AGENTS 16 "Zeitraum auswählen").
+    if (path === '/api/history' && method === 'GET') return this.sendJson(response, 200, this.backend.history());
 
     if (path === '/api/start' && method === 'POST') return this.sendJson(response, 200, await this.backend.start());
     if (path === '/api/identify' && method === 'POST') return this.sendJson(response, 200, { ecus: await this.backend.identify() });
@@ -222,6 +247,36 @@ export class WebServer {
     }
 
     this.sendJson(response, 404, { error: `no route ${method} ${path}` });
+  }
+
+  /**
+   * Serves the compiled chart core as `/lib/<file>` (AGENTS 16).
+   *
+   * Same rules as the public directory — same-origin, GET only, no traversal —
+   * because this is just another static asset that happens to be compiled from
+   * a workspace package instead of living in `public/`.
+   */
+  private async libraryFile(response: ServerResponse, relative: string): Promise<void> {
+    if (relative.length === 0 || relative.startsWith('/') || relative.includes('\0') || relative.includes('..')) {
+      this.sendJson(response, 403, { error: 'forbidden' });
+      return;
+    }
+    const resolved = normalize(join(LIB_DIR, relative));
+    if (!resolved.startsWith(normalize(LIB_DIR))) {
+      this.sendJson(response, 403, { error: 'forbidden' });
+      return;
+    }
+    try {
+      const content = await readFile(resolved);
+      response.writeHead(200, {
+        ...SECURITY_HEADERS,
+        'content-type': MIME[extname(resolved)] ?? 'text/javascript; charset=utf-8',
+        'cache-control': 'no-cache',
+      });
+      response.end(content);
+    } catch {
+      this.sendJson(response, 404, { error: `not found: /lib/${relative}` });
+    }
   }
 
   private async staticFile(response: ServerResponse, path: string): Promise<void> {

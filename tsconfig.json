@@ -17,6 +17,7 @@
     { "path": "packages/storage" },
     { "path": "packages/reports" },
     { "path": "packages/ai" },
+    { "path": "packages/charts" },
     { "path": "tools/simulators" },
     { "path": "tools/trace-analyzer" },
     { "path": "tools/definition-importer" },

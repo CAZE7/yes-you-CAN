@@ -27,7 +27,7 @@ async function json(base: string, path: string, init?: RequestInit): Promise<{ s
 
 test('the index page and every front end asset are served', async () => {
   await withServer(async (base) => {
-    for (const path of ['/', '/app.js', '/styles.css', '/chart.js']) {
+    for (const path of ['/', '/app.js', '/styles.css', '/chart.js', '/graphs.js']) {
       const response = await fetch(`${base}${path}`);
       assert.equal(response.status, 200, `${path} should be served`);
       assert.ok((await response.text()).length > 100, `${path} looks empty`);
@@ -221,6 +221,73 @@ test('sessions can be saved, listed and downloaded as a package', async () => {
     await server.close();
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test('the graph history carries numeric values and DTC markers (AGENTS 16, 20)', async () => {
+  await withServer(async (base) => {
+    await json(base, '/api/start', { method: 'POST' });
+    await json(base, '/api/dtc/scan', { method: 'POST' });
+    await json(base, '/api/live/start', { method: 'POST', body: JSON.stringify({ signalIds: ['engine.rpm'] }) });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    const result = await json(base, '/api/history');
+    assert.equal(result.status, 200);
+    const history = result.body as {
+      startedAt: number;
+      live: boolean;
+      samples: Array<{ signal: string; numeric: number | null; value: string; rawValue: number | string | boolean; t: number }>;
+      markers: Array<{ id: string; t: number; label: string; kind: string; detail?: string }>;
+    };
+    assert.equal(history.live, true);
+    assert.ok(history.samples.length > 0, 'the recording must be replayable for the graphs');
+    // The front end must never parse a formatted number back (AGENTS 14).
+    assert.equal(typeof history.samples[0]?.numeric, 'number');
+    assert.equal(typeof history.samples[0]?.value, 'string');
+    assert.ok(history.samples.every((sample) => sample.t >= 0));
+
+    const dtcMarkers = history.markers.filter((marker) => marker.kind === 'dtc');
+    assert.ok(dtcMarkers.length > 0, 'a DTC scan puts the fault codes on the time axis');
+    assert.ok(
+      dtcMarkers.some((marker) => marker.label === 'P0420'),
+      'one marker per fault code, not a summary per ECU',
+    );
+    assert.match(dtcMarkers[0]?.detail ?? '', /Engine|ABS|Transmission/, 'the marker names the ECU');
+  });
+});
+
+test('DTC descriptions come from the definition package, not from invention (AGENTS 13, 24)', async () => {
+  await withServer(async (base) => {
+    await json(base, '/api/start', { method: 'POST' });
+    const scanned = await json(base, '/api/dtc/scan', { method: 'POST' });
+    const dtcs = (scanned.body as { dtcs: Array<{ code: string; description?: string; hint?: string }> }).dtcs;
+    const catalyst = dtcs.find((dtc) => dtc.code === 'P0420');
+    assert.ok(catalyst, 'the seeded catalyst code must be reported');
+    assert.match(catalyst.description ?? '', /Catalyst system efficiency below threshold/);
+    assert.ok((catalyst.hint ?? '').length > 20, 'a documented code brings a next diagnostic step');
+
+    // Codes that no definition describes are shown as such, never guessed.
+    const undescribed = dtcs.find((dtc) => dtc.code === 'C1234');
+    assert.match(undescribed?.description ?? '', /Fehlertyp|Brake/, 'an undocumented code keeps its raw failure type');
+  });
+});
+
+test('the tested chart core is served as a module and stays confined to /lib', async () => {
+  await withServer(async (base) => {
+    for (const path of ['/lib/index.js', '/lib/group.js', '/lib/series.js']) {
+      const response = await fetch(`${base}${path}`);
+      assert.equal(response.status, 200, `${path} must be served`);
+      assert.match(response.headers.get('content-type') ?? '', /javascript/);
+    }
+
+    const traversal = await fetch(`${base}/lib/..%2f..%2fpackage.json`);
+    assert.equal(traversal.status, 403, 'the library directory is confined like the public directory');
+
+    const post = await fetch(`${base}/lib/index.js`, { method: 'POST' });
+    assert.equal(post.status, 405, 'static modules are GET only (ADR 0009)');
+
+    const unknown = await fetch(`${base}/lib/does-not-exist.js`);
+    assert.equal(unknown.status, 404);
+  });
 });
 
 test('without a session directory persistence reports itself as inactive', async () => {

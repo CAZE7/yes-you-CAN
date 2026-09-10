@@ -35,6 +35,7 @@ Ein Transport ist austauschbar, ohne dass die UDS-Engine davon weiß.
 | `@vdp/protocols-kwp2000` | ISO 14230 für Alt-ECUs |
 | `@vdp/protocols-oem` | OEM-Erweiterungspunkte + Registry |
 | `@vdp/definitions` | versioniertes Schema, Validator, Pakete mit Provenance |
+| `@vdp/charts` | DOM-freie, getestete Graphen-Mathematik: Viewport, Cursor, Decimierung, Statistik (ADR 0011) |
 | `@vdp/core` | Engine, ECU-Explorer, DTC-System, Recorder, Logger, Safety |
 | `@vdp/adapters-*` | ELM327, CANable (slcan), SocketCAN, generisch |
 | `@vdp/storage` | Session-Repository, Migrationen, ZIP-Export |
@@ -77,9 +78,18 @@ npx tsc -b packages/transport/iso-tp
 node --test packages/transport/iso-tp/dist/test/*.test.js
 ```
 
+## Graphen
+
+Zoom, Pan, Cursor, Marker, Zeitraumwahl, Min/Max/Ø/Delta, Ein-/Ausblenden und
+synchronisierte Zeitachsen (AGENTS 16). Die Regeln dafür liegen DOM-frei in
+`@vdp/charts` und laufen im Browser als dieselbe Datei, die die Unit-Tests
+prüfen — der Server liefert sie unter `/lib/` aus (ADR 0011). Bedienung:
+Mausrad zoomt am Cursor, Ziehen verschiebt, `Umschalt + Ziehen` wählt einen
+Zeitraum aus, Doppelklick zeigt die gesamte Aufnahme.
+
 ## Tests
 
-266 Tests, `node:test` auf kompiliertem Output, keine Test-Abhängigkeit
+293 Tests, `node:test` auf kompiliertem Output, keine Test-Abhängigkeit
 (ADR 0008). Ebenen nach AGENTS 31:
 
 | Ebene | Ort |
@@ -102,7 +112,9 @@ nicht — der laufende Test schon.
 | Route | Zweck |
 |---|---|
 | `GET /api/state` | gesamter Zustand |
-| `GET /api/stream` | SSE: Samples, Trace, DTCs |
+| `GET /api/history` | gesamte Aufnahme (Samples + Marker) für die Graphen |
+| `GET /api/stream` | SSE: Samples, Trace, DTCs, Marker |
+| `GET /lib/*` | kompiliertes `@vdp/charts` für den Browser (ADR 0011) |
 | `POST /api/start` | Simulator verbinden, ECUs entdecken |
 | `POST /api/dtc/scan` | Fehlerspeicher lesen |
 | `POST /api/live/start` \| `/stop` | Live-Messung |

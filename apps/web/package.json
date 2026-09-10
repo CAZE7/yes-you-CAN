@@ -16,6 +16,7 @@
   "dependencies": {
     "@vdp/shared": "0.1.0",
     "@vdp/core": "0.1.0",
+    "@vdp/charts": "0.1.0",
     "@vdp/definitions": "0.1.0",
     "@vdp/storage": "0.1.0",
     "@vdp/reports": "0.1.0",
