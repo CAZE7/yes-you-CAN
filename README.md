@@ -90,8 +90,12 @@ node --test packages/transport/iso-tp/dist/test/*.test.js
 | Replay | `tests/replay` |
 | Regression | `tests/regression` |
 
-Der Regressionskatalog dokumentiert jeden gefundenen Protokollfehler mit
-Symptom — vier davon fand der Compiler nicht, sondern erst der laufende Test.
+Der Regressionskatalog dokumentiert jeden gefundenen Fehler mit Symptom. Es
+sind durchweg Laufzeit- und Wire-Level-Fehler, die ein Typchecker prinzipiell
+nicht sehen kann. Nachgeprüft am Fall `findEcuByAddress`: mit zurückgebautem
+Bug beendet `tsc -b packages/definitions` mit Exit-Code 0, der zugehörige
+Regressionstest schlägt fehl. Der Compiler findet diese Klasse von Fehlern
+nicht — der laufende Test schon.
 
 ## HTTP-API
 
