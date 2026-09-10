@@ -1,0 +1,11 @@
+{
+  "name": "@vdp/ai",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "AI analysis layer with swappable providers (AGENTS 22). Ships a local heuristic provider.",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": { ".": { "types": "./dist/src/index.d.ts", "default": "./dist/src/index.js" } },
+  "dependencies": { "@vdp/shared": "0.1.0", "@vdp/core": "0.1.0" }
+}

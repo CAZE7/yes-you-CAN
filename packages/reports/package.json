@@ -1,0 +1,11 @@
+{
+  "name": "@vdp/reports",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Diagnostic reports as HTML and PDF (AGENTS 21). Self-contained PDF writer, no external dependency.",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": { ".": { "types": "./dist/src/index.d.ts", "default": "./dist/src/index.js" } },
+  "dependencies": { "@vdp/shared": "0.1.0", "@vdp/core": "0.1.0" }
+}

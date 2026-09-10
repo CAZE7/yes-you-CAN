@@ -1,0 +1,11 @@
+{
+  "name": "@vdp/storage",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Session persistence, schema migrations and session package export (AGENTS 10, 17, 34.13/14).",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": { ".": { "types": "./dist/src/index.d.ts", "default": "./dist/src/index.js" } },
+  "dependencies": { "@vdp/shared": "0.1.0", "@vdp/core": "0.1.0" }
+}

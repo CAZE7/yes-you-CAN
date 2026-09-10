@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": { "rootDir": ".", "outDir": "dist", "tsBuildInfoFile": "dist/.tsbuildinfo", "types": ["node"] },
+  "include": ["src/**/*.ts", "test/**/*.ts"],
+  "references": [
+    { "path": "../../packages/shared" },
+    { "path": "../../packages/core" },
+    { "path": "../../packages/definitions" },
+    { "path": "../../packages/storage" },
+    { "path": "../../packages/reports" },
+    { "path": "../../packages/ai" },
+    { "path": "../../packages/protocols/uds" },
+    { "path": "../../packages/transport/can" },
+    { "path": "../../tools/simulators" }
+  ]
+}

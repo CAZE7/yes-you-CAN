@@ -1,0 +1,16 @@
+{
+  "name": "@vdp/definitions",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Normalized diagnostic definition model + schema validation + starter packages (AGENTS 13, 23, 24).",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/src/index.d.ts", "default": "./dist/src/index.js" },
+    "./generic": { "types": "./dist/src/generic/generic-package.d.ts", "default": "./dist/src/generic/generic-package.js" },
+    "./vag": { "types": "./dist/src/vag/vag-package.d.ts", "default": "./dist/src/vag/vag-package.js" },
+    "./mercedes": { "types": "./dist/src/mercedes/mercedes-package.d.ts", "default": "./dist/src/mercedes/mercedes-package.js" }
+  },
+  "dependencies": { "@vdp/shared": "0.1.0" }
+}

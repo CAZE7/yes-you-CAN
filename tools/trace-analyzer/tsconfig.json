@@ -1,0 +1,6 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": { "rootDir": ".", "outDir": "dist", "tsBuildInfoFile": "dist/.tsbuildinfo" },
+  "include": ["src/**/*.ts", "test/**/*.ts"],
+  "references": [{ "path": "../../packages/shared" }, { "path": "../../packages/core" }, { "path": "../../packages/definitions" }, { "path": "../../packages/transport/iso-tp" }, { "path": "../../packages/protocols/uds" }]
+}

@@ -1,0 +1,11 @@
+{
+  "name": "@vdp/transport-iso-tp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "ISO 15765-2 transport protocol: segmentation, reassembly, flow control, timeouts, retries (AGENTS 7).",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": { ".": { "types": "./dist/src/index.d.ts", "default": "./dist/src/index.js" } },
+  "dependencies": { "@vdp/shared": "0.1.0", "@vdp/transport-can": "0.1.0" }
+}
