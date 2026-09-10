@@ -231,7 +231,8 @@ export class DiagnosticEngine {
         // *which* fault appeared, and a code is what the operator filters by
         // (AGENTS 16 "DTC-Marker auf Zeitachse", AGENTS 20).
         for (const dtc of dtcs) {
-          this.recorder.addMarker(dtc.code, 'dtc', `${handle.session.record.name}: ${dtc.failureType}`);
+          const status = `0x${dtc.status.toString(16).toUpperCase().padStart(2, '0')}`;
+          this.recorder.addMarker(dtc.code, 'dtc', `${handle.session.record.name} · Status ${status}`);
         }
       } catch (error) {
         this.log.warn('DTC scan failed for ECU', {
