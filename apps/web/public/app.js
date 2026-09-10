@@ -6,17 +6,23 @@
  * trace data as raw (AGENTS 5, 34.3, 18).
  */
 
-import { LineChart } from '/chart.js';
+import { GraphBoard } from '/graphs.js';
 
 const state = {
   connected: false,
   live: false,
   samples: [],
   trace: [],
-  charts: new Map(),
   selectedSignals: new Set(),
   actions: [],
 };
+
+/**
+ * The graph board owns the shared chart state (window, cursor, selection).
+ * It is created once and fed from three sources: the signal list, the recorded
+ * history and the live SSE stream (AGENTS 16).
+ */
+const board = new GraphBoard();
 
 const $ = (selector) => document.querySelector(selector);
 const el = (tag, attrs = {}, children = []) => {
@@ -77,8 +83,23 @@ for (const tab of document.querySelectorAll('.tab')) {
     document.querySelectorAll('.tab').forEach((other) => other.classList.toggle('active', other === tab));
     const view = tab.dataset.view;
     document.querySelectorAll('.view').forEach((section) => section.classList.toggle('active', section.id === `view-${view}`));
-    if (view === 'graphs') for (const chart of state.charts.values()) chart.draw();
+    // A canvas has no layout size while its tab is hidden, so the charts have to
+    // be measured and repainted the moment the tab becomes visible.
+    if (view === 'graphs') {
+      board.refresh();
+      loadHistory();
+    }
   });
+}
+
+/** Load the recorded history so the graphs can zoom into the past, not just the live window. */
+async function loadHistory() {
+  try {
+    board.setHistory(await api('/api/history'));
+  } catch (error) {
+    // No session yet — the graphs simply stay empty until the first samples arrive.
+    if (!/500|not started/.test(String(error.message))) console.warn('history not available', error);
+  }
 }
 
 /* ----------------------------------------------------------------- state */
@@ -132,7 +153,7 @@ function renderDtcs(dtcs) {
   body.replaceChildren();
   for (const dtc of dtcs) {
     body.append(
-      row([dtc.code, dtc.description, dtc.ecu, dtc.status, dtc.severity, dtc.confirmed ? 'ja' : 'nein', dtc.pending ? 'ja' : 'nein'], [0, 3]),
+      row([dtc.code, dtc.description, dtc.ecu, dtc.status, dtc.severity, dtc.confirmed ? 'ja' : 'nein', dtc.pending ? 'ja' : 'nein', dtc.hint ?? '—'], [0, 3]),
     );
     const severityCell = body.lastElementChild?.children[4];
     if (severityCell) severityCell.className = `sev-${dtc.severity}`;
@@ -159,17 +180,7 @@ function renderSignals(signals) {
     });
     picker.append(el('label', { for: id }, [checkbox, `${signal.name}${signal.unit ? ` [${signal.unit}]` : ''}`]));
   }
-  ensureCharts(signals);
-}
-
-function ensureCharts(signals) {
-  const host = $('#charts');
-  for (const signal of signals) {
-    if (state.charts.has(signal.id)) continue;
-    const canvas = el('canvas', { class: 'chart' });
-    host.append(el('div', { class: 'chart-card' }, [el('h4', { text: `${signal.name}${signal.unit ? ` · ${signal.unit}` : ''}` }), canvas]));
-    state.charts.set(signal.id, new LineChart(canvas, { label: signal.name, unit: signal.unit ?? '' }));
-  }
+  board.setSignals(signals);
 }
 
 function renderLiveCards(samples) {
@@ -248,10 +259,11 @@ function connectStream() {
     state.samples.push(sample);
     if (state.samples.length > 4000) state.samples = state.samples.slice(-4000);
     renderLiveCards([sample]);
-    state.charts.get(sample.signal)?.push(sample.signal, sample.t, Number(sample.value));
-    state.charts.get(sample.signal)?.schedule();
+    board.pushSample(sample);
   });
   source.addEventListener('trace', (event) => appendTrace(JSON.parse(event.data)));
+  source.addEventListener('marker', (event) => board.addMarker(JSON.parse(event.data)));
+  source.addEventListener('markers', (event) => board.setMarkers(JSON.parse(event.data)));
   source.addEventListener('dtc', () => api('/api/state').then((data) => renderDtcs(data.dtcs)).catch(logError));
   source.addEventListener('ecu', (event) => {
     const ecu = JSON.parse(event.data);
@@ -297,6 +309,7 @@ $('#btn-start').addEventListener('click', () => {
     .then((data) => {
       applyState(data);
       state.ecusCache = data.ecus;
+      return loadHistory();
     })
     .catch(logError);
 });

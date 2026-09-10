@@ -227,7 +227,12 @@ export class DiagnosticEngine {
           .map((dtc) => this.oemProtocols.interpretDtc(this.activePackage?.oem, dtc.code))
           .filter((interpretation): interpretation is OemDtcInterpretation => interpretation !== undefined);
         results.push({ ecu: handle.session.record, dtcs, interpretations });
-        if (dtcs.length > 0) this.recorder.addMarker(`${handle.session.record.name}: ${dtcs.length} DTC(s)`, 'dtc', dtcs.map((d) => d.code).join(', '));
+        // One marker per fault code, not one per ECU: the time axis should show
+        // *which* fault appeared, and a code is what the operator filters by
+        // (AGENTS 16 "DTC-Marker auf Zeitachse", AGENTS 20).
+        for (const dtc of dtcs) {
+          this.recorder.addMarker(dtc.code, 'dtc', `${handle.session.record.name}: ${dtc.failureType}`);
+        }
       } catch (error) {
         this.log.warn('DTC scan failed for ECU', {
           ecu: handle.session.record.name,

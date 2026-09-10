@@ -1,0 +1,10 @@
+{
+  "name": "@vdp/charts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "DOM-free, unit-tested chart mathematics for the measurement graphs: viewport (zoom/pan), series windowing, decimation, scales, cursors and marker placement (AGENTS 16).",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": { ".": { "types": "./dist/src/index.d.ts", "default": "./dist/src/index.js" } }
+}

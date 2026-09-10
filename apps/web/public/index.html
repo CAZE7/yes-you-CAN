@@ -79,7 +79,7 @@
       <span id="dtc-summary" class="muted"></span>
     </div>
     <table class="grid">
-      <thead><tr><th>Code</th><th>Beschreibung</th><th>ECU</th><th>Status</th><th>Schwere</th><th>Bestätigt</th><th>Pending</th></tr></thead>
+      <thead><tr><th>Code</th><th>Beschreibung</th><th>ECU</th><th>Status</th><th>Schwere</th><th>Bestätigt</th><th>Pending</th><th>Hinweis (Definition)</th></tr></thead>
       <tbody id="dtc-rows"></tbody>
     </table>
   </section>
@@ -98,8 +98,56 @@
 
   <!-- Graphen -->
   <section class="view" id="view-graphs">
-    <h2>Graphen <span class="muted small">gemeinsame Zeitachse</span></h2>
+    <h2>Graphen <span class="muted small">gemeinsame Zeitachse · synchronisierter Cursor</span></h2>
+    <div class="row graph-toolbar">
+      <button id="graph-follow" class="primary" title="Neuesten Daten folgen">Live folgen: an</button>
+      <button id="graph-zoom-in" title="Hineinzoomen">＋</button>
+      <button id="graph-zoom-out" title="Herauszoomen">−</button>
+      <button id="graph-fit">Gesamte Aufnahme</button>
+      <label class="field">Fenster
+        <select id="graph-window"></select>
+      </label>
+      <label class="field">Decimierung
+        <select id="graph-decimate">
+          <option value="minmax">Min/Max (spiketreu)</option>
+          <option value="lttb">LTTB (formtreu)</option>
+        </select>
+      </label>
+      <button id="graph-clear-selection">Auswahl aufheben</button>
+      <button id="graph-clear-cursor">Cursor löschen</button>
+      <span id="graph-status" class="muted small"></span>
+    </div>
+    <p class="hint">
+      Mausrad = Zoom am Cursor · Ziehen = verschieben · Umschalt + Ziehen = Zeitraum
+      auswählen · Doppelklick = gesamte Aufnahme · Klick auf einen Marker springt an
+      diese Stelle. Alle Graphen teilen Zeitachse und Cursor; die Y-Achse skaliert
+      pro Signal automatisch (AGENTS 16).
+    </p>
     <div class="charts" id="charts"></div>
+    <div class="graph-panels">
+      <div class="card">
+        <h3>Cursor &amp; sichtbares Fenster</h3>
+        <table class="grid" id="graph-readout">
+          <thead>
+            <tr><th>Signal</th><th>Cursor</th><th>Min</th><th>Max</th><th>Ø</th><th>Δ</th><th>Einheit</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="card">
+        <h3>Ausgewählter Zeitraum</h3>
+        <table class="grid" id="graph-selection">
+          <thead>
+            <tr><th>Signal</th><th>Min</th><th>Max</th><th>Ø</th><th>Δ</th><th>n</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="card">
+        <h3>Marker</h3>
+        <ul class="plain" id="graph-markers"></ul>
+      </div>
+    </div>
   </section>
 
   <!-- Aufnahme -->

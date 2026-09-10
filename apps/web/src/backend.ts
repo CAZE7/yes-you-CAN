@@ -10,8 +10,10 @@
 import { createLogger, type Logger } from '@vdp/shared';
 import {
   DiagnosticEngine,
+  DtcScanner,
   SessionLogger,
   type DecodedSignal,
+  type Marker,
   type MeasurementSample,
   type RawTraceEntry,
   type SignalStatistics,
@@ -41,6 +43,7 @@ export interface EcuView {
 export interface DtcView {
   code: string;
   raw: string;
+  /** Description from the definition package, or the raw protocol fallback. */
   description: string;
   severity: string;
   ecu: string;
@@ -48,17 +51,40 @@ export interface DtcView {
   confirmed: boolean;
   pending: boolean;
   testFailed: boolean;
+  /** Next diagnostic step from the definition package, when one is documented. */
+  hint?: string;
+  /** Provenance of the description — never present invented knowledge (AGENTS 24). */
+  provenance?: string;
 }
 
 export interface SampleView {
   signal: string;
   name: string;
+  /** Formatted for display — the UI shows this string verbatim. */
   value: string;
+  /**
+   * Numeric value for the graphs, `null` for textual/enum signals.
+   * Charts must never parse a formatted string back into a number: the decimal
+   * separator and the precision belong to the presentation layer (AGENTS 14).
+   */
+  numeric: number | null;
+  /** Undecoded value next to the decoded one (AGENTS 34.7). */
+  rawValue: number | string | boolean;
   rawHex: string;
   unit?: string;
   outOfRange: boolean;
   t: number;
   timestamp: string;
+}
+
+/** Marker on the shared time axis (AGENTS 16 "Event-Marker", AGENTS 20 DTC events). */
+export interface MarkerView {
+  id: string;
+  t: number;
+  timestamp: string;
+  label: string;
+  kind: 'dtc' | 'action' | 'note' | 'user' | 'anomaly';
+  detail?: string;
 }
 
 export interface TraceView {
@@ -70,6 +96,14 @@ export interface TraceView {
   data: string;
   channel: string;
   extended: boolean;
+}
+
+export interface HistoryView {
+  /** Wall clock at recording start, so the UI can convert relative times. */
+  startedAt: number;
+  live: boolean;
+  samples: SampleView[];
+  markers: MarkerView[];
 }
 
 export interface AppState {
@@ -98,7 +132,8 @@ export interface AppState {
  * it (the `'log'` string elsewhere is a storage line kind, not an SSE event).
  */
 export interface BackendEvent {
-  type: 'sample' | 'trace' | 'dtc' | 'ecu' | 'analysis' | 'error';
+  /** 'marker' adds one event, 'markers' replaces the whole list (after a scan). */
+  type: 'sample' | 'trace' | 'dtc' | 'ecu' | 'analysis' | 'error' | 'marker' | 'markers';
   payload: unknown;
 }
 
@@ -131,11 +166,18 @@ export class DemoBackend {
   private readonly vin: string;
   private readonly definitions: readonly DefinitionPackage[];
   private readonly repository?: SessionRepository;
+  /**
+   * Turns raw protocol codes into described fault entries. Descriptions come
+   * from definition packages only — a code nobody documented stays undescribed
+   * instead of being guessed (AGENTS 13, 20, 24).
+   */
+  private readonly dtcScanner: DtcScanner;
 
   constructor(private readonly options: BackendOptions = {}) {
     this.log = (options.logger ?? createLogger('web', { level: 'INFO' })).child('backend');
     this.vin = options.vin ?? DEFAULT_VIN;
     this.definitions = options.definitions ?? [genericPackage];
+    this.dtcScanner = new DtcScanner({ definitions: this.definitions });
     this.analysisService = new AnalysisService({ providers: [new HeuristicAnalysisProvider()], logger: this.log });
     // Persistence is opt-in so tests and ephemeral runs stay side-effect free.
     if (options.repository) this.repository = options.repository;
@@ -268,14 +310,22 @@ export class DemoBackend {
     const scanned = await engine.scanDtcs();
     this.dtcs = [];
     for (const entry of scanned) {
-      for (const dtc of entry.dtcs) {
+      // Enrichment happens here, not in the protocol layer: the UDS client
+      // reports codes, the definition packages describe them (AGENTS 13/20).
+      const enriched = this.dtcScanner.enrich(entry.dtcs, entry.ecu.name, entry.ecu.id);
+      for (const dtc of enriched) {
         const view = toDtcView(dtc, entry.ecu.name);
         this.dtcs.push(view);
         this.emit('dtc', view);
+        // The DTC markers themselves are written by the diagnostic engine while
+        // scanning (one per code) — the backend only forwards the table row.
       }
     }
     this.sessionLogger.log('dtc', 'scan complete', { count: this.dtcs.length });
     this.log.info('DTC scan complete', { count: this.dtcs.length });
+    // The engine wrote one marker per fault code; publish the complete list so
+    // open graphs show them immediately without waiting for a history reload.
+    this.emit('markers', toMarkerViews(engine.recorder.markers));
     return this.dtcs;
   }
 
@@ -320,8 +370,28 @@ export class DemoBackend {
 
   /** Record a user marker into the measurement recording. */
   addMarker(label: string): void {
-    this.engine?.recorder.addMarker(label);
+    const marker = this.engine?.recorder.addMarker(label);
     this.sessionLogger.log('marker', label);
+    if (marker) this.emit('marker', toMarkerViews([marker])[0]);
+  }
+
+  /**
+   * The complete recording: samples, markers and the recording start.
+   *
+   * The SSE stream only carries what happens from now on; the graphs need the
+   * whole window to zoom, pan and select a time range (AGENTS 16).
+   */
+  history(limit = 50_000): HistoryView {
+    const engine = this.engine;
+    if (!engine) return { startedAt: Date.now(), live: this.live, samples: [], markers: [] };
+    const { samples, startedAt } = engine.recorder.export();
+    const capped = samples.slice(-limit);
+    return {
+      startedAt,
+      live: this.live,
+      samples: capped.map((sample) => toSampleView(sample, engine.findSignal(sample.signal)?.name ?? sample.signal)),
+      markers: toMarkerViews(engine.recorder.markers),
+    };
   }
 
   async analyze(): Promise<AnalysisResult> {
@@ -492,12 +562,25 @@ function toSampleView(sample: MeasurementSample, name: string): SampleView {
     signal: sample.signal,
     name,
     value: formatValue(sample.value),
+    numeric: typeof sample.value === 'number' && Number.isFinite(sample.value) ? sample.value : null,
+    rawValue: sample.rawValue,
     rawHex: sample.rawHex,
     ...(sample.unit ? { unit: sample.unit } : {}),
     outOfRange: sample.outOfRange,
     t: sample.t,
     timestamp: sample.timestamp,
   };
+}
+
+function toMarkerViews(markers: readonly Marker[]): MarkerView[] {
+  return markers.map((marker) => ({
+    id: marker.id,
+    t: marker.t,
+    timestamp: marker.timestamp,
+    label: marker.label,
+    kind: marker.kind,
+    ...(marker.detail ? { detail: marker.detail } : {}),
+  }));
 }
 
 function toTraceView(entry: RawTraceEntry): TraceView {
@@ -513,12 +596,15 @@ function toTraceView(entry: RawTraceEntry): TraceView {
   };
 }
 
-function toDtcView(dtc: DtcRecord, ecuName: string): DtcView {
+function toDtcView(dtc: DtcRecord & { description?: string; hint?: string }, ecuName: string): DtcView {
   return {
     code: dtc.code,
     raw: dtc.raw,
-    description: dtc.failureType,
+    // A code without a definition stays honest: the raw failure type is shown
+    // instead of an invented description (AGENTS 24).
+    description: dtc.description ?? `Fehlertyp 0x${dtc.failureType}`,
     severity: dtc.severity,
+    ...(dtc.hint ? { hint: dtc.hint } : {}),
     ecu: ecuName,
     status: `0x${dtc.status.toString(16).toUpperCase().padStart(2, '0')}`,
     confirmed: dtc.statusBits.confirmedDtc,
