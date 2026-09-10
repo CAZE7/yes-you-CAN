@@ -23,6 +23,8 @@ export interface ServerOptions {
   /** Start the simulated vehicle immediately (default for --demo). */
   demo?: boolean;
   liveIntervalMs?: number;
+  /** Directory for persisted sessions; omit to disable persistence. */
+  sessionDir?: string;
 }
 
 const MIME: Record<string, string> = {
@@ -53,7 +55,10 @@ export class WebServer {
     // Built here rather than as a field initializer: parameter properties are
     // assigned after field initializers run, so `this.options` is not ready yet.
     this.log = createLogger('web', { level: 'INFO' }).child('server');
-    this.backend = new DemoBackend({ liveIntervalMs: this.options.liveIntervalMs });
+    this.backend = new DemoBackend({
+      liveIntervalMs: this.options.liveIntervalMs,
+      ...(this.options.sessionDir ? { sessionDir: this.options.sessionDir } : {}),
+    });
     this.unsubscribe = this.backend.subscribe((event) => this.broadcast(event.type, event.payload));
   }
 
@@ -148,6 +153,15 @@ export class WebServer {
     }
     if (path === '/api/analyze' && method === 'POST') return this.sendJson(response, 200, await this.backend.analyze());
 
+    // Session persistence (AGENTS 10, 17, 29)
+    if (path === '/api/session/save' && method === 'POST') return this.sendJson(response, 200, await this.backend.saveSession());
+    if (path === '/api/sessions' && method === 'GET') return this.sendJson(response, 200, { sessions: await this.backend.listSessions() });
+    if (path.startsWith('/api/session/') && path.endsWith('/package') && method === 'GET') {
+      const id = path.slice('/api/session/'.length, -'/package'.length);
+      const bytes = await this.backend.sessionPackage(id);
+      return this.sendBytes(response, `session-${id}.zip`, 'application/zip', bytes);
+    }
+
     if (path === '/api/export/measurements.csv') return this.sendFile(response, 'measurements.csv', 'text/csv; charset=utf-8', this.backend.exportCsv());
     if (path === '/api/export/trace.csv') return this.sendFile(response, 'raw-trace.csv', 'text/csv; charset=utf-8', this.backend.exportTraceCsv());
     if (path === '/api/export/session.json') return this.sendFile(response, 'session.json', 'application/json; charset=utf-8', this.backend.exportJson());
@@ -229,6 +243,7 @@ function parseArgs(argv: readonly string[]): ServerOptions {
     else if (arg.startsWith('--port=')) options.port = Number.parseInt(arg.slice(7), 10);
     else if (arg.startsWith('--host=')) options.host = arg.slice(7);
     else if (arg.startsWith('--interval=')) options.liveIntervalMs = Number.parseInt(arg.slice(11), 10);
+    else if (arg.startsWith('--sessions=')) options.sessionDir = arg.slice(11);
   }
   return options;
 }
@@ -236,7 +251,8 @@ function parseArgs(argv: readonly string[]): ServerOptions {
 const invokedDirectly = process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.argv[1];
 if (invokedDirectly) {
   const options = parseArgs(process.argv.slice(2));
-  const server = new WebServer({ demo: true, ...options });
+  // Sessions land in a local, gitignored directory unless told otherwise.
+  const server = new WebServer({ demo: true, sessionDir: 'sessions-local', ...options });
   const { url } = await server.listen();
   process.stdout.write(`yes-you-CAN workbench listening on ${url}\n`);
   process.on('SIGINT', () => {

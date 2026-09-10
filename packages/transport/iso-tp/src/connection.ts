@@ -49,6 +49,8 @@ interface RxState {
   received: number;
   nextSequence: number;
   lastFrameAt: number;
+  /** Consecutive frames received since the last Flow Control we sent. */
+  blockCount: number;
 }
 
 interface PendingRequest {
@@ -421,6 +423,7 @@ export class IsoTpConnection {
         received: first.length,
         nextSequence: 1,
         lastFrameAt: this.now(),
+        blockCount: 0,
       };
       void this.sendFlowControl(FLOW_STATUS.CONTINUE_TO_SEND);
       return;
@@ -447,11 +450,21 @@ export class IsoTpConnection {
       state.received += chunk.length;
       state.nextSequence = (state.nextSequence + 1) & 0x0f;
       state.lastFrameAt = this.now();
+      state.blockCount++;
       if (state.received >= state.expectedLength) {
         const payload = concatBytes(state.chunks).subarray(0, state.expectedLength);
         this.rxState = null;
         this.stats.rxMultiFrameMessages++;
         this.deliver(payload.slice());
+        return;
+      }
+      // BS > 0 means the sender must stop after that many consecutive frames and
+      // wait for the next Flow Control (ISO 15765-2 §9.6.4). Advertising a block
+      // size without enforcing it would let a sender overrun our buffer.
+      const blockSize = this.timing.blockSize;
+      if (blockSize > 0 && state.blockCount >= blockSize) {
+        state.blockCount = 0;
+        void this.sendFlowControl(FLOW_STATUS.CONTINUE_TO_SEND);
       }
       return;
     }

@@ -6,12 +6,18 @@
   "description": "Diagnostic core: sessions, ECU explorer, measurement engine, DTC system, logging, safety layer (AGENTS 9-21, 26).",
   "main": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",
-  "exports": { ".": { "types": "./dist/src/index.d.ts", "default": "./dist/src/index.js" } },
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    }
+  },
   "dependencies": {
     "@vdp/shared": "0.1.0",
     "@vdp/transport-can": "0.1.0",
     "@vdp/transport-iso-tp": "0.1.0",
     "@vdp/protocols-uds": "0.1.0",
-    "@vdp/definitions": "0.1.0"
+    "@vdp/definitions": "0.1.0",
+    "@vdp/protocols-oem": "0.1.0"
   }
 }

@@ -6,8 +6,13 @@
   "description": "Diagnostic workbench UI: Node HTTP + SSE server and a vanilla ESM front end (AGENTS 16).",
   "main": "./dist/src/server.js",
   "types": "./dist/src/server.d.ts",
-  "bin": { "vdp-web": "./dist/src/server.js" },
-  "scripts": { "start": "node dist/src/server.js", "demo": "node dist/src/server.js --demo" },
+  "bin": {
+    "vdp-web": "./dist/src/server.js"
+  },
+  "scripts": {
+    "start": "node dist/src/server.js",
+    "demo": "node dist/src/server.js --demo"
+  },
   "dependencies": {
     "@vdp/shared": "0.1.0",
     "@vdp/core": "0.1.0",

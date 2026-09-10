@@ -18,6 +18,7 @@ import { createSession, VehicleSession, type EcuSession } from '../session/sessi
 import { createIdentityFromVin, describeVehicle, type VehicleIdentity } from '../vehicle/identity.js';
 import { MeasurementRecorder } from '../measurements/recorder.js';
 import { LiveDataEngine, type EcuReader, type LiveDataStats } from '../measurements/live.js';
+import { OemProtocolRegistry, type OemDtcInterpretation, type OemProtocol } from '@vdp/protocols-oem';
 import { SignalDecoder, type DecodedSignal } from '../measurements/decoder.js';
 
 export interface DiagnosticEngineOptions {
@@ -29,6 +30,11 @@ export interface DiagnosticEngineOptions {
   /** Poll interval used by startLiveData. */
   pollIntervalMs?: number;
   clock?: () => number;
+  /**
+   * Manufacturer specific hooks (AGENTS 3, 34.6). They are consulted only where
+   * definitions are silent, so OEM knowledge never overrides documented data.
+   */
+  oemProtocols?: readonly OemProtocol[];
 }
 
 export interface ConnectResult {
@@ -45,6 +51,7 @@ export interface EcuHandle {
 export class DiagnosticEngine {
   readonly recorder: MeasurementRecorder;
   readonly decoder: SignalDecoder;
+  readonly oemProtocols: OemProtocolRegistry;
 
   private readonly log: Logger;
   private readonly handles = new Map<number, EcuHandle>();
@@ -55,6 +62,7 @@ export class DiagnosticEngine {
     this.log = (options.logger ?? createLogger('uds', { level: 'INFO' })).child('uds');
     this.recorder = new MeasurementRecorder(options.clock);
     this.decoder = new SignalDecoder({ logger: this.log });
+    this.oemProtocols = new OemProtocolRegistry(options.oemProtocols ?? []);
   }
 
   get vehicleSession(): VehicleSession | null {
@@ -139,6 +147,16 @@ export class DiagnosticEngine {
     const client = this.createClient(isoTp, `0x${ecu.rxId.toString(16)}`);
     const oemKey = ecu.definitionEcuId?.split(':')[0];
     const pkg = oemKey ? this.definitions.find((p) => p.oem === oemKey) : this.activePackage;
+    // Only ask the OEM hooks when the definition packages say nothing about this
+    // identifier — documented data always wins over manufacturer heuristics.
+    const oemGuess = ecu.definitionEcuId ? undefined : this.oemProtocols.identifyEcu(ecu.rxId, ecu.extended);
+    if (oemGuess) {
+      this.log.info('ECU role from OEM protocol', {
+        rxId: `0x${ecu.rxId.toString(16)}`,
+        oem: oemGuess.oem,
+        role: oemGuess.role,
+      });
+    }
     const session = new EcuDiagnosticSession(isoTp, client, {
       txId: ecu.txId,
       rxId: ecu.rxId,
@@ -147,6 +165,7 @@ export class DiagnosticEngine {
       decoder: this.decoder,
       ...(pkg ? { definitionPackage: pkg } : {}),
       ...(ecu.definitionEcuId ? { definitionEcuId: ecu.definitionEcuId.split(':')[1] } : {}),
+      ...(oemGuess ? { name: oemGuess.role } : {}),
     });
     const reader: EcuReader = {
       ecuId: session.id,
@@ -196,13 +215,18 @@ export class DiagnosticEngine {
   }
 
   /** Read DTCs from every reachable ECU (AGENTS 20 "Scan all ECUs"). */
-  async scanDtcs(statusMask = 0xff): Promise<Array<{ ecu: EcuSession; dtcs: DtcRecord[] }>> {
+  async scanDtcs(statusMask = 0xff): Promise<Array<{ ecu: EcuSession; dtcs: DtcRecord[]; interpretations: OemDtcInterpretation[] }>> {
     if (!this.session) throw new Error('no session — call connect() first');
-    const results: Array<{ ecu: EcuSession; dtcs: DtcRecord[] }> = [];
+    const results: Array<{ ecu: EcuSession; dtcs: DtcRecord[]; interpretations: OemDtcInterpretation[] }> = [];
     for (const handle of this.handles.values()) {
       try {
         const dtcs = await handle.session.readDtcs(statusMask);
-        results.push({ ecu: handle.session.record, dtcs });
+        // Manufacturer hints are attached next to the codes, never merged into
+        // them: a hint is interpretation, the code is the measured fact.
+        const interpretations = dtcs
+          .map((dtc) => this.oemProtocols.interpretDtc(this.activePackage?.oem, dtc.code))
+          .filter((interpretation): interpretation is OemDtcInterpretation => interpretation !== undefined);
+        results.push({ ecu: handle.session.record, dtcs, interpretations });
         if (dtcs.length > 0) this.recorder.addMarker(`${handle.session.record.name}: ${dtcs.length} DTC(s)`, 'dtc', dtcs.map((d) => d.code).join(', '));
       } catch (error) {
         this.log.warn('DTC scan failed for ECU', {

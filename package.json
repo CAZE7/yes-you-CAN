@@ -18,8 +18,9 @@
     "build": "tsc -b tsconfig.json",
     "test": "npm run build && node scripts/test.mjs",
     "test:only": "node scripts/test.mjs",
-    "sim": "node apps/web/dist/server.js --demo",
-    "web": "npm run build && node apps/web/dist/server.js --demo"
+    "demo": "npm run build && node apps/web/dist/src/server.js --demo --sessions=./sessions-local",
+    "sim": "node apps/web/dist/src/server.js --demo",
+    "web": "npm run build && node apps/web/dist/src/server.js --demo"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

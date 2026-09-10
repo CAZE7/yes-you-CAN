@@ -55,7 +55,10 @@ export function createVirtualCanNetwork(options: VirtualCanOptions = {}): Virtua
     const dispatch = (): void => {
       for (const bus of buses) {
         if (bus === from && !options.echoToSender) continue;
-        bus.deliver({ ...frame, direction: 'rx' });
+        // `direction` is per observer: the sender sees its own frame as tx, every
+        // other bus sees it as rx. A trace recorded with everything labelled rx
+        // loses half the conversation and request/response pairing.
+        bus.deliver({ ...frame, direction: bus === from ? 'tx' : 'rx' });
       }
     };
     if (options.latencyMs && options.latencyMs > 0) setTimeout(dispatch, options.latencyMs);

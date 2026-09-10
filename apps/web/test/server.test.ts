@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createLogger } from '@vdp/shared';
 import { WebServer } from '../src/server.js';
 
@@ -181,4 +184,56 @@ test('API calls before start fail with a clear message instead of crashing', asy
     await server.close();
   }
   void logger;
+});
+
+test('sessions can be saved, listed and downloaded as a package', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'vdp-web-sessions-'));
+  const server = new WebServer({ port: 0, liveIntervalMs: 60, sessionDir: dir });
+  const { port } = await server.listen();
+  const base = `http://127.0.0.1:${port}`;
+  try {
+    await json(base, '/api/start', { method: 'POST' });
+    await json(base, '/api/dtc/scan', { method: 'POST' });
+    await json(base, '/api/live/start', { method: 'POST', body: JSON.stringify({ signalIds: ['engine.rpm'] }) });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await json(base, '/api/live/stop', { method: 'POST' });
+
+    const saved = await json(base, '/api/session/save', { method: 'POST' });
+    assert.equal(saved.status, 200);
+    const { id, repository } = saved.body as { id: string; repository: boolean };
+    assert.equal(repository, true, 'persistence must be active when a session directory is configured');
+    assert.ok(id.length > 0);
+
+    const listed = await json(base, '/api/sessions');
+    const sessions = (listed.body as { sessions: Array<{ id: string; ecus: number }> }).sessions;
+    assert.equal(sessions.length, 1);
+    assert.equal(sessions[0]?.id, id);
+    assert.ok((sessions[0]?.ecus ?? 0) > 0, 'the stored session must keep its ECUs');
+
+    const pkg = await fetch(`${base}/api/session/${id}/package`);
+    assert.equal(pkg.status, 200);
+    assert.equal(pkg.headers.get('content-type'), 'application/zip');
+    const bytes = new Uint8Array(await pkg.arrayBuffer());
+    assert.equal(bytes[0], 0x50, 'the package must start with the ZIP local header signature');
+    assert.equal(bytes[1], 0x4b);
+    assert.ok(bytes.length > 200);
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('without a session directory persistence reports itself as inactive', async () => {
+  await withServer(async (base) => {
+    await json(base, '/api/start', { method: 'POST' });
+    const saved = await json(base, '/api/session/save', { method: 'POST' });
+    assert.equal((saved.body as { repository: boolean }).repository, false);
+
+    const listed = await json(base, '/api/sessions');
+    assert.deepEqual((listed.body as { sessions: unknown[] }).sessions, []);
+
+    const pkg = await fetch(`${base}/api/session/whatever/package`);
+    assert.equal(pkg.status, 500);
+    assert.match(((await pkg.json()) as { error: string }).error, /persistence is not enabled/);
+  });
 });

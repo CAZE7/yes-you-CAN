@@ -21,6 +21,7 @@ import type { DtcRecord } from '@vdp/protocols-uds';
 import { genericPackage, type DefinitionPackage } from '@vdp/definitions';
 import { DEFAULT_VIN, VirtualVehicle } from '@vdp/simulators';
 import { AnalysisService, HeuristicAnalysisProvider, type AnalysisInput, type AnalysisResult } from '@vdp/ai';
+import { FileSystemSessionRepository, type SessionRepository, type StoredSessionSummary } from '@vdp/storage';
 
 export interface EcuView {
   id: string;
@@ -103,6 +104,9 @@ export interface BackendOptions {
   liveIntervalMs?: number;
   /** Seed the simulator with fault codes so the DTC view is not empty. */
   seedDtcs?: boolean;
+  /** Where sessions are persisted (AGENTS 10, 29). Omitted disables persistence. */
+  sessionDir?: string;
+  repository?: SessionRepository;
 }
 
 const MAX_TRACE = 800;
@@ -121,12 +125,49 @@ export class DemoBackend {
   private connected = false;
   private readonly vin: string;
   private readonly definitions: readonly DefinitionPackage[];
+  private readonly repository?: SessionRepository;
 
   constructor(private readonly options: BackendOptions = {}) {
     this.log = (options.logger ?? createLogger('web', { level: 'INFO' })).child('backend');
     this.vin = options.vin ?? DEFAULT_VIN;
     this.definitions = options.definitions ?? [genericPackage];
     this.analysisService = new AnalysisService({ providers: [new HeuristicAnalysisProvider()], logger: this.log });
+    // Persistence is opt-in so tests and ephemeral runs stay side-effect free.
+    if (options.repository) this.repository = options.repository;
+    else if (options.sessionDir) this.repository = new FileSystemSessionRepository({ rootDir: options.sessionDir, logger: this.log });
+  }
+
+  /** Persist the current session, its samples and its raw trace (AGENTS 10, 29). */
+  async saveSession(): Promise<{ id: string; repository: boolean }> {
+    const engine = this.requireEngine();
+    const data = engine.vehicleSession?.data;
+    if (!data) throw new Error('no session to save — call start() first');
+    if (!this.repository) return { id: data.id, repository: false };
+
+    await this.repository.save(data);
+    const { samples } = engine.recorder.export();
+    await this.repository.appendSamples(data.id, samples);
+    const snapshot = this.sessionLogger.snapshot();
+    await this.repository.appendLines(
+      data.id,
+      'trace',
+      snapshot.trace.map((entry) => JSON.stringify({ ...entry, payload: entry.payloadHex })),
+    );
+    await this.repository.appendLines(data.id, 'log', snapshot.log.map((entry) => JSON.stringify(entry)));
+    this.log.info('session saved', { id: data.id, samples: samples.length, trace: snapshot.trace.length });
+    return { id: data.id, repository: true };
+  }
+
+  /** Stored sessions, newest first. */
+  async listSessions(): Promise<StoredSessionSummary[]> {
+    if (!this.repository) return [];
+    return this.repository.list();
+  }
+
+  /** ZIP session package for handover to another workstation (AGENTS 17). */
+  async sessionPackage(id: string): Promise<Uint8Array> {
+    if (!this.repository) throw new Error('session persistence is not enabled');
+    return this.repository.exportPackage(id);
   }
 
   subscribe(listener: (event: BackendEvent) => void): () => void {
@@ -156,6 +197,9 @@ export class DemoBackend {
       definitions: this.definitions[0] ?? genericPackage,
       logger: this.log,
       dynamic: true,
+      // Echo our own frames back so the raw trace records requests *and*
+      // responses; a trace with only rx frames cannot be replayed or paired.
+      networkOptions: { echoToSender: true },
       ...(this.options.seedDtcs === false
         ? {}
         : {

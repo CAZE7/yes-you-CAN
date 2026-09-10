@@ -86,6 +86,10 @@ export class EcuDiscovery {
     const found = new Map<number, DiscoveredEcu>();
 
     const record = (frame: CanFrame): void => {
+      // Our own transmissions are not ECU responses. An adapter that echoes sent
+      // frames back (candump, and any bus opened with echoToSender) would
+      // otherwise make every request identifier look like a responding ECU.
+      if (frame.direction === 'tx') return;
       const key = frame.id;
       const entry = found.get(key) ?? {
         rxId: frame.id,
