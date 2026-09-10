@@ -1,0 +1,11 @@
+{
+  "name": "@vdp/adapter-elm327",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "ELM327/OBDLink adapter over a serial byte stream (AGENTS 4, 29).",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": { ".": { "types": "./dist/src/index.d.ts", "default": "./dist/src/index.js" } },
+  "dependencies": { "@vdp/shared": "0.1.0", "@vdp/transport-can": "0.1.0" }
+}

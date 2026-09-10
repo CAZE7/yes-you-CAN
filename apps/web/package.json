@@ -1,0 +1,27 @@
+{
+  "name": "@vdp/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Diagnostic workbench UI: Node HTTP + SSE server and a vanilla ESM front end (AGENTS 16).",
+  "main": "./dist/src/server.js",
+  "types": "./dist/src/server.d.ts",
+  "bin": {
+    "vdp-web": "./dist/src/server.js"
+  },
+  "scripts": {
+    "start": "node dist/src/server.js",
+    "demo": "node dist/src/server.js --demo"
+  },
+  "dependencies": {
+    "@vdp/shared": "0.1.0",
+    "@vdp/core": "0.1.0",
+    "@vdp/definitions": "0.1.0",
+    "@vdp/storage": "0.1.0",
+    "@vdp/reports": "0.1.0",
+    "@vdp/ai": "0.1.0",
+    "@vdp/protocols-uds": "0.1.0",
+    "@vdp/transport-can": "0.1.0",
+    "@vdp/simulators": "0.1.0"
+  }
+}

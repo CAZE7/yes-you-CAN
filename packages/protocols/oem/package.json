@@ -1,0 +1,11 @@
+{
+  "name": "@vdp/protocols-oem",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "OEM protocol extension points and registry (AGENTS 3, 13, 34.6).",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": { ".": { "types": "./dist/src/index.d.ts", "default": "./dist/src/index.js" } },
+  "dependencies": { "@vdp/shared": "0.1.0", "@vdp/protocols-uds": "0.1.0" }
+}

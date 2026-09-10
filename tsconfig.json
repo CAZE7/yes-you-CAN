@@ -1,0 +1,26 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/shared" },
+    { "path": "packages/transport/can" },
+    { "path": "packages/transport/iso-tp" },
+    { "path": "packages/transport/doip" },
+    { "path": "packages/protocols/uds" },
+    { "path": "packages/protocols/kwp2000" },
+    { "path": "packages/protocols/oem" },
+    { "path": "packages/core" },
+    { "path": "packages/definitions" },
+    { "path": "packages/adapters/generic-can" },
+    { "path": "packages/adapters/elm327" },
+    { "path": "packages/adapters/canable" },
+    { "path": "packages/adapters/socketcan" },
+    { "path": "packages/storage" },
+    { "path": "packages/reports" },
+    { "path": "packages/ai" },
+    { "path": "tools/simulators" },
+    { "path": "tools/trace-analyzer" },
+    { "path": "tools/definition-importer" },
+    { "path": "tests" },
+    { "path": "apps/web" }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "name": "@vdp/tests",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Cross-package test suites: integration, protocol, replay and regression (AGENTS 31).",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@vdp/shared": "0.1.0",
+    "@vdp/transport-can": "0.1.0",
+    "@vdp/transport-iso-tp": "0.1.0",
+    "@vdp/protocols-uds": "0.1.0",
+    "@vdp/definitions": "0.1.0",
+    "@vdp/core": "0.1.0",
+    "@vdp/simulators": "0.1.0",
+    "@vdp/adapter-canable": "0.1.0",
+    "@vdp/trace-analyzer": "0.1.0",
+    "@vdp/definition-importer": "0.1.0",
+    "@vdp/protocols-oem": "0.1.0"
+  }
+}

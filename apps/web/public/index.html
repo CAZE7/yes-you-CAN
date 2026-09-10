@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>yes-you-CAN · Diagnose-Workbench</title>
+<link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">CAN</span>
+    <div>
+      <h1>yes-you-CAN</h1>
+      <p class="sub">Fahrzeugdiagnose · Read-only first (AGENTS 34.11)</p>
+    </div>
+  </div>
+  <div class="status">
+    <span id="conn-state" class="pill pill-offline">offline</span>
+    <span id="vehicle-line" class="muted">kein Fahrzeug verbunden</span>
+  </div>
+</header>
+
+<nav class="tabs" id="tabs">
+  <button class="tab active" data-view="connection">Verbindung</button>
+  <button class="tab" data-view="ecus">ECU Explorer</button>
+  <button class="tab" data-view="dtc">Fehlerspeicher</button>
+  <button class="tab" data-view="live">Live-Daten</button>
+  <button class="tab" data-view="graphs">Graphen</button>
+  <button class="tab" data-view="record">Aufnahme</button>
+  <button class="tab" data-view="trace">Roh-Trace</button>
+  <button class="tab" data-view="analysis">Analyse</button>
+  <button class="tab" data-view="log">Log</button>
+</nav>
+
+<main>
+  <!-- Verbindung -->
+  <section class="view active" id="view-connection">
+    <h2>Verbindung</h2>
+    <div class="cards">
+      <div class="card">
+        <h3>Adapter</h3>
+        <dl id="adapter-info" class="kv"></dl>
+      </div>
+      <div class="card">
+        <h3>Fahrzeug</h3>
+        <dl id="vehicle-info" class="kv"></dl>
+      </div>
+      <div class="card">
+        <h3>Session</h3>
+        <dl id="session-info" class="kv"></dl>
+      </div>
+    </div>
+    <div class="row">
+      <button id="btn-start" class="primary">Verbinden (Simulator)</button>
+      <button id="btn-identify">Identifikation lesen</button>
+      <button id="btn-scan">Fehlerspeicher lesen</button>
+    </div>
+    <p class="hint">
+      Diese Oberfläche interpretiert keine CAN-Frames. Alle Werte kommen bereits
+      dekodiert vom Diagnose-Engine-Layer; der Roh-Trace zeigt unveränderte Frames.
+    </p>
+  </section>
+
+  <!-- ECU Explorer -->
+  <section class="view" id="view-ecus">
+    <h2>ECU Explorer</h2>
+    <table class="grid">
+      <thead><tr><th>ECU</th><th>Adresse</th><th>Erreichbar</th><th>Session</th><th>P2</th><th>Dienste</th><th>Identifikation</th></tr></thead>
+      <tbody id="ecu-rows"></tbody>
+    </table>
+  </section>
+
+  <!-- Fehlerspeicher -->
+  <section class="view" id="view-dtc">
+    <h2>Fehlerspeicher</h2>
+    <div class="row">
+      <button id="btn-scan-2">Neu auslesen</button>
+      <span id="dtc-summary" class="muted"></span>
+    </div>
+    <table class="grid">
+      <thead><tr><th>Code</th><th>Beschreibung</th><th>ECU</th><th>Status</th><th>Schwere</th><th>Bestätigt</th><th>Pending</th></tr></thead>
+      <tbody id="dtc-rows"></tbody>
+    </table>
+  </section>
+
+  <!-- Live-Daten -->
+  <section class="view" id="view-live">
+    <h2>Live-Daten</h2>
+    <div class="row">
+      <button id="btn-live-start" class="primary">Start</button>
+      <button id="btn-live-stop">Stop</button>
+      <span id="live-state" class="muted">gestoppt</span>
+    </div>
+    <div class="signal-picker" id="signal-picker"></div>
+    <div class="cards" id="live-cards"></div>
+  </section>
+
+  <!-- Graphen -->
+  <section class="view" id="view-graphs">
+    <h2>Graphen <span class="muted small">gemeinsame Zeitachse</span></h2>
+    <div class="charts" id="charts"></div>
+  </section>
+
+  <!-- Aufnahme -->
+  <section class="view" id="view-record">
+    <h2>Aufnahme</h2>
+    <div class="row">
+      <button id="btn-marker">Marker setzen</button>
+      <a class="button" href="/api/export/measurements.csv">Messungen CSV</a>
+      <a class="button" href="/api/export/trace.csv">Roh-Trace CSV</a>
+      <a class="button" href="/api/export/session.json">Session JSON</a>
+      <a class="button" href="/api/export/report.html">Report HTML</a>
+      <a class="button" href="/api/export/report.pdf">Report PDF</a>
+    </div>
+    <table class="grid">
+      <thead><tr><th>Signal</th><th>Samples</th><th>Min</th><th>Max</th><th>Mittel</th><th>Delta</th><th>Einheit</th><th>Ausreißer</th></tr></thead>
+      <tbody id="stat-rows"></tbody>
+    </table>
+    <h3>Anomalien</h3>
+    <ul id="anomaly-list" class="plain"></ul>
+  </section>
+
+  <!-- Roh-Trace -->
+  <section class="view" id="view-trace">
+    <h2>Roh-Trace <span class="muted small">unveränderte Frames</span></h2>
+    <table class="grid trace">
+      <thead><tr><th>t (ms)</th><th>Zeit</th><th>CAN-ID</th><th>Richtung</th><th>DLC</th><th>Daten</th><th>Kanal</th></tr></thead>
+      <tbody id="trace-rows"></tbody>
+    </table>
+  </section>
+
+  <!-- Analyse -->
+  <section class="view" id="view-analysis">
+    <h2>Analyse</h2>
+    <div class="row"><button id="btn-analyze" class="primary">Analyse starten</button><span id="analysis-source" class="muted"></span></div>
+    <div id="analysis-out"></div>
+  </section>
+
+  <!-- Log -->
+  <section class="view" id="view-log">
+    <h2>Diagnose-Log</h2>
+    <table class="grid">
+      <thead><tr><th>Zeit</th><th>Aktion</th><th>ECU</th><th>Beschreibung</th><th>Ergebnis</th></tr></thead>
+      <tbody id="log-rows"></tbody>
+    </table>
+  </section>
+</main>
+
+<footer class="footer muted small">
+  yes-you-CAN · Simulator-Modus · jede Diagnoseaktion wird protokolliert
+</footer>
+
+<script type="module" src="/app.js"></script>
+</body>
+</html>

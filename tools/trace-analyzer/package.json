@@ -1,0 +1,11 @@
+{
+  "name": "@vdp/trace-analyzer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Offline CAN trace analyzer: decode, group and report recorded traces (AGENTS 15, 21).",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": { ".": { "types": "./dist/src/index.d.ts", "default": "./dist/src/index.js" } },
+  "dependencies": { "@vdp/shared": "0.1.0", "@vdp/core": "0.1.0", "@vdp/definitions": "0.1.0", "@vdp/transport-iso-tp": "0.1.0", "@vdp/protocols-uds": "0.1.0" }
+}
