@@ -6,7 +6,9 @@
  * step, no framework, no WebSocket server. Live values are pushed as SSE events;
  * everything else is a normal request/response pair.
  *
- * Binds 0.0.0.0 so the UI is reachable from outside the container.
+ * Security baseline (ADR 0009): binds localhost by default — pass --host or set
+ * VDP_HOST to expose it on the network. Every response carries a strict header
+ * set, request bodies are size-limited, and the event stream is GET-only.
  */
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
@@ -38,6 +40,31 @@ const MIME: Record<string, string> = {
   '.ico': 'image/x-icon',
 };
 
+/** API payloads are small JSON documents; anything larger is a bug or an attack. */
+const MAX_BODY_BYTES = 1_000_000;
+
+/**
+ * Sent with every response — static assets, JSON, SSE and downloads alike.
+ * The CSP can be strict because the front end is fully static: external
+ * CSS/JS only, no inline handlers, same-origin fetch and EventSource.
+ */
+const SECURITY_HEADERS: Record<string, string> = {
+  'content-security-policy':
+    "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'",
+  'x-content-type-options': 'nosniff',
+  'x-frame-options': 'DENY',
+  'referrer-policy': 'no-referrer',
+  'cross-origin-resource-policy': 'same-origin',
+};
+
+/** Error carrying the HTTP status the request should fail with. */
+class HttpError extends Error {
+  constructor(readonly statusCode: number, message: string) {
+    super(message);
+    this.name = 'HttpError';
+  }
+}
+
 // Compiled file lives at apps/web/dist/src/server.js, so the public directory is
 // two levels up. Overridable for packaged installs.
 const PUBLIC_DIR = process.env.VDP_PUBLIC_DIR
@@ -64,11 +91,19 @@ export class WebServer {
 
   /** Start listening; resolves once the port is bound. */
   async listen(): Promise<{ port: number; url: string }> {
-    const host = this.options.host ?? '0.0.0.0';
+    // Localhost by default (ADR 0009): a diagnostic UI without authentication
+    // must not appear on the network by accident. VDP_HOST/--host opts out.
+    const host = this.options.host ?? process.env.VDP_HOST ?? '127.0.0.1';
+    if (host === '0.0.0.0' || host === '::') {
+      this.log.warn('listening on all interfaces — the workbench has no authentication, restrict network access', { host });
+    }
     this.server = createServer((request, response) => {
       this.handle(request, response).catch((error) => {
-        this.log.error('request failed', { url: request.url, error: messageOf(error) });
-        if (!response.headersSent) this.sendJson(response, 500, { error: messageOf(error) });
+        const status = error instanceof HttpError ? error.statusCode : 500;
+        if (status >= 500) {
+          this.log.error('request failed', { url: request.url, error: messageOf(error) });
+        }
+        if (!response.headersSent) this.sendJson(response, status, { error: messageOf(error) });
         else response.end();
       });
     });
@@ -104,14 +139,19 @@ export class WebServer {
     const url = new URL(request.url ?? '/', 'http://localhost');
     const path = url.pathname;
 
-    if (path === '/api/stream') return this.streamEvents(request, response);
+    if (path === '/api/stream') {
+      if (request.method !== 'GET') throw new HttpError(405, 'the event stream is GET only');
+      return this.streamEvents(request, response);
+    }
     if (path.startsWith('/api/')) return this.api(request, response, path);
+    if (request.method !== 'GET') throw new HttpError(405, 'method not allowed');
     return this.staticFile(response, path);
   }
 
   /** SSE endpoint: pushes decoded samples, raw trace entries and DTC updates. */
   private streamEvents(_request: IncomingMessage, response: ServerResponse): void {
     response.writeHead(200, {
+      ...SECURITY_HEADERS,
       'content-type': 'text/event-stream',
       'cache-control': 'no-cache, no-transform',
       connection: 'keep-alive',
@@ -194,7 +234,7 @@ export class WebServer {
     }
     try {
       const content = await readFile(resolved);
-      response.writeHead(200, { 'content-type': MIME[extname(resolved)] ?? 'application/octet-stream', 'cache-control': 'no-cache' });
+      response.writeHead(200, { ...SECURITY_HEADERS, 'content-type': MIME[extname(resolved)] ?? 'application/octet-stream', 'cache-control': 'no-cache' });
       response.end(content);
     } catch {
       this.sendJson(response, 404, { error: `not found: ${path}` });
@@ -203,7 +243,7 @@ export class WebServer {
 
   private sendJson(response: ServerResponse, status: number, payload: unknown): void {
     const body = JSON.stringify(payload);
-    response.writeHead(status, { 'content-type': MIME['.json'] ?? 'application/json', 'cache-control': 'no-cache' });
+    response.writeHead(status, { ...SECURITY_HEADERS, 'content-type': MIME['.json'] ?? 'application/json', 'cache-control': 'no-cache' });
     response.end(body);
   }
 
@@ -213,6 +253,7 @@ export class WebServer {
 
   private sendBytes(response: ServerResponse, filename: string, contentType: string, bytes: Uint8Array): void {
     response.writeHead(200, {
+      ...SECURITY_HEADERS,
       'content-type': contentType,
       'content-length': String(bytes.length),
       'content-disposition': `attachment; filename="${filename}"`,
@@ -222,12 +263,17 @@ export class WebServer {
 
   private async readBody<T>(request: IncomingMessage): Promise<T> {
     const chunks: Buffer[] = [];
-    for await (const chunk of request) chunks.push(chunk as Buffer);
+    let total = 0;
+    for await (const chunk of request) {
+      total += (chunk as Buffer).length;
+      if (total > MAX_BODY_BYTES) throw new HttpError(413, `request body exceeds the ${MAX_BODY_BYTES} byte limit`);
+      chunks.push(chunk as Buffer);
+    }
     if (chunks.length === 0) return {} as T;
     try {
       return JSON.parse(Buffer.concat(chunks).toString('utf8')) as T;
     } catch {
-      return {} as T;
+      throw new HttpError(400, 'request body is not valid JSON');
     }
   }
 }
