@@ -92,8 +92,13 @@ export interface AppState {
   actions: Array<{ timestamp: string; kind: string; ecuId: string; description: string; result: string }>;
 }
 
+/**
+ * Events pushed to the UI over SSE. Every member here has an `emit()` call
+ * site below; `'log'` was dropped because nothing ever sent or listened for
+ * it (the `'log'` string elsewhere is a storage line kind, not an SSE event).
+ */
 export interface BackendEvent {
-  type: 'sample' | 'trace' | 'dtc' | 'ecu' | 'log' | 'analysis' | 'error';
+  type: 'sample' | 'trace' | 'dtc' | 'ecu' | 'analysis' | 'error';
   payload: unknown;
 }
 
