@@ -64,11 +64,11 @@ describe('recording', () => {
     const recorder = new MeasurementRecorder(() => 5000);
     const marker = recorder.addMarker('Key ON', 'user', 'ignition detected', 5100);
     assert.equal(marker.id, 'marker_1');
-    assert.equal(recorder.addMarker('Scan', 'auto', undefined, 5200).id, 'marker_2');
+    assert.equal(recorder.addMarker('Scan', 'note', undefined, 5200).id, 'marker_2');
     const second = recorder.export().markers[1];
     assert.equal(second?.id, 'marker_2');
     assert.equal(second?.label, 'Scan');
-    assert.equal(second?.kind, 'auto');
+    assert.equal(second?.kind, 'note');
     assert.equal(second?.t, 200);
     assert.equal('detail' in (second ?? {}), false);
   });

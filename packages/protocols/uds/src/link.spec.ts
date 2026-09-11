@@ -83,15 +83,17 @@ describe('RequestResponseLink', () => {
 
   test('requests are serialised even when issued concurrently (AGENTS 15)', async () => {
     const order: string[] = [];
-    let releaseFirst: (() => void) | null = null;
+    // Array indirection: TS cannot track the closure reassignment of a bare
+    // `let` and would narrow it to `never` after the first optional call.
+    const resolvers: Array<() => void> = [];
     const transport = {
       async send() {
         order.push('send');
       },
       async receive() {
-        if (!releaseFirst) {
+        if (resolvers.length === 0) {
           await new Promise<void>((resolve) => {
-            releaseFirst = resolve;
+            resolvers.push(resolve);
           });
         }
         return new Uint8Array([0x50]);
@@ -102,7 +104,7 @@ describe('RequestResponseLink', () => {
     const second = link.request(new Uint8Array([0x02]));
     await new Promise((resolve) => setImmediate(resolve));
     assert.deepEqual(order, ['send'], 'the second request waits for the first');
-    releaseFirst?.();
+    resolvers[0]?.();
     await Promise.all([first, second]);
     assert.deepEqual(order, ['send', 'send']);
   });

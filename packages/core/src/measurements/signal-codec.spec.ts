@@ -179,13 +179,14 @@ describe('special encodings', () => {
         fc.integer({ min: 0, max: 255 }),
         fc.integer({ min: 0, max: 255 }),
         fc.constantFrom('big', 'little' as const),
-        (high, low) => {
-          const signal = baseSignal({ encoding: 'uint16', length: 2, endianness: 'big', bitOffset: 4, bitLength: 8 });
-          // Bits 4..11 of the big-endian word [high, low].
-          const payload = encodeValue(baseSignal({ encoding: 'uint16', length: 2, endianness: 'big' }), (high << 8) | low);
+        (high, low, endianness) => {
+          const signal = baseSignal({ encoding: 'uint16', length: 2, endianness, bitOffset: 4, bitLength: 8 });
+          // Bits 4..11 of the 16-bit container [high, low] in either byte order.
+          const word = (high << 8) | low;
+          const payload = encodeValue(baseSignal({ encoding: 'uint16', length: 2, endianness }), word);
           const decoded = decoder.decode(signal, payload);
           assert.ok(decoded);
-          const expected = ((high & 0x0f) << 4) | (low >> 4);
+          const expected = endianness === 'big' ? ((high & 0x0f) << 4) | (low >> 4) : ((low & 0x0f) << 4) | (high >> 4);
           assert.equal(decoded.value, expected);
         },
       ),

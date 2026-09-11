@@ -48,7 +48,7 @@ describe('NRC handling', () => {
     assert.equal(isTransientNrc(NRC.BUSY_REPEAT_REQUEST), true);
     assert.equal(isTransientNrc(NRC.RESOURCE_TEMPORARILY_NOT_AVAILABLE), true);
     assert.equal(isTransientNrc(NRC.GENERAL_REJECT), false);
-    assert.equal(isTransientNrc(NRC.RESPONSE_PENDING), false, 'pending is a wait, not a retry');
+    assert.equal(isTransientNrc(NRC.REQUEST_CORRECTLY_RECEIVED_RESPONSE_PENDING), false, 'pending is a wait, not a retry');
   });
 });
 

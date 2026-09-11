@@ -157,7 +157,7 @@ describe('broken layouts', () => {
 
 describe('signalMapOf', () => {
   test('exposes the index byId map directly', () => {
-    const map = signalMapOf({ byId: SIGNALS });
+    const map = signalMapOf({ byId: SIGNALS, byEcu: new Map(), byDid: new Map() });
     assert.equal(map.get('engine.rpm')?.unit, '1/min');
   });
 });

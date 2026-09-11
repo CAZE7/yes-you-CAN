@@ -12,21 +12,34 @@ import type { DtcRecord } from '@vdp/protocols-uds';
 import type { MeasurementSample } from '../measurements/types.js';
 import { compareSessions, type SessionComparisonSide } from './compare.js';
 
-function sample(signal: string, value: number, overrides: Partial<MeasurementSample> = {}): MeasurementSample {
+function sample(signal: string, value: number | string, overrides: Partial<MeasurementSample> = {}): MeasurementSample {
   return {
     timestamp: '2026-09-11T08:00:00.000Z',
     t: 0,
     signal,
-    value,
-    rawValue: value,
+    // String values model textual signals (door states etc.) — the wire type is
+    // numeric, so the cast lives here and not at every call site.
+    value: value as number,
+    rawValue: value as number,
     rawHex: '00',
     outOfRange: false,
     ...overrides,
   };
 }
 
+const ALL_STATUS_BITS = {
+  testFailed: false,
+  testFailedThisOperationCycle: false,
+  pendingDtc: false,
+  confirmedDtc: false,
+  testNotCompletedSinceLastClear: false,
+  testFailedSinceLastClear: false,
+  testNotCompletedThisOperationCycle: false,
+  warningIndicatorRequested: false,
+};
+
 function dtc(code: string, status: number): DtcRecord {
-  return { code, raw: code, failureType: '00', status, statusBits: {}, severity: 'info' };
+  return { code, raw: code, failureType: '00', status, statusBits: { ...ALL_STATUS_BITS }, severity: 'info' };
 }
 
 function side(overrides: Partial<SessionComparisonSide> = {}): SessionComparisonSide {

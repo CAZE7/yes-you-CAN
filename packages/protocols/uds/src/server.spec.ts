@@ -327,13 +327,15 @@ describe('stats bookkeeping', () => {
 describe('lifecycle', () => {
   test('start/stop are idempotent and setDtcStatus creates or updates', async () => {
     const sent: Uint8Array[] = [];
-    let listener: ((payload: Uint8Array) => void) | null = null;
+    // Array instead of a bare `let` — TS cannot track closure reassignment and
+    // would narrow the variable to `never` after the first read.
+    const listeners: Array<(payload: Uint8Array) => void> = [];
     const server = new UdsServer(
       {
         onMessage: (fn) => {
-          listener = fn;
+          listeners.push(fn);
           return () => {
-            listener = null;
+            listeners.length = 0;
           };
         },
         send: async (payload) => {
@@ -344,7 +346,7 @@ describe('lifecycle', () => {
     );
     server.start();
     server.start();
-    listener?.(new Uint8Array([SID.TESTER_PRESENT, 0x00]));
+    listeners[0]?.(new Uint8Array([SID.TESTER_PRESENT, 0x00]));
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(sent.length, 1, 'double start registers the listener only once');
     server.stop();
@@ -353,7 +355,7 @@ describe('lifecycle', () => {
     server.setDtcStatus('P0299', 0x09);
     // visible via readDtc:
     server.start();
-    listener?.(new Uint8Array([SID.READ_DTC_INFORMATION, DTC_REPORT.REPORT_SUPPORTED_DTC]));
+    listeners[0]?.(new Uint8Array([SID.READ_DTC_INFORMATION, DTC_REPORT.REPORT_SUPPORTED_DTC]));
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(sent[1]?.length, 3 + 4, 'one updated DTC (4 bytes) + header');
   });

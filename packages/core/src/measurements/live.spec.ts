@@ -7,7 +7,7 @@
 
 import assert from 'node:assert/strict';
 import { describe, expect, test, vi } from 'vitest';
-import { createLogger } from '@vdp/shared';
+import { createLogger, toHex } from '@vdp/shared';
 import type { SignalDefinition } from '@vdp/definitions';
 import type { DecodedSignal } from './decoder.js';
 import type { MeasurementRecorder } from './recorder.js';
@@ -57,7 +57,7 @@ function decodeAll(signalDef: SignalDefinition, payload: Uint8Array): DecodedSig
     signalId: signalDef.id,
     name: signalDef.name,
     raw: payload,
-    rawHex: payload.toString(16),
+    rawHex: toHex(payload),
     rawValue: value,
     value,
     outOfRange: false,

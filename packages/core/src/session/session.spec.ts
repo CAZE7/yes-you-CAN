@@ -8,8 +8,8 @@ import type { DtcRecord } from '@vdp/protocols-uds';
 import type { AdapterInfo, TransportInfo } from '@vdp/transport-can';
 import { createEcuSession, createSession, VehicleSession, type VehicleSessionData } from './session.js';
 
-const adapter: AdapterInfo = { id: 'virtual', name: 'Virtual CAN' };
-const transport: TransportInfo = { kind: 'virtual', channel: 'vcan0' };
+const adapter: AdapterInfo = { id: 'virtual', kind: 'virtual', name: 'Virtual CAN', channels: ['vcan0'] };
+const transport: TransportInfo = { kind: 'virtual', channel: 'vcan0', mtu: 8 };
 
 const dtc = (severity: DtcRecord['severity']): DtcRecord => ({
   code: severity === 'critical' ? 'P0299' : 'P0420',
@@ -21,7 +21,7 @@ const dtc = (severity: DtcRecord['severity']): DtcRecord => ({
     testFailedThisOperationCycle: true,
     pendingDtc: true,
     confirmedDtc: true,
-    testNotCompletedSinceClear: false,
+    testNotCompletedSinceLastClear: false,
     testFailedSinceLastClear: true,
     testNotCompletedThisOperationCycle: false,
     warningIndicatorRequested: false,
@@ -136,7 +136,7 @@ describe('VehicleSession live view', () => {
     assert.equal(session.addNote('durchgeführt', 'tech').author, 'tech');
 
     const labelled = session.addDtcSnapshot([dtc('critical')], 'vor dem Löschen');
-    assert.equal(labelled.label, 'vor dem Löschen');
+    assert.equal(session.data.dtcSnapshots[0]?.label, 'vor dem Löschen');
     assert.match(labelled.id, /^dtc_/);
     const plain = session.addDtcSnapshot([]);
     assert.equal('label' in plain, false);
@@ -159,7 +159,7 @@ describe('VehicleSession live view', () => {
     motor.reachable = true;
     session.upsertEcu(motor);
     session.upsertEcu(createEcuSession({ name: 'Airbag', txId: 0x714, rxId: 0x77c }));
-    session.addDtcSnapshot([dtc('critical'), dtc('moderate')], 'alt');
+    session.addDtcSnapshot([dtc('critical'), dtc('minor')], 'alt');
     session.addDtcSnapshot([dtc('critical')], 'neu');
     session.recordAction({ kind: 'read', ecuId: 'ecu_1', description: 'x', result: 'success' });
     session.data.measurements.push({ signalId: 'rpm', name: 'Drehzahl', samples: 3 });

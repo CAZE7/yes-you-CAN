@@ -499,7 +499,8 @@ describe('ISO-TP round-trip properties', () => {
     );
     fc.assert(
       fc.property(fc.integer({ min: 0x100, max: 0xff0 }).filter((v) => v < 0xf1 || v > 0xf9), (reserved) => {
-        expect(parseStMin(reserved)).toBe(0x7f, 'reserved encodings must degrade to 127 ms');
+        // reserved encodings must degrade to 127 ms
+        expect(parseStMin(reserved)).toBe(0x7f);
       }),
     );
     fc.assert(

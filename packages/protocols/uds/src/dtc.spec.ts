@@ -138,7 +138,7 @@ describe('DTC status byte round trips (ISO 14229-1 §8.3)', () => {
 
   test('property: each generated bit pattern round trips through the named fields', () => {
     fc.assert(
-      fc.property(fc.record(Object.fromEntries(bitNames.map((n) => [n, fc.boolean()])) as never), (bits) => {
+      fc.property(fc.record(Object.fromEntries(bitNames.map((n) => [n, fc.boolean()]))) as unknown as fc.Arbitrary<Record<(typeof bitNames)[number], boolean>>, (bits) => {
         expect(encodeDtcStatus(bits)).toBe(encodeDtcStatus(decodeDtcStatus(encodeDtcStatus(bits))));
         const decoded = decodeDtcStatus(encodeDtcStatus(bits));
         for (const name of bitNames) expect(decoded[name]).toBe(bits[name]);
