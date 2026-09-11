@@ -9,25 +9,43 @@ Aufbau in [`docs/adr/`](docs/adr/).
 
 ## Schichten
 
-Abhängigkeiten zeigen nur nach unten (ADR 0001):
+Abhängigkeiten zeigen nur nach unten (ADR 0001, 0014) — und werden als
+Architekturtests in CI erzwungen (ADR 0015, `npm run test:architecture`):
 
 ```
 UI (apps/web)
-  └─ Application / Diagnostic Engine (packages/core)
-       ├─ Protocols  (uds, kwp2000, oem)
-       ├─ Transport  (iso-tp, doip, can)
-       │    └─ Adapters (elm327, canable, socketcan, generic-can, host)
-       └─ Definitions (generisch, VAG, Mercedes)
+  └─ Runtime (packages/runtime)  ← Kompositionsroot, headless nutzbar
+       ├─ Application (packages/application): Command-Bus, Commands/Queries, Aktionen
+       ├─ Domain (packages/domain): Verträge, Ports, Capabilities, Events
+       └─ Diagnostic Engine (packages/core) — wird schrittweise in Services zerlegt
+            ├─ Protocols  (uds, kwp2000, oem)
+            ├─ Transport  (iso-tp, doip, can)
+            │    └─ Adapters (elm327, canable, socketcan, generic-can, host)
+            └─ Definitions (generisch, VAG, Mercedes)
 ```
 
 Die UI interpretiert keine CAN-Frames. OEM-Logik liegt nicht in der CAN-Schicht.
-Ein Transport ist austauschbar, ohne dass die UDS-Engine davon weiß.
+Ein Transport ist austauschbar, ohne dass die UDS-Engine davon weiß. Neue
+Funktionalität landet als Kommando/Query/Aktion, nicht als Engine-Methode.
+
+Kern-API ohne HTTP/DOM (ADR 0014):
+
+```ts
+import { createDiagnosticRuntime } from '@vdp/runtime';
+import { readDtcs, connectVehicle } from '@vdp/application';
+
+const runtime = createDiagnosticRuntime({ bus, definitions });
+await runtime.commands.dispatch(connectVehicle());
+const dtcs = await runtime.commands.dispatch(readDtcs());
+```
 
 ## Pakete
 
 | Paket | Zweck |
 |---|---|
 | `@vdp/shared` | Fehler, Byte/Hex, Logger (Raw-Logging opt-in), Events |
+| `@vdp/domain` | Domänen-Verträge: Projektionen, Ports, Capabilities, Risiko-Policy, Ereigniskatalog (ADR 0014) |
+| `@vdp/application` | Command-Bus, Commands/Queries, Capability-getriebene Aktionen (ADR 0014) |
 | `@vdp/transport-can` | `CanFrame`, `CanBus`, Adapter-Registry, `ReplayTransport` |
 | `@vdp/transport-iso-tp` | ISO 15765-2: SF/FF/CF/FC, STmin, Blockgröße, Timeouts |
 | `@vdp/transport-doip` | ISO 13400-2: Routing Activation, Diagnose-Messages, Discovery |
@@ -37,6 +55,7 @@ Ein Transport ist austauschbar, ohne dass die UDS-Engine davon weiß.
 | `@vdp/definitions` | versioniertes Schema, Validator, Pakete mit Provenance |
 | `@vdp/charts` | DOM-freie, getestete Graphen-Mathematik: Viewport, Cursor, Decimierung, Statistik (ADR 0011) |
 | `@vdp/core` | Engine, ECU-Explorer, DTC-System, Recorder, Logger, Safety |
+| `@vdp/runtime` | `createDiagnosticRuntime`: Services, Command-Handler, Domänen-Events — headless (ADR 0014) |
 | `@vdp/adapters-*` | ELM327, CANable (slcan), SocketCAN, generisch |
 | `@vdp/storage` | Session-Repository, Migrationen, ZIP-Export |
 | `@vdp/reports` | HTML- und PDF-Report (eigener PDF-Writer) |

@@ -1,0 +1,25 @@
+{
+  "name": "@vdp/runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Diagnostic runtime: composes the engine, services, command bus and domain events into one headless API (target architecture ADR 0014).",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    }
+  },
+  "dependencies": {
+    "@vdp/application": "0.1.0",
+    "@vdp/core": "0.1.0",
+    "@vdp/definitions": "0.1.0",
+    "@vdp/domain": "0.1.0",
+    "@vdp/protocols-uds": "0.1.0",
+    "@vdp/shared": "0.1.0",
+    "@vdp/transport-can": "0.1.0",
+    "@vdp/transport-doip": "0.1.0"
+  }
+}

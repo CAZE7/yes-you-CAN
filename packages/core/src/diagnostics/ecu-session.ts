@@ -6,8 +6,7 @@
  */
 
 import { UdsNegativeResponseError, createLogger, toHex, type Logger } from '@vdp/shared';
-import { IsoTpConnection } from '@vdp/transport-iso-tp';
-import { DID, NRC, SESSION, SID, UdsClient, nrcName, type DtcRecord } from '@vdp/protocols-uds';
+import { DID, NRC, SESSION, SID, UdsClient, nrcName, type DtcRecord, type UdsLink } from '@vdp/protocols-uds';
 import { indexEcus, indexPackage, type DefinitionPackage, type DtcDefinition, type EcuDefinition, type SignalDefinition, type SignalIndex } from '@vdp/definitions';
 import { SignalDecoder, type DecodedSignal } from '../measurements/decoder.js';
 import { decodeFreezeFrame, type FreezeFrame } from '../dtc/freeze-frame.js';
@@ -61,7 +60,14 @@ function nrcOf(error: unknown): number | undefined {
 
 export class EcuDiagnosticSession {
   readonly client: UdsClient;
-  readonly isoTp: IsoTpConnection;
+  /**
+   * The transport-neutral UDS link this session talks on (AGENTS 5, 36). On CAN
+   * this is an ISO-TP connection; on DoIP it is a request/response link over a
+   * TCP socket. The session never needs to know which one it is.
+   */
+  readonly link: UdsLink;
+  /** Releases the underlying link (CAN: closes the ISO-TP connection). */
+  readonly closeLink: () => void;
   readonly record: EcuSession;
   private readonly signalIndex: SignalIndex;
   private readonly signalsByEcu: SignalDefinition[];
@@ -70,7 +76,7 @@ export class EcuDiagnosticSession {
   private readonly definitionEcu?: EcuDefinition;
 
   constructor(
-    isoTp: IsoTpConnection,
+    link: UdsLink,
     client: UdsClient,
     options: {
       txId: number;
@@ -82,9 +88,11 @@ export class EcuDiagnosticSession {
       definitionEcu?: EcuDefinition;
       logger?: Logger;
       decoder?: SignalDecoder;
+      closeLink?: () => void;
     },
   ) {
-    this.isoTp = isoTp;
+    this.link = link;
+    this.closeLink = options.closeLink ?? (() => {});
     this.client = client;
     this.log = (options.logger ?? createLogger('ecu', { level: 'INFO' })).child('ecu');
     this.decoder = options.decoder ?? new SignalDecoder({ logger: this.log });
@@ -225,12 +233,27 @@ export class EcuDiagnosticSession {
 
   /** Read every signal of this ECU once and decode it. */
   async readAllSignals(): Promise<DecodedSignal[]> {
+    return this.readSignals(this.signalsByEcu);
+  }
+
+  /**
+   * Read and decode only the given signals. Grouped by DID so one 0x22 request
+   * still serves several of them — a snapshot that asks for two signals must not
+   * pay for the ECU's whole signal table (AGENTS 12).
+   */
+  async readSignals(signals: readonly SignalDefinition[]): Promise<DecodedSignal[]> {
     const decoded: DecodedSignal[] = [];
-    for (const [did, signals] of this.didPlan()) {
+    const plan = new Map<number, SignalDefinition[]>();
+    for (const signal of signals) {
+      const list = plan.get(signal.did) ?? [];
+      list.push(signal);
+      plan.set(signal.did, list);
+    }
+    for (const [did, group] of plan) {
       try {
         const raw = await this.client.readDid(did);
         if (!raw) continue;
-        for (const signal of signals) {
+        for (const signal of group) {
           const value = this.decoder.decode(signal, raw);
           if (value) decoded.push(value);
         }

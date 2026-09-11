@@ -1,5 +1,6 @@
 export * from './schema.js';
 export * from './validate.js';
+export * from './json.js';
 export { genericPackage } from './generic/generic-package.js';
 export { vagExamplePackage } from './vag/vag-package.js';
 export { mercedesExamplePackage } from './mercedes/mercedes-package.js';

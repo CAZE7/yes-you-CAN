@@ -5,6 +5,12 @@
       "path": "packages/shared"
     },
     {
+      "path": "packages/domain"
+    },
+    {
+      "path": "packages/application"
+    },
+    {
       "path": "packages/transport/can"
     },
     {
@@ -27,6 +33,9 @@
     },
     {
       "path": "packages/definitions"
+    },
+    {
+      "path": "packages/runtime"
     },
     {
       "path": "packages/adapters/generic-can"

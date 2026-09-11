@@ -125,7 +125,7 @@ const baseTest = {
 };
 
 /** Every non-hardware project, in pyramid order. */
-export const defaultProjects = ['unit', 'protocol', 'regression', 'replay', 'integration'] as const;
+export const defaultProjects = ['unit', 'protocol', 'regression', 'replay', 'integration', 'architecture'] as const;
 
 /**
  * Vite-level options must be repeated per project: inline projects do not
@@ -166,6 +166,12 @@ export default defineConfig({
         name: 'integration',
         include: ['tests/integration/**/*.test.ts', 'apps/web/test/**/*.spec.ts'],
         testTimeout: 30_000,
+      }),
+      // Static analysis of the import graph — the dependency rules are tests
+      // (target architecture §29), so they run in CI like any other suite.
+      project({
+        name: 'architecture',
+        include: ['tests/architecture/**/*.test.ts'],
       }),
       // Only the nightly CI job runs this (virtual CAN interface required);
       // it is excluded from every default script.
