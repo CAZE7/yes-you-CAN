@@ -39,12 +39,13 @@ Rote Linien (werden in `tests/architecture` erzwungen):
 | 2. Ports | Transport, Verbindung, DefinitionProvider, SessionStore, EventBus, Clock, IdGenerator | ✅ | `packages/domain/ports` |
 | 3. Runtime | `createDiagnosticRuntime`, Services, Command/Query-Handler, Events | ✅ | `packages/runtime` |
 | 4. Command/Query-Layer | Command-Bus, Commands/Queries als Daten | ✅ | `packages/application` |
-| 5. Event-Bus | geschlossener Ereigniskatalog + In-Memory/Recording-Bus | ✅ | `@vdp/domain`, Runtime publiziert |
+| 5. Event-Bus | geschlossener Ereigniskatalog + In-Memory/Recording-Bus | ✅ + echter Konsument: `EventAuditRecorder` zeichnet jede Domain-Event als Audit-Trail auf | `@vdp/domain`, `@vdp/runtime` |
 | 6. Capability-System | Vokabular + UDS-Service-Abbildung + Aktionen-Registry | ✅ | `@vdp/domain`, `@vdp/runtime`, `@vdp/application` |
 | 7. Architekturtests | Importgraph als Test, Node-Builtin-Verbot, UI-Import-Verbot | ✅ | `tests/architecture` |
 | 8. `DiagnosticEngine` zerlegen | Implementierungen unter die Ports ziehen, Engine in Services auflösen | ⏳ nächster Schritt | `packages/core` → `@vdp/runtime`-Services |
+| 8a. Transport-Seam (CAN ↔ DoIP) | Engine bezieht ECU-Links über eine injizierbare `EcuLinkFactory`; `DoipEcuLinkFactory` liefert DoIP-Links (Routing-Aktivierung + UDSonIP). CAN bleibt Default, Discovery ist CAN-basiert | ✅ | `@vdp/core`, `@vdp/runtime`, `@vdp/transport-doip` |
 | 9. Frontend gegen Runtime | Web-App dispatcht Commands/Queries statt Engine-Aufrufe | ⏳ | `apps/web` |
-| 10. Definitions als Daten | Pakete aus JSON/Datei/Cloud hinter `DefinitionProvider` statt Import | ⏳ | `packages/definitions` |
+| 10. Definitions als Daten | Pakete aus JSON/Datei/Cloud hinter `DefinitionProvider` statt Import | 🟡 teilweise: `parseDefinitionPackage` lädt + validiert JSON zu typisierten Paketen (SemVer/Provenance erzwungen); Datei-/Cloud-Provider offen | `packages/definitions` |
 | 11. Observability | Korrelations-/Action-Ids durchgängig in Traces & Logs | ⏳ | Events tragen die Ids bereits |
 | 12. Offline-first + Sync-Vertrag | `entityId`/`revision`/`updatedAt`/`deviceId` auf Entities | ⏳ | `@vdp/domain`, `@vdp/storage` |
 | 13. Deterministischer Simulator als Virtual Vehicle | Gateway + mehrere ECUs mit Zuständen, Szenarien als Tests | teilweise | `tools/simulators` |

@@ -138,6 +138,36 @@ describe('event wiring', () => {
     assert.equal(connected[0]?.ecuCount, 0, 'the silent bus answers no ECUs');
     await runtime.dispose();
   });
+
+  test('the audit recorder observes lifecycle events by default and keeps a reconstructable trail', async () => {
+    const clock = new FixedClock(1_700_000_000_000);
+    const runtime = createDiagnosticRuntime({ bus: makeSilentBus(), definitions: [genericPackage], logger: quietLogger, clock });
+
+    const result = await runtime.vehicle.connect({ windowMs: 30 });
+    const sessionId = result.session.sessionId;
+    clock.advance(500);
+    await runtime.commands.dispatch(disconnectVehicle());
+
+    // Every lifecycle event is observed, timestamped from the injected clock.
+    const connected = runtime.audit.forEvent('vehicle-connected');
+    assert.equal(connected.length, 1);
+    assert.equal(connected[0]?.sessionId, sessionId);
+    assert.equal(connected[0]?.at, 1_700_000_000_000);
+
+    const disconnected = runtime.audit.forEvent('vehicle-disconnected');
+    assert.equal(disconnected.length, 1);
+    assert.equal(disconnected[0]?.at, 1_700_000_000_500);
+
+    // The correlation id ties the trail back to the session (§24).
+    const trail = runtime.audit.forSession(sessionId);
+    assert.ok(trail.some((entry) => entry.event === 'vehicle-connected'));
+    assert.ok(trail.some((entry) => entry.event === 'vehicle-disconnected'));
+
+    // dispose stops observation; the captured trail survives.
+    const before = runtime.audit.all.length;
+    await runtime.dispose();
+    assert.equal(runtime.audit.all.length, before);
+  });
 });
 
 describe('runtime options', () => {

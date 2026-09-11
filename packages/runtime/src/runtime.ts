@@ -20,18 +20,29 @@
  */
 
 import { createLogger, type Logger } from '@vdp/shared';
-import { DiagnosticEngine, type DiagnosticEngineOptions, type SafetyManager, type VehicleSessionData } from '@vdp/core';
+import { DiagnosticEngine, type DiagnosticEngineOptions, type EcuLinkFactory, type SafetyManager, type VehicleSessionData } from '@vdp/core';
 import type { DefinitionPackage } from '@vdp/definitions';
 import type { CanBus } from '@vdp/transport-can';
 import { ActionRegistry, CommandBus, createStandardActions } from '@vdp/application';
 import { DefaultIdGenerator, InMemoryEventBus, type Clock, type EventBus, type IdGenerator, type SessionStore } from '@vdp/domain';
 import { PackageDefinitionProvider } from './definition-service.js';
+import { EventAuditRecorder } from './event-recorder.js';
 import { registerRuntimeHandlers } from './handlers.js';
 import { DtcService, EcuService, MeasurementService, SafetyService, SessionService, VehicleService } from './services.js';
 
 export interface RuntimeOptions {
-  /** The frame-level bus below ISO-TP — any `CanBus` implementation. */
-  bus: CanBus;
+  /**
+   * The frame-level bus below ISO-TP — any `CanBus` implementation. Required for
+   * the CAN discovery/connect flow. May be omitted when {@link linkFactory}
+   * drives a non-CAN transport and ECUs are attached via `engine.attach()`.
+   */
+  bus?: CanBus;
+  /**
+   * Transport seam (AGENTS 5, 36): supplies each ECU's link. Supply a
+   * {@link DoipEcuLinkFactory} — or any custom factory — to run the whole
+   * diagnostic stack over a non-CAN transport.
+   */
+  linkFactory?: EcuLinkFactory;
   /** Definition packages used for discovery, decoding and enrichment. */
   definitions?: readonly DefinitionPackage[];
   logger?: Logger;
@@ -64,6 +75,11 @@ export interface DiagnosticRuntime {
   readonly actions: ActionRegistry;
   readonly commands: CommandBus;
   readonly events: EventBus;
+  /**
+   * Timestamped trail of every domain event — the platform's audit log and the
+   * basis for reports, replay and safety review (§10/§24).
+   */
+  readonly audit: EventAuditRecorder;
   /** Escape hatch while the engine decomposition is in progress (ADR 0014). */
   readonly engine: DiagnosticEngine;
   /** Disconnect (if connected) and release the runtime. Idempotent. */
@@ -77,8 +93,9 @@ export function createDiagnosticRuntime(options: RuntimeOptions): DiagnosticRunt
   const ids = options.idGenerator ?? new DefaultIdGenerator(clock);
 
   const engineOptions: DiagnosticEngineOptions = {
-    bus: options.bus,
     logger: log,
+    ...(options.bus !== undefined ? { bus: options.bus } : {}),
+    ...(options.linkFactory !== undefined ? { linkFactory: options.linkFactory } : {}),
     ...(options.definitions !== undefined ? { definitions: options.definitions } : {}),
     ...(options.safety !== undefined ? { safety: options.safety } : {}),
     ...(clock !== undefined ? { clock: () => clock.now() } : {}),
@@ -102,6 +119,10 @@ export function createDiagnosticRuntime(options: RuntimeOptions): DiagnosticRunt
   const commands = new CommandBus();
   registerRuntimeHandlers(commands, { vehicle, ecus, dtc, measurements, session, actions });
 
+  // The event trail is on by default: every diagnostic event is observed and
+  // kept, so a session can always be reconstructed from its events (§10/§24).
+  const audit = new EventAuditRecorder(events, clock);
+
   return {
     vehicle,
     ecus,
@@ -113,8 +134,10 @@ export function createDiagnosticRuntime(options: RuntimeOptions): DiagnosticRunt
     actions,
     commands,
     events,
+    audit,
     engine,
     dispose: async () => {
+      audit.dispose();
       // `endedAt` marks a session the engine already closed (vehicle.disconnect
       // or an earlier dispose); closing the bus twice is not safe.
       const openSession = engine.vehicleSession;

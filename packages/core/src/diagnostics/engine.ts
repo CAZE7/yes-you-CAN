@@ -10,7 +10,7 @@
 import { createId, createLogger, toHex, type Logger } from '@vdp/shared';
 import type { AdapterInfo, CanBus, TransportInfo } from '@vdp/transport-can';
 import { IsoTpConnection, type IsoTpOptions } from '@vdp/transport-iso-tp';
-import { UdsClient, type DtcRecord } from '@vdp/protocols-uds';
+import { UdsClient, type DtcRecord, type UdsLink } from '@vdp/protocols-uds';
 import { indexPackage, type DefinitionPackage, type SignalDefinition } from '@vdp/definitions';
 import { EcuDiagnosticSession } from './ecu-session.js';
 import { EcuDiscovery, deriveTxId, type DiscoveredEcu } from './discovery.js';
@@ -25,10 +25,42 @@ import { DtcClearService, type ClearableEcu, type ClearDtcOptions, type ClearDtc
 import type { FreezeFrame } from '../dtc/freeze-frame.js';
 import { SafetyManager, type VehicleState } from '../safety/safety-manager.js';
 
+/**
+ * Transport-neutral link one ECU talks on (AGENTS 5, 36). The engine never
+ * inspects the concrete transport: on CAN it is an {@link IsoTpConnection}, on
+ * DoIP it is a request/response link over a TCP socket (see
+ * `createRequestResponseLink`). `close` releases this one ECU's resources.
+ */
+export interface OpenedEcuLink {
+  link: UdsLink;
+  close: () => void;
+}
+
+/**
+ * The transport seam: produces a {@link UdsLink} for one ECU. Supplying a
+ * factory is how DoIP — or any future transport — plugs in without the UDS
+ * layer changing at all. When absent, the engine falls back to ISO-TP over the
+ * CAN {@link bus}.
+ */
+export interface EcuLinkFactory {
+  open(ecu: { txId: number; rxId: number; extended?: boolean }): Promise<OpenedEcuLink> | OpenedEcuLink;
+}
+
 export interface DiagnosticEngineOptions {
-  bus: CanBus;
+  /**
+   * CAN bus — required for {@link DiagnosticEngine.connect} (functional
+   * discovery) and for the default ISO-TP link factory. May be omitted when a
+   * {@link linkFactory} is provided and ECUs are attached explicitly via
+   * {@link DiagnosticEngine.attach} (the DoIP path).
+   */
+  bus?: CanBus;
   definitions?: readonly DefinitionPackage[];
   logger?: Logger;
+  /**
+   * Transport seam (AGENTS 5, 36). Overrides per-ECU link construction so a
+   * non-CAN transport can drive the engine. See {@link EcuLinkFactory}.
+   */
+  linkFactory?: EcuLinkFactory;
   /**
    * Safety manager for write operations. A private instance is created when none
    * is passed in, so every engine has one and no write path can bypass it
@@ -114,22 +146,23 @@ export class DiagnosticEngine {
    * read identification. Read-only only (AGENTS 11/34.11).
    */
   async connect(discoveryOptions: { windowMs?: number; candidates?: Array<{ txId: number; rxId: number; extended?: boolean }> } = {}): Promise<ConnectResult> {
-    if (!this.options.bus.isOpen()) await this.options.bus.open();
+    const bus = this.requireBus('connect()');
+    if (!bus.isOpen()) await bus.open();
 
     const transportInfo: TransportInfo = {
-      kind: this.options.bus.capabilities.canFd ? 'can-fd' : 'can',
-      channel: this.options.bus.info.channels[0] ?? 'can0',
-      mtu: this.options.bus.capabilities.canFd ? 64 : 8,
+      kind: bus.capabilities.canFd ? 'can-fd' : 'can',
+      channel: bus.info.channels[0] ?? 'can0',
+      mtu: bus.capabilities.canFd ? 64 : 8,
     };
     const data = createSession({
-      adapter: this.options.bus.info,
+      adapter: bus.info,
       transport: transportInfo,
       ...(this.activePackage ? { definitionPackage: { oem: this.activePackage.oem, version: this.activePackage.version } } : {}),
       ...(this.options.clock ? { clock: this.options.clock } : {}),
     });
     this.session = new VehicleSession(data);
 
-    const discovery = new EcuDiscovery(this.options.bus, {
+    const discovery = new EcuDiscovery(bus, {
       logger: this.log,
       ...(discoveryOptions.windowMs !== undefined ? { windowMs: discoveryOptions.windowMs } : {}),
       ...(discoveryOptions.candidates ? { candidates: discoveryOptions.candidates } : {}),
@@ -138,7 +171,7 @@ export class DiagnosticEngine {
 
     for (const ecu of discovered) {
       try {
-        const handle = this.attachEcu(ecu);
+        const handle = await this.attachEcu(ecu);
         await handle.session.readIdentification();
         // Which services an ECU actually answers is discovered, not assumed
         // (AGENTS 12 "Supported Services"). Failing probes only reduce the list.
@@ -173,9 +206,25 @@ export class DiagnosticEngine {
     return { session: this.session, ecus: discovered };
   }
 
-  private attachEcu(ecu: DiscoveredEcu): EcuHandle {
-    const isoTp = this.createIsoTp(ecu.txId, ecu.rxId, ecu.extended);
-    const client = this.createClient(isoTp, `0x${ecu.rxId.toString(16)}`);
+  /**
+   * Attach one ECU by address without running CAN discovery (AGENTS 5, 36).
+   *
+   * This is the entry point for transports that address an ECU directly — DoIP
+   * uses a logical address rather than functional CAN discovery. With a
+   * {@link EcuLinkFactory} this drives the whole diagnostic stack over a
+   * non-CAN transport; without one it opens an ISO-TP connection on the bus.
+   */
+  async attach(target: { txId: number; rxId: number; extended?: boolean; definitionEcuId?: string }): Promise<EcuHandle> {
+    // An explicitly attached ECU was not found by CAN discovery, so it has no
+    // discovery frames — the field exists to satisfy the DiscoveredEcu shape.
+    const handle = await this.attachEcu({ ...target, extended: target.extended ?? false, frames: 0 });
+    await handle.session.readIdentification();
+    return handle;
+  }
+
+  private async attachEcu(ecu: DiscoveredEcu): Promise<EcuHandle> {
+    const opened = await this.openEcuLink(ecu);
+    const client = this.createClient(opened.link, `0x${ecu.rxId.toString(16)}`);
     const oemKey = ecu.definitionEcuId?.split(':')[0];
     const pkg = oemKey ? this.definitions.find((p) => p.oem === oemKey) : this.activePackage;
     // Only ask the OEM hooks when the definition packages say nothing about this
@@ -188,12 +237,13 @@ export class DiagnosticEngine {
         role: oemGuess.role,
       });
     }
-    const session = new EcuDiagnosticSession(isoTp, client, {
+    const session = new EcuDiagnosticSession(opened.link, client, {
       txId: ecu.txId,
       rxId: ecu.rxId,
       extended: ecu.extended,
       logger: this.log,
       decoder: this.decoder,
+      closeLink: opened.close,
       ...(pkg ? { definitionPackage: pkg } : {}),
       ...(ecu.definitionEcuId ? { definitionEcuId: ecu.definitionEcuId.split(':')[1] } : {}),
       ...(oemGuess ? { name: oemGuess.role } : {}),
@@ -208,8 +258,27 @@ export class DiagnosticEngine {
     return handle;
   }
 
+  /**
+   * Open the link for one ECU through the transport seam (AGENTS 5, 36). A
+   * {@link EcuLinkFactory} wins when provided — that is the DoIP path — and the
+   * engine falls back to ISO-TP over the CAN bus otherwise.
+   */
+  private async openEcuLink(ecu: { txId: number; rxId: number; extended: boolean }): Promise<OpenedEcuLink> {
+    if (this.options.linkFactory) {
+      return this.options.linkFactory.open(ecu);
+    }
+    const bus = this.requireBus('openEcuLink() without a linkFactory');
+    const isoTp = new IsoTpConnection(bus, {
+      txId: ecu.txId,
+      rxId: ecu.rxId,
+      extended: ecu.extended,
+      ...this.options.isoTpDefaults,
+    }, this.log);
+    return { link: isoTp, close: () => isoTp.close() };
+  }
+
   private createIsoTp(txId: number, rxId: number, extended: boolean): IsoTpConnection {
-    return new IsoTpConnection(this.options.bus, {
+    return new IsoTpConnection(this.requireBus('createIsoTp()'), {
       txId,
       rxId,
       extended,
@@ -217,12 +286,18 @@ export class DiagnosticEngine {
     }, this.log);
   }
 
+  private requireBus(context: string): CanBus {
+    const bus = this.options.bus;
+    if (!bus) throw new Error(`${context} needs a CAN bus — pass one or provide a linkFactory`);
+    return bus;
+  }
+
   /**
-   * IsoTpConnection satisfies UdsLink structurally, so the UDS layer is bound to
-   * the transport without any adapter code — swapping in DoIP means passing a
-   * different link here and nothing else changes (AGENTS 5, 36).
+   * Any UdsLink drives the client — IsoTpConnection satisfies it structurally
+   * (the CAN path), a RequestResponseLink over a DoIP socket satisfies it too —
+   * so swapping transports never touches the UDS layer (AGENTS 5, 36).
    */
-  private createClient(link: IsoTpConnection, name: string): UdsClient {
+  private createClient(link: UdsLink, name: string): UdsClient {
     return new UdsClient(link, { name, logger: this.log });
   }
 
@@ -376,11 +451,17 @@ export class DiagnosticEngine {
     return results;
   }
 
-  /** Read every defined signal of every ECU once (used for a snapshot/report). */
-  async snapshotSignals(): Promise<DecodedSignal[]> {
+  /**
+   * Read defined signals of every ECU once (used for a snapshot/report). With a
+   * filter only those signals are requested — a two-signal snapshot no longer
+   * pays for the whole signal table of every ECU (AGENTS 12).
+   */
+  async snapshotSignals(signalIds?: readonly string[]): Promise<DecodedSignal[]> {
     const decoded: DecodedSignal[] = [];
+    const plan = this.buildPlan(signalIds);
     for (const handle of this.handles.values()) {
-      const values = await handle.session.readAllSignals();
+      const selected = plan.get(handle.session.id);
+      const values = selected ? await handle.session.readSignals(selected) : [];
       for (const value of values) {
         decoded.push(value);
         this.recorder.record(value);
@@ -453,12 +534,12 @@ export class DiagnosticEngine {
     this.stopLiveData();
     for (const handle of this.handles.values()) {
       handle.session.client.stopTesterPresent();
-      handle.session.isoTp.close();
+      handle.session.closeLink();
     }
     this.handles.clear();
     this.handlesByTxId.clear();
     this.session?.close();
-    await this.options.bus.close();
+    if (this.options.bus) await this.options.bus.close();
     this.log.info('session closed', { session: this.session?.id });
   }
 

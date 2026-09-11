@@ -9,6 +9,12 @@
 export { createDiagnosticRuntime } from './runtime.js';
 export type { DiagnosticRuntime, RuntimeOptions } from './runtime.js';
 
+export { DoipEcuLinkFactory, createDoipEcuLinkFactory } from './transport.js';
+export type { DoipEcuLinkFactoryOptions } from './transport.js';
+
+export { EventAuditRecorder } from './event-recorder.js';
+export type { AuditEntry } from './event-recorder.js';
+
 export { capabilitiesFromServices, UDS_SERVICE_CAPABILITIES } from './capability-map.js';
 
 export { PackageDefinitionProvider } from './definition-service.js';

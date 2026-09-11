@@ -293,7 +293,9 @@ export class MeasurementService {
   async snapshot(signalIds?: readonly string[]): Promise<MeasurementReading[]> {
     const session = this.engine.vehicleSession;
     if (!session) throw new Error('no session — call vehicle.connect() first');
-    const decoded = await this.engine.snapshotSignals();
+    // The filter is pushed into the engine so a two-signal snapshot only requests
+    // those two signals instead of every DID of every ECU (AGENTS 12).
+    const decoded = await this.engine.snapshotSignals(signalIds);
     const selected = signalIds ? decoded.filter((signal) => signalIds.includes(signal.signalId)) : decoded;
     const readings: MeasurementReading[] = [];
     for (const signal of selected) {

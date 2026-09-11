@@ -166,13 +166,18 @@ const ALLOWED_VDP_DEPS: Record<string, readonly string[]> = {
   ],
 
   // Runtime: composition root over core + application/domain contracts.
+  // The runtime is the composition root: it wires the transport seam, so it may
+  // reach the concrete transports (CAN, DoIP) and the UDS link adapter. Domain
+  // and application stay protocol/transport free.
   '@vdp/runtime': [
     '@vdp/shared',
     '@vdp/domain',
     '@vdp/application',
     '@vdp/core',
     '@vdp/definitions',
+    '@vdp/protocols-uds',
     '@vdp/transport-can',
+    '@vdp/transport-doip',
   ],
 
   // Infrastructure above the core.
@@ -300,7 +305,8 @@ test('the production graph matches the documented structure snapshot', () => {
     .join('\n');
   assert.match(snapshot, /@vdp\/domain: @vdp\/shared/);
   assert.match(snapshot, /@vdp\/application: @vdp\/domain/);
-  assert.match(snapshot, /@vdp\/runtime: @vdp\/application @vdp\/core @vdp\/definitions @vdp\/domain @vdp\/shared @vdp\/transport-can/);
+  assert.match(snapshot, /@vdp\/runtime: @vdp\/application @vdp\/core @vdp\/definitions @vdp\/domain @vdp\/protocols-uds @vdp\/shared @vdp\/transport-can @vdp\/transport-doip/);
   assert.match(snapshot, /@vdp\/protocols-uds: @vdp\/shared/);
+  // DoIP stays low-level: it must not pull in the protocol layer itself.
   assert.doesNotMatch(snapshot, /@vdp\/transport-doip:.*protocols/);
 });
