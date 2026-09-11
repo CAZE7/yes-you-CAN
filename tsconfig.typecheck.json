@@ -11,6 +11,9 @@
     "types": ["node"],
     "paths": {
       "@vdp/shared": ["./packages/shared/src/index.ts"],
+      "@vdp/domain": ["./packages/domain/src/index.ts"],
+      "@vdp/application": ["./packages/application/src/index.ts"],
+      "@vdp/runtime": ["./packages/runtime/src/index.ts"],
       "@vdp/core": ["./packages/core/src/index.ts"],
       "@vdp/definitions": ["./packages/definitions/src/index.ts"],
       "@vdp/definitions/generic": ["./packages/definitions/src/generic/generic-package.ts"],

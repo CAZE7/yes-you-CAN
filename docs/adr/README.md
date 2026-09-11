@@ -19,3 +19,5 @@ er wird durch einen neuen ersetzt, der den alten als `superseded` markiert.
 | [0011](0011-chart-core-without-dom.md) | Chart-Kern als DOM-freies, getestetes Paket | accepted |
 | [0012](0012-static-asset-containment.md) | Statische Auslieferung nach Pfadsegmenten, nicht nach Zeichenkette | accepted |
 | [0013](0013-transport-transaction-scope.md) | Transaktionssperre pro Verbindung, nicht pro Anfrage | accepted |
+| [0014](0014-domain-application-runtime.md) | Domain-, Application- und Runtime-Schicht: schrittweise Ablösung des Gott-Controllers | accepted |
+| [0015](0015-architecture-tests.md) | Architekturtests: der Abhängigkeitsgraph ist ein Test | accepted |

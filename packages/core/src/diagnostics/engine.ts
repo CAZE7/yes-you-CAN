@@ -319,6 +319,31 @@ export class DiagnosticEngine {
     return handle;
   }
 
+  /**
+   * Read the fault memory of exactly one ECU — same enrichment and marker
+   * path as {@link scanDtcs}, for single-ECU reads from the runtime layer.
+   * No session snapshot is recorded here: partial scans must not replace the
+   * "last full scan" that reports and summaries are based on (AGENTS 20).
+   */
+  async scanEcu(rxId: number, statusMask = 0xff): Promise<{ ecu: EcuSession; dtcs: EnrichedDtc[] }> {
+    const handle = this.requireHandle(rxId);
+    const dtcs = this.dtcScanner.enrich(
+      await handle.session.readDtcs(statusMask),
+      handle.session.record.name,
+      handle.session.record.id,
+    );
+    this.markDtcs(handle.session.record.name, dtcs);
+    return { ecu: handle.session.record, dtcs };
+  }
+
+  /** One marker per fault code (AGENTS 16 "DTC-Marker auf Zeitachse", AGENTS 20). */
+  private markDtcs(ecuName: string, dtcs: readonly EnrichedDtc[]): void {
+    for (const dtc of dtcs) {
+      const status = `0x${dtc.status.toString(16).toUpperCase().padStart(2, '0')}`;
+      this.recorder.addMarker(dtc.code, 'dtc', `${ecuName} · Status ${status}`);
+    }
+  }
+
   /** Read DTCs from every reachable ECU (AGENTS 20 "Scan all ECUs"). */
   async scanDtcs(statusMask = 0xff): Promise<Array<{ ecu: EcuSession; dtcs: EnrichedDtc[]; interpretations: OemDtcInterpretation[] }>> {
     if (!this.session) throw new Error('no session — call connect() first');
@@ -336,12 +361,8 @@ export class DiagnosticEngine {
           .filter((interpretation): interpretation is OemDtcInterpretation => interpretation !== undefined);
         results.push({ ecu: handle.session.record, dtcs, interpretations });
         // One marker per fault code, not one per ECU: the time axis should show
-        // *which* fault appeared, and a code is what the operator filters by
-        // (AGENTS 16 "DTC-Marker auf Zeitachse", AGENTS 20).
-        for (const dtc of dtcs) {
-          const status = `0x${dtc.status.toString(16).toUpperCase().padStart(2, '0')}`;
-          this.recorder.addMarker(dtc.code, 'dtc', `${handle.session.record.name} · Status ${status}`);
-        }
+        // *which* fault appeared, and a code is what the operator filters by.
+        this.markDtcs(handle.session.record.name, dtcs);
       } catch (error) {
         this.log.warn('DTC scan failed for ECU', {
           ecu: handle.session.record.name,
