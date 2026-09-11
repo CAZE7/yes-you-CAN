@@ -6,7 +6,7 @@
  * ISO 14229-2 explicitly defines session services transport-independently (AGENTS 2, 5).
  */
 
-export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'error';
+export type ConnectionState = "disconnected" | "connecting" | "connected" | "error";
 
 export interface ConnectionStatus {
   state: ConnectionState;
@@ -39,7 +39,7 @@ export interface AdapterInfo {
 }
 
 export interface TransportInfo {
-  kind: 'can' | 'can-fd' | 'doip' | 'replay' | 'virtual';
+  kind: "can" | "can-fd" | "doip" | "replay" | "virtual";
   channel: string;
   /** ISO-TP addressing parameters actually in use. */
   txId?: number;

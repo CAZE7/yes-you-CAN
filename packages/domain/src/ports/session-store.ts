@@ -31,10 +31,14 @@ export interface SessionStore<TSession extends { id: string }> {
 }
 
 /** In-memory store for tests, simulation and ephemeral runs. */
-export class InMemorySessionStore<TSession extends { id: string }> implements SessionStore<TSession> {
+export class InMemorySessionStore<TSession extends { id: string }>
+  implements SessionStore<TSession>
+{
   private readonly sessions = new Map<string, TSession>();
 
-  constructor(private readonly summarize: (session: TSession) => StoredSessionInfo = defaultSummarize) {}
+  constructor(
+    private readonly summarize: (session: TSession) => StoredSessionInfo = defaultSummarize,
+  ) {}
 
   async save(session: TSession): Promise<void> {
     this.sessions.set(session.id, session);
@@ -58,12 +62,17 @@ export class InMemorySessionStore<TSession extends { id: string }> implements Se
 }
 
 function defaultSummarize<TSession extends { id: string }>(session: TSession): StoredSessionInfo {
-  const maybe = session as { startedAt?: unknown; endedAt?: unknown; title?: unknown; schemaVersion?: unknown };
+  const maybe = session as {
+    startedAt?: unknown;
+    endedAt?: unknown;
+    title?: unknown;
+    schemaVersion?: unknown;
+  };
   return {
     id: session.id,
-    startedAt: typeof maybe.startedAt === 'string' ? maybe.startedAt : '',
-    ...(typeof maybe.endedAt === 'string' ? { endedAt: maybe.endedAt } : {}),
-    ...(typeof maybe.title === 'string' ? { title: maybe.title } : {}),
-    ...(typeof maybe.schemaVersion === 'number' ? { schemaVersion: maybe.schemaVersion } : {}),
+    startedAt: typeof maybe.startedAt === "string" ? maybe.startedAt : "",
+    ...(typeof maybe.endedAt === "string" ? { endedAt: maybe.endedAt } : {}),
+    ...(typeof maybe.title === "string" ? { title: maybe.title } : {}),
+    ...(typeof maybe.schemaVersion === "number" ? { schemaVersion: maybe.schemaVersion } : {}),
   };
 }

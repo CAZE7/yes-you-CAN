@@ -41,7 +41,7 @@ export interface Marker {
   t: number;
   timestamp: string;
   label: string;
-  kind: 'dtc' | 'action' | 'note' | 'user';
+  kind: "dtc" | "action" | "note" | "user";
   detail?: string;
 }
 

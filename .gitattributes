@@ -1,0 +1,7 @@
+# Normalize line endings and mark generated files as such for diff stats.
+* text=auto eol=lf
+*.ts linguist-language=TypeScript
+*.js linguist-language=JavaScript
+package-lock.json linguist-generated=true
+coverage/* linguist-generated=true
+dist/* linguist-generated=true

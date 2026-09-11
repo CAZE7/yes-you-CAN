@@ -25,7 +25,9 @@ export const DEFAULT_UDS_TIMING: UdsTiming = {
  * Parse the timing fields of a DiagnosticSessionControl positive response:
  * [0x50, session, P2 high, P2 low, P2* high (10 ms units), P2* low].
  */
-export function parseSessionTiming(response: Uint8Array): { p2Ms: number; p2StarMs: number } | null {
+export function parseSessionTiming(
+  response: Uint8Array,
+): { p2Ms: number; p2StarMs: number } | null {
   if (response.length < 6) return null;
   // Length is validated above, so the indexed reads cannot fall off the end
   // (casts instead of `?? 0` — the fallback would be dead code and untestable).

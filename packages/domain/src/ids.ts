@@ -13,25 +13,25 @@ declare const idBrand: unique symbol;
 /** A branded id: a plain string at runtime, a distinct type at compile time. */
 export type Id<Tag extends string> = string & { readonly [idBrand]: Tag };
 
-export type VehicleId = Id<'vehicle'>;
-export type SessionId = Id<'session'>;
-export type EcuId = Id<'ecu'>;
-export type TraceId = Id<'trace'>;
-export type ActionId = Id<'action'>;
-export type DefinitionId = Id<'definition'>;
-export type MeasurementId = Id<'measurement'>;
-export type EventId = Id<'event'>;
+export type VehicleId = Id<"vehicle">;
+export type SessionId = Id<"session">;
+export type EcuId = Id<"ecu">;
+export type TraceId = Id<"trace">;
+export type ActionId = Id<"action">;
+export type DefinitionId = Id<"definition">;
+export type MeasurementId = Id<"measurement">;
+export type EventId = Id<"event">;
 
 /** Conventional prefix per id kind (`{prefix}_{time}_{counter}`). */
 export const ID_PREFIXES = {
-  vehicle: 'veh',
-  session: 'session',
-  ecu: 'ecu',
-  trace: 'trace',
-  action: 'act',
-  definition: 'def',
-  measurement: 'meas',
-  event: 'evt',
+  vehicle: "veh",
+  session: "session",
+  ecu: "ecu",
+  trace: "trace",
+  action: "act",
+  definition: "def",
+  measurement: "meas",
+  event: "evt",
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIXES;

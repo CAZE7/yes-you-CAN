@@ -1,19 +1,19 @@
 /** Byte/hex helpers. Kept dependency-free and allocation-conscious. */
 
-export function toHex(data: Uint8Array, separator = ' '): string {
-  let out = '';
+export function toHex(data: Uint8Array, separator = " "): string {
+  let out = "";
   for (let i = 0; i < data.length; i++) {
     if (i > 0) out += separator;
-    out += (data[i] as number).toString(16).padStart(2, '0');
+    out += (data[i] as number).toString(16).padStart(2, "0");
   }
   return out.toUpperCase();
 }
 
 export function fromHex(text: string): Uint8Array {
-  const clean = text.replace(/0x/gi, '').replace(/[^0-9a-fA-F]/g, '');
+  const clean = text.replace(/0x/gi, "").replace(/[^0-9a-fA-F]/g, "");
   if (clean.length % 2 !== 0) throw new Error(`fromHex: odd number of hex digits in "${text}"`);
   const out = new Uint8Array(clean.length / 2);
-  for (let i = 0; i < out.length; i++) out[i] = parseInt(clean.slice(i * 2, i * 2 + 2), 16);
+  for (let i = 0; i < out.length; i++) out[i] = Number.parseInt(clean.slice(i * 2, i * 2 + 2), 16);
   return out;
 }
 
@@ -49,7 +49,12 @@ export function writeU16be(value: number): Uint8Array {
 }
 
 export function writeU32be(value: number): Uint8Array {
-  return new Uint8Array([(value >>> 24) & 0xff, (value >>> 16) & 0xff, (value >>> 8) & 0xff, value & 0xff]);
+  return new Uint8Array([
+    (value >>> 24) & 0xff,
+    (value >>> 16) & 0xff,
+    (value >>> 8) & 0xff,
+    value & 0xff,
+  ]);
 }
 
 /** Big-endian unsigned read of `length` bytes (1..6). */
@@ -84,7 +89,7 @@ export function readBitsBE(data: Uint8Array, bitOffset: number, bitLength: numbe
 }
 
 export function ascii(data: Uint8Array): string {
-  let out = '';
+  let out = "";
   for (const b of data) {
     if (b === 0) break;
     out += String.fromCharCode(b);

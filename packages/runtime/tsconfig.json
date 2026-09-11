@@ -5,9 +5,7 @@
     "outDir": "dist",
     "tsBuildInfoFile": "dist/.tsbuildinfo"
   },
-  "include": [
-    "src/**/*.ts"
-  ],
+  "include": ["src/**/*.ts"],
   "references": [
     {
       "path": "../shared"
@@ -28,7 +26,5 @@
       "path": "../transport/can"
     }
   ],
-  "exclude": [
-    "src/**/*.spec.ts"
-  ]
+  "exclude": ["src/**/*.spec.ts"]
 }

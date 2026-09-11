@@ -1,0 +1,12 @@
+# Default owners for the whole repository.
+# The platform owner reviews every change; domain experts are added per area
+# as the team grows.
+
+* @CAZE7
+
+# Security-sensitive areas — require explicit sign-off.
+/apps/web/src/server.ts @CAZE7
+/packages/core/ @CAZE7
+/packages/protocols/ @CAZE7
+/packages/transport/ @CAZE7
+/docs/adr/ @CAZE7

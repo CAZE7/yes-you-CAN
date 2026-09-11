@@ -26,7 +26,7 @@ export class MemoryByteStream implements ByteStream {
 
   async write(data: string): Promise<void> {
     this.written.push(data);
-    if (!this.opened) throw new Error('stream is closed');
+    if (!this.opened) throw new Error("stream is closed");
     const reply = this.responder?.(data);
     if (reply) this.emit(reply);
   }
@@ -57,6 +57,6 @@ export class MemoryByteStream implements ByteStream {
   }
 
   describe(): string {
-    return 'MemoryByteStream';
+    return "MemoryByteStream";
   }
 }

@@ -17,34 +17,53 @@
  * which `CanBus` it hands over, which is exactly what ADR 0001 promises.
  */
 
-import { readFile } from 'node:fs/promises';
-import { AdapterUnsupportedError, TransportError, createLogger, type Logger } from '@vdp/shared';
+import { readFile } from "node:fs/promises";
 import {
-  DiagnosticEngine,
-  SessionLogger,
-  type FreezeFrame,
-  type DecodedSignal,
-  type Marker,
-  type MeasurementSample,
-  type EnrichedDtc,
-  type RawTraceEntry,
-  type SignalStatistics,
-  type VehicleSessionData,
-} from '@vdp/core';
-import type { DtcRecord } from '@vdp/protocols-uds';
-import { genericPackage, type DefinitionPackage } from '@vdp/definitions';
-import { ReplayTransport, recordingFromSessionJson, type CanBus, type ReplayRecording } from '@vdp/transport-can';
-import { DEFAULT_VIN, VirtualVehicle } from '@vdp/simulators';
-import {
-  AdapterCatalog,
-  validateSelection,
+  type AdapterCatalog,
   type AdapterDescription,
   type AdapterProbe,
   type AdapterSelection,
-} from '@vdp/adapter-host';
-import { AnalysisService, HeuristicAnalysisProvider, type AnalysisInput, type AnalysisResult } from '@vdp/ai';
-import { FileSystemSessionRepository, type SessionRepository, type StoredSessionSummary } from '@vdp/storage';
-import { REPLAY_ADAPTER_ID, SIMULATOR_ADAPTER_ID, createWebAdapterCatalog, isApplicationManaged } from './adapters.js';
+  validateSelection,
+} from "@vdp/adapter-host";
+import {
+  type AnalysisInput,
+  type AnalysisResult,
+  AnalysisService,
+  HeuristicAnalysisProvider,
+} from "@vdp/ai";
+import {
+  type DecodedSignal,
+  DiagnosticEngine,
+  type EnrichedDtc,
+  type FreezeFrame,
+  type Marker,
+  type MeasurementSample,
+  type RawTraceEntry,
+  SessionLogger,
+  type SignalStatistics,
+  type VehicleSessionData,
+} from "@vdp/core";
+import { type DefinitionPackage, genericPackage } from "@vdp/definitions";
+import type { DtcRecord } from "@vdp/protocols-uds";
+import { AdapterUnsupportedError, type Logger, TransportError, createLogger } from "@vdp/shared";
+import { DEFAULT_VIN, VirtualVehicle } from "@vdp/simulators";
+import {
+  FileSystemSessionRepository,
+  type SessionRepository,
+  type StoredSessionSummary,
+} from "@vdp/storage";
+import {
+  type CanBus,
+  type ReplayRecording,
+  ReplayTransport,
+  recordingFromSessionJson,
+} from "@vdp/transport-can";
+import {
+  REPLAY_ADAPTER_ID,
+  SIMULATOR_ADAPTER_ID,
+  createWebAdapterCatalog,
+  isApplicationManaged,
+} from "./adapters.js";
 
 export interface EcuView {
   id: string;
@@ -77,7 +96,14 @@ export interface FreezeFrameView {
     did: string;
     name: string;
     rawHex: string;
-    values: Array<{ signal: string; name: string; value: string; unit?: string; rawHex: string; outOfRange: boolean }>;
+    values: Array<{
+      signal: string;
+      name: string;
+      value: string;
+      unit?: string;
+      rawHex: string;
+      outOfRange: boolean;
+    }>;
   }>;
 }
 
@@ -178,7 +204,7 @@ export interface MarkerView {
   t: number;
   timestamp: string;
   label: string;
-  kind: 'dtc' | 'action' | 'note' | 'user' | 'anomaly';
+  kind: "dtc" | "action" | "note" | "user" | "anomaly";
   detail?: string;
 }
 
@@ -186,7 +212,7 @@ export interface TraceView {
   t: number;
   timestamp: string;
   canId: string;
-  direction: 'tx' | 'rx';
+  direction: "tx" | "rx";
   dlc: number;
   data: string;
   channel: string;
@@ -223,7 +249,13 @@ export interface AppState {
   live: boolean;
   signals: Array<{ id: string; name: string; unit?: string; critical: boolean }>;
   anomalies: Array<{ signal: string; reason: string; value?: number }>;
-  actions: Array<{ timestamp: string; kind: string; ecuId: string; description: string; result: string }>;
+  actions: Array<{
+    timestamp: string;
+    kind: string;
+    ecuId: string;
+    description: string;
+    result: string;
+  }>;
 }
 
 /**
@@ -233,7 +265,7 @@ export interface AppState {
  */
 export interface BackendEvent {
   /** 'marker' adds one event, 'markers' replaces the whole list (after a scan). */
-  type: 'sample' | 'trace' | 'dtc' | 'ecu' | 'analysis' | 'error' | 'marker' | 'markers';
+  type: "sample" | "trace" | "dtc" | "ecu" | "analysis" | "error" | "marker" | "markers";
   payload: unknown;
 }
 
@@ -264,7 +296,7 @@ export interface BackendOptions {
   trace?: string;
 }
 
-const MAX_TRACE = 800;
+const _MAX_TRACE = 800;
 
 /**
  * Where the CAN traffic comes from.
@@ -272,7 +304,7 @@ const MAX_TRACE = 800;
  * `simulator` and `replay` are application-owned transports; `hardware` means a
  * real adapter builds the bus.
  */
-export type BackendMode = 'simulator' | 'replay' | 'hardware';
+export type BackendMode = "simulator" | "replay" | "hardware";
 
 export class DemoBackend {
   readonly log: Logger;
@@ -301,16 +333,23 @@ export class DemoBackend {
    */
 
   constructor(private readonly options: BackendOptions = {}) {
-    this.log = (options.logger ?? createLogger('web', { level: 'INFO' })).child('backend');
+    this.log = (options.logger ?? createLogger("web", { level: "INFO" })).child("backend");
     this.vin = options.vin ?? DEFAULT_VIN;
     this.definitions = options.definitions ?? [genericPackage];
-    this.analysisService = new AnalysisService({ providers: [new HeuristicAnalysisProvider()], logger: this.log });
+    this.analysisService = new AnalysisService({
+      providers: [new HeuristicAnalysisProvider()],
+      logger: this.log,
+    });
     this.adapters = options.adapters ?? createWebAdapterCatalog();
     this.selection = options.selection ?? { id: SIMULATOR_ADAPTER_ID, config: {} };
     this.mode = modeForSelection(this.selection, this.adapters);
     // Persistence is opt-in so tests and ephemeral runs stay side-effect free.
     if (options.repository) this.repository = options.repository;
-    else if (options.sessionDir) this.repository = new FileSystemSessionRepository({ rootDir: options.sessionDir, logger: this.log });
+    else if (options.sessionDir)
+      this.repository = new FileSystemSessionRepository({
+        rootDir: options.sessionDir,
+        logger: this.log,
+      });
   }
 
   /** Transport source currently selected. */
@@ -350,21 +389,32 @@ export class DemoBackend {
    * must leave the running session untouched rather than disconnect the user
    * from a vehicle because of a typo.
    */
-  async selectAdapter(selection: AdapterSelection): Promise<{ description: AdapterDescription; reconnectRequired: boolean }> {
+  async selectAdapter(
+    selection: AdapterSelection,
+  ): Promise<{ description: AdapterDescription; reconnectRequired: boolean }> {
     const validation = validateSelection(this.adapters, selection);
     if (!validation.ok) {
-      throw new AdapterUnsupportedError(`adapter selection rejected: ${validation.errors.join('; ')}`, {
-        adapterId: selection.id,
-        errors: validation.errors,
-      });
+      throw new AdapterUnsupportedError(
+        `adapter selection rejected: ${validation.errors.join("; ")}`,
+        {
+          adapterId: selection.id,
+          errors: validation.errors,
+        },
+      );
     }
     const wasConnected = this.connected;
     if (wasConnected) await this.stop();
     this.selection = selection;
     this.mode = modeForSelection(selection, this.adapters);
-    const description = await this.adapters.describe(selection.id, selection.config, { logger: this.log });
+    const description = await this.adapters.describe(selection.id, selection.config, {
+      logger: this.log,
+    });
     this.probe = description.probe;
-    this.log.info('adapter selected', { adapter: selection.id, mode: this.mode, available: description.probe.available });
+    this.log.info("adapter selected", {
+      adapter: selection.id,
+      mode: this.mode,
+      available: description.probe.available,
+    });
     return { description, reconnectRequired: wasConnected };
   }
 
@@ -372,7 +422,7 @@ export class DemoBackend {
   async saveSession(): Promise<{ id: string; repository: boolean }> {
     const engine = this.requireEngine();
     const data = engine.vehicleSession?.data;
-    if (!data) throw new Error('no session to save — call start() first');
+    if (!data) throw new Error("no session to save — call start() first");
     if (!this.repository) return { id: data.id, repository: false };
 
     await this.repository.save(data);
@@ -381,11 +431,19 @@ export class DemoBackend {
     const snapshot = this.sessionLogger.snapshot();
     await this.repository.appendLines(
       data.id,
-      'trace',
+      "trace",
       snapshot.trace.map((entry) => JSON.stringify({ ...entry, payload: entry.payloadHex })),
     );
-    await this.repository.appendLines(data.id, 'log', snapshot.log.map((entry) => JSON.stringify(entry)));
-    this.log.info('session saved', { id: data.id, samples: samples.length, trace: snapshot.trace.length });
+    await this.repository.appendLines(
+      data.id,
+      "log",
+      snapshot.log.map((entry) => JSON.stringify(entry)),
+    );
+    this.log.info("session saved", {
+      id: data.id,
+      samples: samples.length,
+      trace: snapshot.trace.length,
+    });
     return { id: data.id, repository: true };
   }
 
@@ -397,7 +455,7 @@ export class DemoBackend {
 
   /** ZIP session package for handover to another workstation (AGENTS 17). */
   async sessionPackage(id: string): Promise<Uint8Array> {
-    if (!this.repository) throw new Error('session persistence is not enabled');
+    if (!this.repository) throw new Error("session persistence is not enabled");
     return this.repository.exportPackage(id);
   }
 
@@ -408,12 +466,12 @@ export class DemoBackend {
     };
   }
 
-  private emit(type: BackendEvent['type'], payload: unknown): void {
+  private emit(type: BackendEvent["type"], payload: unknown): void {
     for (const listener of this.listeners) {
       try {
         listener({ type, payload });
       } catch (error) {
-        this.log.warn('event listener failed', { error: messageOf(error) });
+        this.log.warn("event listener failed", { error: messageOf(error) });
       }
     }
   }
@@ -421,15 +479,24 @@ export class DemoBackend {
   /** Open the selected transport and run ECU discovery. */
   async start(): Promise<AppState> {
     if (this.connected) return this.state();
-    this.log.info('backend starting', { mode: this.mode, adapter: this.selection.id, vin: this.vin });
+    this.log.info("backend starting", {
+      mode: this.mode,
+      adapter: this.selection.id,
+      vin: this.vin,
+    });
     try {
       // Probe first and report the result, but let the adapter itself produce the
       // authoritative error: a probe is allowed to be more conservative than the
       // real open (for example when a SocketCAN binding cannot list interfaces).
-      const described = await this.adapters.describe(this.selection.id, this.selection.config, { logger: this.log });
+      const described = await this.adapters.describe(this.selection.id, this.selection.config, {
+        logger: this.log,
+      });
       this.probe = described.probe;
       if (!described.probe.available) {
-        this.log.warn('adapter probe reports unavailable', { adapter: this.selection.id, detail: described.probe.detail });
+        this.log.warn("adapter probe reports unavailable", {
+          adapter: this.selection.id,
+          detail: described.probe.detail,
+        });
       }
       const bus = await this.openBus();
       this.bus = bus;
@@ -437,15 +504,18 @@ export class DemoBackend {
       // Raw trace: every frame on the bus is recorded verbatim (AGENTS 18).
       this.unsubscribeBus = bus.subscribe((frame) => {
         const entry = this.sessionLogger.recordFrame(frame);
-        this.emit('trace', toTraceView(entry));
+        this.emit("trace", toTraceView(entry));
       });
 
       this.engine = new DiagnosticEngine({ bus, definitions: this.definitions, logger: this.log });
       const result = await this.engine.connect();
       this.connected = true;
       this.ecus = result.ecus.map((discovered) => this.toEcuView(discovered.rxId));
-      this.sessionLogger.log('backend', 'connected', { adapter: this.selection.id, ecus: result.ecus.length });
-      this.log.info('backend connected', { adapter: this.selection.id, ecus: result.ecus.length });
+      this.sessionLogger.log("backend", "connected", {
+        adapter: this.selection.id,
+        ecus: result.ecus.length,
+      });
+      this.log.info("backend connected", { adapter: this.selection.id, ecus: result.ecus.length });
       await this.identify();
       return this.state();
     } catch (error) {
@@ -465,15 +535,15 @@ export class DemoBackend {
    */
   private async openBus(): Promise<CanBus> {
     if (this.options.bus) {
-      this.log.info('using the injected bus', { adapter: this.selection.id });
+      this.log.info("using the injected bus", { adapter: this.selection.id });
       return this.options.bus;
     }
-    if (this.mode === 'simulator') {
+    if (this.mode === "simulator") {
       this.vehicle = this.createVirtualVehicle();
       await this.vehicle.start();
       return this.vehicle.testerBus;
     }
-    if (this.mode === 'replay') {
+    if (this.mode === "replay") {
       return this.createReplayBus();
     }
     const entry = this.adapters.require(this.selection.id);
@@ -483,9 +553,15 @@ export class DemoBackend {
         { adapterId: entry.id },
       );
     }
-    const probe = await this.adapters.describe(entry.id, this.selection.config, { logger: this.log });
+    const probe = await this.adapters.describe(entry.id, this.selection.config, {
+      logger: this.log,
+    });
     this.probe = probe.probe;
-    this.log.info('opening adapter', { adapter: entry.id, detail: probe.probe.detail, config: this.selection.config });
+    this.log.info("opening adapter", {
+      adapter: entry.id,
+      detail: probe.probe.detail,
+      config: this.selection.config,
+    });
     return entry.create(this.selection.config, { logger: this.log });
   }
 
@@ -504,10 +580,10 @@ export class DemoBackend {
         : {
             dtcs: {
               engine: [
-                { code: 'P0420', status: 0x2f },
-                { code: 'P0300', status: 0x2f },
+                { code: "P0420", status: 0x2f },
+                { code: "P0300", status: 0x2f },
               ],
-              abs: [{ code: 'C1234', status: 0x08 }],
+              abs: [{ code: "C1234", status: 0x08 }],
             },
           }),
     });
@@ -523,14 +599,19 @@ export class DemoBackend {
   private async createReplayBus(): Promise<CanBus> {
     const recording = await this.loadRecording();
     const transport = new ReplayTransport(recording, { logger: this.log });
-    this.log.info('replay transport ready', { frames: recording.frames.length, channel: recording.channel });
+    this.log.info("replay transport ready", {
+      frames: recording.frames.length,
+      channel: recording.channel,
+    });
     return transport;
   }
 
   private async loadRecording(): Promise<ReplayRecording> {
     const reference = this.selection.config.trace;
     if (!reference) {
-      throw new AdapterUnsupportedError('replay needs a recording: pass a stored session id or a session export file');
+      throw new AdapterUnsupportedError(
+        "replay needs a recording: pass a stored session id or a session export file",
+      );
     }
     // A stored session id is looked up in the repository; anything else is
     // treated as a path to a session export and finally as inline JSON.
@@ -538,9 +619,16 @@ export class DemoBackend {
       const { data } = await this.repository.load(reference);
       const trace = await this.repository.readTrace(reference);
       if (trace.length === 0) {
-        throw new TransportError(`session ${reference} contains no raw trace to replay — was it saved without one?`, { id: reference });
+        throw new TransportError(
+          `session ${reference} contains no raw trace to replay — was it saved without one?`,
+          { id: reference },
+        );
       }
-      this.log.info('replaying stored session', { id: reference, frames: trace.length, vin: data.vehicle?.vin });
+      this.log.info("replaying stored session", {
+        id: reference,
+        frames: trace.length,
+        vin: data.vehicle?.vin,
+      });
       return {
         channel: data.transport.channel,
         frames: trace.map((line) => ({
@@ -554,9 +642,13 @@ export class DemoBackend {
         })),
       };
     }
-    const text = reference.trimStart().startsWith('{') ? reference : await readFile(reference, 'utf8').catch((error: unknown) => {
-      throw new TransportError(`cannot read recording "${reference}": ${messageOf(error)}`, { reference });
-    });
+    const text = reference.trimStart().startsWith("{")
+      ? reference
+      : await readFile(reference, "utf8").catch((error: unknown) => {
+          throw new TransportError(`cannot read recording "${reference}": ${messageOf(error)}`, {
+            reference,
+          });
+        });
     return recordingFromSessionJson(text);
   }
 
@@ -571,11 +663,11 @@ export class DemoBackend {
     this.unsubscribeBus?.();
     this.unsubscribeBus = undefined;
     await this.engine?.disconnect().catch((error: unknown) => {
-      this.log.warn('engine disconnect failed', { error: messageOf(error) });
+      this.log.warn("engine disconnect failed", { error: messageOf(error) });
     });
     this.engine = undefined;
     await this.vehicle?.stop().catch((error: unknown) => {
-      this.log.warn('simulator stop failed', { error: messageOf(error) });
+      this.log.warn("simulator stop failed", { error: messageOf(error) });
     });
     this.vehicle = undefined;
     this.bus = undefined;
@@ -596,16 +688,21 @@ export class DemoBackend {
         if (record) {
           view.id = record.id;
           view.name = record.name;
-          view.identification = record.identification.map((entry) => ({ label: entry.label, value: entry.value }));
-          view.services = record.supportedServices.map((sid) => `0x${sid.toString(16).toUpperCase()}`);
+          view.identification = record.identification.map((entry) => ({
+            label: entry.label,
+            value: entry.value,
+          }));
+          view.services = record.supportedServices.map(
+            (sid) => `0x${sid.toString(16).toUpperCase()}`,
+          );
           view.sessionType = record.sessionType;
           view.p2Ms = record.timing.p2Ms;
           view.reachable = record.reachable;
         }
-        this.emit('ecu', view);
+        this.emit("ecu", view);
       } catch (error) {
         view.lastError = messageOf(error);
-        this.log.warn('identification failed', { ecu: view.rxId, error: messageOf(error) });
+        this.log.warn("identification failed", { ecu: view.rxId, error: messageOf(error) });
       }
     }
     return this.ecus;
@@ -624,16 +721,16 @@ export class DemoBackend {
       for (const dtc of entry.dtcs) {
         const view = toDtcView(dtc, entry.ecu.name, rxId);
         this.dtcs.push(view);
-        this.emit('dtc', view);
+        this.emit("dtc", view);
         // The DTC markers themselves are written by the diagnostic engine while
         // scanning (one per code) — the backend only forwards the table row.
       }
     }
-    this.sessionLogger.log('dtc', 'scan complete', { count: this.dtcs.length });
-    this.log.info('DTC scan complete', { count: this.dtcs.length });
+    this.sessionLogger.log("dtc", "scan complete", { count: this.dtcs.length });
+    this.log.info("DTC scan complete", { count: this.dtcs.length });
     // The engine wrote one marker per fault code; publish the complete list so
     // open graphs show them immediately without waiting for a history reload.
-    this.emit('markers', toMarkerViews(engine.recorder.markers));
+    this.emit("markers", toMarkerViews(engine.recorder.markers));
     return this.dtcs;
   }
 
@@ -647,7 +744,10 @@ export class DemoBackend {
     const engine = this.requireEngine();
     const frame = await engine.readDtcSnapshot(rxId, code, recordNumber);
     if (!frame) throw new Error(`ECU 0x${rxId.toString(16)} has no freeze frame for ${code}`);
-    this.sessionLogger.log('dtc', `freeze frame ${code}`, { ecu: `0x${rxId.toString(16)}`, documented: frame.documented });
+    this.sessionLogger.log("dtc", `freeze frame ${code}`, {
+      ecu: `0x${rxId.toString(16)}`,
+      documented: frame.documented,
+    });
     return toFreezeFrameView(frame);
   }
 
@@ -684,7 +784,10 @@ export class DemoBackend {
    * whole safety chain: backup snapshot → explicit confirmation → write →
    * verification by re-read → audit log (AGENTS 20, 25, 26).
    */
-  async clearDtcs(rxId: number, request: { confirmed: boolean; vehicleState: VehicleStateView }): Promise<DtcClearView> {
+  async clearDtcs(
+    rxId: number,
+    request: { confirmed: boolean; vehicleState: VehicleStateView },
+  ): Promise<DtcClearView> {
     const engine = this.requireEngine();
     const result = await engine.clearDtcs(rxId, {
       userConfirmed: request.confirmed,
@@ -692,8 +795,23 @@ export class DemoBackend {
     });
     // The table has to reflect the new state, not the pre-clear one.
     await this.scanDtcs();
-    this.emit('marker', toMarkerViews([engine.recorder.addMarker(`Fehlerspeicher ${result.ecuName} gelöscht`, 'action', result.verified ? 'verifiziert' : 'nicht bestätigt')].filter((m): m is Marker => m !== null))[0]);
-    this.log.info('fault memory cleared', { ecu: result.ecuName, removed: result.comparison.removed.length, verified: result.verified });
+    this.emit(
+      "marker",
+      toMarkerViews(
+        [
+          engine.recorder.addMarker(
+            `Fehlerspeicher ${result.ecuName} gelöscht`,
+            "action",
+            result.verified ? "verifiziert" : "nicht bestätigt",
+          ),
+        ].filter((m): m is Marker => m !== null),
+      )[0],
+    );
+    this.log.info("fault memory cleared", {
+      ecu: result.ecuName,
+      removed: result.comparison.removed.length,
+      verified: result.verified,
+    });
     return {
       ecu: result.ecuName,
       cleared: result.cleared,
@@ -712,31 +830,43 @@ export class DemoBackend {
     if (this.live) return;
     this.live = true;
     const readers = this.liveReaders(engine);
-    const live = await engine.startLiveData({ signalIds, intervalMs: this.options.liveIntervalMs ?? 250 });
+    const live = await engine.startLiveData({
+      signalIds,
+      intervalMs: this.options.liveIntervalMs ?? 250,
+    });
     live.onRound((round) => {
       for (const decoded of round.signals) {
         const sample = engine.recorder.record(decoded);
         const view = toSampleView(sample, decoded.name);
-        this.emit('sample', view);
+        this.emit("sample", view);
       }
       for (const error of round.errors) {
-        this.log.warn('live poll error', { ecu: round.ecuId, did: error.did, message: error.message });
+        this.log.warn("live poll error", {
+          ecu: round.ecuId,
+          did: error.did,
+          message: error.message,
+        });
       }
     });
     void live.run(readers, engine.buildPlan(signalIds)).catch((error) => {
-      this.log.error('live data run failed', { error: messageOf(error) });
-      this.emit('error', { message: messageOf(error) });
+      this.log.error("live data run failed", { error: messageOf(error) });
+      this.emit("error", { message: messageOf(error) });
     });
-    this.log.info('live data started', { signals: signalIds?.length ?? 'all', intervalMs: this.options.liveIntervalMs ?? 250 });
+    this.log.info("live data started", {
+      signals: signalIds?.length ?? "all",
+      intervalMs: this.options.liveIntervalMs ?? 250,
+    });
   }
 
   stopLive(): void {
     this.engine?.stopLiveData();
     this.live = false;
-    this.log.info('live data stopped');
+    this.log.info("live data stopped");
   }
 
-  private liveReaders(engine: DiagnosticEngine): Array<{ ecuId: string; readRaw(did: number): Promise<Uint8Array | null> }> {
+  private liveReaders(
+    engine: DiagnosticEngine,
+  ): Array<{ ecuId: string; readRaw(did: number): Promise<Uint8Array | null> }> {
     const readers: Array<{ ecuId: string; readRaw(did: number): Promise<Uint8Array | null> }> = [];
     for (const view of this.ecus) {
       const handle = engine.handleFor(Number.parseInt(view.rxId, 16));
@@ -748,8 +878,8 @@ export class DemoBackend {
   /** Record a user marker into the measurement recording. */
   addMarker(label: string): void {
     const marker = this.engine?.recorder.addMarker(label);
-    this.sessionLogger.log('marker', label);
-    if (marker) this.emit('marker', toMarkerViews([marker])[0]);
+    this.sessionLogger.log("marker", label);
+    if (marker) this.emit("marker", toMarkerViews([marker])[0]);
   }
 
   /**
@@ -766,7 +896,9 @@ export class DemoBackend {
     return {
       startedAt,
       live: this.live,
-      samples: capped.map((sample) => toSampleView(sample, engine.findSignal(sample.signal)?.name ?? sample.signal)),
+      samples: capped.map((sample) =>
+        toSampleView(sample, engine.findSignal(sample.signal)?.name ?? sample.signal),
+      ),
       markers: toMarkerViews(engine.recorder.markers),
     };
   }
@@ -786,12 +918,17 @@ export class DemoBackend {
         delta: stat.delta ?? 0,
         outOfRangeCount: stat.outOfRangeCount,
       })),
-      dtcs: this.dtcs.map((dtc) => ({ code: dtc.code, description: dtc.description, severity: dtc.severity, ecu: dtc.ecu })),
+      dtcs: this.dtcs.map((dtc) => ({
+        code: dtc.code,
+        description: dtc.description,
+        severity: dtc.severity,
+        ecu: dtc.ecu,
+      })),
       anomalies: engine.recorder.anomalies(),
       notes: (this.session()?.notes ?? []).map((note) => note.text),
     };
     const result = await this.analysisService.analyze({ input });
-    this.emit('analysis', result);
+    this.emit("analysis", result);
     return result;
   }
 
@@ -813,7 +950,7 @@ export class DemoBackend {
     const snapshot = this.sessionLogger.snapshot();
     return SessionLogger.toJson({
       meta: {
-        sessionId: this.session()?.id ?? 'unknown',
+        sessionId: this.session()?.id ?? "unknown",
         vin: this.session()?.vehicle?.vin,
         mode: this.mode,
         adapter: this.selection.id,
@@ -839,16 +976,27 @@ export class DemoBackend {
     return {
       connected: this.connected,
       mode: this.mode,
-      sessionId: session?.id ?? 'not-started',
+      sessionId: session?.id ?? "not-started",
       ...(identity?.vin ? { vin: identity.vin } : {}),
       vehicle: describe(identity),
       ...(session?.mileageKm !== undefined ? { mileageKm: session.mileageKm } : {}),
       adapter: session
-        ? { id: session.adapter.id, name: session.adapter.name, kind: session.adapter.kind, channels: session.adapter.channels }
-        : { id: 'none', name: 'not connected', kind: 'none', channels: [] },
+        ? {
+            id: session.adapter.id,
+            name: session.adapter.name,
+            kind: session.adapter.kind,
+            channels: session.adapter.channels,
+          }
+        : { id: "none", name: "not connected", kind: "none", channels: [] },
       adapterSelection: this.selection,
       ...(this.probe ? { adapterProbe: this.probe } : {}),
-      transport: session ? { kind: session.transport.kind, channel: session.transport.channel, mtu: session.transport.mtu } : { kind: 'none', channel: '-', mtu: 0 },
+      transport: session
+        ? {
+            kind: session.transport.kind,
+            channel: session.transport.channel,
+            mtu: session.transport.mtu,
+          }
+        : { kind: "none", channel: "-", mtu: 0 },
       ecus: this.ecus,
       dtcs: this.dtcs,
       samples: this.recentSamples(engine),
@@ -872,18 +1020,27 @@ export class DemoBackend {
     const { samples } = engine.recorder.export();
     // A recorded sample carries only the signal id; the human readable name comes
     // from the definition so the snapshot and the live stream agree.
-    return samples.slice(-200).map((sample) => toSampleView(sample, engine.findSignal(sample.signal)?.name ?? sample.signal));
+    return samples
+      .slice(-200)
+      .map((sample) =>
+        toSampleView(sample, engine.findSignal(sample.signal)?.name ?? sample.signal),
+      );
   }
 
-  private signalList(engine: DiagnosticEngine | undefined): AppState['signals'] {
+  private signalList(engine: DiagnosticEngine | undefined): AppState["signals"] {
     if (!engine) return [];
     const seen = new Set<string>();
-    const list: AppState['signals'] = [];
+    const list: AppState["signals"] = [];
     for (const signals of engine.buildPlan().values()) {
       for (const signal of signals) {
         if (seen.has(signal.id)) continue;
         seen.add(signal.id);
-        list.push({ id: signal.id, name: signal.name, ...(signal.unit ? { unit: signal.unit } : {}), critical: signal.critical ?? false });
+        list.push({
+          id: signal.id,
+          name: signal.name,
+          ...(signal.unit ? { unit: signal.unit } : {}),
+          critical: signal.critical ?? false,
+        });
       }
     }
     return list;
@@ -895,7 +1052,7 @@ export class DemoBackend {
    */
   sessionData(): VehicleSessionData {
     const session = this.engine?.vehicleSession?.data;
-    if (!session) throw new Error('backend not started — call start() first');
+    if (!session) throw new Error("backend not started — call start() first");
     return session;
   }
 
@@ -914,8 +1071,13 @@ export class DemoBackend {
       rxId: `0x${rxId.toString(16).toUpperCase()}`,
       extended: discovered?.extended ?? false,
       reachable: record?.reachable ?? false,
-      identification: (record?.identification ?? []).map((entry) => ({ label: entry.label, value: entry.value })),
-      services: (record?.supportedServices ?? []).map((sid) => `0x${sid.toString(16).toUpperCase()}`),
+      identification: (record?.identification ?? []).map((entry) => ({
+        label: entry.label,
+        value: entry.value,
+      })),
+      services: (record?.supportedServices ?? []).map(
+        (sid) => `0x${sid.toString(16).toUpperCase()}`,
+      ),
       sessionType: record?.sessionType ?? 0,
       p2Ms: record?.timing.p2Ms ?? 0,
       dtcCount: record?.dtcs?.length ?? 0,
@@ -924,14 +1086,14 @@ export class DemoBackend {
   }
 
   private requireEngine(): DiagnosticEngine {
-    if (!this.engine) throw new Error('backend not started — call start() first');
+    if (!this.engine) throw new Error("backend not started — call start() first");
     return this.engine;
   }
 
   /** Close the transport and reset the session state; safe to call twice. */
   async stop(): Promise<void> {
     await this.teardown();
-    this.log.info('backend stopped', { mode: this.mode });
+    this.log.info("backend stopped", { mode: this.mode });
   }
 }
 
@@ -963,7 +1125,8 @@ function toSampleView(sample: MeasurementSample, name: string): SampleView {
     signal: sample.signal,
     name,
     value: formatValue(sample.value),
-    numeric: typeof sample.value === 'number' && Number.isFinite(sample.value) ? sample.value : null,
+    numeric:
+      typeof sample.value === "number" && Number.isFinite(sample.value) ? sample.value : null,
     rawValue: sample.rawValue,
     rawHex: sample.rawHex,
     ...(sample.unit ? { unit: sample.unit } : {}),
@@ -1013,7 +1176,7 @@ function toDtcView(dtc: EnrichedDtc, ecuName: string, rxId: string): DtcView {
     severity: dtc.severity,
     ...(dtc.hint ? { hint: dtc.hint } : {}),
     ecu: ecuName,
-    status: `0x${dtc.status.toString(16).toUpperCase().padStart(2, '0')}`,
+    status: `0x${dtc.status.toString(16).toUpperCase().padStart(2, "0")}`,
     confirmed: dtc.statusBits.confirmedDtc,
     pending: dtc.statusBits.pendingDtc,
     testFailed: dtc.statusBits.testFailed,
@@ -1026,14 +1189,18 @@ function toDtcView(dtc: EnrichedDtc, ecuName: string, rxId: string): DtcView {
 }
 
 function formatValue(value: number | string | boolean): string {
-  if (typeof value === 'number') return Number.isInteger(value) ? String(value) : value.toFixed(2);
+  if (typeof value === "number") return Number.isInteger(value) ? String(value) : value.toFixed(2);
   return String(value);
 }
 
-function describe(identity: { brand?: string; model?: string; modelYear?: number } | undefined): string {
-  if (!identity) return 'unknown vehicle';
-  const parts = [identity.brand, identity.model, identity.modelYear].filter((part): part is string | number => Boolean(part));
-  return parts.length > 0 ? parts.join(' ') : 'unknown vehicle';
+function describe(
+  identity: { brand?: string; model?: string; modelYear?: number } | undefined,
+): string {
+  if (!identity) return "unknown vehicle";
+  const parts = [identity.brand, identity.model, identity.modelYear].filter(
+    (part): part is string | number => Boolean(part),
+  );
+  return parts.length > 0 ? parts.join(" ") : "unknown vehicle";
 }
 
 function messageOf(error: unknown): string {
@@ -1042,19 +1209,20 @@ function messageOf(error: unknown): string {
 
 /** Which transport source a selection implies (AGENTS 4, 29, 32). */
 function modeForSelection(selection: AdapterSelection, catalog: AdapterCatalog): BackendMode {
-  if (selection.id === SIMULATOR_ADAPTER_ID) return 'simulator';
-  if (selection.id === REPLAY_ADAPTER_ID) return 'replay';
+  if (selection.id === SIMULATOR_ADAPTER_ID) return "simulator";
+  if (selection.id === REPLAY_ADAPTER_ID) return "replay";
   // An unknown id stays "hardware": the catalog rejects it with a clear message
   // when the bus is opened instead of silently falling back to the simulator.
   void catalog;
-  return 'hardware';
+  return "hardware";
 }
 
 /** Hex text (space separated or continuous) back into bytes. */
 function hexToBytes(hex: string): Uint8Array {
-  const compact = hex.replace(/[^0-9a-fA-F]/g, '');
+  const compact = hex.replace(/[^0-9a-fA-F]/g, "");
   const bytes = new Uint8Array(Math.floor(compact.length / 2));
-  for (let i = 0; i < bytes.length; i++) bytes[i] = Number.parseInt(compact.slice(i * 2, i * 2 + 2), 16);
+  for (let i = 0; i < bytes.length; i++)
+    bytes[i] = Number.parseInt(compact.slice(i * 2, i * 2 + 2), 16);
   return bytes;
 }
 

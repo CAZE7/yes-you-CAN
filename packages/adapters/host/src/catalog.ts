@@ -20,20 +20,24 @@
  * without the adapter package depending on them (AGENTS 34.2).
  */
 
-import { constants } from 'node:fs';
-import { access, stat } from 'node:fs/promises';
-import { AdapterUnsupportedError, TransportError, createLogger, type Logger } from '@vdp/shared';
-import type { AdapterCapabilities, CanBus } from '@vdp/transport-can';
-import { Elm327Adapter } from '@vdp/adapter-elm327';
-import { BITRATES, CanableAdapter } from '@vdp/adapter-canable';
-import { SocketCanAdapter, tryLoadSocketCanBinding, type SocketCanBinding } from '@vdp/adapter-socketcan';
-import { openSerialStream, configureSerialPort, type SerialByteStream } from './serial.js';
+import { constants } from "node:fs";
+import { access, stat } from "node:fs/promises";
+import { BITRATES, CanableAdapter } from "@vdp/adapter-canable";
+import { Elm327Adapter } from "@vdp/adapter-elm327";
+import {
+  SocketCanAdapter,
+  type SocketCanBinding,
+  tryLoadSocketCanBinding,
+} from "@vdp/adapter-socketcan";
+import { AdapterUnsupportedError, type Logger, TransportError, createLogger } from "@vdp/shared";
+import type { AdapterCapabilities, CanBus } from "@vdp/transport-can";
+import { type SerialByteStream, configureSerialPort, openSerialStream } from "./serial.js";
 
 /**
  * Where an adapter sits physically. The UI groups by this: serial devices need a
  * port, network adapters need a channel, `virtual` means "no hardware involved".
  */
-export type AdapterKind = 'serial' | 'socketcan' | 'simulator' | 'replay';
+export type AdapterKind = "serial" | "socketcan" | "simulator" | "replay";
 
 export interface AdapterConfig {
   /** Serial device path, e.g. `/dev/ttyUSB0`. */
@@ -69,7 +73,7 @@ export interface AdapterEntry {
   displayName: string;
   kind: AdapterKind;
   /** Transport the engine will report in the session (AGENTS 10). */
-  transport: 'can' | 'can-fd' | 'virtual';
+  transport: "can" | "can-fd" | "virtual";
   description: string;
   capabilities: AdapterCapabilities;
   /** Which settings are mandatory; drives validation and the UI form. */
@@ -93,10 +97,10 @@ export interface AdapterDescription {
   id: string;
   displayName: string;
   kind: AdapterKind;
-  transport: AdapterEntry['transport'];
+  transport: AdapterEntry["transport"];
   description: string;
   capabilities: AdapterCapabilities;
-  requires: AdapterEntry['requires'];
+  requires: AdapterEntry["requires"];
   defaults?: AdapterConfig;
   supportedBitrates?: readonly string[];
   /** Present when the application, not the adapter layer, owns the transport. */
@@ -108,9 +112,9 @@ export interface AdapterDescription {
 export function missingRequiredSettings(entry: AdapterEntry, config: AdapterConfig): string[] {
   const merged: AdapterConfig = { ...entry.defaults, ...pruneUndefined(config) };
   const missing: string[] = [];
-  if (entry.requires.device && !merged.device) missing.push('--device=<serial device>');
-  if (entry.requires.channel && !merged.channel) missing.push('--channel=<can interface>');
-  if (entry.requires.trace && !merged.trace) missing.push('--trace=<trace file>');
+  if (entry.requires.device && !merged.device) missing.push("--device=<serial device>");
+  if (entry.requires.channel && !merged.channel) missing.push("--channel=<can interface>");
+  if (entry.requires.trace && !merged.trace) missing.push("--trace=<trace file>");
   return missing;
 }
 
@@ -123,7 +127,9 @@ export class AdapterCatalog {
 
   register(entry: AdapterEntry): void {
     if (this.entries.has(entry.id)) {
-      throw new AdapterUnsupportedError(`adapter "${entry.id}" is already registered`, { adapterId: entry.id });
+      throw new AdapterUnsupportedError(`adapter "${entry.id}" is already registered`, {
+        adapterId: entry.id,
+      });
     }
     this.entries.set(entry.id, entry);
   }
@@ -136,7 +142,7 @@ export class AdapterCatalog {
     const entry = this.entries.get(id);
     if (!entry) {
       throw new AdapterUnsupportedError(
-        `unknown adapter "${id}". Available: ${this.ids().join(', ') || 'none'}`,
+        `unknown adapter "${id}". Available: ${this.ids().join(", ") || "none"}`,
         { adapterId: id, available: this.ids() },
       );
     }
@@ -152,7 +158,10 @@ export class AdapterCatalog {
   }
 
   /** Probe every entry — no device is opened, so this is safe on a live vehicle. */
-  async describeAll(config: AdapterConfig = {}, context: HostContext = {}): Promise<AdapterDescription[]> {
+  async describeAll(
+    config: AdapterConfig = {},
+    context: HostContext = {},
+  ): Promise<AdapterDescription[]> {
     const described: AdapterDescription[] = [];
     for (const entry of this.list()) {
       described.push(await this.describe(entry.id, config, context));
@@ -160,13 +169,22 @@ export class AdapterCatalog {
     return described;
   }
 
-  async describe(id: string, config: AdapterConfig = {}, context: HostContext = {}): Promise<AdapterDescription> {
+  async describe(
+    id: string,
+    config: AdapterConfig = {},
+    context: HostContext = {},
+  ): Promise<AdapterDescription> {
     const entry = this.require(id);
     const merged: AdapterConfig = { ...entry.defaults, ...pruneUndefined(config) };
     const missing = missingRequiredSettings(entry, config);
-    const probe = missing.length > 0
-      ? { available: false, detail: `missing ${missing.join(', ')}`, hints: [`pass ${missing[0]}`] }
-      : await probeSafely(entry, merged, context);
+    const probe =
+      missing.length > 0
+        ? {
+            available: false,
+            detail: `missing ${missing.join(", ")}`,
+            hints: [`pass ${missing[0]}`],
+          }
+        : await probeSafely(entry, merged, context);
     return {
       id: entry.id,
       displayName: entry.displayName,
@@ -184,7 +202,11 @@ export class AdapterCatalog {
 }
 
 /** A probe that throws is an unavailable adapter, never a crashed caller. */
-async function probeSafely(entry: AdapterEntry, config: AdapterConfig, context: HostContext): Promise<AdapterProbe> {
+async function probeSafely(
+  entry: AdapterEntry,
+  config: AdapterConfig,
+  context: HostContext,
+): Promise<AdapterProbe> {
   try {
     return await entry.probe(config, context);
   } catch (error) {
@@ -216,18 +238,33 @@ async function probeSerialDevice(device: string): Promise<AdapterProbe> {
   try {
     const info = await stat(device);
     if (info.isDirectory()) {
-      return { available: false, detail: `${device} is a directory`, hints: ['pass the character device, e.g. --device=/dev/ttyUSB0'] };
+      return {
+        available: false,
+        detail: `${device} is a directory`,
+        hints: ["pass the character device, e.g. --device=/dev/ttyUSB0"],
+      };
     }
     // Regular files are allowed deliberately: a trace piped through a FIFO is a
     // valid development setup even though a real adapter is a character device.
     await access(device, constants.R_OK | constants.W_OK);
   } catch (error) {
-    const code = typeof error === 'object' && error !== null && 'code' in error ? String((error as { code?: unknown }).code) : '';
+    const code =
+      typeof error === "object" && error !== null && "code" in error
+        ? String((error as { code?: unknown }).code)
+        : "";
     const hints =
-      code === 'ENOENT'
-        ? ['is the adapter plugged in?', 'list candidates with: ls -l /dev/ttyUSB* /dev/ttyACM*', 'on Linux add the user to the "dialout" group']
+      code === "ENOENT"
+        ? [
+            "is the adapter plugged in?",
+            "list candidates with: ls -l /dev/ttyUSB* /dev/ttyACM*",
+            'on Linux add the user to the "dialout" group',
+          ]
         : ['check the device permissions (group "dialout" on Linux)'];
-    return { available: false, detail: `${device} is not usable: ${error instanceof Error ? error.message : String(error)}`, hints };
+    return {
+      available: false,
+      detail: `${device} is not usable: ${error instanceof Error ? error.message : String(error)}`,
+      hints,
+    };
   }
   return { available: true, detail: `${device} is present and read/write accessible` };
 }
@@ -239,13 +276,20 @@ async function openConfiguredStream(
   logger?: Logger,
 ): Promise<SerialByteStream> {
   const device = config.device;
-  if (!device) throw new AdapterUnsupportedError('a serial device path is required', { adapterId: defaults.label });
+  if (!device)
+    throw new AdapterUnsupportedError("a serial device path is required", {
+      adapterId: defaults.label,
+    });
   const baudRate = config.baudRate ?? defaults.baudRate;
-  const log = (logger ?? createLogger('can', { level: 'INFO' })).child('can');
+  const log = (logger ?? createLogger("can", { level: "INFO" })).child("can");
   if (config.configurePort) {
     await configureSerialPort(device, { baudRate }, log);
   }
-  return openSerialStream({ device, label: `${defaults.label} ${device} @ ${baudRate}`, ...(logger ? { logger } : {}) });
+  return openSerialStream({
+    device,
+    label: `${defaults.label} ${device} @ ${baudRate}`,
+    ...(logger ? { logger } : {}),
+  });
 }
 
 export const ELM327_BITRATES: readonly string[] = Object.keys(BITRATES);
@@ -254,51 +298,74 @@ export const ELM327_BITRATES: readonly string[] = Object.keys(BITRATES);
 export function createHostAdapterCatalog(): AdapterCatalog {
   return new AdapterCatalog([
     {
-      id: 'elm327',
-      displayName: 'ELM327 / OBDLink (serial)',
-      kind: 'serial',
-      transport: 'can',
+      id: "elm327",
+      displayName: "ELM327 / OBDLink (serial)",
+      kind: "serial",
+      transport: "can",
       description:
         'Serial OBD-II interface in raw CAN mode (ATH1/ATCAF0). This is the "normal CAN adapter" the first release targets (AGENTS 29).',
       capabilities: Elm327Adapter.CAPABILITIES,
       requires: { device: true },
-      defaults: { baudRate: ELM327_DEFAULT_BAUD, channel: 'elm0' },
-      probe: async (config) => (config.device ? probeSerialDevice(config.device) : { available: false, detail: 'no --device given' }),
+      defaults: { baudRate: ELM327_DEFAULT_BAUD, channel: "elm0" },
+      probe: async (config) =>
+        config.device
+          ? probeSerialDevice(config.device)
+          : { available: false, detail: "no --device given" },
       create: async (config, context) => {
-        const stream = await openConfiguredStream(config, { baudRate: ELM327_DEFAULT_BAUD, label: 'ELM327' }, context.logger);
-        return new Elm327Adapter({ stream, ...(config.channel ? { channel: config.channel } : {}), ...(context.logger ? { logger: context.logger } : {}) });
+        const stream = await openConfiguredStream(
+          config,
+          { baudRate: ELM327_DEFAULT_BAUD, label: "ELM327" },
+          context.logger,
+        );
+        return new Elm327Adapter({
+          stream,
+          ...(config.channel ? { channel: config.channel } : {}),
+          ...(context.logger ? { logger: context.logger } : {}),
+        });
       },
     },
     {
-      id: 'slcan',
-      displayName: 'CANable / CANtact / USBtin (slcan)',
-      kind: 'serial',
-      transport: 'can',
-      description: 'Lawicel ASCII CAN interface (CANable, CANtact, USBtin) over a serial port. Classic CAN only.',
+      id: "slcan",
+      displayName: "CANable / CANtact / USBtin (slcan)",
+      kind: "serial",
+      transport: "can",
+      description:
+        "Lawicel ASCII CAN interface (CANable, CANtact, USBtin) over a serial port. Classic CAN only.",
       capabilities: CanableAdapter.CAPABILITIES,
       requires: { device: true },
-      defaults: { baudRate: SLCAN_DEFAULT_BAUD, bitrate: '500k', channel: 'slcan0' },
+      defaults: { baudRate: SLCAN_DEFAULT_BAUD, bitrate: "500k", channel: "slcan0" },
       supportedBitrates: ELM327_BITRATES,
       probe: async (config) => {
-        if (!config.device) return { available: false, detail: 'no --device given' };
+        if (!config.device) return { available: false, detail: "no --device given" };
         // Bitrate is validated up front: a typo would otherwise surface as a
         // silent BEL from the adapter while frames never appear.
-        const bitrate = config.bitrate ?? '500k';
+        const bitrate = config.bitrate ?? "500k";
         if (!(bitrate in BITRATES)) {
-          return { available: false, detail: `unsupported bitrate "${bitrate}"`, hints: [`supported: ${ELM327_BITRATES.join(', ')}`] };
+          return {
+            available: false,
+            detail: `unsupported bitrate "${bitrate}"`,
+            hints: [`supported: ${ELM327_BITRATES.join(", ")}`],
+          };
         }
         return probeSerialDevice(config.device);
       },
       create: async (config, context) => {
-        const bitrate = (config.bitrate ?? '500k') as keyof typeof BITRATES;
+        const bitrate = (config.bitrate ?? "500k") as keyof typeof BITRATES;
         if (!(bitrate in BITRATES)) {
-          throw new AdapterUnsupportedError(`unsupported slcan bitrate "${String(config.bitrate)}"`, { supported: ELM327_BITRATES });
+          throw new AdapterUnsupportedError(
+            `unsupported slcan bitrate "${String(config.bitrate)}"`,
+            { supported: ELM327_BITRATES },
+          );
         }
-        const stream = await openConfiguredStream(config, { baudRate: SLCAN_DEFAULT_BAUD, label: 'slcan' }, context.logger);
+        const stream = await openConfiguredStream(
+          config,
+          { baudRate: SLCAN_DEFAULT_BAUD, label: "slcan" },
+          context.logger,
+        );
         if (config.listenOnly) {
           // Listen-only is applied before the channel is opened (BITRATES/open
           // below), so the adapter cannot acknowledge a single frame.
-          await stream.write('L\r');
+          await stream.write("L\r");
         }
         return new CanableAdapter({
           stream,
@@ -309,14 +376,15 @@ export function createHostAdapterCatalog(): AdapterCatalog {
       },
     },
     {
-      id: 'socketcan',
-      displayName: 'SocketCAN (Linux)',
-      kind: 'socketcan',
-      transport: 'can',
-      description: 'Native Linux CAN interface (can0, vcan0) via a SocketCAN binding. No serial hardware involved.',
+      id: "socketcan",
+      displayName: "SocketCAN (Linux)",
+      kind: "socketcan",
+      transport: "can",
+      description:
+        "Native Linux CAN interface (can0, vcan0) via a SocketCAN binding. No serial hardware involved.",
       capabilities: SocketCanAdapter.CAPABILITIES,
       requires: { channel: true },
-      defaults: { channel: 'can0' },
+      defaults: { channel: "can0" },
       probe: async (config, context) => {
         let binding: SocketCanBinding;
         try {
@@ -324,26 +392,36 @@ export function createHostAdapterCatalog(): AdapterCatalog {
         } catch (error) {
           return {
             available: false,
-            detail: 'no SocketCAN binding installed',
+            detail: "no SocketCAN binding installed",
             hints: [
               'install a SocketCAN binding (e.g. "npm i socketcan") or use a serial adapter',
               error instanceof Error ? error.message : String(error),
             ],
           };
         }
-        if (!config.channel) return { available: false, detail: 'no --channel given' };
+        if (!config.channel) return { available: false, detail: "no --channel given" };
         try {
           const interfaces = (await binding.listInterfaces?.()) ?? [];
           if (interfaces.length > 0 && !interfaces.includes(config.channel)) {
-            return { available: false, detail: `interface ${config.channel} not found`, hints: [`available: ${interfaces.join(', ')}`] };
+            return {
+              available: false,
+              detail: `interface ${config.channel} not found`,
+              hints: [`available: ${interfaces.join(", ")}`],
+            };
           }
         } catch (error) {
-          context.logger?.debug('interface listing failed', { error: String(error) });
+          context.logger?.debug("interface listing failed", { error: String(error) });
         }
-        return { available: true, detail: `binding "${binding.name}" loaded, interface ${config.channel}` };
+        return {
+          available: true,
+          detail: `binding "${binding.name}" loaded, interface ${config.channel}`,
+        };
       },
       create: async (config, context) => {
-        if (!config.channel) throw new AdapterUnsupportedError('a SocketCAN interface is required (e.g. --channel=can0)');
+        if (!config.channel)
+          throw new AdapterUnsupportedError(
+            "a SocketCAN interface is required (e.g. --channel=can0)",
+          );
         const binding = await tryLoadSocketCanBinding();
         return new SocketCanAdapter({
           binding,
@@ -357,12 +435,12 @@ export function createHostAdapterCatalog(): AdapterCatalog {
 
 /** Device candidates printed by `--list-adapters` / shown in the UI as a hint. */
 export const COMMON_SERIAL_DEVICES: readonly string[] = [
-  '/dev/ttyUSB0',
-  '/dev/ttyUSB1',
-  '/dev/ttyACM0',
-  '/dev/ttyACM1',
-  '/dev/tty.usbserial',
-  '/dev/tty.usbmodem',
+  "/dev/ttyUSB0",
+  "/dev/ttyUSB1",
+  "/dev/ttyACM0",
+  "/dev/ttyACM1",
+  "/dev/tty.usbserial",
+  "/dev/tty.usbmodem",
 ];
 
 /** Human readable one-liner for logs and the adapter panel. */
@@ -373,19 +451,29 @@ export function describeAdapterConfig(entry: AdapterEntry, config: AdapterConfig
   if (config.baudRate) parts.push(`${config.baudRate} baud`);
   if (config.bitrate) parts.push(config.bitrate);
   if (config.trace) parts.push(config.trace);
-  if (config.listenOnly) parts.push('listen-only');
-  return parts.join(' · ');
+  if (config.listenOnly) parts.push("listen-only");
+  return parts.join(" · ");
 }
 
 /** Guard used by callers that want a hard failure instead of a probe result. */
-export async function assertAdapterUsable(entry: AdapterEntry, config: AdapterConfig, context: HostContext = {}): Promise<AdapterProbe> {
+export async function assertAdapterUsable(
+  entry: AdapterEntry,
+  config: AdapterConfig,
+  context: HostContext = {},
+): Promise<AdapterProbe> {
   const missing = missingRequiredSettings(entry, config);
   if (missing.length > 0) {
-    throw new AdapterUnsupportedError(`${entry.id} needs ${missing.join(', ')}`, { adapterId: entry.id, missing });
+    throw new AdapterUnsupportedError(`${entry.id} needs ${missing.join(", ")}`, {
+      adapterId: entry.id,
+      missing,
+    });
   }
   const probe = await probeSafely(entry, { ...entry.defaults, ...pruneUndefined(config) }, context);
   if (!probe.available) {
-    throw new TransportError(`adapter ${entry.id} is not usable: ${probe.detail}`, { adapterId: entry.id, detail: probe.detail });
+    throw new TransportError(`adapter ${entry.id} is not usable: ${probe.detail}`, {
+      adapterId: entry.id,
+      detail: probe.detail,
+    });
   }
   return probe;
 }

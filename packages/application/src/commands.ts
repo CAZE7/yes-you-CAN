@@ -16,19 +16,19 @@ import type {
   SessionSummary,
   VehicleStateReading,
   VehicleSummary,
-} from '@vdp/domain';
-import type { Command } from './command-bus.js';
+} from "@vdp/domain";
+import type { Command } from "./command-bus.js";
 
 /** Stable string kinds — shared between producers and the handler registry. */
 export const CommandKinds = {
-  ConnectVehicle: 'vehicle.connect',
-  DisconnectVehicle: 'vehicle.disconnect',
-  ReadDtcs: 'dtc.read',
-  ClearDtcs: 'dtc.clear',
-  ReadDid: 'did.read',
-  SnapshotSignals: 'measurement.snapshot',
-  StartMeasurements: 'measurement.start',
-  StopMeasurements: 'measurement.stop',
+  ConnectVehicle: "vehicle.connect",
+  DisconnectVehicle: "vehicle.disconnect",
+  ReadDtcs: "dtc.read",
+  ClearDtcs: "dtc.clear",
+  ReadDid: "did.read",
+  SnapshotSignals: "measurement.snapshot",
+  StartMeasurements: "measurement.start",
+  StopMeasurements: "measurement.stop",
 } as const;
 
 export type CommandKind = (typeof CommandKinds)[keyof typeof CommandKinds];
@@ -132,7 +132,10 @@ export interface StartMeasurementsCommand extends Command<void> {
   readonly intervalMs?: number;
 }
 
-export function startMeasurements(signalIds?: readonly string[], intervalMs?: number): StartMeasurementsCommand {
+export function startMeasurements(
+  signalIds?: readonly string[],
+  intervalMs?: number,
+): StartMeasurementsCommand {
   return {
     kind: CommandKinds.StartMeasurements,
     ...(signalIds !== undefined ? { signalIds } : {}),

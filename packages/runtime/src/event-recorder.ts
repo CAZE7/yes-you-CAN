@@ -9,14 +9,14 @@
  */
 
 import {
-  DIAGNOSTIC_EVENT_NAMES,
-  systemClock,
   type Clock,
+  DIAGNOSTIC_EVENT_NAMES,
   type DiagnosticEventMap,
   type DiagnosticEventName,
   type EventBus,
   type Unsubscribe,
-} from '@vdp/domain';
+  systemClock,
+} from "@vdp/domain";
 
 /** One observed event. Payloads carry the correlation ids (§24/§25). */
 export interface AuditEntry {
@@ -45,13 +45,16 @@ export class EventAuditRecorder {
     }
   }
 
-  private record(event: DiagnosticEventName, payload: DiagnosticEventMap[DiagnosticEventName]): void {
+  private record(
+    event: DiagnosticEventName,
+    payload: DiagnosticEventMap[DiagnosticEventName],
+  ): void {
     const entry: AuditEntry = { at: this.now(), event, payload };
     // Correlation ids live on most payloads; read them structurally without
     // coupling the recorder to each payload shape.
     const fields = payload as unknown as Record<string, unknown>;
-    if (typeof fields.sessionId === 'string') entry.sessionId = fields.sessionId;
-    if (typeof fields.ecuId === 'string') entry.ecuId = fields.ecuId;
+    if (typeof fields.sessionId === "string") entry.sessionId = fields.sessionId;
+    if (typeof fields.ecuId === "string") entry.ecuId = fields.ecuId;
     this.entries.push(entry);
   }
 

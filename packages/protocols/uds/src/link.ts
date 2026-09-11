@@ -20,8 +20,8 @@ export interface UdsLink {
 export function isUdsLink(candidate: unknown): candidate is UdsLink {
   const value = candidate as Partial<UdsLink> | null;
   return (
-    typeof value?.request === 'function' &&
-    typeof value?.sendOnly === 'function' &&
-    typeof value?.receive === 'function'
+    typeof value?.request === "function" &&
+    typeof value?.sendOnly === "function" &&
+    typeof value?.receive === "function"
   );
 }

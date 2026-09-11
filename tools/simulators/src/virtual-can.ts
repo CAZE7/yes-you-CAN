@@ -6,8 +6,15 @@
  * hardware — that is the whole point of having it.
  */
 
-import type { AdapterCapabilities, AdapterInfo, CanBus, CanFilter, CanFrame, FrameListener } from '@vdp/transport-can';
-import { frameMatchesFilters } from '@vdp/transport-can';
+import type {
+  AdapterCapabilities,
+  AdapterInfo,
+  CanBus,
+  CanFilter,
+  CanFrame,
+  FrameListener,
+} from "@vdp/transport-can";
+import { frameMatchesFilters } from "@vdp/transport-can";
 
 export interface VirtualCanOptions {
   channel?: string;
@@ -29,7 +36,7 @@ export interface VirtualCanNetwork {
 }
 
 export function createVirtualCanNetwork(options: VirtualCanOptions = {}): VirtualCanNetwork {
-  const channel = options.channel ?? 'vcan0';
+  const channel = options.channel ?? "vcan0";
   const buses: VirtualCanBus[] = [];
   const frames: CanFrame[] = [];
   const random = options.random ?? Math.random;
@@ -58,7 +65,7 @@ export function createVirtualCanNetwork(options: VirtualCanOptions = {}): Virtua
         // `direction` is per observer: the sender sees its own frame as tx, every
         // other bus sees it as rx. A trace recorded with everything labelled rx
         // loses half the conversation and request/response pairing.
-        bus.deliver({ ...frame, direction: bus === from ? 'tx' : 'rx' });
+        bus.deliver({ ...frame, direction: bus === from ? "tx" : "rx" });
       }
     };
     if (options.latencyMs && options.latencyMs > 0) setTimeout(dispatch, options.latencyMs);
@@ -84,7 +91,7 @@ export class VirtualCanBus implements CanBus {
     capabilities: Partial<AdapterCapabilities>,
     private readonly options: VirtualCanOptions,
   ) {
-    this.info = { id, kind: 'virtual', name: `Virtual CAN ${id}`, channels: [channel] };
+    this.info = { id, kind: "virtual", name: `Virtual CAN ${id}`, channels: [channel] };
     this.capabilities = {
       can: capabilities.can ?? true,
       canFd: capabilities.canFd ?? false,
@@ -111,8 +118,14 @@ export class VirtualCanBus implements CanBus {
   async send(frame: CanFrame): Promise<void> {
     if (!this.opened) throw new Error(`virtual bus ${this.info.id} is not open`);
     this.txCount++;
-    const withDirection: CanFrame = { ...frame, channel: this.channel, direction: frame.direction ?? 'tx' };
-    const deliver = (this.network as unknown as { deliver: (frame: CanFrame, from: VirtualCanBus) => void }).deliver;
+    const withDirection: CanFrame = {
+      ...frame,
+      channel: this.channel,
+      direction: frame.direction ?? "tx",
+    };
+    const deliver = (
+      this.network as unknown as { deliver: (frame: CanFrame, from: VirtualCanBus) => void }
+    ).deliver;
     deliver(withDirection, this);
   }
 

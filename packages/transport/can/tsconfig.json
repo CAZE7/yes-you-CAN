@@ -5,15 +5,11 @@
     "outDir": "dist",
     "tsBuildInfoFile": "dist/.tsbuildinfo"
   },
-  "include": [
-    "src/**/*.ts"
-  ],
+  "include": ["src/**/*.ts"],
   "references": [
     {
       "path": "../../shared"
     }
   ],
-  "exclude": [
-    "src/**/*.spec.ts"
-  ]
+  "exclude": ["src/**/*.spec.ts"]
 }

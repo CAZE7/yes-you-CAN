@@ -8,11 +8,11 @@
  * exactly the interesting cases.
  */
 
-import { createLogger, toHex, type Logger } from '@vdp/shared';
-import type { CanBus, CanFrame } from '@vdp/transport-can';
-import { IsoTpConnection } from '@vdp/transport-iso-tp';
-import { SID } from '@vdp/protocols-uds';
-import type { DefinitionPackage } from '@vdp/definitions';
+import type { DefinitionPackage } from "@vdp/definitions";
+import { SID } from "@vdp/protocols-uds";
+import { type Logger, createLogger, toHex } from "@vdp/shared";
+import type { CanBus, CanFrame } from "@vdp/transport-can";
+import { IsoTpConnection } from "@vdp/transport-iso-tp";
 
 export interface DiscoveredEcu {
   /** Physical response identifier the ECU answered with. */
@@ -69,8 +69,9 @@ export class EcuDiscovery {
     private readonly bus: CanBus,
     private readonly options: DiscoveryOptions = {},
   ) {
-    this.log = (options.logger ?? createLogger('ecu', { level: 'INFO' })).child('ecu');
-    this.sleep = options.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
+    this.log = (options.logger ?? createLogger("ecu", { level: "INFO" })).child("ecu");
+    this.sleep =
+      options.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
   }
 
   /**
@@ -89,7 +90,7 @@ export class EcuDiscovery {
       // Our own transmissions are not ECU responses. An adapter that echoes sent
       // frames back (candump, and any bus opened with echoToSender) would
       // otherwise make every request identifier look like a responding ECU.
-      if (frame.direction === 'tx') return;
+      if (frame.direction === "tx") return;
       const key = frame.id;
       const entry = found.get(key) ?? {
         rxId: frame.id,
@@ -105,7 +106,10 @@ export class EcuDiscovery {
     const unsubscribe = this.bus.subscribe((frame) => record(frame));
 
     try {
-      this.log.info('ECU discovery started', { functionalId: `0x${functionalId.toString(16)}`, windowMs });
+      this.log.info("ECU discovery started", {
+        functionalId: `0x${functionalId.toString(16)}`,
+        windowMs,
+      });
       await this.sendFunctionalProbe(functionalId, probeService, extended);
       await this.sleep(windowMs / 2);
 
@@ -125,11 +129,15 @@ export class EcuDiscovery {
       const match = findDefinitionEcu(definitions, entry);
       if (match) entry.definitionEcuId = match;
     }
-    this.log.info('ECU discovery finished', { responders: results.length });
+    this.log.info("ECU discovery finished", { responders: results.length });
     return results;
   }
 
-  private async sendFunctionalProbe(functionalId: number, serviceId: number, extended: boolean): Promise<void> {
+  private async sendFunctionalProbe(
+    functionalId: number,
+    serviceId: number,
+    extended: boolean,
+  ): Promise<void> {
     const conn = new IsoTpConnection(this.bus, {
       txId: functionalId,
       rxId: -1, // no single response id; frames are collected via the bus subscription
@@ -142,18 +150,33 @@ export class EcuDiscovery {
     // when this adapter is unhappy (§34.26 — every probe path reports, none throws).
     try {
       await conn.sendOnly(new Uint8Array([serviceId, 0x80]));
-      this.log.debug('functional probe sent', { functionalId: `0x${functionalId.toString(16)}`, serviceId: `0x${serviceId.toString(16)}` });
+      this.log.debug("functional probe sent", {
+        functionalId: `0x${functionalId.toString(16)}`,
+        serviceId: `0x${serviceId.toString(16)}`,
+      });
     } catch (error) {
-      this.log.warn('functional probe could not be sent', { functionalId: `0x${functionalId.toString(16)}`, error: error instanceof Error ? error.message : String(error) });
+      this.log.warn("functional probe could not be sent", {
+        functionalId: `0x${functionalId.toString(16)}`,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
   private async probeSingle(txId: number, serviceId: number, extended: boolean): Promise<void> {
-    const conn = new IsoTpConnection(this.bus, { txId, rxId: -1, extended, padding: true, sleep: this.sleep });
+    const conn = new IsoTpConnection(this.bus, {
+      txId,
+      rxId: -1,
+      extended,
+      padding: true,
+      sleep: this.sleep,
+    });
     try {
       await conn.sendOnly(new Uint8Array([serviceId, 0x00]));
     } catch (error) {
-      this.log.debug('single probe failed', { txId: `0x${txId.toString(16)}`, error: error instanceof Error ? error.message : String(error) });
+      this.log.debug("single probe failed", {
+        txId: `0x${txId.toString(16)}`,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 }
@@ -163,11 +186,17 @@ function stripAddressByte(frame: CanFrame): Uint8Array {
   return frame.payload.slice();
 }
 
-function collectCandidates(definitions?: readonly DefinitionPackage[]): Array<{ txId: number; rxId: number; extended?: boolean }> {
+function collectCandidates(
+  definitions?: readonly DefinitionPackage[],
+): Array<{ txId: number; rxId: number; extended?: boolean }> {
   const candidates: Array<{ txId: number; rxId: number; extended?: boolean }> = [];
   for (const pkg of definitions ?? []) {
     for (const ecu of pkg.ecus) {
-      candidates.push({ txId: ecu.address.txId, rxId: ecu.address.rxId, extended: ecu.address.extended });
+      candidates.push({
+        txId: ecu.address.txId,
+        rxId: ecu.address.rxId,
+        extended: ecu.address.extended,
+      });
     }
   }
   // Common 11-bit OBD request identifiers, so a bare adapter still finds ECUs.
@@ -175,10 +204,14 @@ function collectCandidates(definitions?: readonly DefinitionPackage[]): Array<{ 
   return candidates;
 }
 
-function findDefinitionEcu(definitions: readonly DefinitionPackage[] | undefined, entry: DiscoveredEcu): string | undefined {
+function findDefinitionEcu(
+  definitions: readonly DefinitionPackage[] | undefined,
+  entry: DiscoveredEcu,
+): string | undefined {
   for (const pkg of definitions ?? []) {
     for (const ecu of pkg.ecus) {
-      if (ecu.address.rxId === entry.rxId && Boolean(ecu.address.extended) === entry.extended) return `${pkg.oem}:${ecu.id}`;
+      if (ecu.address.rxId === entry.rxId && Boolean(ecu.address.extended) === entry.extended)
+        return `${pkg.oem}:${ecu.id}`;
     }
   }
   return undefined;

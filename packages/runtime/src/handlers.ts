@@ -8,25 +8,31 @@
  */
 
 import {
-  CommandKinds,
-  QueryKinds,
+  type ActionRegistry,
   type ClearDtcsCommand,
   type CommandBus,
+  CommandKinds,
   type ConnectVehicleCommand,
   type ConnectVehicleResult,
   type DiagnosticContext,
   type GetAvailableActionsQuery,
+  type GetDtcListQuery,
   type GetEcuCapabilitiesQuery,
   type GetEcuQuery,
   type GetMeasurementsQuery,
-  type GetDtcListQuery,
+  QueryKinds,
   type ReadDidCommand,
   type ReadDtcsCommand,
   type SnapshotSignalsCommand,
   type StartMeasurementsCommand,
-  type ActionRegistry,
-} from '@vdp/application';
-import type { DtcService, EcuService, MeasurementService, SessionService, VehicleService } from './services.js';
+} from "@vdp/application";
+import type {
+  DtcService,
+  EcuService,
+  MeasurementService,
+  SessionService,
+  VehicleService,
+} from "./services.js";
 
 export interface RuntimeServices {
   vehicle: VehicleService;
@@ -81,13 +87,17 @@ export function registerRuntimeHandlers(bus: CommandBus, services: RuntimeServic
   bus.registerQuery(QueryKinds.GetVehicle, () => vehicle.identity());
   bus.registerQuery(QueryKinds.GetEcuList, () => ecus.list());
   bus.registerQuery(QueryKinds.GetEcu, (query) => ecus.get((query as GetEcuQuery).ecuId));
-  bus.registerQuery(QueryKinds.GetEcuCapabilities, (query) => ecus.capabilities((query as GetEcuCapabilitiesQuery).ecuId));
+  bus.registerQuery(QueryKinds.GetEcuCapabilities, (query) =>
+    ecus.capabilities((query as GetEcuCapabilitiesQuery).ecuId),
+  );
   bus.registerQuery(QueryKinds.GetDtcList, (query) => {
     const { ecuId } = query as GetDtcListQuery;
     const all = dtc.lastScanResult;
     return ecuId === undefined ? all : all.filter((dtcInfo) => dtcInfo.ecuId === ecuId);
   });
-  bus.registerQuery(QueryKinds.GetMeasurements, (query) => measurements.samples((query as GetMeasurementsQuery).signalId));
+  bus.registerQuery(QueryKinds.GetMeasurements, (query) =>
+    measurements.samples((query as GetMeasurementsQuery).signalId),
+  );
   bus.registerQuery(QueryKinds.GetAvailableActions, (query) => {
     const { ecuId } = query as GetAvailableActionsQuery;
     const context: DiagnosticContext = {

@@ -30,7 +30,7 @@ const PARENTS = new WeakMap<TaskLike, TaskLike | undefined>();
 
 /** A test is flaky when it passed although it needed retries to do so. */
 export function isFlakyTask(task: TaskLike): boolean {
-  return task.result?.state === 'pass' && (task.result.retryCount ?? 0) > 0;
+  return task.result?.state === "pass" && (task.result.retryCount ?? 0) > 0;
 }
 
 function* walkTasks(task: TaskLike): Generator<{ task: TaskLike; parent: TaskLike | undefined }> {
@@ -44,10 +44,14 @@ function* walkTasks(task: TaskLike): Generator<{ task: TaskLike; parent: TaskLik
 /** Human-readable name without the file task itself. */
 export function testNameOf(task: TaskLike): string {
   const parts: string[] = [task.name];
-  for (let parent = PARENTS.get(task); parent && PARENTS.get(parent) !== undefined; parent = PARENTS.get(parent)) {
+  for (
+    let parent = PARENTS.get(task);
+    parent && PARENTS.get(parent) !== undefined;
+    parent = PARENTS.get(parent)
+  ) {
     parts.unshift(parent.name);
   }
-  return parts.join(' > ');
+  return parts.join(" > ");
 }
 
 interface ModuleLike {
@@ -64,10 +68,10 @@ export default class FlakyReporter {
       const file = module.task;
       if (!file) continue;
       for (const { task } of walkTasks(file)) {
-        if (task.type !== 'test' || !isFlakyTask(task)) continue;
+        if (task.type !== "test" || !isFlakyTask(task)) continue;
         this.flaky.push({
           test: testNameOf(task),
-          file: module.relativeModuleId ?? module.moduleId ?? 'unknown',
+          file: module.relativeModuleId ?? module.moduleId ?? "unknown",
           retries: task.result?.retryCount ?? 0,
           durationMs: Math.round(task.result?.duration ?? 0),
         });
@@ -79,16 +83,18 @@ export default class FlakyReporter {
     for (const record of this.flaky) {
       const message =
         `FLAKY TEST: "${record.test}" (${record.file}) passed after ${record.retries} ` +
-        `retr${record.retries === 1 ? 'y' : 'ies'} (${record.durationMs} ms). ` +
-        'Fix the test or the code under test — retries only mask nondeterminism.';
+        `retr${record.retries === 1 ? "y" : "ies"} (${record.durationMs} ms). ` +
+        "Fix the test or the code under test — retries only mask nondeterminism.";
       if (process.env.GITHUB_ACTIONS) {
-        process.stdout.write(`::warning file=${record.file}::${message.replaceAll('::', '%3A%3A')}\n`);
+        process.stdout.write(
+          `::warning file=${record.file}::${message.replaceAll("::", "%3A%3A")}\n`,
+        );
       } else {
         process.stderr.write(`[flaky] ${message}\n`);
       }
     }
 
-    const summary = `${this.flaky.length} flaky test${this.flaky.length === 1 ? '' : 's'} detected (passed on retry)`;
+    const summary = `${this.flaky.length} flaky test${this.flaky.length === 1 ? "" : "s"} detected (passed on retry)`;
     if (process.env.GITHUB_ACTIONS) {
       process.stdout.write(`::notice title=Flaky tests::${summary}\n`);
     } else {

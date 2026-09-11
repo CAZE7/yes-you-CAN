@@ -7,9 +7,9 @@
  * PDF (workshop handout) — content and presentation stay separate.
  */
 
-import { describeVehicle, maskVin, type VehicleSessionData } from '@vdp/core';
-import type { SignalStatistics } from '@vdp/core';
-import { PdfDocument } from './pdf.js';
+import { type VehicleSessionData, describeVehicle, maskVin } from "@vdp/core";
+import type { SignalStatistics } from "@vdp/core";
+import { PdfDocument } from "./pdf.js";
 
 export interface ReportAnomaly {
   signal: string;
@@ -58,7 +58,7 @@ export function buildReport(input: ReportInput): ReportDocument {
   const recommendations = input.recommendations ?? defaultRecommendations(dtcs, anomalies);
 
   return {
-    title: 'Vehicle Diagnostic Report',
+    title: "Vehicle Diagnostic Report",
     subtitle: `${describeVehicle(session.vehicle)} · ${session.startedAt}`,
     generatedAt: new Date().toISOString(),
     // The section order is the AGENTS 21 report order — vehicle first, findings
@@ -83,17 +83,32 @@ function vehicleSection(input: ReportInput): ReportSection {
   const session = input.session;
   const analysis = session.vehicle?.vinAnalysis;
   return {
-    heading: 'Vehicle',
+    heading: "Vehicle",
     rows: [
-      { label: 'Vehicle', value: describeVehicle(session.vehicle) },
-      { label: 'VIN', value: input.maskVin ? maskVin(session.vehicle?.vin) : (session.vehicle?.vin ?? '—') },
-      { label: 'VIN check digit', value: analysis ? `${analysis.checkDigit} (expected ${analysis.expectedCheckDigitChar || '—'})` : '—' },
-      { label: 'Model year', value: session.vehicle?.modelYear ? String(session.vehicle.modelYear) : '—' },
-      { label: 'Mileage', value: session.mileageKm !== undefined ? `${session.mileageKm.toLocaleString('de-DE')} km` : '—' },
-      { label: 'Session started', value: session.startedAt },
-      { label: 'Session ended', value: session.endedAt ?? 'still open' },
-      ...(input.workshop ? [{ label: 'Workshop', value: input.workshop }] : []),
-      ...(input.technician ? [{ label: 'Technician', value: input.technician }] : []),
+      { label: "Vehicle", value: describeVehicle(session.vehicle) },
+      {
+        label: "VIN",
+        value: input.maskVin ? maskVin(session.vehicle?.vin) : (session.vehicle?.vin ?? "—"),
+      },
+      {
+        label: "VIN check digit",
+        value: analysis
+          ? `${analysis.checkDigit} (expected ${analysis.expectedCheckDigitChar || "—"})`
+          : "—",
+      },
+      {
+        label: "Model year",
+        value: session.vehicle?.modelYear ? String(session.vehicle.modelYear) : "—",
+      },
+      {
+        label: "Mileage",
+        value:
+          session.mileageKm !== undefined ? `${session.mileageKm.toLocaleString("de-DE")} km` : "—",
+      },
+      { label: "Session started", value: session.startedAt },
+      { label: "Session ended", value: session.endedAt ?? "still open" },
+      ...(input.workshop ? [{ label: "Workshop", value: input.workshop }] : []),
+      ...(input.technician ? [{ label: "Technician", value: input.technician }] : []),
     ],
   };
 }
@@ -101,11 +116,19 @@ function vehicleSection(input: ReportInput): ReportSection {
 /** Which adapter and transport produced the data, and which definition version interpreted it. */
 function transportSection(session: VehicleSessionData): ReportSection {
   return {
-    heading: 'Adapter and transport',
+    heading: "Adapter and transport",
     rows: [
-      { label: 'Adapter', value: `${session.adapter.name} (${session.adapter.id})` },
-      { label: 'Transport', value: `${session.transport.kind} on ${session.transport.channel}, MTU ${session.transport.mtu}` },
-      { label: 'Definition package', value: session.definitionPackage ? `${session.definitionPackage.oem} v${session.definitionPackage.version}` : 'none' },
+      { label: "Adapter", value: `${session.adapter.name} (${session.adapter.id})` },
+      {
+        label: "Transport",
+        value: `${session.transport.kind} on ${session.transport.channel}, MTU ${session.transport.mtu}`,
+      },
+      {
+        label: "Definition package",
+        value: session.definitionPackage
+          ? `${session.definitionPackage.oem} v${session.definitionPackage.version}`
+          : "none",
+      },
     ],
   };
 }
@@ -113,17 +136,19 @@ function transportSection(session: VehicleSessionData): ReportSection {
 /** ECU explorer summary: one row per ECU plus the identification table (AGENTS 12). */
 function ecuOverviewSection(session: VehicleSessionData): ReportSection {
   return {
-    heading: 'ECU overview',
+    heading: "ECU overview",
     rows: session.ecus.map((ecu) => ({
       label: `${ecu.name} (0x${ecu.txId.toString(16)} → 0x${ecu.rxId.toString(16)})`,
-      value: ecu.reachable ? `reachable, ${ecu.identification.length} identification values, P2 ${ecu.timing.p2Ms} ms` : `not reachable${ecu.lastError ? `: ${ecu.lastError}` : ''}`,
+      value: ecu.reachable
+        ? `reachable, ${ecu.identification.length} identification values, P2 ${ecu.timing.p2Ms} ms`
+        : `not reachable${ecu.lastError ? `: ${ecu.lastError}` : ""}`,
     })),
     table: {
-      columns: ['ECU', 'Protocol', 'Identification', 'DTCs'],
+      columns: ["ECU", "Protocol", "Identification", "DTCs"],
       rows: session.ecus.map((ecu) => [
         ecu.name,
         ecu.protocol,
-        ecu.identification.map((entry) => `${entry.label}: ${entry.value}`).join('; ') || '—',
+        ecu.identification.map((entry) => `${entry.label}: ${entry.value}`).join("; ") || "—",
         String(ecu.dtcs?.length ?? 0),
       ]),
     },
@@ -132,19 +157,20 @@ function ecuOverviewSection(session: VehicleSessionData): ReportSection {
 
 /** Fault counts per severity plus the code list (AGENTS 20/21). */
 function dtcSummarySection(dtcs: readonly ReportDtc[]): ReportSection {
-  const severityCount = (severity: string): number => dtcs.filter((dtc) => dtc.severity === severity).length;
+  const severityCount = (severity: string): number =>
+    dtcs.filter((dtc) => dtc.severity === severity).length;
   return {
-    heading: 'DTC summary',
+    heading: "DTC summary",
     rows: [
-      { label: 'Total', value: String(dtcs.length) },
-      { label: 'Critical', value: String(severityCount('critical')) },
-      { label: 'Major', value: String(severityCount('major')) },
-      { label: 'Minor', value: String(severityCount('minor')) },
-      { label: 'Info', value: String(severityCount('info')) },
+      { label: "Total", value: String(dtcs.length) },
+      { label: "Critical", value: String(severityCount("critical")) },
+      { label: "Major", value: String(severityCount("major")) },
+      { label: "Minor", value: String(severityCount("minor")) },
+      { label: "Info", value: String(severityCount("info")) },
     ],
     table: {
-      columns: ['Code', 'Severity', 'ECU', 'Description'],
-      rows: dtcs.map((dtc) => [dtc.code, dtc.severity, dtc.ecu, dtc.description ?? '—']),
+      columns: ["Code", "Severity", "ECU", "Description"],
+      rows: dtcs.map((dtc) => [dtc.code, dtc.severity, dtc.ecu, dtc.description ?? "—"]),
     },
   };
 }
@@ -152,20 +178,20 @@ function dtcSummarySection(dtcs: readonly ReportDtc[]): ReportSection {
 /** Min/max/average/delta per recorded signal (AGENTS 16 statistics). */
 function measurementsSection(statistics: readonly SignalStatistics[]): ReportSection {
   return {
-    heading: 'Measurements',
+    heading: "Measurements",
     rows: [
-      { label: 'Signals recorded', value: String(statistics.length) },
-      { label: 'Samples', value: String(statistics.reduce((sum, stat) => sum + stat.samples, 0)) },
+      { label: "Signals recorded", value: String(statistics.length) },
+      { label: "Samples", value: String(statistics.reduce((sum, stat) => sum + stat.samples, 0)) },
     ],
     table: {
-      columns: ['Signal', 'Min', 'Max', 'Average', 'Delta', 'Unit'],
+      columns: ["Signal", "Min", "Max", "Average", "Delta", "Unit"],
       rows: statistics.map((stat) => [
         stat.name,
         formatNumber(stat.min),
         formatNumber(stat.max),
         formatNumber(stat.average),
         formatNumber(stat.delta),
-        stat.unit ?? '',
+        stat.unit ?? "",
       ]),
     },
   };
@@ -174,79 +200,92 @@ function measurementsSection(statistics: readonly SignalStatistics[]): ReportSec
 /** "Nothing found" is a result of its own — an empty section must not read as an omission. */
 function anomalySection(anomalies: readonly ReportAnomaly[]): ReportSection {
   return {
-    heading: 'Anomalies',
-    rows: anomalies.length === 0
-      ? [{ label: 'Result', value: 'no anomalies detected in the recorded window' }]
-      : anomalies.map((anomaly) => ({ label: anomaly.signal, value: anomaly.reason })),
+    heading: "Anomalies",
+    rows:
+      anomalies.length === 0
+        ? [{ label: "Result", value: "no anomalies detected in the recorded window" }]
+        : anomalies.map((anomaly) => ({ label: anomaly.signal, value: anomaly.reason })),
   };
 }
 
 /** Audit log of everything this session wrote (AGENTS 25). */
 function actionSection(session: VehicleSessionData): ReportSection {
   return {
-    heading: 'Diagnostic actions',
-    rows: session.actions.length === 0
-      ? [{ label: 'Result', value: 'read-only session — no write actions performed' }]
-      : session.actions.map((action) => ({
-          label: `${action.timestamp} · ${action.kind} · ${action.ecuId}`,
-          value: `${action.description} → ${action.result}${action.detail ? ` (${action.detail})` : ''}`,
-        })),
+    heading: "Diagnostic actions",
+    rows:
+      session.actions.length === 0
+        ? [{ label: "Result", value: "read-only session — no write actions performed" }]
+        : session.actions.map((action) => ({
+            label: `${action.timestamp} · ${action.kind} · ${action.ecuId}`,
+            value: `${action.description} → ${action.result}${action.detail ? ` (${action.detail})` : ""}`,
+          })),
   };
 }
 
 function noteSection(session: VehicleSessionData): ReportSection {
   return {
-    heading: 'Notes',
-    rows: session.notes.length === 0
-      ? [{ label: 'Result', value: '—' }]
-      : session.notes.map((note) => ({ label: note.timestamp, value: note.text })),
+    heading: "Notes",
+    rows:
+      session.notes.length === 0
+        ? [{ label: "Result", value: "—" }]
+        : session.notes.map((note) => ({ label: note.timestamp, value: note.text })),
   };
 }
 
 function recommendationSection(recommendations: readonly string[]): ReportSection {
   return {
-    heading: 'Recommendations',
-    rows: recommendations.length === 0
-      ? [{ label: 'Result', value: 'no recommendations' }]
-      : recommendations.map((recommendation, index) => ({ label: String(index + 1), value: recommendation })),
+    heading: "Recommendations",
+    rows:
+      recommendations.length === 0
+        ? [{ label: "Result", value: "no recommendations" }]
+        : recommendations.map((recommendation, index) => ({
+            label: String(index + 1),
+            value: recommendation,
+          })),
   };
 }
 
-function defaultRecommendations(dtcs: readonly ReportDtc[], anomalies: readonly ReportAnomaly[]): string[] {
+function defaultRecommendations(
+  dtcs: readonly ReportDtc[],
+  anomalies: readonly ReportAnomaly[],
+): string[] {
   const recommendations: string[] = [];
-  for (const dtc of dtcs.filter((d) => d.severity === 'critical').slice(0, 5)) {
-    recommendations.push(`${dtc.code} (${dtc.ecu}): ${dtc.hint ?? 'inspect before further use'}`);
+  for (const dtc of dtcs.filter((d) => d.severity === "critical").slice(0, 5)) {
+    recommendations.push(`${dtc.code} (${dtc.ecu}): ${dtc.hint ?? "inspect before further use"}`);
   }
   for (const anomaly of anomalies.slice(0, 5)) {
     recommendations.push(`${anomaly.signal}: ${anomaly.reason}`);
   }
-  if (recommendations.length === 0) recommendations.push('No critical findings. Repeat the measurement under load if a fault is intermittent.');
+  if (recommendations.length === 0)
+    recommendations.push(
+      "No critical findings. Repeat the measurement under load if a fault is intermittent.",
+    );
   return recommendations;
 }
 
 function formatNumber(value: number | null): string {
-  if (value === null) return '—';
+  if (value === null) return "—";
   return Number.isInteger(value) ? String(value) : value.toFixed(2);
 }
 
 /** Render to a self-contained HTML document. */
 export function renderHtml(document: ReportDocument): string {
   const escape = (text: string): string =>
-    text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
   const sections = document.sections
     .map((section) => {
       const rows = section.rows
         .map((row) => `<tr><th>${escape(row.label)}</th><td>${escape(row.value)}</td></tr>`)
-        .join('\n');
+        .join("\n");
       const table = section.table
-        ? `<table class="grid"><thead><tr>${section.table.columns.map((column) => `<th>${escape(column)}</th>`).join('')}</tr></thead><tbody>${section.table.rows
-            .map((row) => `<tr>${row.map((cell) => `<td>${escape(cell)}</td>`).join('')}</tr>`)
-            .join('')}</tbody></table>`
-        : '';
+        ? `<table class="grid"><thead><tr>${section.table.columns.map((column) => `<th>${escape(column)}</th>`).join("")}</tr></thead><tbody>${section.table.rows
+            .map((row) => `<tr>${row.map((cell) => `<td>${escape(cell)}</td>`).join("")}</tr>`)
+            .join("")}</tbody></table>`
+        : "";
       return `<section><h2>${escape(section.heading)}</h2><table class="kv"><tbody>${rows}</tbody></table>${table}</section>`;
     })
-    .join('\n');
+    .join("\n");
 
   return `<!doctype html>
 <html lang="en">
@@ -322,13 +361,18 @@ export function renderPdf(document: ReportDocument): Uint8Array {
       y -= 6;
       const columnWidth = contentWidth / section.table.columns.length;
       section.table.columns.forEach((column, index) => {
-        pdf.text(truncate(column, 20), margin + index * columnWidth, y, { fontSize: 9, bold: true });
+        pdf.text(truncate(column, 20), margin + index * columnWidth, y, {
+          fontSize: 9,
+          bold: true,
+        });
       });
       y -= 12;
       for (const row of section.table.rows) {
         ensureSpace(14);
         row.forEach((cell, index) => {
-          pdf.text(truncate(cell, Math.floor(columnWidth / 5)), margin + index * columnWidth, y, { fontSize: 8.5 });
+          pdf.text(truncate(cell, Math.floor(columnWidth / 5)), margin + index * columnWidth, y, {
+            fontSize: 8.5,
+          });
         });
         y -= 11;
       }
@@ -336,19 +380,22 @@ export function renderPdf(document: ReportDocument): Uint8Array {
     y -= 14;
   }
 
-  pdf.text('yes-you-CAN diagnostics platform', margin, margin, { fontSize: 8, color: [0.5, 0.5, 0.5] });
+  pdf.text("yes-you-CAN diagnostics platform", margin, margin, {
+    fontSize: 8,
+    color: [0.5, 0.5, 0.5],
+  });
   return pdf.toBytes();
 }
 
 function truncate(text: string, max: number): string {
-  return text.length > max ? `${text.slice(0, max - 1)}…`.replace('…', '-') : text;
+  return text.length > max ? `${text.slice(0, max - 1)}…`.replace("…", "-") : text;
 }
 
 function wrap(text: string, width: number): string[] {
   if (text.length <= width) return [text];
-  const words = text.split(' ');
+  const words = text.split(" ");
   const lines: string[] = [];
-  let current = '';
+  let current = "";
   for (const word of words) {
     if (current.length + word.length + 1 > width) {
       if (current) lines.push(current);

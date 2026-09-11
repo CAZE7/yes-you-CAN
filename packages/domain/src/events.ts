@@ -10,8 +10,8 @@
  * decision, not a stringly-typed free-for-all.
  */
 
-import type { DiagnosticCapability } from './capabilities.js';
-import type { RiskLevel, WriteOperationKind } from './risk.js';
+import type { DiagnosticCapability } from "./capabilities.js";
+import type { RiskLevel, WriteOperationKind } from "./risk.js";
 
 export interface VehicleConnectedPayload {
   sessionId: string;
@@ -102,35 +102,35 @@ export interface DiagnosticErrorPayload {
 }
 
 export interface DiagnosticEventMap {
-  'vehicle-connected': VehicleConnectedPayload;
-  'vehicle-disconnected': VehicleDisconnectedPayload;
-  'ecu-discovered': EcuDiscoveredPayload;
-  'ecu-capabilities-updated': EcuCapabilitiesUpdatedPayload;
-  'dtcs-read': DtcsReadPayload;
-  'dtcs-cleared': DtcsClearedPayload;
-  'did-read': DidReadPayload;
-  'measurements-recorded': MeasurementsRecordedPayload;
-  'safety-approval-requested': SafetyApprovalRequestedPayload;
-  'safety-approval-granted': SafetyApprovalGrantedPayload;
-  'safety-approval-denied': SafetyApprovalDeniedPayload;
-  'action-executed': ActionExecutedPayload;
-  'diagnostic-error': DiagnosticErrorPayload;
+  "vehicle-connected": VehicleConnectedPayload;
+  "vehicle-disconnected": VehicleDisconnectedPayload;
+  "ecu-discovered": EcuDiscoveredPayload;
+  "ecu-capabilities-updated": EcuCapabilitiesUpdatedPayload;
+  "dtcs-read": DtcsReadPayload;
+  "dtcs-cleared": DtcsClearedPayload;
+  "did-read": DidReadPayload;
+  "measurements-recorded": MeasurementsRecordedPayload;
+  "safety-approval-requested": SafetyApprovalRequestedPayload;
+  "safety-approval-granted": SafetyApprovalGrantedPayload;
+  "safety-approval-denied": SafetyApprovalDeniedPayload;
+  "action-executed": ActionExecutedPayload;
+  "diagnostic-error": DiagnosticErrorPayload;
 }
 
 export type DiagnosticEventName = keyof DiagnosticEventMap;
 
 export const DIAGNOSTIC_EVENT_NAMES: readonly DiagnosticEventName[] = [
-  'vehicle-connected',
-  'vehicle-disconnected',
-  'ecu-discovered',
-  'ecu-capabilities-updated',
-  'dtcs-read',
-  'dtcs-cleared',
-  'did-read',
-  'measurements-recorded',
-  'safety-approval-requested',
-  'safety-approval-granted',
-  'safety-approval-denied',
-  'action-executed',
-  'diagnostic-error',
+  "vehicle-connected",
+  "vehicle-disconnected",
+  "ecu-discovered",
+  "ecu-capabilities-updated",
+  "dtcs-read",
+  "dtcs-cleared",
+  "did-read",
+  "measurements-recorded",
+  "safety-approval-requested",
+  "safety-approval-granted",
+  "safety-approval-denied",
+  "action-executed",
+  "diagnostic-error",
 ];

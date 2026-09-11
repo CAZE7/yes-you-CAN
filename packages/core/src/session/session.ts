@@ -6,10 +6,10 @@
  * migrations (AGENTS 34.13/14), this module owns the shape.
  */
 
-import { createId, nowIso } from '@vdp/shared';
-import type { AdapterInfo, TransportInfo } from '@vdp/transport-can';
-import type { DtcRecord } from '@vdp/protocols-uds';
-import type { VehicleIdentity } from '../vehicle/identity.js';
+import type { DtcRecord } from "@vdp/protocols-uds";
+import { createId, nowIso } from "@vdp/shared";
+import type { AdapterInfo, TransportInfo } from "@vdp/transport-can";
+import type { VehicleIdentity } from "../vehicle/identity.js";
 
 export const SESSION_SCHEMA_VERSION = 1;
 
@@ -28,7 +28,7 @@ export interface EcuIdentification {
  */
 export interface ServiceProbeResult {
   service: number;
-  outcome: 'supported' | 'unsupported' | 'not-probed';
+  outcome: "supported" | "unsupported" | "not-probed";
   detail: string;
 }
 
@@ -37,7 +37,7 @@ export interface EcuSession {
   /** Definition package ECU id, when one matched. */
   definitionEcuId?: string;
   name: string;
-  protocol: 'uds' | 'kwp2000' | 'unknown';
+  protocol: "uds" | "kwp2000" | "unknown";
   txId: number;
   rxId: number;
   extended: boolean;
@@ -64,13 +64,13 @@ export interface SessionNote {
 export interface DiagnosticAction {
   id: string;
   timestamp: string;
-  kind: 'read' | 'write' | 'routine' | 'clear-dtc' | 'session-change' | 'security-access';
+  kind: "read" | "write" | "routine" | "clear-dtc" | "session-change" | "security-access";
   ecuId: string;
   description: string;
   /** Present for write operations (AGENTS 25 audit log). */
   previousValue?: string;
   newValue?: string;
-  result: 'success' | 'failed' | 'aborted';
+  result: "success" | "failed" | "aborted";
   detail?: string;
 }
 
@@ -113,7 +113,7 @@ export interface CreateSessionOptions {
 export function createSession(options: CreateSessionOptions): VehicleSessionData {
   return {
     schemaVersion: SESSION_SCHEMA_VERSION,
-    id: options.id ?? createId('session'),
+    id: options.id ?? createId("session"),
     startedAt: nowIso(options.clock),
     ...(options.title ? { title: options.title } : {}),
     adapter: options.adapter,
@@ -130,17 +130,17 @@ export function createSession(options: CreateSessionOptions): VehicleSessionData
 
 export function createEcuSession(options: {
   name: string;
-  protocol?: EcuSession['protocol'];
+  protocol?: EcuSession["protocol"];
   txId: number;
   rxId: number;
   extended?: boolean;
   definitionEcuId?: string;
 }): EcuSession {
   return {
-    id: createId('ecu'),
+    id: createId("ecu"),
     ...(options.definitionEcuId ? { definitionEcuId: options.definitionEcuId } : {}),
     name: options.name,
-    protocol: options.protocol ?? 'unknown',
+    protocol: options.protocol ?? "unknown",
     txId: options.txId,
     rxId: options.rxId,
     extended: options.extended ?? false,
@@ -224,20 +224,39 @@ export class VehicleSession {
     return this.index().byId.get(id);
   }
 
-  recordAction(action: Omit<DiagnosticAction, 'id' | 'timestamp'> & { timestamp?: string }): DiagnosticAction {
-    const entry: DiagnosticAction = { id: createId('act'), timestamp: action.timestamp ?? nowIso(), ...action };
+  recordAction(
+    action: Omit<DiagnosticAction, "id" | "timestamp"> & { timestamp?: string },
+  ): DiagnosticAction {
+    const entry: DiagnosticAction = {
+      id: createId("act"),
+      timestamp: action.timestamp ?? nowIso(),
+      ...action,
+    };
     this.data.actions.push(entry);
     return entry;
   }
 
   addNote(text: string, author?: string): SessionNote {
-    const note: SessionNote = { id: createId('note'), timestamp: nowIso(), text, ...(author ? { author } : {}) };
+    const note: SessionNote = {
+      id: createId("note"),
+      timestamp: nowIso(),
+      text,
+      ...(author ? { author } : {}),
+    };
     this.data.notes.push(note);
     return note;
   }
 
-  addDtcSnapshot(records: DtcRecord[], label?: string): { id: string; takenAt: string; records: DtcRecord[] } {
-    const snapshot = { id: createId('dtc'), takenAt: nowIso(), ...(label ? { label } : {}), records };
+  addDtcSnapshot(
+    records: DtcRecord[],
+    label?: string,
+  ): { id: string; takenAt: string; records: DtcRecord[] } {
+    const snapshot = {
+      id: createId("dtc"),
+      takenAt: nowIso(),
+      ...(label ? { label } : {}),
+      records,
+    };
     this.data.dtcSnapshots.push(snapshot);
     return snapshot;
   }
@@ -265,7 +284,7 @@ export class VehicleSession {
       ecuCount: this.data.ecus.length,
       reachableEcuCount: this.data.ecus.filter((e) => e.reachable).length,
       dtcCount: allDtcs.length,
-      criticalDtcCount: allDtcs.filter((d) => d.severity === 'critical').length,
+      criticalDtcCount: allDtcs.filter((d) => d.severity === "critical").length,
       actionCount: this.data.actions.length,
       signalCount: this.data.measurements.length,
     };

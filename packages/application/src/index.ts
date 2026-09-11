@@ -8,8 +8,8 @@
  */
 
 // Command bus (§8, §9)
-export { CommandBus, DuplicateHandlerError, NoHandlerError } from './command-bus.js';
-export type { Command, CommandHandler, Query, QueryHandler } from './command-bus.js';
+export { CommandBus, DuplicateHandlerError, NoHandlerError } from "./command-bus.js";
+export type { Command, CommandHandler, Query, QueryHandler } from "./command-bus.js";
 
 // Commands (§9)
 export {
@@ -22,7 +22,7 @@ export {
   snapshotSignals,
   startMeasurements,
   stopMeasurements,
-} from './commands.js';
+} from "./commands.js";
 export type {
   ClearDtcsCommand,
   CommandKind,
@@ -35,7 +35,7 @@ export type {
   SnapshotSignalsCommand,
   StartMeasurementsCommand,
   StopMeasurementsCommand,
-} from './commands.js';
+} from "./commands.js";
 
 // Queries (§9)
 export {
@@ -48,7 +48,7 @@ export {
   getMeasurements,
   getSession,
   getVehicle,
-} from './queries.js';
+} from "./queries.js";
 export type {
   GetAvailableActionsQuery,
   GetDtcListQuery,
@@ -59,8 +59,13 @@ export type {
   GetSessionQuery,
   GetVehicleQuery,
   QueryKind,
-} from './queries.js';
+} from "./queries.js";
 
 // Capability-driven actions (§7)
-export { ActionRegistry, createStandardActions } from './actions.js';
-export type { ActionDescriptor, ActionVerdict, DiagnosticActionDefinition, DiagnosticContext } from './actions.js';
+export { ActionRegistry, createStandardActions } from "./actions.js";
+export type {
+  ActionDescriptor,
+  ActionVerdict,
+  DiagnosticActionDefinition,
+  DiagnosticContext,
+} from "./actions.js";

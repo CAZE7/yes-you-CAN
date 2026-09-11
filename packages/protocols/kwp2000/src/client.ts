@@ -6,10 +6,10 @@
  * through the SafetyManager like any other write (AGENTS 26).
  */
 
-import { ProtocolError, createLogger, toHex, type Logger } from '@vdp/shared';
-import { NRC, nrcName, type UdsLink } from '@vdp/protocols-uds';
-import { UdsNegativeResponseError } from '@vdp/shared';
-import { KWP_LOCAL_ID, KWP_SID, kwpServiceName } from './services.js';
+import { NRC, type UdsLink, nrcName } from "@vdp/protocols-uds";
+import { type Logger, ProtocolError, createLogger, toHex } from "@vdp/shared";
+import { UdsNegativeResponseError } from "@vdp/shared";
+import { KWP_LOCAL_ID, KWP_SID, kwpServiceName } from "./services.js";
 
 export interface KwpFaultRecord {
   /** Raw two-byte fault code as transmitted. */
@@ -43,32 +43,50 @@ export class Kwp2000Client {
   private readonly sleep: (ms: number) => Promise<void>;
   private testerPresentTimer: ReturnType<typeof setInterval> | null = null;
 
-  constructor(private readonly link: UdsLink, private readonly options: Kwp2000Options = {}) {
-    this.log = (options.logger ?? createLogger('uds', { level: 'INFO' })).child('uds');
+  constructor(
+    private readonly link: UdsLink,
+    private readonly options: Kwp2000Options = {},
+  ) {
+    this.log = (options.logger ?? createLogger("uds", { level: "INFO" })).child("uds");
     this.p3Ms = options.p3Ms ?? 200;
-    this.sleep = options.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
+    this.sleep =
+      options.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
   }
 
   get name(): string {
-    return this.options.name ?? 'kwp2000-ecu';
+    return this.options.name ?? "kwp2000-ecu";
   }
 
   /** Generic request with KWP2000 negative response handling. */
-  async request(serviceId: number, data: readonly number[] = [], timeoutMs?: number): Promise<Uint8Array> {
+  async request(
+    serviceId: number,
+    data: readonly number[] = [],
+    timeoutMs?: number,
+  ): Promise<Uint8Array> {
     this.stats.requests++;
     const payload = new Uint8Array([serviceId, ...data]);
-    this.log.raw('kwp tx', { ecu: this.name, service: kwpServiceName(serviceId), payload: toHex(payload) });
+    this.log.raw("kwp tx", {
+      ecu: this.name,
+      service: kwpServiceName(serviceId),
+      payload: toHex(payload),
+    });
     const response = await this.link.request(payload, timeoutMs ?? this.p3Ms + 50);
     this.stats.responses++;
-    this.log.raw('kwp rx', { ecu: this.name, payload: toHex(response) });
+    this.log.raw("kwp rx", { ecu: this.name, payload: toHex(response) });
 
     if ((response[0] ?? 0) === 0x7f) {
       const nrc = response[2] ?? 0;
       this.stats.negativeResponses++;
-      throw new UdsNegativeResponseError(serviceId, nrc, nrcName(nrc), { protocol: 'kwp2000', ecu: this.name });
+      throw new UdsNegativeResponseError(serviceId, nrc, nrcName(nrc), {
+        protocol: "kwp2000",
+        ecu: this.name,
+      });
     }
     if ((response[0] ?? 0) !== serviceId + 0x40) {
-      throw new ProtocolError(`unexpected KWP2000 response for ${kwpServiceName(serviceId)}: ${toHex(response)}`, { ecu: this.name });
+      throw new ProtocolError(
+        `unexpected KWP2000 response for ${kwpServiceName(serviceId)}: ${toHex(response)}`,
+        { ecu: this.name },
+      );
     }
     return response;
   }
@@ -89,7 +107,10 @@ export class Kwp2000Client {
       const response = await this.request(KWP_SID.READ_DATA_BY_LOCAL_IDENTIFIER, [localId]);
       return response.subarray(2).slice();
     } catch (error) {
-      if (error instanceof UdsNegativeResponseError && (error.nrc === NRC.REQUEST_OUT_OF_RANGE || error.nrc === NRC.SUB_FUNCTION_NOT_SUPPORTED)) {
+      if (
+        error instanceof UdsNegativeResponseError &&
+        (error.nrc === NRC.REQUEST_OUT_OF_RANGE || error.nrc === NRC.SUB_FUNCTION_NOT_SUPPORTED)
+      ) {
         return null;
       }
       throw error;
@@ -123,7 +144,7 @@ export class Kwp2000Client {
       const low = response[offset + 1] ?? 0;
       const status = response[offset + 2] ?? 0;
       records.push({
-        raw: `${high.toString(16).padStart(2, '0')}${low.toString(16).padStart(2, '0')}`.toUpperCase(),
+        raw: `${high.toString(16).padStart(2, "0")}${low.toString(16).padStart(2, "0")}`.toUpperCase(),
         status,
         confirmed: (status & 0x08) !== 0,
         pending: (status & 0x04) !== 0,
@@ -146,7 +167,10 @@ export class Kwp2000Client {
     this.stopTesterPresent();
     this.testerPresentTimer = setInterval(() => {
       void this.testerPresent().catch((error) => {
-        this.log.warn('KWP2000 TesterPresent failed', { ecu: this.name, error: errorMessage(error) });
+        this.log.warn("KWP2000 TesterPresent failed", {
+          ecu: this.name,
+          error: errorMessage(error),
+        });
       });
     }, intervalMs);
   }
@@ -160,7 +184,7 @@ export class Kwp2000Client {
 }
 
 function decodeAscii(data: Uint8Array): string {
-  let out = '';
+  let out = "";
   for (const byte of data) {
     if (byte === 0) break;
     if (byte < 0x20 || byte > 0x7e) continue;

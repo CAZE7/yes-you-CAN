@@ -4,31 +4,35 @@
  * these numbers, so their edge cases are contract, not detail.
  */
 
-import assert from 'node:assert/strict';
-import fc from 'fast-check';
-import { describe, expect, test } from 'vitest';
-import type { MeasurementSample } from './types.js';
-import { summarizeAllSamples, summarizeSamples } from './statistics.js';
+import assert from "node:assert/strict";
+import fc from "fast-check";
+import { describe, test } from "vitest";
+import { summarizeAllSamples, summarizeSamples } from "./statistics.js";
+import type { MeasurementSample } from "./types.js";
 
-function sample(signal: string, value: number | string | boolean, overrides: Partial<MeasurementSample> = {}): MeasurementSample {
+function sample(
+  signal: string,
+  value: number | string | boolean,
+  overrides: Partial<MeasurementSample> = {},
+): MeasurementSample {
   return {
-    timestamp: '2026-09-11T08:00:00.000Z',
+    timestamp: "2026-09-11T08:00:00.000Z",
     t: 0,
     signal,
     value,
     rawValue: value,
-    rawHex: '00',
+    rawHex: "00",
     outOfRange: false,
     ...overrides,
   };
 }
 
-describe('summarizeSamples', () => {
-  test('an empty list yields the explicit zero form', () => {
-    const stats = summarizeSamples('engine.rpm', []);
+describe("summarizeSamples", () => {
+  test("an empty list yields the explicit zero form", () => {
+    const stats = summarizeSamples("engine.rpm", []);
     assert.deepEqual(stats, {
-      signal: 'engine.rpm',
-      name: 'engine.rpm',
+      signal: "engine.rpm",
+      name: "engine.rpm",
       outOfRangeCount: 0,
       samples: 0,
       min: null,
@@ -40,21 +44,21 @@ describe('summarizeSamples', () => {
     });
   });
 
-  test('a long recording is summarised, not crashed on', () => {
+  test("a long recording is summarised, not crashed on", () => {
     // `Math.min(...values)` hands every single sample to the call as one argument.
     // Around 100 000 of them the spread exceeds the argument limit and throws
     // RangeError, so a long drive could not be summarised at all — the exact list the
     // recorder produces, and a crash is the one answer the core must not give (§9).
-    let lo = Infinity;
-    let hi = -Infinity;
+    let lo = Number.POSITIVE_INFINITY;
+    let hi = Number.NEGATIVE_INFINITY;
     const many = [];
     for (let i = 0; i < 200_000; i++) {
-      const value = (i * 7919) % 1000 - 500;
+      const value = ((i * 7919) % 1000) - 500;
       lo = Math.min(lo, value);
       hi = Math.max(hi, value);
-      many.push(sample('speed', value));
+      many.push(sample("speed", value));
     }
-    const stats = summarizeSamples('speed', many);
+    const stats = summarizeSamples("speed", many);
     assert.equal(stats.samples, 200_000);
     assert.equal(stats.min, lo);
     assert.equal(stats.max, hi);
@@ -63,14 +67,14 @@ describe('summarizeSamples', () => {
     assert.equal(stats.last, many[many.length - 1]?.value);
   });
 
-  test('non-numeric and non-finite samples are excluded from the math but not hidden', () => {
-    const stats = summarizeSamples('mix', [
-      sample('mix', 10),
-      sample('mix', 'OPEN'),
-      sample('mix', true),
-      sample('mix', Number.NaN),
-      sample('mix', Number.POSITIVE_INFINITY),
-      sample('mix', 20, { outOfRange: true }),
+  test("non-numeric and non-finite samples are excluded from the math but not hidden", () => {
+    const stats = summarizeSamples("mix", [
+      sample("mix", 10),
+      sample("mix", "OPEN"),
+      sample("mix", true),
+      sample("mix", Number.NaN),
+      sample("mix", Number.POSITIVE_INFINITY),
+      sample("mix", 20, { outOfRange: true }),
     ]);
     assert.equal(stats.samples, 2);
     assert.equal(stats.min, 10);
@@ -79,54 +83,59 @@ describe('summarizeSamples', () => {
     assert.equal(stats.outOfRangeCount, 1);
   });
 
-  test('first and last preserve the sample order, delta is max - min', () => {
-    const stats = summarizeSamples('t', [sample('t', 5), sample('t', 1), sample('t', 9)]);
+  test("first and last preserve the sample order, delta is max - min", () => {
+    const stats = summarizeSamples("t", [sample("t", 5), sample("t", 1), sample("t", 9)]);
     assert.equal(stats.first, 5);
     assert.equal(stats.last, 9);
     assert.equal(stats.delta, 8);
   });
 
-  test('unit comes from the samples, falling back to the provided unit map', () => {
-    assert.equal(summarizeSamples('s', [sample('s', 1, { unit: 'rpm' })]).unit, 'rpm');
-    assert.equal(summarizeSamples('s', [sample('s', 1)], { units: new Map([['s', '°C']]) }).unit, '°C');
-    assert.equal(summarizeSamples('s', [sample('s', 1)]).unit, undefined);
+  test("unit comes from the samples, falling back to the provided unit map", () => {
+    assert.equal(summarizeSamples("s", [sample("s", 1, { unit: "rpm" })]).unit, "rpm");
+    assert.equal(
+      summarizeSamples("s", [sample("s", 1)], { units: new Map([["s", "°C"]]) }).unit,
+      "°C",
+    );
+    assert.equal(summarizeSamples("s", [sample("s", 1)]).unit, undefined);
   });
 
-  test('property: min ≤ average ≤ max and the average is the arithmetic mean', () => {
+  test("property: min ≤ average ≤ max and the average is the arithmetic mean", () => {
     fc.assert(
-      fc.property(fc.array(fc.integer({ min: -1000, max: 1000 }), { minLength: 1, maxLength: 200 }), (values) => {
-        const stats = summarizeSamples('p', values.map((v) => sample('p', v)));
-        assert.equal(stats.samples, values.length);
-        assert.ok((stats.min as number) <= (stats.average as number));
-        assert.ok((stats.average as number) <= (stats.max as number));
-        const expected = values.reduce((a, b) => a + b, 0) / values.length;
-        assert.ok(Math.abs((stats.average as number) - expected) < 1e-9);
-      }),
+      fc.property(
+        fc.array(fc.integer({ min: -1000, max: 1000 }), { minLength: 1, maxLength: 200 }),
+        (values) => {
+          const stats = summarizeSamples(
+            "p",
+            values.map((v) => sample("p", v)),
+          );
+          assert.equal(stats.samples, values.length);
+          assert.ok((stats.min as number) <= (stats.average as number));
+          assert.ok((stats.average as number) <= (stats.max as number));
+          const expected = values.reduce((a, b) => a + b, 0) / values.length;
+          assert.ok(Math.abs((stats.average as number) - expected) < 1e-9);
+        },
+      ),
     );
   });
 });
 
-describe('summarizeAllSamples', () => {
-  test('groups mixed samples per signal in first-appearance order', () => {
-    const stats = summarizeAllSamples([
-      sample('a', 1),
-      sample('b', 2),
-      sample('a', 3),
-    ]);
+describe("summarizeAllSamples", () => {
+  test("groups mixed samples per signal in first-appearance order", () => {
+    const stats = summarizeAllSamples([sample("a", 1), sample("b", 2), sample("a", 3)]);
     assert.deepEqual(
       stats.map((entry) => entry.signal),
-      ['a', 'b'],
+      ["a", "b"],
     );
     assert.equal(stats[0]?.samples, 2);
     assert.equal(stats[0]?.average, 2);
   });
 
-  test('names/units maps label the output for the UI', () => {
-    const stats = summarizeAllSamples([sample('engine.ct', 90)], {
-      names: new Map([['engine.ct', 'Coolant temperature']]),
-      units: new Map([['engine.ct', '°C']]),
+  test("names/units maps label the output for the UI", () => {
+    const stats = summarizeAllSamples([sample("engine.ct", 90)], {
+      names: new Map([["engine.ct", "Coolant temperature"]]),
+      units: new Map([["engine.ct", "°C"]]),
     });
-    assert.equal(stats[0]?.name, 'Coolant temperature');
-    assert.equal(stats[0]?.unit, '°C');
+    assert.equal(stats[0]?.name, "Coolant temperature");
+    assert.equal(stats[0]?.unit, "°C");
   });
 });

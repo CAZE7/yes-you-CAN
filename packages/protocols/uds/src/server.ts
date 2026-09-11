@@ -7,11 +7,20 @@
  * Response Pending (NRC 0x78), session gating and negative responses.
  */
 
-import { createLogger, toHex, type Logger } from '@vdp/shared';
-import { NRC } from './nrc.js';
-import { DTC_GROUP_ALL, DTC_REPORT, NEGATIVE_RESPONSE_SID, RESET_TYPE, SESSION, SID, SUPPRESS_POSITIVE_RESPONSE, positiveResponseSid } from './services.js';
-import { encodeDtcToBytes } from './dtc.js';
-import { DEFAULT_UDS_TIMING, type UdsTiming } from './timing.js';
+import { type Logger, createLogger, toHex } from "@vdp/shared";
+import { encodeDtcToBytes } from "./dtc.js";
+import { NRC } from "./nrc.js";
+import {
+  DTC_GROUP_ALL,
+  DTC_REPORT,
+  NEGATIVE_RESPONSE_SID,
+  RESET_TYPE,
+  SESSION,
+  SID,
+  SUPPRESS_POSITIVE_RESPONSE,
+  positiveResponseSid,
+} from "./services.js";
+import { DEFAULT_UDS_TIMING, type UdsTiming } from "./timing.js";
 
 export interface ServerDid {
   did: number;
@@ -72,7 +81,12 @@ export interface UdsServerStats {
 }
 
 export class UdsServer {
-  readonly stats: UdsServerStats = { requests: 0, positiveResponses: 0, negativeResponses: 0, pendingResponses: 0 };
+  readonly stats: UdsServerStats = {
+    requests: 0,
+    positiveResponses: 0,
+    negativeResponses: 0,
+    pendingResponses: 0,
+  };
 
   private readonly options: UdsServerOptions;
   private readonly log: Logger;
@@ -86,9 +100,12 @@ export class UdsServer {
   private securityFailures = 0;
   private lockedOutUntil = 0;
 
-  constructor(private readonly link: UdsServerLink, options: UdsServerOptions) {
+  constructor(
+    private readonly link: UdsServerLink,
+    options: UdsServerOptions,
+  ) {
     this.options = options;
-    this.log = (options.logger ?? createLogger('uds', { level: 'INFO' })).child('uds');
+    this.log = (options.logger ?? createLogger("uds", { level: "INFO" })).child("uds");
     this.timing = { ...DEFAULT_UDS_TIMING, ...(options.timing ?? {}) };
     for (const did of options.dids ?? []) this.dids.set(did.did, did);
     for (const routine of options.routines ?? []) this.routines.set(routine.id, routine);
@@ -105,7 +122,11 @@ export class UdsServer {
     this.unsubscribe = this.link.onMessage((payload) => {
       void this.handle(payload);
     });
-    this.log.debug('UDS server started', { ecu: this.name, dids: this.dids.size, dtcs: this.dtcs.length });
+    this.log.debug("UDS server started", {
+      ecu: this.name,
+      dids: this.dids.size,
+      dtcs: this.dtcs.length,
+    });
   }
 
   stop(): void {
@@ -128,16 +149,22 @@ export class UdsServer {
     if (payload.length === 0) return;
     this.stats.requests++;
     const serviceId = payload[0] as number;
-    this.log.raw('server rx', { ecu: this.name, payload: toHex(payload) });
+    this.log.raw("server rx", { ecu: this.name, payload: toHex(payload) });
 
     const respond = async (response: Uint8Array): Promise<void> => {
       const pending = (this.options.pendingResponseServices ?? []).includes(serviceId);
       if (pending) {
         this.stats.pendingResponses++;
-        await this.link.send(new Uint8Array([NEGATIVE_RESPONSE_SID, serviceId, NRC.REQUEST_CORRECTLY_RECEIVED_RESPONSE_PENDING]));
+        await this.link.send(
+          new Uint8Array([
+            NEGATIVE_RESPONSE_SID,
+            serviceId,
+            NRC.REQUEST_CORRECTLY_RECEIVED_RESPONSE_PENDING,
+          ]),
+        );
         await delay(this.options.pendingResponseDelayMs ?? 30);
       }
-      this.log.raw('server tx', { ecu: this.name, payload: toHex(response) });
+      this.log.raw("server tx", { ecu: this.name, payload: toHex(response) });
       await this.link.send(response);
     };
 
@@ -149,14 +176,20 @@ export class UdsServer {
       await respond(response);
     } catch (error) {
       this.stats.negativeResponses++;
-      this.log.error('server handler failed', { ecu: this.name, error: error instanceof Error ? error.message : String(error) });
+      this.log.error("server handler failed", {
+        ecu: this.name,
+        error: error instanceof Error ? error.message : String(error),
+      });
       // Reporting the failure must not fail on its own: the transport is what broke
       // here, and `start()` calls us as `void this.handle(payload)` — a rejection on
       // this path would be an unhandled rejection, i.e. a dead process instead of a log.
       try {
         await this.link.send(negativeResponse(serviceId, NRC.GENERAL_REJECT));
       } catch (sendError) {
-        this.log.warn('could not report the failure to the caller', { ecu: this.name, error: sendError instanceof Error ? sendError.message : String(sendError) });
+        this.log.warn("could not report the failure to the caller", {
+          ecu: this.name,
+          error: sendError instanceof Error ? sendError.message : String(sendError),
+        });
       }
     }
   }
@@ -193,14 +226,26 @@ export class UdsServer {
   }
 
   private handleSessionControl(payload: Uint8Array): Uint8Array {
-    if (payload.length < 2) return negativeResponse(SID.DIAGNOSTIC_SESSION_CONTROL, NRC.INCORRECT_MESSAGE_LENGTH_OR_INVALID_FORMAT);
+    if (payload.length < 2)
+      return negativeResponse(
+        SID.DIAGNOSTIC_SESSION_CONTROL,
+        NRC.INCORRECT_MESSAGE_LENGTH_OR_INVALID_FORMAT,
+      );
     const requested = (payload[1] ?? 0) & 0x7f;
-    if (!this.sessions.includes(requested)) return negativeResponse(SID.DIAGNOSTIC_SESSION_CONTROL, NRC.SUB_FUNCTION_NOT_SUPPORTED);
+    if (!this.sessions.includes(requested))
+      return negativeResponse(SID.DIAGNOSTIC_SESSION_CONTROL, NRC.SUB_FUNCTION_NOT_SUPPORTED);
     this.activeSession = requested;
     // [0x50, session, P2 (1 ms units), P2* (10 ms units)] — ISO 14229-2.
     const p2 = this.timing.p2Ms;
     const p2Star = Math.round(this.timing.p2StarMs / 10);
-    return new Uint8Array([positiveResponseSid(SID.DIAGNOSTIC_SESSION_CONTROL), requested, (p2 >> 8) & 0xff, p2 & 0xff, (p2Star >> 8) & 0xff, p2Star & 0xff]);
+    return new Uint8Array([
+      positiveResponseSid(SID.DIAGNOSTIC_SESSION_CONTROL),
+      requested,
+      (p2 >> 8) & 0xff,
+      p2 & 0xff,
+      (p2Star >> 8) & 0xff,
+      p2Star & 0xff,
+    ]);
   }
 
   /**
@@ -212,9 +257,14 @@ export class UdsServer {
    * rejected with subFunctionNotSupported.
    */
   private handleEcuReset(payload: Uint8Array): Uint8Array {
-    if (payload.length < 2) return negativeResponse(SID.ECU_RESET, NRC.INCORRECT_MESSAGE_LENGTH_OR_INVALID_FORMAT);
+    if (payload.length < 2)
+      return negativeResponse(SID.ECU_RESET, NRC.INCORRECT_MESSAGE_LENGTH_OR_INVALID_FORMAT);
     const resetType = (payload[1] ?? 0) & 0x7f;
-    if (resetType !== RESET_TYPE.HARD_RESET && resetType !== RESET_TYPE.KEY_OFF_ON_RESET && resetType !== RESET_TYPE.SOFT_RESET) {
+    if (
+      resetType !== RESET_TYPE.HARD_RESET &&
+      resetType !== RESET_TYPE.KEY_OFF_ON_RESET &&
+      resetType !== RESET_TYPE.SOFT_RESET
+    ) {
       return negativeResponse(SID.ECU_RESET, NRC.SUB_FUNCTION_NOT_SUPPORTED);
     }
     this.activeSession = SESSION.DEFAULT;
@@ -230,12 +280,22 @@ export class UdsServer {
    * wipe the fault memory of every ECU it touches.
    */
   private handleClearDtc(payload: Uint8Array): Uint8Array {
-    if (payload.length < 4) return negativeResponse(SID.CLEAR_DIAGNOSTIC_INFORMATION, NRC.INCORRECT_MESSAGE_LENGTH_OR_INVALID_FORMAT);
+    if (payload.length < 4)
+      return negativeResponse(
+        SID.CLEAR_DIAGNOSTIC_INFORMATION,
+        NRC.INCORRECT_MESSAGE_LENGTH_OR_INVALID_FORMAT,
+      );
     const group = ((payload[1] ?? 0) << 16) | ((payload[2] ?? 0) << 8) | (payload[3] ?? 0);
     if (group !== DTC_GROUP_ALL && group !== 0) {
       // Grouped clearing is manufacturer specific; an unknown group is out of range.
-      const known = this.dtcs.some((dtc) => (((encodeDtcToBytes(dtc.code)[0] ?? 0) << 16) | ((encodeDtcToBytes(dtc.code)[1] ?? 0) << 8)) === group);
-      if (!known) return negativeResponse(SID.CLEAR_DIAGNOSTIC_INFORMATION, NRC.REQUEST_OUT_OF_RANGE);
+      const known = this.dtcs.some(
+        (dtc) =>
+          (((encodeDtcToBytes(dtc.code)[0] ?? 0) << 16) |
+            ((encodeDtcToBytes(dtc.code)[1] ?? 0) << 8)) ===
+          group,
+      );
+      if (!known)
+        return negativeResponse(SID.CLEAR_DIAGNOSTIC_INFORMATION, NRC.REQUEST_OUT_OF_RANGE);
     }
     // ISO 14229-1 §11.3: clearing resets the DTC status information. A fault that
     // is still present sets testFailed (bit 0) and testFailedThisOperationCycle
@@ -246,7 +306,7 @@ export class UdsServer {
     this.dtcs = this.dtcs
       .map((dtc) => ({ ...dtc, status: (dtc.status & 0x01) !== 0 ? 0x03 : 0x00 }))
       .filter((dtc) => dtc.status !== 0x00);
-    this.log.info('DTCs cleared', { ecu: this.name, count: this.dtcs.length });
+    this.log.info("DTCs cleared", { ecu: this.name, count: this.dtcs.length });
     return new Uint8Array([positiveResponseSid(SID.CLEAR_DIAGNOSTIC_INFORMATION)]);
   }
 
@@ -271,14 +331,30 @@ export class UdsServer {
           const encoded = encodeDtcToBytes(dtc.code);
           bytes.push(encoded[0] ?? 0, encoded[1] ?? 0, encoded[2] ?? 0, dtc.status & 0xff);
         }
-        return new Uint8Array([positiveResponseSid(SID.READ_DTC_INFORMATION), subFunction, availabilityMask, ...bytes]);
+        return new Uint8Array([
+          positiveResponseSid(SID.READ_DTC_INFORMATION),
+          subFunction,
+          availabilityMask,
+          ...bytes,
+        ]);
       }
       case DTC_REPORT.REPORT_SUPPORTED_DTC:
-        return new Uint8Array([positiveResponseSid(SID.READ_DTC_INFORMATION), subFunction, availabilityMask, ...list()]);
+        return new Uint8Array([
+          positiveResponseSid(SID.READ_DTC_INFORMATION),
+          subFunction,
+          availabilityMask,
+          ...list(),
+        ]);
       case DTC_REPORT.REPORT_NUMBER_OF_DTC_BY_STATUS_MASK: {
         const mask = payload[2] ?? 0xff;
         const count = this.dtcs.filter((dtc) => (dtc.status & mask) !== 0).length;
-        return new Uint8Array([positiveResponseSid(SID.READ_DTC_INFORMATION), subFunction, availabilityMask, (count >> 8) & 0xff, count & 0xff]);
+        return new Uint8Array([
+          positiveResponseSid(SID.READ_DTC_INFORMATION),
+          subFunction,
+          availabilityMask,
+          (count >> 8) & 0xff,
+          count & 0xff,
+        ]);
       }
       case DTC_REPORT.REPORT_DTC_SNAPSHOT_RECORD_BY_DTC_NUMBER: {
         const requested = payload.subarray(2, 5);
@@ -288,7 +364,16 @@ export class UdsServer {
         });
         if (!record) return negativeResponse(SID.READ_DTC_INFORMATION, NRC.REQUEST_OUT_OF_RANGE);
         const snapshot = record.snapshot ?? new Uint8Array();
-        return new Uint8Array([positiveResponseSid(SID.READ_DTC_INFORMATION), subFunction, requested[0] ?? 0, requested[1] ?? 0, requested[2] ?? 0, record.status & 0xff, payload[5] ?? 0xff, ...snapshot]);
+        return new Uint8Array([
+          positiveResponseSid(SID.READ_DTC_INFORMATION),
+          subFunction,
+          requested[0] ?? 0,
+          requested[1] ?? 0,
+          requested[2] ?? 0,
+          record.status & 0xff,
+          payload[5] ?? 0xff,
+          ...snapshot,
+        ]);
       }
       case DTC_REPORT.REPORT_DTC_EXTENDED_DATA_RECORD_BY_DTC_NUMBER: {
         const requested = payload.subarray(2, 5);
@@ -298,7 +383,16 @@ export class UdsServer {
         });
         if (!record) return negativeResponse(SID.READ_DTC_INFORMATION, NRC.REQUEST_OUT_OF_RANGE);
         const data = record.extendedData ?? new Uint8Array();
-        return new Uint8Array([positiveResponseSid(SID.READ_DTC_INFORMATION), subFunction, requested[0] ?? 0, requested[1] ?? 0, requested[2] ?? 0, record.status & 0xff, payload[5] ?? 0x01, ...data]);
+        return new Uint8Array([
+          positiveResponseSid(SID.READ_DTC_INFORMATION),
+          subFunction,
+          requested[0] ?? 0,
+          requested[1] ?? 0,
+          requested[2] ?? 0,
+          record.status & 0xff,
+          payload[5] ?? 0x01,
+          ...data,
+        ]);
       }
       default:
         return negativeResponse(SID.READ_DTC_INFORMATION, NRC.SUB_FUNCTION_NOT_SUPPORTED);
@@ -306,7 +400,11 @@ export class UdsServer {
   }
 
   private handleReadDataByIdentifier(payload: Uint8Array): Uint8Array {
-    if (payload.length < 3 || (payload.length - 1) % 2 !== 0) return negativeResponse(SID.READ_DATA_BY_IDENTIFIER, NRC.INCORRECT_MESSAGE_LENGTH_OR_INVALID_FORMAT);
+    if (payload.length < 3 || (payload.length - 1) % 2 !== 0)
+      return negativeResponse(
+        SID.READ_DATA_BY_IDENTIFIER,
+        NRC.INCORRECT_MESSAGE_LENGTH_OR_INVALID_FORMAT,
+      );
     const out: number[] = [positiveResponseSid(SID.READ_DATA_BY_IDENTIFIER)];
     let matched = 0;
     for (let offset = 1; offset + 1 < payload.length; offset += 2) {
@@ -318,27 +416,43 @@ export class UdsServer {
       out.push((did >> 8) & 0xff, did & 0xff, ...value);
       matched++;
     }
-    if (matched === 0) return negativeResponse(SID.READ_DATA_BY_IDENTIFIER, NRC.REQUEST_OUT_OF_RANGE);
+    if (matched === 0)
+      return negativeResponse(SID.READ_DATA_BY_IDENTIFIER, NRC.REQUEST_OUT_OF_RANGE);
     return new Uint8Array(out);
   }
 
   private handleWriteDataByIdentifier(payload: Uint8Array): Uint8Array {
-    if (payload.length < 4) return negativeResponse(SID.WRITE_DATA_BY_IDENTIFIER, NRC.INCORRECT_MESSAGE_LENGTH_OR_INVALID_FORMAT);
-    if (this.activeSession === SESSION.DEFAULT) return negativeResponse(SID.WRITE_DATA_BY_IDENTIFIER, NRC.SERVICE_NOT_SUPPORTED_IN_ACTIVE_SESSION);
+    if (payload.length < 4)
+      return negativeResponse(
+        SID.WRITE_DATA_BY_IDENTIFIER,
+        NRC.INCORRECT_MESSAGE_LENGTH_OR_INVALID_FORMAT,
+      );
+    if (this.activeSession === SESSION.DEFAULT)
+      return negativeResponse(
+        SID.WRITE_DATA_BY_IDENTIFIER,
+        NRC.SERVICE_NOT_SUPPORTED_IN_ACTIVE_SESSION,
+      );
     const did = ((payload[1] ?? 0) << 8) | (payload[2] ?? 0);
     const definition = this.dids.get(did);
-    if (!definition) return negativeResponse(SID.WRITE_DATA_BY_IDENTIFIER, NRC.REQUEST_OUT_OF_RANGE);
-    if (!definition.writable) return negativeResponse(SID.WRITE_DATA_BY_IDENTIFIER, NRC.CONDITIONS_NOT_CORRECT);
+    if (!definition)
+      return negativeResponse(SID.WRITE_DATA_BY_IDENTIFIER, NRC.REQUEST_OUT_OF_RANGE);
+    if (!definition.writable)
+      return negativeResponse(SID.WRITE_DATA_BY_IDENTIFIER, NRC.CONDITIONS_NOT_CORRECT);
     // Keep the write observable for the simulator/tests.
     this.dids.set(did, { ...definition, value: () => payload.subarray(3).slice() });
-    return new Uint8Array([positiveResponseSid(SID.WRITE_DATA_BY_IDENTIFIER), (did >> 8) & 0xff, did & 0xff]);
+    return new Uint8Array([
+      positiveResponseSid(SID.WRITE_DATA_BY_IDENTIFIER),
+      (did >> 8) & 0xff,
+      did & 0xff,
+    ]);
   }
 
   private handleSecurityAccess(payload: Uint8Array): Uint8Array {
     const access = this.options.securityAccess;
     if (!access) return negativeResponse(SID.SECURITY_ACCESS, NRC.SERVICE_NOT_SUPPORTED);
     const level = payload[1] ?? 0;
-    if (Date.now() < this.lockedOutUntil) return negativeResponse(SID.SECURITY_ACCESS, NRC.REQUIRED_TIME_DELAY_NOT_EXPIRED);
+    if (Date.now() < this.lockedOutUntil)
+      return negativeResponse(SID.SECURITY_ACCESS, NRC.REQUIRED_TIME_DELAY_NOT_EXPIRED);
     if (level % 2 === 1) {
       const seed = access.seed();
       return new Uint8Array([positiveResponseSid(SID.SECURITY_ACCESS), level, ...seed]);
@@ -346,21 +460,32 @@ export class UdsServer {
     const key = payload.subarray(2);
     if (!access.verifyKey(level, key)) {
       this.securityFailures++;
-      if (this.securityFailures >= 3 && access.lockoutMs) this.lockedOutUntil = Date.now() + access.lockoutMs;
-      return negativeResponse(SID.SECURITY_ACCESS, this.securityFailures >= 3 ? NRC.EXCEED_NUMBER_OF_ATTEMPTS : NRC.INVALID_KEY);
+      if (this.securityFailures >= 3 && access.lockoutMs)
+        this.lockedOutUntil = Date.now() + access.lockoutMs;
+      return negativeResponse(
+        SID.SECURITY_ACCESS,
+        this.securityFailures >= 3 ? NRC.EXCEED_NUMBER_OF_ATTEMPTS : NRC.INVALID_KEY,
+      );
     }
     this.securityFailures = 0;
     return new Uint8Array([positiveResponseSid(SID.SECURITY_ACCESS), level]);
   }
 
   private handleRoutineControl(payload: Uint8Array): Uint8Array {
-    if (payload.length < 4) return negativeResponse(SID.ROUTINE_CONTROL, NRC.INCORRECT_MESSAGE_LENGTH_OR_INVALID_FORMAT);
+    if (payload.length < 4)
+      return negativeResponse(SID.ROUTINE_CONTROL, NRC.INCORRECT_MESSAGE_LENGTH_OR_INVALID_FORMAT);
     const controlType = payload[1] ?? 0;
     const routineId = ((payload[2] ?? 0) << 8) | (payload[3] ?? 0);
     const routine = this.routines.get(routineId);
     if (!routine) return negativeResponse(SID.ROUTINE_CONTROL, NRC.REQUEST_OUT_OF_RANGE);
     const result = routine.run(payload.subarray(4));
-    return new Uint8Array([positiveResponseSid(SID.ROUTINE_CONTROL), controlType, (routineId >> 8) & 0xff, routineId & 0xff, ...result]);
+    return new Uint8Array([
+      positiveResponseSid(SID.ROUTINE_CONTROL),
+      controlType,
+      (routineId >> 8) & 0xff,
+      routineId & 0xff,
+      ...result,
+    ]);
   }
 }
 

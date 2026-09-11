@@ -10,18 +10,18 @@
  * over, not something to paper over.
  */
 
-import type { Logger } from '@vdp/shared';
-import { createLogger, toHex } from '@vdp/shared';
-import type { FrameListener } from './bus.js';
-import { frameMatchesFilters, type CanFilter, type CanFrame } from './frame.js';
-import type { AdapterCapabilities, AdapterInfo } from './transport.js';
+import type { Logger } from "@vdp/shared";
+import { createLogger, toHex } from "@vdp/shared";
+import type { FrameListener } from "./bus.js";
+import { type CanFilter, type CanFrame, frameMatchesFilters } from "./frame.js";
+import type { AdapterCapabilities, AdapterInfo } from "./transport.js";
 
 /** One recorded frame. Structurally compatible with the core session trace. */
 export interface ReplayFrameEntry {
   /** Milliseconds relative to the start of the recording. */
   t: number;
   canId: number;
-  direction: 'tx' | 'rx';
+  direction: "tx" | "rx";
   payload: Uint8Array;
   channel?: string;
   extended?: boolean;
@@ -34,7 +34,7 @@ export interface ReplayRecording {
 }
 
 export interface ReplayDeviation {
-  kind: 'no-recorded-request' | 'payload-differs' | 'no-recorded-response';
+  kind: "no-recorded-request" | "payload-differs" | "no-recorded-response";
   canId: number;
   sentPayload: string;
   /** Recorded payload, when a request with this id existed. */
@@ -70,10 +70,10 @@ interface Exchange {
 }
 
 const REPLAY_INFO: AdapterInfo = {
-  id: 'replay',
-  kind: 'replay',
-  name: 'Trace replay',
-  channels: ['replay0'],
+  id: "replay",
+  kind: "replay",
+  name: "Trace replay",
+  channels: ["replay0"],
 };
 
 const REPLAY_CAPABILITIES: AdapterCapabilities = {
@@ -92,18 +92,22 @@ export class ReplayTransport {
 
   private readonly log: Logger;
   private readonly exchanges: Exchange[] = [];
-  private readonly listeners: Array<{ listener: FrameListener; filters?: readonly CanFilter[] }> = [];
+  private readonly listeners: Array<{ listener: FrameListener; filters?: readonly CanFilter[] }> =
+    [];
   private readonly channel: string;
   private readonly immediate: boolean;
   private readonly matchByIdOnly: boolean;
   private opened = false;
   private clock = 0;
 
-  constructor(private readonly recording: ReplayRecording, private readonly options: ReplayTransportOptions = {}) {
-    this.channel = options.channel ?? recording.channel ?? 'replay0';
+  constructor(
+    private readonly recording: ReplayRecording,
+    private readonly options: ReplayTransportOptions = {},
+  ) {
+    this.channel = options.channel ?? recording.channel ?? "replay0";
     this.immediate = options.immediate ?? false;
     this.matchByIdOnly = options.matchByIdOnly ?? true;
-    this.log = (options.logger ?? createLogger('replay', { level: 'INFO' })).child('replay');
+    this.log = (options.logger ?? createLogger("replay", { level: "INFO" })).child("replay");
     this.info = { ...REPLAY_INFO, channels: [this.channel], ...(options.info ?? {}) };
     this.groupExchanges();
   }
@@ -112,7 +116,7 @@ export class ReplayTransport {
   private groupExchanges(): void {
     let current: Exchange | null = null;
     for (const entry of this.recording.frames) {
-      if (entry.direction === 'tx') {
+      if (entry.direction === "tx") {
         current = { request: entry, responses: [], used: false };
         this.exchanges.push(current);
       } else if (current) {
@@ -125,7 +129,7 @@ export class ReplayTransport {
 
   async open(): Promise<void> {
     this.opened = true;
-    this.log.info('replay opened', { exchanges: this.exchanges.length, channel: this.channel });
+    this.log.info("replay opened", { exchanges: this.exchanges.length, channel: this.channel });
   }
 
   async close(): Promise<void> {
@@ -148,13 +152,13 @@ export class ReplayTransport {
 
   /** Answer a sent frame from the recording. */
   async send(frame: CanFrame): Promise<void> {
-    if (!this.opened) throw new Error('replay transport is not open');
+    if (!this.opened) throw new Error("replay transport is not open");
     this.stats.sends++;
 
     const exchange = this.takeExchange(frame);
     if (!exchange) {
       this.stats.unmatched++;
-      this.log.warn('replay: no recorded request matches', {
+      this.log.warn("replay: no recorded request matches", {
         canId: `0x${frame.id.toString(16)}`,
         payload: toHex(frame.payload),
       });
@@ -173,7 +177,7 @@ export class ReplayTransport {
           dlc: response.payload.length,
           payload: response.payload,
           channel: response.channel ?? this.channel,
-          direction: 'rx',
+          direction: "rx",
         });
         this.stats.delivered++;
       }
@@ -186,7 +190,10 @@ export class ReplayTransport {
   private takeExchange(frame: CanFrame): Exchange | undefined {
     const payload = frame.payload;
     const exact = this.exchanges.find(
-      (exchange) => !exchange.used && exchange.request.canId === frame.id && sameBytes(exchange.request.payload, payload),
+      (exchange) =>
+        !exchange.used &&
+        exchange.request.canId === frame.id &&
+        sameBytes(exchange.request.payload, payload),
     );
     if (exact) {
       exact.used = true;
@@ -194,9 +201,11 @@ export class ReplayTransport {
     }
 
     if (!this.matchByIdOnly) {
-      const byId = this.exchanges.find((exchange) => !exchange.used && exchange.request.canId === frame.id);
+      const byId = this.exchanges.find(
+        (exchange) => !exchange.used && exchange.request.canId === frame.id,
+      );
       this.deviations.push({
-        kind: byId ? 'payload-differs' : 'no-recorded-request',
+        kind: byId ? "payload-differs" : "no-recorded-request",
         canId: frame.id,
         sentPayload: toHex(payload),
         ...(byId ? { recordedPayload: toHex(byId.request.payload) } : {}),
@@ -207,10 +216,12 @@ export class ReplayTransport {
       return undefined;
     }
 
-    const byId = this.exchanges.find((exchange) => !exchange.used && exchange.request.canId === frame.id);
+    const byId = this.exchanges.find(
+      (exchange) => !exchange.used && exchange.request.canId === frame.id,
+    );
     if (!byId) {
       this.deviations.push({
-        kind: 'no-recorded-request',
+        kind: "no-recorded-request",
         canId: frame.id,
         sentPayload: toHex(payload),
         message: `no recorded request for 0x${frame.id.toString(16)}`,
@@ -219,7 +230,7 @@ export class ReplayTransport {
     }
     byId.used = true;
     this.deviations.push({
-      kind: 'payload-differs',
+      kind: "payload-differs",
       canId: frame.id,
       sentPayload: toHex(payload),
       recordedPayload: toHex(byId.request.payload),
@@ -259,9 +270,18 @@ function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
 export function recordingFromSessionJson(json: string): ReplayRecording {
   const parsed = JSON.parse(json) as {
     format?: string;
-    trace?: Array<{ t: number; canId: number; direction: 'tx' | 'rx'; payload: string; channel?: string; extended?: boolean; fd?: boolean }>;
+    trace?: Array<{
+      t: number;
+      canId: number;
+      direction: "tx" | "rx";
+      payload: string;
+      channel?: string;
+      extended?: boolean;
+      fd?: boolean;
+    }>;
   };
-  if (parsed.format !== 'vdp.session') throw new Error(`not a vdp.session export (format: ${String(parsed.format)})`);
+  if (parsed.format !== "vdp.session")
+    throw new Error(`not a vdp.session export (format: ${String(parsed.format)})`);
   return {
     frames: (parsed.trace ?? []).map((entry) => ({
       t: entry.t,
@@ -276,7 +296,7 @@ export function recordingFromSessionJson(json: string): ReplayRecording {
 }
 
 function hexToBytes(hex: string): Uint8Array {
-  const clean = hex.replace(/[^0-9a-f]/gi, '');
+  const clean = hex.replace(/[^0-9a-f]/gi, "");
   const out = new Uint8Array(Math.floor(clean.length / 2));
   for (let i = 0; i < out.length; i++) out[i] = Number.parseInt(clean.slice(i * 2, i * 2 + 2), 16);
   return out;

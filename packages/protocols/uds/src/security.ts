@@ -30,18 +30,18 @@ export class SecurityAccessRefusedError extends Error {
     readonly reason: string,
   ) {
     super(`Security access level ${securityLevel} refused: ${reason}`);
-    this.name = 'SecurityAccessRefusedError';
+    this.name = "SecurityAccessRefusedError";
   }
 }
 
 /** Default policy: no key generation at all. */
 export const refuseAllSecurityAccess: SeedKeyAlgorithm = {
-  id: 'refuse-all',
-  provenance: 'built-in safety default — no seed&key computation (AGENTS 34.12)',
+  id: "refuse-all",
+  provenance: "built-in safety default — no seed&key computation (AGENTS 34.12)",
   computeKey: async (context) => {
     throw new SecurityAccessRefusedError(
       context.securityLevel,
-      'no seed&key algorithm is registered. Registering one requires explicit authorization for this ECU/manufacturer.',
+      "no seed&key algorithm is registered. Registering one requires explicit authorization for this ECU/manufacturer.",
     );
   },
 };
@@ -51,10 +51,10 @@ export const refuseAllSecurityAccess: SeedKeyAlgorithm = {
  * be mistaken for a real manufacturer algorithm, and only useful against the
  * bundled simulator.
  */
-export function xorSeedKeyAlgorithm(pattern: number, id = 'xor-test'): SeedKeyAlgorithm {
+export function xorSeedKeyAlgorithm(pattern: number, id = "xor-test"): SeedKeyAlgorithm {
   return {
     id,
-    provenance: 'test/simulator only — XOR pattern, not a real manufacturer algorithm',
+    provenance: "test/simulator only — XOR pattern, not a real manufacturer algorithm",
     computeKey: async ({ seed }) => seed.map((byte) => byte ^ pattern),
   };
 }

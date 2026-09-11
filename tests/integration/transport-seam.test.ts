@@ -10,19 +10,19 @@
  * session code changes.
  */
 
-import assert from 'node:assert/strict';
-import { test } from 'vitest';
-import { createLogger } from '@vdp/shared';
+import assert from "node:assert/strict";
+import { DiagnosticEngine, type OpenedEcuLink } from "@vdp/core";
+import type { DefinitionPackage } from "@vdp/definitions";
 import {
-  UdsServer,
-  createRequestResponseLink,
   type UdsLink,
+  UdsServer,
   type UdsServerLink,
-} from '@vdp/protocols-uds';
-import { DiagnosticEngine, type OpenedEcuLink } from '@vdp/core';
-import type { DefinitionPackage } from '@vdp/definitions';
+  createRequestResponseLink,
+} from "@vdp/protocols-uds";
+import { createLogger } from "@vdp/shared";
+import { test } from "vitest";
 
-const logger = createLogger('transport-seam', { level: 'ERROR' });
+const logger = createLogger("transport-seam", { level: "ERROR" });
 
 /** Structural shape `createRequestResponseLink` consumes (send/receive only). */
 interface ByteTransport {
@@ -58,7 +58,7 @@ function createInMemoryEcu(server: ConstructorParameters<typeof UdsServer>[1]): 
   const transport: ByteTransport = {
     send: async (data) => {
       const listener = serverListener;
-      if (!listener) throw new Error('in-memory ECU is not listening');
+      if (!listener) throw new Error("in-memory ECU is not listening");
       // Deliver asynchronously the way a real wire would hand the frame over.
       queueMicrotask(() => listener(data));
     },
@@ -85,31 +85,37 @@ function createInMemoryEcu(server: ConstructorParameters<typeof UdsServer>[1]): 
   return { link, close: () => ecu.stop() };
 }
 
-const VIN = 'WVWZZZ1KZAW000001';
+const VIN = "WVWZZZ1KZAW000001";
 
 function ecuOptions() {
   return {
-    name: 'doip-style-ecu',
+    name: "doip-style-ecu",
     dids: [
       { did: 0xf190, value: () => new TextEncoder().encode(VIN) },
       // 0x0C00 engine speed: raw 0x0B B8 → 3000 rpm with factor 0.25
       { did: 0x0c00, value: () => new Uint8Array([0x0b, 0xb8]) },
     ],
     dtcs: [
-      { code: 'P0420', status: 0x2f },
-      { code: 'P0301', status: 0x24 },
+      { code: "P0420", status: 0x2f },
+      { code: "P0301", status: 0x24 },
     ],
   };
 }
 
-test('engine drives a UDS session over a non-CAN link via a linkFactory', async () => {
+test("engine drives a UDS session over a non-CAN link via a linkFactory", async () => {
   let closed = false;
   const engine = new DiagnosticEngine({
     logger,
     linkFactory: {
       open: async () => {
         const opened = createInMemoryEcu(ecuOptions());
-        return { link: opened.link, close: () => { closed = true; opened.close(); } };
+        return {
+          link: opened.link,
+          close: () => {
+            closed = true;
+            opened.close();
+          },
+        };
       },
     },
   });
@@ -125,17 +131,17 @@ test('engine drives a UDS session over a non-CAN link via a linkFactory', async 
   // A plain DID read over the same link.
   const raw = await handle.session.readRaw(0x0c00);
   assert.ok(raw);
-  assert.equal(Array.from(raw as Uint8Array).join(','), '11,184');
+  assert.equal(Array.from(raw as Uint8Array).join(","), "11,184");
 
   // Fault memory over the same link.
   const dtcs = await handle.session.readDtcs();
-  assert.deepEqual(dtcs.map((d) => d.code).sort(), ['P0301', 'P0420']);
+  assert.deepEqual(dtcs.map((d) => d.code).sort(), ["P0301", "P0420"]);
 
   await engine.disconnect();
-  assert.equal(closed, true, 'disconnect() must close the transport-neutral link');
+  assert.equal(closed, true, "disconnect() must close the transport-neutral link");
 });
 
-test('two ECUs on independent non-CAN links', async () => {
+test("two ECUs on independent non-CAN links", async () => {
   const engine = new DiagnosticEngine({
     logger,
     linkFactory: { open: async () => createInMemoryEcu(ecuOptions()) },
@@ -175,18 +181,34 @@ function createRecordingEcu(): { link: UdsLink; didRequests: number[] } {
 
 const filterPackage: DefinitionPackage = {
   schemaVersion: 1,
-  oem: 'generic',
-  name: 'snapshot-filter-test',
-  version: '1.0.0',
-  provenance: { sourceType: 'example-placeholder', source: 'transport-seam test' },
-  ecus: [{ id: 'engine', name: 'Engine', address: { txId: 0x7e0, rxId: 0x7e8 }, protocol: 'uds' }],
+  oem: "generic",
+  name: "snapshot-filter-test",
+  version: "1.0.0",
+  provenance: { sourceType: "example-placeholder", source: "transport-seam test" },
+  ecus: [{ id: "engine", name: "Engine", address: { txId: 0x7e0, rxId: 0x7e8 }, protocol: "uds" }],
   signals: [
-    { id: 'engine.rpm', name: 'Engine speed', ecu: 'engine', did: 0x0c00, byteOffset: 0, length: 2, encoding: 'uint16' },
-    { id: 'engine.coolant', name: 'Coolant temperature', ecu: 'engine', did: 0x0c01, byteOffset: 0, length: 2, encoding: 'uint16' },
+    {
+      id: "engine.rpm",
+      name: "Engine speed",
+      ecu: "engine",
+      did: 0x0c00,
+      byteOffset: 0,
+      length: 2,
+      encoding: "uint16",
+    },
+    {
+      id: "engine.coolant",
+      name: "Coolant temperature",
+      ecu: "engine",
+      did: 0x0c01,
+      byteOffset: 0,
+      length: 2,
+      encoding: "uint16",
+    },
   ],
 };
 
-test('snapshotSignals(filter) only requests the filtered DID on the wire', async () => {
+test("snapshotSignals(filter) only requests the filtered DID on the wire", async () => {
   const ecu = createRecordingEcu();
   const engine = new DiagnosticEngine({
     logger,
@@ -194,7 +216,7 @@ test('snapshotSignals(filter) only requests the filtered DID on the wire', async
     linkFactory: { open: async () => ({ link: ecu.link, close: () => {} }) },
   });
 
-  await engine.attach({ txId: 0x7e0, rxId: 0x7e8, definitionEcuId: 'generic:engine' });
+  await engine.attach({ txId: 0x7e0, rxId: 0x7e8, definitionEcuId: "generic:engine" });
   // attach() reads identification DIDs — ignore those, measure the snapshot only.
   ecu.didRequests.length = 0;
 
@@ -204,10 +226,10 @@ test('snapshotSignals(filter) only requests the filtered DID on the wire', async
 
   // Filter → only the requested signal's DID crosses the transport.
   ecu.didRequests.length = 0;
-  const decoded = await engine.snapshotSignals(['engine.rpm']);
+  const decoded = await engine.snapshotSignals(["engine.rpm"]);
   assert.deepEqual(ecu.didRequests, [0x0c00]);
   assert.equal(decoded.length, 1);
-  assert.equal(decoded[0]?.signalId, 'engine.rpm');
+  assert.equal(decoded[0]?.signalId, "engine.rpm");
 
   await engine.disconnect();
 });

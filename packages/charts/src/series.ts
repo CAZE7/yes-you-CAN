@@ -6,7 +6,7 @@
  * search — the charts ask for slices on every frame.
  */
 
-import type { Point, TimeRange, WindowStats } from './types.js';
+import type { Point, TimeRange, WindowStats } from "./types.js";
 
 export interface SeriesOptions {
   id: string;
@@ -105,7 +105,8 @@ export class Series {
   /** Time extent of this series (optionally restricted to a window). */
   extent(range?: TimeRange): TimeRange | null {
     if (this.points.length === 0) return null;
-    if (!range) return { from: this.points[0]?.t ?? 0, to: this.points[this.points.length - 1]?.t ?? 0 };
+    if (!range)
+      return { from: this.points[0]?.t ?? 0, to: this.points[this.points.length - 1]?.t ?? 0 };
     const slice = this.slice(range);
     if (slice.length === 0) return null;
     return { from: slice[0]?.t ?? range.from, to: slice[slice.length - 1]?.t ?? range.to };
@@ -125,13 +126,13 @@ export class Series {
    * more than `toleranceMs` (a cursor in empty space shows nothing instead of
    * a misleading stale value).
    */
-  valueAt(t: number, toleranceMs = Infinity): Point | null {
+  valueAt(t: number, toleranceMs = Number.POSITIVE_INFINITY): Point | null {
     if (this.points.length === 0) return null;
     const index = lowerBound(this.points, t);
     const after = this.points[index];
     const before = this.points[index - 1];
     let best: Point | undefined;
-    let bestDistance = Infinity;
+    let bestDistance = Number.POSITIVE_INFINITY;
     if (before) {
       const distance = Math.abs(before.t - t);
       if (distance <= bestDistance) {
@@ -161,8 +162,8 @@ export function statsOf(points: readonly Point[]): WindowStats {
   if (points.length === 0) {
     return { count: 0, min: null, max: null, average: null, delta: null, first: null, last: null };
   }
-  let min = Infinity;
-  let max = -Infinity;
+  let min = Number.POSITIVE_INFINITY;
+  let max = Number.NEGATIVE_INFINITY;
   let sum = 0;
   for (const point of points) {
     if (!Number.isFinite(point.value)) continue;
@@ -170,8 +171,16 @@ export function statsOf(points: readonly Point[]): WindowStats {
     if (point.value > max) max = point.value;
     sum += point.value;
   }
-  if (min === Infinity) {
-    return { count: points.length, min: null, max: null, average: null, delta: null, first: null, last: null };
+  if (min === Number.POSITIVE_INFINITY) {
+    return {
+      count: points.length,
+      min: null,
+      max: null,
+      average: null,
+      delta: null,
+      first: null,
+      last: null,
+    };
   }
   return {
     count: points.length,

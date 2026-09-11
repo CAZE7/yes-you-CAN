@@ -14,18 +14,22 @@
  * output, which keeps regression tests meaningful (AGENTS 31).
  */
 
-import type { Point } from './types.js';
+import type { Point } from "./types.js";
 
-export type DecimationMode = 'minmax' | 'lttb';
+export type DecimationMode = "minmax" | "lttb";
 
 /**
  * Reduce `points` to at most `maxPoints`, keeping extremes.
  * Returns the input array unchanged when it is already small enough.
  */
-export function decimate(points: readonly Point[], maxPoints: number, mode: DecimationMode = 'minmax'): readonly Point[] {
+export function decimate(
+  points: readonly Point[],
+  maxPoints: number,
+  mode: DecimationMode = "minmax",
+): readonly Point[] {
   if (maxPoints <= 0) return [];
   if (points.length <= maxPoints) return points;
-  return mode === 'lttb' ? decimateLttb(points, maxPoints) : decimateMinMax(points, maxPoints);
+  return mode === "lttb" ? decimateLttb(points, maxPoints) : decimateMinMax(points, maxPoints);
 }
 
 /**
@@ -42,7 +46,8 @@ export function decimateMinMax(points: readonly Point[], maxPoints: number): rea
   if (span <= 0 || points.length <= maxPoints) return points;
 
   const out: Point[] = [first];
-  const bucketOf = (t: number): number => Math.min(buckets - 1, Math.floor(((t - first.t) / span) * buckets));
+  const bucketOf = (t: number): number =>
+    Math.min(buckets - 1, Math.floor(((t - first.t) / span) * buckets));
 
   let current = 0;
   let minPoint: Point = first;
@@ -104,7 +109,10 @@ export function decimateLttb(points: readonly Point[], maxPoints: number): reado
     for (let j = rangeStart; j < rangeEnd; j++) {
       const point = points[j];
       if (!point) continue;
-      const area = Math.abs((previous.t - averageT) * (point.value - previous.value) - (previous.t - point.t) * (averageValue - previous.value));
+      const area = Math.abs(
+        (previous.t - averageT) * (point.value - previous.value) -
+          (previous.t - point.t) * (averageValue - previous.value),
+      );
       if (area > bestArea) {
         bestArea = area;
         chosen = point;

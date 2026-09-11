@@ -5,12 +5,34 @@
  * decoded data apart and logs every diagnostic operation (AGENTS 34.10).
  */
 
-import { UdsNegativeResponseError, createLogger, toHex, type Logger } from '@vdp/shared';
-import { DID, NRC, SESSION, SID, UdsClient, nrcName, type DtcRecord, type UdsLink } from '@vdp/protocols-uds';
-import { indexEcus, indexPackage, type DefinitionPackage, type DtcDefinition, type EcuDefinition, type SignalDefinition, type SignalIndex } from '@vdp/definitions';
-import { SignalDecoder, type DecodedSignal } from '../measurements/decoder.js';
-import { decodeFreezeFrame, type FreezeFrame } from '../dtc/freeze-frame.js';
-import { createEcuSession, type EcuIdentification, type EcuSession, type ServiceProbeResult } from '../session/session.js';
+import {
+  type DefinitionPackage,
+  type DtcDefinition,
+  type EcuDefinition,
+  type SignalDefinition,
+  type SignalIndex,
+  indexEcus,
+  indexPackage,
+} from "@vdp/definitions";
+import {
+  DID,
+  type DtcRecord,
+  NRC,
+  SESSION,
+  SID,
+  type UdsClient,
+  type UdsLink,
+  nrcName,
+} from "@vdp/protocols-uds";
+import { type Logger, UdsNegativeResponseError, createLogger, toHex } from "@vdp/shared";
+import { type FreezeFrame, decodeFreezeFrame } from "../dtc/freeze-frame.js";
+import { type DecodedSignal, SignalDecoder } from "../measurements/decoder.js";
+import {
+  type EcuIdentification,
+  type EcuSession,
+  type ServiceProbeResult,
+  createEcuSession,
+} from "../session/session.js";
 
 export interface EcuDiagnosticSessionOptions {
   definitionEcu?: EcuDefinition;
@@ -26,34 +48,39 @@ export interface EcuDiagnosticSessionOptions {
  */
 const SERVICE_PROBES: Record<number, Uint8Array> = {
   // unassigned session type 0x00 → subFunctionNotSupported when supported
-  0x10: new Uint8Array([0x10, 0x00]),
+  16: new Uint8Array([0x10, 0x00]),
   // unassigned reset type 0x00 → no reset is performed
-  0x11: new Uint8Array([0x11, 0x00]),
+  17: new Uint8Array([0x11, 0x00]),
   // reportSupportedDtc (0x19 0x0A) is read-only
-  0x19: new Uint8Array([0x19, 0x0a]),
+  25: new Uint8Array([0x19, 0x0a]),
   // DID 0x0000 is not assigned → requestOutOfRange, nothing is read
-  0x22: new Uint8Array([0x22, 0x00, 0x00]),
+  34: new Uint8Array([0x22, 0x00, 0x00]),
   // missing data field → format error before any write could happen
-  0x2e: new Uint8Array([0x2e, 0x00, 0x00]),
+  46: new Uint8Array([0x2e, 0x00, 0x00]),
   // routine type 0x00 is unassigned → no routine is started
-  0x31: new Uint8Array([0x31, 0x00, 0x00, 0x00]),
+  49: new Uint8Array([0x31, 0x00, 0x00, 0x00]),
   // TesterPresent is safe by definition (ISO 14229-1 §9.9)
-  0x3e: new Uint8Array([0x3e, 0x00]),
+  62: new Uint8Array([0x3e, 0x00]),
 };
 
 /** Services a read-only platform must not probe, with the reason shown in the UI. */
 const NON_PROBEABLE_SERVICES: Record<number, string> = {
-  0x14: 'clearing fault memory destroys diagnostic history — not probed (AGENTS 34.11)',
-  0x27: 'a failed security access attempt can lock the ECU — not probed',
-  0x2f: 'input/output control actuates hardware — not probed',
-  0x34: 'a download request can modify ECU memory — not probed',
+  20: "clearing fault memory destroys diagnostic history — not probed (AGENTS 34.11)",
+  39: "a failed security access attempt can lock the ECU — not probed",
+  47: "input/output control actuates hardware — not probed",
+  52: "a download request can modify ECU memory — not probed",
 };
 
-export const DEFAULT_SERVICE_PROBES: readonly number[] = [0x10, 0x11, 0x14, 0x19, 0x22, 0x27, 0x2e, 0x31, 0x3e];
+export const DEFAULT_SERVICE_PROBES: readonly number[] = [
+  0x10, 0x11, 0x14, 0x19, 0x22, 0x27, 0x2e, 0x31, 0x3e,
+];
 
 /** Extract the NRC from a negative response error without importing the class. */
 function nrcOf(error: unknown): number | undefined {
-  return typeof error === 'object' && error !== null && 'nrc' in error && typeof (error as { nrc?: unknown }).nrc === 'number'
+  return typeof error === "object" &&
+    error !== null &&
+    "nrc" in error &&
+    typeof (error as { nrc?: unknown }).nrc === "number"
     ? (error as { nrc: number }).nrc
     : undefined;
 }
@@ -94,7 +121,7 @@ export class EcuDiagnosticSession {
     this.link = link;
     this.closeLink = options.closeLink ?? (() => {});
     this.client = client;
-    this.log = (options.logger ?? createLogger('ecu', { level: 'INFO' })).child('ecu');
+    this.log = (options.logger ?? createLogger("ecu", { level: "INFO" })).child("ecu");
     this.decoder = options.decoder ?? new SignalDecoder({ logger: this.log });
     // The definition id comes from discovery and is resolved through the
     // package's cached id index — scanning `pkg.ecus` per session would repeat
@@ -107,20 +134,28 @@ export class EcuDiagnosticSession {
 
     this.record = createEcuSession({
       name: options.name ?? this.definitionEcu?.name ?? `ECU 0x${options.txId.toString(16)}`,
-      protocol: this.definitionEcu?.protocol ?? 'uds',
+      protocol: this.definitionEcu?.protocol ?? "uds",
       txId: options.txId,
       rxId: options.rxId,
       extended: options.extended ?? false,
       ...(this.definitionEcu ? { definitionEcuId: this.definitionEcu.id } : {}),
     });
 
-    this.signalIndex = options.definitionPackage ? indexPackage(options.definitionPackage) : { byId: new Map(), byEcu: new Map(), byDid: new Map() };
-    this.signalsByEcu = this.definitionEcu ? (this.signalIndex.byEcu.get(this.definitionEcu.id) ?? []) : [];
+    this.signalIndex = options.definitionPackage
+      ? indexPackage(options.definitionPackage)
+      : { byId: new Map(), byEcu: new Map(), byDid: new Map() };
+    this.signalsByEcu = this.definitionEcu
+      ? (this.signalIndex.byEcu.get(this.definitionEcu.id) ?? [])
+      : [];
 
     if (this.definitionEcu?.timing) {
       this.client.updateTiming({
-        ...(this.definitionEcu.timing.p2Ms !== undefined ? { p2Ms: this.definitionEcu.timing.p2Ms } : {}),
-        ...(this.definitionEcu.timing.p2StarMs !== undefined ? { p2StarMs: this.definitionEcu.timing.p2StarMs } : {}),
+        ...(this.definitionEcu.timing.p2Ms !== undefined
+          ? { p2Ms: this.definitionEcu.timing.p2Ms }
+          : {}),
+        ...(this.definitionEcu.timing.p2StarMs !== undefined
+          ? { p2StarMs: this.definitionEcu.timing.p2StarMs }
+          : {}),
       });
     }
   }
@@ -146,15 +181,17 @@ export class EcuDiagnosticSession {
 
   async readIdentification(): Promise<EcuIdentification[]> {
     const identification: EcuIdentification[] = [];
-    const wanted = this.definitionEcu?.identification ?? [{ label: 'VIN', did: DID.VEHICLE_IDENTIFIER_NUMBER }];
+    const wanted = this.definitionEcu?.identification ?? [
+      { label: "VIN", did: DID.VEHICLE_IDENTIFIER_NUMBER },
+    ];
     for (const entry of wanted) {
       try {
         const raw = await this.client.readDid(entry.did);
         if (!raw) continue;
-        const value = entry.encoding === 'ascii' || entry.did >= 0xf180 ? toAscii(raw) : toHex(raw);
+        const value = entry.encoding === "ascii" || entry.did >= 0xf180 ? toAscii(raw) : toHex(raw);
         identification.push({ label: entry.label, value });
       } catch (error) {
-        this.log.debug('identification DID not available', {
+        this.log.debug("identification DID not available", {
           ecu: this.record.name,
           did: `0x${entry.did.toString(16)}`,
           error: error instanceof Error ? error.message : String(error),
@@ -182,47 +219,63 @@ export class EcuDiagnosticSession {
    * actuates hardware. Those are reported as `not-probed` with the reason
    * (AGENTS 24, 26, 34.11: read-only first).
    */
-  async probeSupportedServices(candidates: readonly number[] = DEFAULT_SERVICE_PROBES): Promise<ServiceProbeResult[]> {
+  async probeSupportedServices(
+    candidates: readonly number[] = DEFAULT_SERVICE_PROBES,
+  ): Promise<ServiceProbeResult[]> {
     const probes: ServiceProbeResult[] = [];
     for (const serviceId of candidates) {
       const reason = NON_PROBEABLE_SERVICES[serviceId];
       if (reason) {
-        probes.push({ service: serviceId, outcome: 'not-probed', detail: reason });
+        probes.push({ service: serviceId, outcome: "not-probed", detail: reason });
         continue;
       }
       const request = SERVICE_PROBES[serviceId];
       if (!request) {
-        probes.push({ service: serviceId, outcome: 'not-probed', detail: 'no safe probe known for this service' });
+        probes.push({
+          service: serviceId,
+          outcome: "not-probed",
+          detail: "no safe probe known for this service",
+        });
         continue;
       }
       try {
         await this.client.raw(request);
-        probes.push({ service: serviceId, outcome: 'supported', detail: 'answered positively to a safe probe' });
+        probes.push({
+          service: serviceId,
+          outcome: "supported",
+          detail: "answered positively to a safe probe",
+        });
       } catch (error) {
         const nrc = nrcOf(error);
         if (nrc === NRC.SERVICE_NOT_SUPPORTED) {
-          probes.push({ service: serviceId, outcome: 'unsupported', detail: 'serviceNotSupported (0x11)' });
+          probes.push({
+            service: serviceId,
+            outcome: "unsupported",
+            detail: "serviceNotSupported (0x11)",
+          });
         } else if (nrc !== undefined) {
           probes.push({
             service: serviceId,
-            outcome: 'supported',
+            outcome: "supported",
             detail: `negative response 0x${nrc.toString(16)} (${nrcName(nrc)}) proves the service exists`,
           });
         } else {
           probes.push({
             service: serviceId,
-            outcome: 'unsupported',
+            outcome: "unsupported",
             detail: error instanceof Error ? error.message : String(error),
           });
         }
       }
     }
     this.record.serviceProbes = probes;
-    this.record.supportedServices = probes.filter((probe) => probe.outcome === 'supported').map((probe) => probe.service);
-    this.log.debug('service probe finished', {
+    this.record.supportedServices = probes
+      .filter((probe) => probe.outcome === "supported")
+      .map((probe) => probe.service);
+    this.log.debug("service probe finished", {
       ecu: this.record.name,
       supported: this.record.supportedServices.length,
-      notProbed: probes.filter((probe) => probe.outcome === 'not-probed').length,
+      notProbed: probes.filter((probe) => probe.outcome === "not-probed").length,
     });
     return probes;
   }
@@ -258,7 +311,7 @@ export class EcuDiagnosticSession {
           if (value) decoded.push(value);
         }
       } catch (error) {
-        this.log.debug('signal DID read failed', {
+        this.log.debug("signal DID read failed", {
           ecu: this.record.name,
           did: `0x${did.toString(16)}`,
           error: error instanceof Error ? error.message : String(error),
@@ -290,7 +343,7 @@ export class EcuDiagnosticSession {
       // this code" — a normal answer, not a failure. Anything else (timeout,
       // session, security) is a real error and must not be swallowed.
       if (nrcOf(error) === NRC.REQUEST_OUT_OF_RANGE) {
-        this.log.info('no freeze frame stored for this code', { ecu: this.record.name, code });
+        this.log.info("no freeze frame stored for this code", { ecu: this.record.name, code });
         return null;
       }
       throw error;
@@ -304,7 +357,7 @@ export class EcuDiagnosticSession {
       signals: this.signalIndex.byId,
       decoder: this.decoder,
     });
-    this.log.debug('freeze frame read', {
+    this.log.debug("freeze frame read", {
       ecu: this.record.name,
       code,
       documented: frame.documented,
@@ -334,13 +387,18 @@ export class EcuDiagnosticSession {
    * and *not* worked around: this platform does not bypass access mechanisms
    * (AGENTS 29, 34.12).
    */
-  async ensureWritableSession(sessionType = SESSION.EXTENDED): Promise<{ switched: boolean; sessionType: number }> {
+  async ensureWritableSession(
+    sessionType = SESSION.EXTENDED,
+  ): Promise<{ switched: boolean; sessionType: number }> {
     if (this.record.sessionType !== SESSION.DEFAULT) {
       return { switched: false, sessionType: this.record.sessionType };
     }
     try {
       await this.switchSession(sessionType);
-      this.log.info('session switched for a write', { ecu: this.record.name, session: sessionType });
+      this.log.info("session switched for a write", {
+        ecu: this.record.name,
+        session: sessionType,
+      });
       return { switched: true, sessionType };
     } catch (error) {
       throw new UdsNegativeResponseError(
@@ -349,7 +407,8 @@ export class EcuDiagnosticSession {
         nrcName(nrcOf(error) ?? NRC.CONDITIONS_NOT_CORRECT),
         {
           ecu: this.record.name,
-          reason: `the ECU refuses the extended diagnostic session and this platform does not bypass security access (AGENTS 29)`,
+          reason:
+            "the ECU refuses the extended diagnostic session and this platform does not bypass security access (AGENTS 29)",
           original: error instanceof Error ? error.message : String(error),
         },
       );
@@ -369,7 +428,7 @@ export class EcuDiagnosticSession {
 }
 
 function toAscii(data: Uint8Array): string {
-  let out = '';
+  let out = "";
   for (const byte of data) {
     if (byte === 0) break;
     if (byte < 0x20 || byte > 0x7e) continue;

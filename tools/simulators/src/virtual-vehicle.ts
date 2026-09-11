@@ -7,20 +7,32 @@
  * replay tooling all run without hardware.
  */
 
-import { createLogger, toHex, type Logger } from '@vdp/shared';
-import { IsoTpConnection } from '@vdp/transport-iso-tp';
-import { SESSION, UdsServer, xorSeedKeyAlgorithm, type ServerDid, type ServerDtc, type UdsServerLink, type UdsServerOptions } from '@vdp/protocols-uds';
+import { encodeSignal } from "@vdp/core";
 import {
-  indexPackage,
   type DefinitionPackage,
   type DtcDefinition,
   type EcuDefinition,
   type SignalDefinition,
   type SignalIndex,
-} from '@vdp/definitions';
-import { genericPackage } from '@vdp/definitions/generic';
-import { encodeSignal } from '@vdp/core';
-import { createVirtualCanNetwork, VirtualCanBus, type VirtualCanOptions } from './virtual-can.js';
+  indexPackage,
+} from "@vdp/definitions";
+import { genericPackage } from "@vdp/definitions/generic";
+import {
+  SESSION,
+  type ServerDid,
+  type ServerDtc,
+  UdsServer,
+  type UdsServerLink,
+  type UdsServerOptions,
+  xorSeedKeyAlgorithm,
+} from "@vdp/protocols-uds";
+import { type Logger, createLogger, toHex } from "@vdp/shared";
+import { IsoTpConnection } from "@vdp/transport-iso-tp";
+import {
+  type VirtualCanBus,
+  type VirtualCanOptions,
+  createVirtualCanNetwork,
+} from "./virtual-can.js";
 
 export interface VirtualVehicleOptions {
   vin?: string;
@@ -46,7 +58,7 @@ export interface VirtualEcu {
   signals: SignalDefinition[];
 }
 
-export const DEFAULT_VIN = '1HGCM82633A004352';
+export const DEFAULT_VIN = "1HGCM82633A004352";
 
 /** Deterministic pseudo random generator so recordings are reproducible. */
 export function createRandom(seed: number): () => number {
@@ -84,7 +96,7 @@ export class VirtualVehicle {
   private readonly pendingResponseServices: number[];
 
   constructor(options: VirtualVehicleOptions = {}) {
-    this.log = (options.logger ?? createLogger('uds', { level: 'WARN' })).child('uds');
+    this.log = (options.logger ?? createLogger("uds", { level: "WARN" })).child("uds");
     this.definitions = options.definitions ?? genericPackage;
     this.index = indexPackage(this.definitions);
     this.dynamic = options.dynamic ?? true;
@@ -94,7 +106,7 @@ export class VirtualVehicle {
     this.initialDtcs = options.dtcs ?? {};
     this.pendingResponseServices = options.pendingResponseServices ?? [];
     this.network = options.network ?? createVirtualCanNetwork(options.networkOptions ?? {});
-    this.testerBus = this.network.createBus('tester');
+    this.testerBus = this.network.createBus("tester");
     for (const definition of this.definitions.ecus) {
       const ecu = this.createEcu(definition);
       this.ecus.push(ecu);
@@ -124,7 +136,7 @@ export class VirtualVehicle {
     }
     opening.push(this.testerBus.open());
     await Promise.all(opening);
-    this.log.info('virtual vehicle started', { vin: this.vin, ecus: this.ecus.length });
+    this.log.info("virtual vehicle started", { vin: this.vin, ecus: this.ecus.length });
   }
 
   /** Stop every ECU first, then close the buses together. */
@@ -145,7 +157,8 @@ export class VirtualVehicle {
   }
 
   clearAllDtcs(): void {
-    for (const ecu of this.ecus) for (const dtc of this.dtcListOf(ecu.definition)) ecu.server.setDtcStatus(dtc.code, 0x00);
+    for (const ecu of this.ecus)
+      for (const dtc of this.dtcListOf(ecu.definition)) ecu.server.setDtcStatus(dtc.code, 0x00);
   }
 
   ecu(ecuId: string): VirtualEcu | undefined {
@@ -160,7 +173,9 @@ export class VirtualVehicle {
    * freeze frame the definition declares (AGENTS 20).
    */
   private dtcListOf(definition: EcuDefinition): ServerDtc[] {
-    const byCode = new Map(defaultDtcsFor(definition, this.index.byId).map((dtc) => [dtc.code, dtc]));
+    const byCode = new Map(
+      defaultDtcsFor(definition, this.index.byId).map((dtc) => [dtc.code, dtc]),
+    );
     const injected = this.initialDtcs[definition.id];
     if (!injected) return [...byCode.values()];
     for (const dtc of injected) {
@@ -176,13 +191,17 @@ export class VirtualVehicle {
   private createEcu(definition: EcuDefinition): VirtualEcu {
     const bus = this.network.createBus(`ecu-${definition.id}`);
     const signals = this.index.byEcu.get(definition.id) ?? [];
-    const isoTp = new IsoTpConnection(bus, {
-      txId: definition.address.rxId,
-      rxId: definition.address.txId,
-      extended: definition.address.extended ?? false,
-      addressing: definition.address.addressing ?? 'normal',
-      padding: true,
-    }, this.log);
+    const isoTp = new IsoTpConnection(
+      bus,
+      {
+        txId: definition.address.rxId,
+        rxId: definition.address.txId,
+        extended: definition.address.extended ?? false,
+        addressing: definition.address.addressing ?? "normal",
+        padding: true,
+      },
+      this.log,
+    );
 
     const link: UdsServerLink = {
       onMessage: (listener) => isoTp.onUnsolicited(listener),
@@ -196,12 +215,14 @@ export class VirtualVehicle {
       dtcs: this.dtcListOf(definition),
       sessions: [SESSION.DEFAULT, SESSION.EXTENDED, SESSION.PROGRAMMING],
       ...(definition.timing ? { timing: definition.timing } : {}),
-      ...(this.pendingResponseServices.length > 0 ? { pendingResponseServices: this.pendingResponseServices } : {}),
+      ...(this.pendingResponseServices.length > 0
+        ? { pendingResponseServices: this.pendingResponseServices }
+        : {}),
       securityAccess: {
         // XOR seed&key so the simulator can exercise the 0x27 flow end to end.
         // Clearly labelled as a test algorithm — never a real one (AGENTS 34.12).
         seed: () => new Uint8Array([0x11, 0x22, 0x33, 0x44]),
-        verifyKey: (_level, key) => toHex(key) === 'EE DD CC BB',
+        verifyKey: (_level, key) => toHex(key) === "EE DD CC BB",
       },
     };
     const server = new UdsServer(link, serverOptions);
@@ -231,14 +252,26 @@ export class VirtualVehicle {
       if (byDid.has(entry.did)) continue;
       dids.push({
         did: entry.did,
-        value: () => asciiBytes(entry.did === 0xf190 ? this.vin : `${definition.id.toUpperCase()}-${entry.did.toString(16)}`),
+        value: () =>
+          asciiBytes(
+            entry.did === 0xf190
+              ? this.vin
+              : `${definition.id.toUpperCase()}-${entry.did.toString(16)}`,
+          ),
       });
     }
     return dids;
   }
 
-  private buildPayload(definition: EcuDefinition, did: number, signals: readonly SignalDefinition[]): Uint8Array {
-    const length = signals.reduce((max, signal) => Math.max(max, signal.byteOffset + signal.length), 0);
+  private buildPayload(
+    definition: EcuDefinition,
+    _did: number,
+    signals: readonly SignalDefinition[],
+  ): Uint8Array {
+    const length = signals.reduce(
+      (max, signal) => Math.max(max, signal.byteOffset + signal.length),
+      0,
+    );
     const payload = new Uint8Array(length);
     for (const signal of signals) {
       const value = this.signalValue(definition.id, signal);
@@ -248,7 +281,10 @@ export class VirtualVehicle {
           payload[signal.byteOffset + i] = encoded[signal.byteOffset + i] ?? 0;
         }
       } catch (error) {
-        this.log.debug('simulator encode failed', { signal: signal.id, error: error instanceof Error ? error.message : String(error) });
+        this.log.debug("simulator encode failed", {
+          signal: signal.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     }
     return payload;
@@ -259,49 +295,49 @@ export class VirtualVehicle {
    * Deterministic per seed, so recordings are reproducible (AGENTS 31/32).
    */
   private signalValue(ecuId: string, signal: SignalDefinition): number | string | boolean {
-    if (signal.encoding === 'ascii') return this.vin;
-    if (signal.encoding === 'bool') return true;
+    if (signal.encoding === "ascii") return this.vin;
+    if (signal.encoding === "bool") return true;
 
     const elapsedS = (Date.now() - this.startedAt) / 1000;
     const base = baselineFor(ecuId, signal);
     if (!this.dynamic) return base;
 
     switch (signal.id) {
-      case 'engine.rpm':
+      case "engine.rpm":
         return round(800 + 1600 * Math.abs(Math.sin(elapsedS / 4)) + 200 * this.random(), 0.25);
-      case 'engine.coolant_temperature':
+      case "engine.coolant_temperature":
         return Math.min(105, 20 + elapsedS * 0.8 + 2 * this.random());
-      case 'vehicle.speed':
+      case "vehicle.speed":
         return round(40 + 60 * Math.abs(Math.sin(elapsedS / 6)), 1);
-      case 'engine.load':
+      case "engine.load":
         return round(15 + 45 * Math.abs(Math.sin(elapsedS / 5)), 0.39215686274509803);
-      case 'engine.throttle_position':
+      case "engine.throttle_position":
         return round(10 + 40 * Math.abs(Math.sin(elapsedS / 3)), 0.39215686274509803);
-      case 'engine.short_term_fuel_trim':
-      case 'engine.long_term_fuel_trim':
+      case "engine.short_term_fuel_trim":
+      case "engine.long_term_fuel_trim":
         return round(-3 + 6 * this.random(), 0.78125);
-      case 'engine.intake_manifold_pressure':
+      case "engine.intake_manifold_pressure":
         return Math.round(30 + 60 * Math.abs(Math.sin(elapsedS / 5)));
-      case 'engine.timing_advance':
+      case "engine.timing_advance":
         return round(8 + 12 * Math.abs(Math.sin(elapsedS / 7)), 0.5);
-      case 'engine.maf_airflow':
+      case "engine.maf_airflow":
         return round(4 + 12 * Math.abs(Math.sin(elapsedS / 4)), 0.01);
-      case 'engine.runtime':
+      case "engine.runtime":
         return Math.round(elapsedS);
-      case 'engine.intake_air_temperature':
+      case "engine.intake_air_temperature":
         return Math.round(25 + 3 * this.random());
-      case 'engine.fuel_rail_pressure':
+      case "engine.fuel_rail_pressure":
         return Math.round(300 + 50 * this.random());
-      case 'engine.fuel_system_status':
+      case "engine.fuel_system_status":
         return 2; // closed loop
-      case 'transmission.oil_temperature':
+      case "transmission.oil_temperature":
         return Math.min(120, 30 + elapsedS * 0.5);
-      case 'transmission.gear_position':
+      case "transmission.gear_position":
         return 3;
-      case 'abs.wheel_speed_front_left':
-      case 'abs.wheel_speed_front_right':
+      case "abs.wheel_speed_front_left":
+      case "abs.wheel_speed_front_right":
         return round(40 + 60 * Math.abs(Math.sin(elapsedS / 6)), 0.01);
-      case 'abs.brake_pedal':
+      case "abs.brake_pedal":
         return 0;
       default:
         return base;
@@ -309,47 +345,49 @@ export class VirtualVehicle {
   }
 }
 
-function baselineFor(ecuId: string, signal: SignalDefinition): number {
+function baselineFor(_ecuId: string, signal: SignalDefinition): number {
   const fallback = signal.min ?? 0;
   switch (signal.id) {
-    case 'engine.rpm':
+    case "engine.rpm":
       return 850;
-    case 'engine.coolant_temperature':
+    case "engine.coolant_temperature":
       return 90;
-    case 'vehicle.speed':
+    case "vehicle.speed":
       return 0;
-    case 'engine.load':
+    case "engine.load":
       return 22;
-    case 'engine.throttle_position':
+    case "engine.throttle_position":
       return 14;
-    case 'engine.short_term_fuel_trim':
-    case 'engine.long_term_fuel_trim':
+    case "engine.short_term_fuel_trim":
+    case "engine.long_term_fuel_trim":
       return 0;
-    case 'engine.intake_manifold_pressure':
+    case "engine.intake_manifold_pressure":
       return 35;
-    case 'engine.timing_advance':
+    case "engine.timing_advance":
       return 12;
-    case 'engine.maf_airflow':
+    case "engine.maf_airflow":
       return 5;
-    case 'engine.runtime':
+    case "engine.runtime":
       return 0;
-    case 'engine.intake_air_temperature':
+    case "engine.intake_air_temperature":
       return 26;
-    case 'engine.fuel_rail_pressure':
+    case "engine.fuel_rail_pressure":
       return 320;
-    case 'engine.fuel_system_status':
+    case "engine.fuel_system_status":
       return 2;
-    case 'transmission.oil_temperature':
+    case "transmission.oil_temperature":
       return 60;
-    case 'transmission.gear_position':
+    case "transmission.gear_position":
       return 3;
-    case 'abs.wheel_speed_front_left':
-    case 'abs.wheel_speed_front_right':
+    case "abs.wheel_speed_front_left":
+    case "abs.wheel_speed_front_right":
       return 0;
-    case 'abs.brake_pedal':
+    case "abs.brake_pedal":
       return 0;
     default:
-      return typeof signal.max === 'number' && signal.max > 0 ? Math.min(fallback + 1, signal.max) : fallback;
+      return typeof signal.max === "number" && signal.max > 0
+        ? Math.min(fallback + 1, signal.max)
+        : fallback;
   }
 }
 
@@ -385,15 +423,15 @@ export function defaultDtcsFor(
  */
 function freezeFrameValue(signal: SignalDefinition): number {
   switch (signal.id) {
-    case 'engine.rpm':
+    case "engine.rpm":
       return 3120;
-    case 'vehicle.speed':
+    case "vehicle.speed":
       return 78;
-    case 'engine.load':
+    case "engine.load":
       return 64;
-    case 'engine.coolant_temperature':
+    case "engine.coolant_temperature":
       return 93;
-    case 'engine.throttle_position':
+    case "engine.throttle_position":
       return 38;
     default:
       return signal.min ?? 0;
@@ -409,19 +447,24 @@ function buildFreezeFrame(
   if (fields.length === 0) return undefined;
   const parts: number[] = [];
   for (const field of fields) {
-    const fieldSignals = (field.signals ?? []).map((id) => signalById.get(id)).filter((s): s is SignalDefinition => s !== undefined);
+    const fieldSignals = (field.signals ?? [])
+      .map((id) => signalById.get(id))
+      .filter((s): s is SignalDefinition => s !== undefined);
     if (fieldSignals.length === 0) {
       // Undocumented value: emit zeros of the declared length so the record
       // length still matches the declared layout.
       for (let i = 0; i < (field.length ?? 0); i++) parts.push(0);
       continue;
     }
-    const length = field.length ?? fieldSignals.reduce((max, signal) => Math.max(max, signal.byteOffset + signal.length), 0);
+    const length =
+      field.length ??
+      fieldSignals.reduce((max, signal) => Math.max(max, signal.byteOffset + signal.length), 0);
     const payload = new Uint8Array(length);
     for (const signal of fieldSignals) {
       const value = freezeFrameValue(signal);
       const encoded = encodeSignal(signal, value, { payloadLength: length });
-      for (let i = 0; i < signal.length; i++) payload[signal.byteOffset + i] = encoded[signal.byteOffset + i] ?? 0;
+      for (let i = 0; i < signal.length; i++)
+        payload[signal.byteOffset + i] = encoded[signal.byteOffset + i] ?? 0;
     }
     for (const byte of payload) parts.push(byte);
   }

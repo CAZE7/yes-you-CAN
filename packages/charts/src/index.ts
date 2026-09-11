@@ -8,9 +8,9 @@
  * `apps/web/public/chart.js` consumes this package and does nothing but draw.
  */
 
-export * from './types.js';
-export * from './scale.js';
-export * from './decimate.js';
-export * from './series.js';
-export * from './viewport.js';
-export * from './group.js';
+export * from "./types.js";
+export * from "./scale.js";
+export * from "./decimate.js";
+export * from "./series.js";
+export * from "./viewport.js";
+export * from "./group.js";

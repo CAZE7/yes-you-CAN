@@ -2,21 +2,27 @@
   "name": "yes-you-can",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "description": "Modular, manufacturer-agnostic vehicle diagnostics platform (CAN / ISO-TP / UDS / DoIP). See AGENTS.md.",
   "type": "module",
   "engines": {
     "node": ">=22"
   },
-  "workspaces": [
-    "packages/*",
-    "packages/*/*",
-    "tools/*",
-    "apps/*"
-  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CAZE7/yes-you-CAN.git"
+  },
+  "bugs": {
+    "url": "https://github.com/CAZE7/yes-you-CAN/issues"
+  },
+  "homepage": "https://github.com/CAZE7/yes-you-CAN#readme",
+  "keywords": ["vehicle-diagnostics", "can", "uds", "iso-tp", "doip", "obd"],
+  "workspaces": ["packages/*", "packages/*/*", "tools/*", "apps/*"],
   "scripts": {
     "clean": "node scripts/clean.mjs",
     "build": "tsc -b tsconfig.json",
     "typecheck": "npm run build && tsc --noEmit -p tsconfig.typecheck.json",
+    "typecheck:all": "npm run build && tsc --noEmit -p tsconfig.typecheck.json && tsc --noEmit -p tsconfig.json",
     "test": "vitest run --project unit --project protocol --project regression --project replay --project integration --project architecture",
     "test:unit": "vitest run --project unit",
     "test:protocol": "vitest run --project protocol",
@@ -27,11 +33,20 @@
     "test:hardware": "vitest run --project hardware",
     "test:coverage": "vitest run --coverage --project unit --project protocol --project regression --project replay --project integration --project architecture",
     "test:watch": "vitest --project unit",
+    "lint": "biome lint .",
+    "lint:fix": "biome lint --write .",
+    "format": "biome format .",
+    "format:fix": "biome check --write .",
+    "check": "biome check .",
+    "check:fix": "biome check --write .",
+    "audit": "npm audit --audit-level=moderate",
+    "ci": "npm run build && npm run typecheck && npm run check && npm test",
     "demo": "npm run build && node apps/web/dist/src/server.js --demo --sessions=./sessions-local",
     "sim": "npm run build && node apps/web/dist/src/server.js --demo",
     "web": "npm run build && node apps/web/dist/src/server.js --demo"
   },
   "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
     "@types/node": "^26.5.0",
     "@vitest/coverage-v8": "5.0.0",
     "fast-check": "4.9.0",

@@ -7,7 +7,7 @@
  * empty, inverted or infinitely zoomed.
  */
 
-import type { TimeRange } from './types.js';
+import type { TimeRange } from "./types.js";
 
 export interface TimeViewportOptions {
   /** Initial visible span in ms. */

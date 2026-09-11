@@ -14,10 +14,15 @@
  *    evidence and a plausible-looking guess is not.
  */
 
-import { toHex, type Logger } from '@vdp/shared';
-import type { DtcDefinition, FreezeFrameField, SignalDefinition, SignalIndex } from '@vdp/definitions';
-import type { DecodedSignal } from '../measurements/decoder.js';
-import { SignalDecoder } from '../measurements/decoder.js';
+import type {
+  DtcDefinition,
+  FreezeFrameField,
+  SignalDefinition,
+  SignalIndex,
+} from "@vdp/definitions";
+import { type Logger, toHex } from "@vdp/shared";
+import type { DecodedSignal } from "../measurements/decoder.js";
+import { SignalDecoder } from "../measurements/decoder.js";
 
 export interface FreezeFrameFieldView {
   did: number;
@@ -64,7 +69,10 @@ export interface DecodeFreezeFrameOptions {
  * list inside a snapshot record on all ECUs, and where it does the encoding is
  * manufacturer specific.
  */
-export function decodeFreezeFrame(payload: Uint8Array, options: DecodeFreezeFrameOptions): FreezeFrame {
+export function decodeFreezeFrame(
+  payload: Uint8Array,
+  options: DecodeFreezeFrameOptions,
+): FreezeFrame {
   const declared = options.fields ?? options.definition?.freezeFrame ?? [];
   const signals = options.signals ?? new Map<string, SignalDefinition>();
   const decoder = options.decoder ?? new SignalDecoder();
@@ -75,7 +83,7 @@ export function decodeFreezeFrame(payload: Uint8Array, options: DecodeFreezeFram
   if (declared.length === 0) {
     notes.push(
       payload.length === 0
-        ? 'the ECU returned an empty snapshot record'
+        ? "the ECU returned an empty snapshot record"
         : options.definition
           ? `the definition documents no freeze frame layout for ${options.code} — the record is kept raw (AGENTS 13)`
           : `no definition for ${options.code} — the record is kept raw instead of being interpreted (AGENTS 13, 24)`,
@@ -112,7 +120,9 @@ export function decodeFreezeFrame(payload: Uint8Array, options: DecodeFreezeFram
 
     const values: DecodedSignal[] = [];
     if (fieldSignals.length === 0) {
-      notes.push(`field 0x${field.did.toString(16).toUpperCase()} has no signal definitions — its bytes are reported without interpretation`);
+      notes.push(
+        `field 0x${field.did.toString(16).toUpperCase()} has no signal definitions — its bytes are reported without interpretation`,
+      );
     }
     for (const signal of fieldSignals) {
       try {
@@ -120,13 +130,17 @@ export function decodeFreezeFrame(payload: Uint8Array, options: DecodeFreezeFram
         // `null` means "the bytes do not cover this signal" — a short or
         // differently laid out record. Reported, never padded with a zero.
         if (!decoded) {
-          notes.push(`signal ${signal.id} is not covered by the ${length} byte(s) of field 0x${field.did.toString(16).toUpperCase()}`);
+          notes.push(
+            `signal ${signal.id} is not covered by the ${length} byte(s) of field 0x${field.did.toString(16).toUpperCase()}`,
+          );
           continue;
         }
         values.push(decoded);
       } catch (error) {
         // A single undecodable signal must not hide the rest of the record.
-        notes.push(`signal ${signal.id} could not be decoded: ${error instanceof Error ? error.message : String(error)}`);
+        notes.push(
+          `signal ${signal.id} could not be decoded: ${error instanceof Error ? error.message : String(error)}`,
+        );
       }
     }
 
@@ -143,7 +157,7 @@ export function decodeFreezeFrame(payload: Uint8Array, options: DecodeFreezeFram
     notes.push(`${rest.length} byte(s) are not covered by the documented layout — kept raw`);
   }
   if (declared.length > 0 && fields.length === 0 && payload.length > 0) {
-    notes.push('the record could not be split with the documented layout — the bytes stay raw');
+    notes.push("the record could not be split with the documented layout — the bytes stay raw");
   }
 
   return {
@@ -157,7 +171,10 @@ export function decodeFreezeFrame(payload: Uint8Array, options: DecodeFreezeFram
 }
 
 /** Length of one field: declared explicitly, or derived from the highest signal. */
-function fieldLength(field: FreezeFrameField, signals: readonly SignalDefinition[]): number | undefined {
+function fieldLength(
+  field: FreezeFrameField,
+  signals: readonly SignalDefinition[],
+): number | undefined {
   if (field.length !== undefined && field.length > 0) return field.length;
   if (signals.length === 0) return undefined;
   return signals.reduce((max, signal) => Math.max(max, signal.byteOffset + signal.length), 0);

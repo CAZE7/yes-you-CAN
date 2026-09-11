@@ -5,8 +5,14 @@
  * The transport itself is injected so this stays testable without a network.
  */
 
-import { createLogger, type Logger } from '@vdp/shared';
-import { PAYLOAD_TYPE, decodeVehicleIdentificationResponse, encodeMessage, encodeVehicleIdentificationRequest, type VehicleIdentificationResponse } from './message.js';
+import { type Logger, createLogger } from "@vdp/shared";
+import {
+  PAYLOAD_TYPE,
+  type VehicleIdentificationResponse,
+  decodeVehicleIdentificationResponse,
+  encodeMessage,
+  encodeVehicleIdentificationRequest,
+} from "./message.js";
 
 export interface DoipDatagramSocket {
   broadcast(data: Uint8Array): Promise<void>;
@@ -30,7 +36,9 @@ export class DoipDiscovery {
   private readonly windowMs: number;
 
   constructor(private readonly options: DiscoveryOptions) {
-    this.log = (options.logger ?? createLogger('connection', { level: 'INFO' })).child('connection');
+    this.log = (options.logger ?? createLogger("connection", { level: "INFO" })).child(
+      "connection",
+    );
     this.windowMs = options.windowMs ?? 1000;
   }
 
@@ -42,26 +50,33 @@ export class DoipDiscovery {
       if (parsed) results.set(parsed.logicalAddress, parsed);
     });
     try {
-      await this.options.socket.broadcast(encodeMessage(PAYLOAD_TYPE.VEHICLE_IDENTIFICATION_REQUEST, encodeVehicleIdentificationRequest(this.options.vin)));
+      await this.options.socket.broadcast(
+        encodeMessage(
+          PAYLOAD_TYPE.VEHICLE_IDENTIFICATION_REQUEST,
+          encodeVehicleIdentificationRequest(this.options.vin),
+        ),
+      );
       await sleep(this.windowMs);
     } finally {
       unsubscribe();
     }
     const found = Array.from(results.values());
-    this.log.info('DoIP discovery finished', { vehicles: found.length });
+    this.log.info("DoIP discovery finished", { vehicles: found.length });
     return found;
   }
 
   /** Parse an announcement/vehicle identification response datagram. */
-  parse(datagram: Uint8Array, address = 'udp'): DiscoveryResult | null {
+  parse(datagram: Uint8Array, address = "udp"): DiscoveryResult | null {
     if (datagram.length < 8) return null;
-    const payloadType = (datagram[2] ?? 0) << 8 | (datagram[3] ?? 0);
+    const payloadType = ((datagram[2] ?? 0) << 8) | (datagram[3] ?? 0);
     if (payloadType !== PAYLOAD_TYPE.VEHICLE_ANNOUNCEMENT_RESPONSE) return null;
     try {
       const decoded = decodeVehicleIdentificationResponse(datagram.subarray(8));
       return { ...decoded, address };
     } catch (error) {
-      this.log.warn('invalid vehicle identification response', { error: error instanceof Error ? error.message : String(error) });
+      this.log.warn("invalid vehicle identification response", {
+        error: error instanceof Error ? error.message : String(error),
+      });
       return null;
     }
   }

@@ -20,10 +20,10 @@
  *   through `onError` and moves to `closed`.
  */
 
-import { constants } from 'node:fs';
-import { open, type FileHandle } from 'node:fs/promises';
-import { createLogger, AdapterUnsupportedError, TransportError, type Logger } from '@vdp/shared';
-import type { ByteStream } from '@vdp/adapter-elm327';
+import { constants } from "node:fs";
+import { type FileHandle, open } from "node:fs/promises";
+import type { ByteStream } from "@vdp/adapter-elm327";
+import { AdapterUnsupportedError, type Logger, TransportError, createLogger } from "@vdp/shared";
 
 export interface SerialStreamOptions {
   /** Character device, e.g. `/dev/ttyUSB0` (Linux) or `COM3` (Windows). */
@@ -50,10 +50,10 @@ export interface SerialPortConfig {
  * POSIX `EAGAIN`. Reading a serial device that has no byte available yet is the
  * normal case for a tty opened non-blocking, so it must not be an error.
  */
-const RETRYABLE_CODES = new Set(['EAGAIN', 'EWOULDBLOCK', 'EINTR', 'EBUSY']);
+const RETRYABLE_CODES = new Set(["EAGAIN", "EWOULDBLOCK", "EINTR", "EBUSY"]);
 
 function errorCode(error: unknown): string | undefined {
-  return typeof error === 'object' && error !== null && 'code' in error
+  return typeof error === "object" && error !== null && "code" in error
     ? String((error as { code?: unknown }).code)
     : undefined;
 }
@@ -82,13 +82,15 @@ export class SerialByteStream implements ByteStream {
 
   constructor(options: SerialStreamOptions, handle: FileHandle) {
     if (options.readChunkBytes !== undefined && options.readChunkBytes <= 0) {
-      throw new AdapterUnsupportedError('readChunkBytes must be greater than zero', { device: options.device });
+      throw new AdapterUnsupportedError("readChunkBytes must be greater than zero", {
+        device: options.device,
+      });
     }
     this.device = options.device;
     this.label = options.label ?? `serial ${options.device}`;
     this.readChunkBytes = options.readChunkBytes ?? 512;
     this.idlePollMs = options.idlePollMs ?? 5;
-    this.log = (options.logger ?? createLogger('can', { level: 'INFO' })).child('can');
+    this.log = (options.logger ?? createLogger("can", { level: "INFO" })).child("can");
     this.handle = handle;
   }
 
@@ -101,8 +103,9 @@ export class SerialByteStream implements ByteStream {
     // line and the adapter would answer with an error nobody can attribute.
     const next = this.writeChain.then(async () => {
       const handle = this.handle;
-      if (this.closed || !handle) throw new TransportError(`serial device ${this.device} is not open`);
-      const buffer = Buffer.from(data, 'latin1');
+      if (this.closed || !handle)
+        throw new TransportError(`serial device ${this.device} is not open`);
+      const buffer = Buffer.from(data, "latin1");
       try {
         await handle.write(buffer);
         this.bytesWritten += buffer.length;
@@ -161,11 +164,15 @@ export class SerialByteStream implements ByteStream {
     // last command (e.g. slcan "C") could be truncated at the OS layer.
     await this.writeChain.catch(() => undefined);
     await handle?.close().catch((error: unknown) => {
-      this.log.debug('serial close failed', { device: this.device, error: String(error) });
+      this.log.debug("serial close failed", { device: this.device, error: String(error) });
     });
     await this.waitForReadLoop();
     this.listeners = [];
-    this.log.info('serial device closed', { device: this.device, bytesRead: this.bytesRead, bytesWritten: this.bytesWritten });
+    this.log.info("serial device closed", {
+      device: this.device,
+      bytesRead: this.bytesRead,
+      bytesWritten: this.bytesWritten,
+    });
   }
 
   /** Bounded wait: never let a broken device block shutdown or a test. */
@@ -208,11 +215,16 @@ export class SerialByteStream implements ByteStream {
         const { bytesRead } = await handle.read(buffer, 0, buffer.length, null);
         if (bytesRead === 0) {
           // End of file on a character device means the device disappeared.
-          this.fail(new TransportError(`serial device ${this.device} reached end of stream (device removed?)`, { device: this.device }));
+          this.fail(
+            new TransportError(
+              `serial device ${this.device} reached end of stream (device removed?)`,
+              { device: this.device },
+            ),
+          );
           return;
         }
         this.bytesRead += bytesRead;
-        this.emitChunk(buffer.subarray(0, bytesRead).toString('latin1'));
+        this.emitChunk(buffer.subarray(0, bytesRead).toString("latin1"));
       } catch (error) {
         if (this.closed) return;
         const code = errorCode(error);
@@ -238,13 +250,16 @@ export class SerialByteStream implements ByteStream {
       try {
         listener(chunk);
       } catch (error) {
-        this.log.warn('serial stream listener failed', { device: this.device, error: error instanceof Error ? error.message : String(error) });
+        this.log.warn("serial stream listener failed", {
+          device: this.device,
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     }
   }
 
   private fail(error: Error): void {
-    this.log.warn('serial stream failed', { device: this.device, error: error.message });
+    this.log.warn("serial stream failed", { device: this.device, error: error.message });
     const listeners = [...this.errorListeners];
     this.errorListeners = [];
     for (const listener of listeners) {
@@ -266,13 +281,15 @@ export class SerialByteStream implements ByteStream {
  */
 export async function openSerialStream(options: SerialStreamOptions): Promise<SerialByteStream> {
   if (!options.device || options.device.trim().length === 0) {
-    throw new AdapterUnsupportedError('a serial device path is required (e.g. --device=/dev/ttyUSB0)');
+    throw new AdapterUnsupportedError(
+      "a serial device path is required (e.g. --device=/dev/ttyUSB0)",
+    );
   }
-  const logger = (options.logger ?? createLogger('can', { level: 'INFO' })).child('can');
+  const logger = (options.logger ?? createLogger("can", { level: "INFO" })).child("can");
   try {
     const handle = await open(options.device, serialOpenFlags());
     const stream = new SerialByteStream(options, handle);
-    logger.info('serial device opened', { device: options.device });
+    logger.info("serial device opened", { device: options.device });
     return stream;
   } catch (error) {
     throw new AdapterUnsupportedError(
@@ -305,25 +322,31 @@ function serialOpenFlags(): number {
  * present on every POSIX system and is the same mechanism a user would apply by
  * hand, which keeps the behaviour inspectable.
  */
-export async function configureSerialPort(device: string, config: SerialPortConfig, logger?: Logger): Promise<string> {
-  const { spawn } = await import('node:child_process');
-  const log = (logger ?? createLogger('can', { level: 'INFO' })).child('can');
-  const flags = config.flags ?? ['raw', '-echo', '-echoe', '-echok', '-crtscts', 'clocal'];
-  const args = ['-F', device, String(config.baudRate), ...flags];
+export async function configureSerialPort(
+  device: string,
+  config: SerialPortConfig,
+  logger?: Logger,
+): Promise<string> {
+  const { spawn } = await import("node:child_process");
+  const log = (logger ?? createLogger("can", { level: "INFO" })).child("can");
+  const flags = config.flags ?? ["raw", "-echo", "-echoe", "-echok", "-crtscts", "clocal"];
+  const args = ["-F", device, String(config.baudRate), ...flags];
   const timeoutMs = config.timeoutMs ?? 3000;
 
   return new Promise<string>((resolve, reject) => {
-    const child = spawn('stty', args, { stdio: ['ignore', 'pipe', 'pipe'] });
-    let stderr = '';
+    const child = spawn("stty", args, { stdio: ["ignore", "pipe", "pipe"] });
+    let stderr = "";
     const timer = setTimeout(() => {
-      child.kill('SIGKILL');
-      reject(new TransportError(`stty ${args.join(' ')} timed out after ${timeoutMs} ms`, { device }));
+      child.kill("SIGKILL");
+      reject(
+        new TransportError(`stty ${args.join(" ")} timed out after ${timeoutMs} ms`, { device }),
+      );
     }, timeoutMs);
 
-    child.stderr?.on('data', (chunk: Buffer) => {
-      stderr += chunk.toString('utf8');
+    child.stderr?.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString("utf8");
     });
-    child.on('error', (error: Error) => {
+    child.on("error", (error: Error) => {
       clearTimeout(timer);
       reject(
         new AdapterUnsupportedError(
@@ -332,14 +355,19 @@ export async function configureSerialPort(device: string, config: SerialPortConf
         ),
       );
     });
-    child.on('close', (code: number | null) => {
+    child.on("close", (code: number | null) => {
       clearTimeout(timer);
-      const command = `stty ${args.join(' ')}`;
+      const command = `stty ${args.join(" ")}`;
       if (code !== 0) {
-        reject(new TransportError(`${command} exited with code ${code}: ${stderr.trim() || 'no output'}`, { device }));
+        reject(
+          new TransportError(
+            `${command} exited with code ${code}: ${stderr.trim() || "no output"}`,
+            { device },
+          ),
+        );
         return;
       }
-      log.info('serial port configured', { device, baudRate: config.baudRate });
+      log.info("serial port configured", { device, baudRate: config.baudRate });
       resolve(command);
     });
   });

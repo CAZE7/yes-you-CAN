@@ -80,7 +80,7 @@ export interface DefinitionProvider {
  * need a `null` check, and as the base for partial implementations.
  */
 export class NullDefinitionProvider implements DefinitionProvider {
-  readonly source = 'none';
+  readonly source = "none";
 
   listPackages(): VehicleDefinitionRef[] {
     return [];
@@ -117,7 +117,7 @@ export class StaticDefinitionProvider implements DefinitionProvider {
     signals?: readonly SignalDefinitionRef[];
     source?: string;
   }) {
-    this.source = data.source ?? 'static';
+    this.source = data.source ?? "static";
     this.packages = [...(data.packages ?? [])];
     this.ecus = [...(data.ecus ?? [])];
     this.dids = [...(data.dids ?? [])];
@@ -139,7 +139,9 @@ export class StaticDefinitionProvider implements DefinitionProvider {
   }
 
   findDid(query: FindDidQuery): DidDefinitionRef | undefined {
-    return this.dids.find((did) => did.did === query.did && (query.ecu === undefined || did.ecu === query.ecu));
+    return this.dids.find(
+      (did) => did.did === query.did && (query.ecu === undefined || did.ecu === query.ecu),
+    );
   }
 
   findSignal(signalId: string): SignalDefinitionRef | undefined {

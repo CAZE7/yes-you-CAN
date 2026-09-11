@@ -8,13 +8,27 @@ updates:
       time: "06:00"
       timezone: Europe/Berlin
     open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - npm
     groups:
       typescript:
         patterns:
           - "typescript"
           - "@types/*"
+      test:
+        patterns:
+          - "vitest"
+          - "@vitest/*"
+          - "fast-check"
+      lint:
+        patterns:
+          - "@biomejs/*"
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
       interval: weekly
       day: monday
+    labels:
+      - dependencies
+      - github-actions

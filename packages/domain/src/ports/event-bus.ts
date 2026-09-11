@@ -6,13 +6,16 @@
  * Keeping the port here means the domain never imports an implementation.
  */
 
-import type { DiagnosticEventMap } from '../events.js';
+import type { DiagnosticEventMap } from "../events.js";
 
 export type Unsubscribe = () => void;
 
 export interface EventBus {
   publish<K extends keyof DiagnosticEventMap>(event: K, payload: DiagnosticEventMap[K]): void;
-  subscribe<K extends keyof DiagnosticEventMap>(event: K, listener: (payload: DiagnosticEventMap[K]) => void): Unsubscribe;
+  subscribe<K extends keyof DiagnosticEventMap>(
+    event: K,
+    listener: (payload: DiagnosticEventMap[K]) => void,
+  ): Unsubscribe;
 }
 
 /**
@@ -26,10 +29,14 @@ export class InMemoryEventBus implements EventBus {
   publish<K extends keyof DiagnosticEventMap>(event: K, payload: DiagnosticEventMap[K]): void {
     const set = this.listeners.get(event);
     if (!set) return;
-    for (const listener of Array.from(set)) (listener as (payload: DiagnosticEventMap[K]) => void)(payload);
+    for (const listener of Array.from(set))
+      (listener as (payload: DiagnosticEventMap[K]) => void)(payload);
   }
 
-  subscribe<K extends keyof DiagnosticEventMap>(event: K, listener: (payload: DiagnosticEventMap[K]) => void): Unsubscribe {
+  subscribe<K extends keyof DiagnosticEventMap>(
+    event: K,
+    listener: (payload: DiagnosticEventMap[K]) => void,
+  ): Unsubscribe {
     let set = this.listeners.get(event);
     if (!set) {
       set = new Set();
@@ -58,7 +65,10 @@ export class RecordingEventBus implements EventBus {
     this.recorded.push({ name: event, payload });
   }
 
-  subscribe<K extends keyof DiagnosticEventMap>(_event: K, _listener: (payload: DiagnosticEventMap[K]) => void): Unsubscribe {
+  subscribe<K extends keyof DiagnosticEventMap>(
+    _event: K,
+    _listener: (payload: DiagnosticEventMap[K]) => void,
+  ): Unsubscribe {
     return () => undefined;
   }
 
@@ -67,7 +77,9 @@ export class RecordingEventBus implements EventBus {
   }
 
   ofType<K extends keyof DiagnosticEventMap>(event: K): Array<DiagnosticEventMap[K]> {
-    return this.recorded.filter((e): e is RecordedEvent<K> => e.name === event).map((e) => e.payload);
+    return this.recorded
+      .filter((e): e is RecordedEvent<K> => e.name === event)
+      .map((e) => e.payload);
   }
 
   clear(): void {

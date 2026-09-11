@@ -10,10 +10,10 @@
  * sessions and services are identical for CAN and DoIP.
  */
 
-import { createLogger, type Logger } from '@vdp/shared';
-import { createRequestResponseLink } from '@vdp/protocols-uds';
-import { DoipTransport, type DoipSocket } from '@vdp/transport-doip';
-import type { EcuLinkFactory, OpenedEcuLink } from '@vdp/core';
+import type { EcuLinkFactory, OpenedEcuLink } from "@vdp/core";
+import { createRequestResponseLink } from "@vdp/protocols-uds";
+import { type Logger, createLogger } from "@vdp/shared";
+import { type DoipSocket, DoipTransport } from "@vdp/transport-doip";
 
 export interface DoipEcuLinkFactoryOptions {
   /**
@@ -41,7 +41,7 @@ export class DoipEcuLinkFactory implements EcuLinkFactory {
   private readonly log: Logger;
 
   constructor(private readonly options: DoipEcuLinkFactoryOptions) {
-    this.log = (options.logger ?? createLogger('doip', { level: 'INFO' })).child('doip');
+    this.log = (options.logger ?? createLogger("doip", { level: "INFO" })).child("doip");
   }
 
   async open(ecu: { txId: number; rxId: number; extended?: boolean }): Promise<OpenedEcuLink> {
@@ -50,21 +50,25 @@ export class DoipEcuLinkFactory implements EcuLinkFactory {
       socket: this.options.createSocket(targetAddress),
       targetAddress,
       logger: this.log,
-      ...(this.options.testerAddress !== undefined ? { testerAddress: this.options.testerAddress } : {}),
+      ...(this.options.testerAddress !== undefined
+        ? { testerAddress: this.options.testerAddress }
+        : {}),
       ...(this.options.requireTls !== undefined ? { requireTls: this.options.requireTls } : {}),
     });
     // Routing activation happens on connect; only then may UDS payloads flow.
     await transport.connect();
     const link = createRequestResponseLink(
       transport,
-      this.options.responseTimeoutMs !== undefined ? { defaultTimeoutMs: this.options.responseTimeoutMs, logger: this.log } : { logger: this.log },
+      this.options.responseTimeoutMs !== undefined
+        ? { defaultTimeoutMs: this.options.responseTimeoutMs, logger: this.log }
+        : { logger: this.log },
     );
-    this.log.debug('DoIP link opened', { target: `0x${targetAddress.toString(16)}` });
+    this.log.debug("DoIP link opened", { target: `0x${targetAddress.toString(16)}` });
     return {
       link,
       close: () => {
         void transport.disconnect().catch((error) => {
-          this.log.warn('DoIP disconnect failed', {
+          this.log.warn("DoIP disconnect failed", {
             target: `0x${targetAddress.toString(16)}`,
             error: error instanceof Error ? error.message : String(error),
           });

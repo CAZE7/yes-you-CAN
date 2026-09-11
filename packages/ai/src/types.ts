@@ -39,7 +39,7 @@ export interface AnalysisInput {
 
 export interface AnalysisFinding {
   id: string;
-  severity: 'info' | 'minor' | 'major' | 'critical';
+  severity: "info" | "minor" | "major" | "critical";
   title: string;
   detail: string;
   relatedSignals?: string[];
@@ -55,7 +55,7 @@ export interface AnalysisResult {
   /** Confidence in [0, 1]; heuristic results are conservative. */
   confidence: number;
   /** Provenance so the UI can label AI output as such. */
-  source: 'heuristic' | 'model' | 'cache';
+  source: "heuristic" | "model" | "cache";
   generatedAt: string;
   warnings?: string[];
 }
@@ -73,7 +73,7 @@ export class AnalysisError extends Error {
 
   constructor(message: string, details?: Record<string, unknown>) {
     super(message);
-    this.name = 'AnalysisError';
+    this.name = "AnalysisError";
     if (details) this.details = details;
   }
 }

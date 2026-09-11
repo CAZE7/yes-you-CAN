@@ -1,0 +1,79 @@
+{
+  "$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
+  "organizeImports": {
+    "enabled": true
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "correctness": {
+        "noUnusedVariables": "warn",
+        "noUnusedImports": "warn",
+        "useExhaustiveDependencies": "off",
+        "noUnnecessaryContinue": "warn"
+      },
+      "style": {
+        "useImportType": "error",
+        "noNonNullAssertion": "warn",
+        "useTemplate": "off",
+        "noUnusedTemplateLiteral": "off",
+        "useConst": "off"
+      },
+      "suspicious": {
+        "noExplicitAny": "warn",
+        "noConsoleLog": "off",
+        "noShadowRestrictedNames": "off",
+        "noControlCharactersInRegex": "off",
+        "noImplicitAnyLet": "off",
+        "noAssignInExpressions": "off"
+      },
+      "complexity": {
+        "noForEach": "off",
+        "useLiteralKeys": "off"
+      },
+      "performance": {
+        "noDelete": "off"
+      }
+    }
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double",
+      "semicolons": "always",
+      "trailingCommas": "all"
+    }
+  },
+  "overrides": [
+    {
+      "include": ["**/*.spec.ts", "**/*.test.ts", "tests/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noExplicitAny": "off"
+          },
+          "style": {
+            "noNonNullAssertion": "off"
+          }
+        }
+      }
+    }
+  ],
+  "files": {
+    "ignoreUnknown": false,
+    "ignore": [
+      "node_modules",
+      "dist",
+      "coverage",
+      "sessions-local",
+      "*.tsbuildinfo",
+      "vitest.config.ts"
+    ]
+  }
+}

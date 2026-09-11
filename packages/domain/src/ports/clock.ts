@@ -36,7 +36,7 @@ export class FixedClock implements Clock {
   }
 
   advance(ms: number): void {
-    if (ms < 0) throw new Error('a FixedClock cannot go backwards');
+    if (ms < 0) throw new Error("a FixedClock cannot go backwards");
     this.currentMs += ms;
   }
 

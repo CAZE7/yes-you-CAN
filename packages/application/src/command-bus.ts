@@ -28,14 +28,21 @@ export interface Query<TResult = unknown> {
   readonly __resultType?: TResult;
 }
 
-export type CommandHandler<C extends Command<TResult>, TResult> = (command: C) => Promise<TResult> | TResult;
-export type QueryHandler<Q extends Query<TResult>, TResult> = (query: Q) => Promise<TResult> | TResult;
+export type CommandHandler<C extends Command<TResult>, TResult> = (
+  command: C,
+) => Promise<TResult> | TResult;
+export type QueryHandler<Q extends Query<TResult>, TResult> = (
+  query: Q,
+) => Promise<TResult> | TResult;
 
 /** Raised when a command/query is dispatched that nobody is registered for. */
 export class NoHandlerError extends Error {
-  constructor(readonly kind: string, kindLabel: 'command' | 'query' = 'command') {
+  constructor(
+    readonly kind: string,
+    kindLabel: "command" | "query" = "command",
+  ) {
     super(`no ${kindLabel} handler registered for "${kind}"`);
-    this.name = 'NoHandlerError';
+    this.name = "NoHandlerError";
   }
 }
 
@@ -43,7 +50,7 @@ export class NoHandlerError extends Error {
 export class DuplicateHandlerError extends Error {
   constructor(readonly kind: string) {
     super(`a handler is already registered for "${kind}"`);
-    this.name = 'DuplicateHandlerError';
+    this.name = "DuplicateHandlerError";
   }
 }
 
@@ -53,12 +60,18 @@ export class CommandBus {
   private readonly commandHandlers = new Map<string, AnyHandler>();
   private readonly queryHandlers = new Map<string, AnyHandler>();
 
-  registerCommand<TResult>(kind: string, handler: (command: Command<TResult>) => Promise<TResult> | TResult): void {
+  registerCommand<TResult>(
+    kind: string,
+    handler: (command: Command<TResult>) => Promise<TResult> | TResult,
+  ): void {
     if (this.commandHandlers.has(kind)) throw new DuplicateHandlerError(kind);
     this.commandHandlers.set(kind, handler as AnyHandler);
   }
 
-  registerQuery<TResult>(kind: string, handler: (query: Query<TResult>) => Promise<TResult> | TResult): void {
+  registerQuery<TResult>(
+    kind: string,
+    handler: (query: Query<TResult>) => Promise<TResult> | TResult,
+  ): void {
     if (this.queryHandlers.has(kind)) throw new DuplicateHandlerError(kind);
     this.queryHandlers.set(kind, handler as AnyHandler);
   }
@@ -66,14 +79,14 @@ export class CommandBus {
   /** Execute a command; resolves with the handler's result. */
   async dispatch<TResult>(command: Command<TResult>): Promise<TResult> {
     const handler = this.commandHandlers.get(command.kind);
-    if (!handler) throw new NoHandlerError(command.kind, 'command');
+    if (!handler) throw new NoHandlerError(command.kind, "command");
     return (await handler(command as Command<never>)) as TResult;
   }
 
   /** Execute a query; resolves with the handler's result. */
   async query<TResult>(readModel: Query<TResult>): Promise<TResult> {
     const handler = this.queryHandlers.get(readModel.kind);
-    if (!handler) throw new NoHandlerError(readModel.kind, 'query');
+    if (!handler) throw new NoHandlerError(readModel.kind, "query");
     return (await handler(readModel as Command<never>)) as TResult;
   }
 

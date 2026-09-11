@@ -5,8 +5,8 @@
  * definition packages, severity, snapshots and before/after comparison.
  */
 
-import type { DtcRecord } from '@vdp/protocols-uds';
-import type { DefinitionPackage } from '@vdp/definitions';
+import type { DefinitionPackage } from "@vdp/definitions";
+import type { DtcRecord } from "@vdp/protocols-uds";
 
 export interface EnrichedDtc extends DtcRecord {
   /** Description from the definition package, when one exists. */
@@ -77,9 +77,15 @@ export class DtcTracker {
   }
 
   /** Everything the tracker has seen, for persisting into the session (AGENTS 10). */
-  snapshot(): Array<{ ecuId: string; code: string; firstSeen: string; lastSeen: string; scans: number }> {
+  snapshot(): Array<{
+    ecuId: string;
+    code: string;
+    firstSeen: string;
+    lastSeen: string;
+    scans: number;
+  }> {
     return Array.from(this.seen, ([key, occurrence]) => {
-      const [ecuId = '', code = ''] = key.split(':');
+      const [ecuId = "", code = ""] = key.split(":");
       return { ecuId, code, ...occurrence };
     });
   }
@@ -104,7 +110,15 @@ export interface DtcScannerOptions {
 }
 
 export class DtcScanner {
-  private readonly descriptions = new Map<string, { description: string; hint?: string; severity?: EnrichedDtc['severity']; relatedSignals?: Array<{ id: string; name: string }> }>();
+  private readonly descriptions = new Map<
+    string,
+    {
+      description: string;
+      hint?: string;
+      severity?: EnrichedDtc["severity"];
+      relatedSignals?: Array<{ id: string; name: string }>;
+    }
+  >();
   private readonly clock: () => Date;
   /** First/last seen tracking shared by every scan of this session (AGENTS 20). */
   readonly tracker = new DtcTracker();
@@ -136,7 +150,11 @@ export class DtcScanner {
     const timestamp = this.clock().toISOString();
     // Register the whole scan first, so "first seen in this scan" is decided once
     // for all codes of the ECU instead of depending on the response order.
-    const occurrences = this.tracker.record(ecuId, records.map((record) => record.code), timestamp);
+    const occurrences = this.tracker.record(
+      ecuId,
+      records.map((record) => record.code),
+      timestamp,
+    );
     return records.map((record) => {
       const info = this.descriptions.get(record.code);
       const occurrence = occurrences.get(`${ecuId}:${record.code.toUpperCase()}`);
@@ -148,7 +166,13 @@ export class DtcScanner {
         severity: info?.severity ?? record.severity,
         ecuName,
         ecuId,
-        ...(occurrence ? { firstSeen: occurrence.firstSeen, lastSeen: occurrence.lastSeen, firstSeenInThisScan: occurrence.scans === 1 } : {}),
+        ...(occurrence
+          ? {
+              firstSeen: occurrence.firstSeen,
+              lastSeen: occurrence.lastSeen,
+              firstSeenInThisScan: occurrence.scans === 1,
+            }
+          : {}),
       };
     });
   }
@@ -170,14 +194,19 @@ export class DtcScanner {
 
     const added = after.filter((dtc) => !beforeMap.has(key(dtc)));
     const removed = before.filter((dtc) => !afterMap.has(key(dtc)));
-    const changed: DtcComparison['changed'] = [];
+    const changed: DtcComparison["changed"] = [];
     const unchanged: EnrichedDtc[] = [];
 
     for (const dtc of after) {
       const previous = beforeMap.get(key(dtc));
       if (!previous) continue;
       if (previous.status !== dtc.status) {
-        changed.push({ code: dtc.code, before: previous.status, after: dtc.status, ecuName: dtc.ecuName });
+        changed.push({
+          code: dtc.code,
+          before: previous.status,
+          after: dtc.status,
+          ecuName: dtc.ecuName,
+        });
       } else {
         unchanged.push(dtc);
       }
@@ -186,13 +215,27 @@ export class DtcScanner {
   }
 
   /** Group by severity for reports (AGENTS 21 "DTC Summary"). */
-  groupBySeverity(dtcs: readonly EnrichedDtc[]): Record<'critical' | 'major' | 'minor' | 'info', EnrichedDtc[]> {
-    const groups: Record<'critical' | 'major' | 'minor' | 'info', EnrichedDtc[]> = { critical: [], major: [], minor: [], info: [] };
+  groupBySeverity(
+    dtcs: readonly EnrichedDtc[],
+  ): Record<"critical" | "major" | "minor" | "info", EnrichedDtc[]> {
+    const groups: Record<"critical" | "major" | "minor" | "info", EnrichedDtc[]> = {
+      critical: [],
+      major: [],
+      minor: [],
+      info: [],
+    };
     for (const dtc of dtcs) groups[dtc.severity].push(dtc);
     return groups;
   }
 
-  summary(dtcs: readonly EnrichedDtc[]): { total: number; critical: number; major: number; minor: number; info: number; codes: string[] } {
+  summary(dtcs: readonly EnrichedDtc[]): {
+    total: number;
+    critical: number;
+    major: number;
+    minor: number;
+    info: number;
+    codes: string[];
+  } {
     const groups = this.groupBySeverity(dtcs);
     return {
       total: dtcs.length,

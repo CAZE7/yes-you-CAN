@@ -36,9 +36,9 @@ export const SESSION = {
 } as const;
 
 export const SESSION_NAMES: Record<number, string> = {
-  0x01: 'defaultSession',
-  0x02: 'programmingSession',
-  0x03: 'extendedDiagnosticSession',
+  1: "defaultSession",
+  2: "programmingSession",
+  3: "extendedDiagnosticSession",
 };
 
 export const RESET_TYPE = {

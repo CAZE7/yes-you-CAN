@@ -6,17 +6,17 @@
  * same way. Also owns the adapter registry used by the UI's adapter picker.
  */
 
-import { AdapterUnsupportedError, createLogger, type Logger } from '@vdp/shared';
+import { AdapterUnsupportedError, type Logger, createLogger } from "@vdp/shared";
 import {
-  CanAdapterRegistry,
   type AdapterCapabilities,
   type AdapterInfo,
   type CanAdapterFactory,
+  CanAdapterRegistry,
   type CanBus,
   type CanFilter,
   type CanFrame,
   type FrameListener,
-} from '@vdp/transport-can';
+} from "@vdp/transport-can";
 
 export interface GenericCanOptions {
   /** Identifier used by the registry, e.g. "virtual" or "vendor-x". */
@@ -36,7 +36,7 @@ export class GenericCanAdapter implements CanBus {
   private rxCount = 0;
 
   constructor(private readonly options: GenericCanOptions) {
-    this.log = (options.logger ?? createLogger('can', { level: 'INFO' })).child('can');
+    this.log = (options.logger ?? createLogger("can", { level: "INFO" })).child("can");
     this.info = { ...options.bus.info, id: options.id, name: options.displayName };
     this.capabilities = { ...options.bus.capabilities, ...(options.capabilities ?? {}) };
   }
@@ -47,7 +47,10 @@ export class GenericCanAdapter implements CanBus {
 
   async open(): Promise<void> {
     await this.options.bus.open();
-    this.log.info('generic CAN adapter opened', { id: this.options.id, capabilities: this.capabilities });
+    this.log.info("generic CAN adapter opened", {
+      id: this.options.id,
+      capabilities: this.capabilities,
+    });
   }
 
   async close(): Promise<void> {
@@ -60,7 +63,9 @@ export class GenericCanAdapter implements CanBus {
 
   async send(frame: CanFrame): Promise<void> {
     if (frame.fd && !this.capabilities.canFd) {
-      throw new AdapterUnsupportedError(`adapter "${this.options.id}" does not support CAN-FD`, { adapterId: this.options.id });
+      throw new AdapterUnsupportedError(`adapter "${this.options.id}" does not support CAN-FD`, {
+        adapterId: this.options.id,
+      });
     }
     this.txCount++;
     await this.options.bus.send(frame);
@@ -78,7 +83,9 @@ export class GenericCanAdapter implements CanBus {
   }
 }
 
-export function createGenericCanFactory(options: Omit<GenericCanOptions, 'bus'> & { create: () => CanBus }): CanAdapterFactory {
+export function createGenericCanFactory(
+  options: Omit<GenericCanOptions, "bus"> & { create: () => CanBus },
+): CanAdapterFactory {
   return {
     id: options.id,
     displayName: options.displayName,
@@ -87,7 +94,9 @@ export function createGenericCanFactory(options: Omit<GenericCanOptions, 'bus'> 
 }
 
 /** Registry pre-populated with the adapters this repository ships. */
-export function createAdapterRegistry(factories: readonly CanAdapterFactory[] = []): CanAdapterRegistry {
+export function createAdapterRegistry(
+  factories: readonly CanAdapterFactory[] = [],
+): CanAdapterRegistry {
   const registry = new CanAdapterRegistry();
   for (const factory of factories) registry.register(factory);
   return registry;

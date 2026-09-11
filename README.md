@@ -1,8 +1,17 @@
 # yes-you-CAN
 
+[![CI](https://github.com/CAZE7/yes-you-CAN/actions/workflows/ci.yml/badge.svg)](https://github.com/CAZE7/yes-you-CAN/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/CAZE7/yes-you-CAN/actions/workflows/codeql.yml/badge.svg)](https://github.com/CAZE7/yes-you-CAN/actions/workflows/codeql.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+[![Node](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](./package.json)
+[![Tests](https://img.shields.io/badge/tests-951%20passed-brightgreen)](#tests)
+[![TypeScript](https://img.shields.io/badge/TypeScript-7%20%2F%20tsgo-blue)](./tsconfig.base.json)
+
 Fahrzeugdiagnose-Plattform: CAN und DoIP lesen, Steuergeräte identifizieren,
 Fehlerspeicher auslesen, Live-Messwerte aufzeichnen und als Report exportieren —
-ohne Real-Fahrzeug testbar.
+ohne Real-Fahrzeug testbar. Industriestandard-Toolchain: TypeScript 7/tsgo,
+Vitest 5, Biome, tsc-Projekt-Referenzen, Architekturtests, strikte Security-Baseline
+(ADR 0009) und deterministische Simulator/Replay-Tests statt Hardware-Abhängigkeit.
 
 Die Spezifikation liegt in [`AGENTS.md`](AGENTS.md), die Begründungen für den
 Aufbau in [`docs/adr/`](docs/adr/).
@@ -85,11 +94,14 @@ node apps/web/dist/src/server.js --port=8080 --sessions=./sessions-local
 ## Entwicklung
 
 ```bash
+npm ci                # exakt das Lockfile (Node >=22, engine-strict)
 npm run build         # tsc -b über alle Projekt-Referenzen (TypeScript 7 / tsgo)
 npm run typecheck     # Build + strikter noEmit-Pass über Tests, Konfiguration und Specs
-npm test              # Vitest: alle 5 Ebenen (unit, protocol, regression, replay, integration)
+npx biome check .     # Lint + Format (Biome 1.9): 2-space, 100-char, organizeImports
+npm test              # Vitest: alle 5 Ebenen (unit, protocol, regression, replay, integration, architecture)
 npm run test:unit     # nur Unit-Specs — schnelle Feedback-Schleife
-npm run test:coverage # Suite + V8-Coverage-Schwellen
+npm run test:coverage # Suite + V8-Coverage (80% lines / 75% branches global; per-file für core/protocols)
+npm run ci            # Build + Typecheck + Biome + Test — entspricht der CI
 ```
 
 Einzelnes Paket bzw. einzelne Test-Datei:
@@ -97,7 +109,12 @@ Einzelnes Paket bzw. einzelne Test-Datei:
 ```bash
 npx tsc -b packages/transport/iso-tp
 npx vitest run packages/storage/src/storage.spec.ts
+npx biome check --write .   # auto-fix
 ```
+
+Qualitätstore in der CI (`.github/workflows/ci.yml`): `lint` + `typecheck` + `build` auf
+Node 22, Tests auf 22 und 24, Coverage-Upload, `npm audit` und separat CodeQL +
+Dependency-Review. Details siehe [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Graphen
 
@@ -110,11 +127,12 @@ Zeitraum aus, Doppelklick zeigt die gesamte Aufnahme.
 
 ## Tests
 
-806 Tests, Vitest 5 mit Projektkonfiguration (ADR 0010, Schritt 1 — ersetzt
+951 Tests, Vitest 5 mit Projektkonfiguration (ADR 0010, Schritt 1 — ersetzt
 ADR 0008). Unit-Specs liegen co-lokatiert neben dem Code (`src/*.spec.ts`);
 Property-Tests laufen mit fast-check, Coverage-Gates mit
-`npm run test:coverage` (derzeit 87 Schwellen rot — vorbestehend). Ebenen
-nach AGENTS 31:
+`npm run test:coverage` (80% lines / 75% branches global, per-file für
+`core`/`protocols`/`adapters`/`transport`; Hardware-Module
+`serial`/`binding` ausgenommen). Ebenen nach AGENTS 31:
 
 | Ebene | Ort |
 |---|---|
@@ -123,7 +141,8 @@ nach AGENTS 31:
 | Protokoll | `tests/protocol` |
 | Replay | `tests/replay` |
 | Regression | `tests/regression` |
-| Hardware (vcan) | `tests/hardware` — Projekt definiert, Fixtures und CI-Job noch offen |
+| Architektur | `tests/architecture` — Abhängigkeitsgraph ist ein Test (ADR 0015) |
+| Hardware (vcan) | `tests/hardware` — `vcan0`, nightly/manual (`npm run test:hardware`) |
 
 Der Regressionskatalog dokumentiert jeden gefundenen Fehler mit Symptom. Es
 sind durchweg Laufzeit- und Wire-Level-Fehler, die ein Typchecker prinzipiell

@@ -9,17 +9,17 @@
  * storage and reports packages (AGENTS 17/21).
  */
 
-import { toHex } from '@vdp/shared';
-import type { CanFrame } from '@vdp/transport-can';
-import type { DtcRecord } from '@vdp/protocols-uds';
-import type { MeasurementSample, Marker } from '../measurements/recorder.js';
+import type { DtcRecord } from "@vdp/protocols-uds";
+import { toHex } from "@vdp/shared";
+import type { CanFrame } from "@vdp/transport-can";
+import type { Marker, MeasurementSample } from "../measurements/recorder.js";
 
 export interface RawTraceEntry {
   timestamp: string;
   t: number;
   canId: number;
   canIdHex: string;
-  direction: 'tx' | 'rx';
+  direction: "tx" | "rx";
   dlc: number;
   payload: Uint8Array;
   payloadHex: string;
@@ -66,19 +66,20 @@ export class SessionLogger {
       t: at - this.startedAt,
       canId: frame.id,
       canIdHex: `0x${frame.id.toString(16).toUpperCase()}`,
-      direction: frame.direction ?? 'rx',
+      direction: frame.direction ?? "rx",
       dlc: frame.dlc,
       // The adapter may reuse its buffer, so the evidence is copied out:
       // `payloadHex` is what the exports read and `payload` is what a replay feeds
       // back into a bus, and neither may change after this entry was recorded.
       payload: frame.payload.slice(),
-      payloadHex: toHex(frame.payload, ''),
+      payloadHex: toHex(frame.payload, ""),
       channel: frame.channel,
       extended: frame.extended,
       fd: frame.fd,
     };
     this.trace.push(entry);
-    if (this.trace.length > this.maxTraceEntries) this.trace.splice(0, this.trace.length - this.maxTraceEntries);
+    if (this.trace.length > this.maxTraceEntries)
+      this.trace.splice(0, this.trace.length - this.maxTraceEntries);
     return entry;
   }
 
@@ -105,8 +106,8 @@ export class SessionLogger {
     const result: Array<{ request: RawTraceEntry; response: RawTraceEntry | null }> = [];
     for (let i = 0; i < this.trace.length; i++) {
       const entry = this.trace[i] as RawTraceEntry;
-      if (entry.direction !== 'tx') continue;
-      const response = this.trace.slice(i + 1).find((later) => later.direction === 'rx') ?? null;
+      if (entry.direction !== "tx") continue;
+      const response = this.trace.slice(i + 1).find((later) => later.direction === "rx") ?? null;
       result.push({ request: entry, response });
     }
     return result;
@@ -124,7 +125,7 @@ export class SessionLogger {
    * RFC 4180 comma form is what every tool understands.
    */
   static toCsv(samples: readonly MeasurementSample[], markers: readonly Marker[] = []): string {
-    const header = 'timestamp,t_ms,signal,value,raw_value,raw_hex,unit,enum_text,out_of_range';
+    const header = "timestamp,t_ms,signal,value,raw_value,raw_hex,unit,enum_text,out_of_range";
     const lines = [header];
     for (const sample of samples) {
       lines.push(
@@ -135,26 +136,34 @@ export class SessionLogger {
           csvValue(formatValue(sample.value)),
           csvValue(formatValue(sample.rawValue)),
           csvValue(sample.rawHex),
-          csvValue(sample.unit ?? ''),
-          csvValue(sample.enumText ?? ''),
-          sample.outOfRange ? 'true' : 'false',
-        ].join(','),
+          csvValue(sample.unit ?? ""),
+          csvValue(sample.enumText ?? ""),
+          sample.outOfRange ? "true" : "false",
+        ].join(","),
       );
     }
     if (markers.length > 0) {
-      lines.push('');
-      lines.push('# markers');
-      lines.push('timestamp,t_ms,label,kind,detail');
+      lines.push("");
+      lines.push("# markers");
+      lines.push("timestamp,t_ms,label,kind,detail");
       for (const marker of markers) {
-        lines.push([csvValue(marker.timestamp), String(marker.t), csvValue(marker.label), csvValue(marker.kind), csvValue(marker.detail ?? '')].join(','));
+        lines.push(
+          [
+            csvValue(marker.timestamp),
+            String(marker.t),
+            csvValue(marker.label),
+            csvValue(marker.kind),
+            csvValue(marker.detail ?? ""),
+          ].join(","),
+        );
       }
     }
-    return `${lines.join('\n')}\n`;
+    return `${lines.join("\n")}\n`;
   }
 
   /** Raw CAN trace as CSV (AGENTS 18). */
   static traceToCsv(entries: readonly RawTraceEntry[]): string {
-    const lines = ['timestamp,t_ms,can_id,direction,dlc,payload,channel,extended,fd'];
+    const lines = ["timestamp,t_ms,can_id,direction,dlc,payload,channel,extended,fd"];
     for (const entry of entries) {
       lines.push(
         [
@@ -165,12 +174,12 @@ export class SessionLogger {
           String(entry.dlc),
           csvValue(entry.payloadHex),
           csvValue(entry.channel),
-          entry.extended ? 'true' : 'false',
-          entry.fd ? 'true' : 'false',
-        ].join(','),
+          entry.extended ? "true" : "false",
+          entry.fd ? "true" : "false",
+        ].join(","),
       );
     }
-    return `${lines.join('\n')}\n`;
+    return `${lines.join("\n")}\n`;
   }
 
   /** JSON export — lossless, raw and decoded values side by side. */
@@ -184,7 +193,7 @@ export class SessionLogger {
   }): string {
     return JSON.stringify(
       {
-        format: 'vdp.session',
+        format: "vdp.session",
         formatVersion: 1,
         exportedAt: new Date().toISOString(),
         meta: payload.meta,
@@ -206,7 +215,8 @@ export class SessionLogger {
 
 /** Quote exactly what RFC 4180 requires quoted, doubling embedded quotes. */
 function csvValue(value: string): string {
-  if (value.includes(',') || value.includes('"') || value.includes('\n') || value.includes('\r')) return `"${value.replace(/"/g, '""')}"`;
+  if (value.includes(",") || value.includes('"') || value.includes("\n") || value.includes("\r"))
+    return `"${value.replace(/"/g, '""')}"`;
   return value;
 }
 
@@ -217,5 +227,5 @@ function csvValue(value: string): string {
  * spreadsheet would otherwise read as data.
  */
 function formatValue(value: number | string | boolean | null | undefined): string {
-  return value === null || value === undefined ? '' : String(value);
+  return value === null || value === undefined ? "" : String(value);
 }
