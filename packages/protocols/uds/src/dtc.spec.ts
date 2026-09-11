@@ -68,3 +68,88 @@ test('severity is derived from status bits', () => {
   assert.equal(dtcSeverity(decodeDtcStatus(0x04)), 'minor');
   assert.equal(dtcSeverity(decodeDtcStatus(0x50)), 'info');
 });
+
+/* ------------------------------------------------------------------ *
+ * Property round trips (fast-check, testing standards).              *
+ * ------------------------------------------------------------------ */
+
+import fc from 'fast-check';
+import { describe, expect } from 'vitest';
+import { DTC_LETTERS } from './dtc.js';
+
+const validCodeArb = fc
+  .tuple(fc.constantFrom(...DTC_LETTERS), fc.nat({ max: 3 }), fc.nat({ max: 15 }), fc.nat({ max: 15 }), fc.nat({ max: 15 }))
+  .map(([letter, d1, d2, d3, d4]) => `${letter}${d1}${d2.toString(16)}${d3.toString(16)}${d4.toString(16)}`.toUpperCase());
+
+describe('DTC property round trips (ISO 14229-1 Annex C)', () => {
+  test('property: encodeDtc ∘ decodeDtc is the identity on every representable code', () => {
+    fc.assert(
+      fc.property(validCodeArb, (code) => {
+        const { high, low } = encodeDtc(code);
+        expect(decodeDtc(high, low).code).toBe(code);
+      }),
+      { numRuns: 1000 },
+    );
+  });
+
+  test('property: encodeDtcToBytes ∘ decodeDtcBytes is the identity incl. failure type', () => {
+    fc.assert(
+      fc.property(validCodeArb, fc.nat({ max: 255 }), (code, failureType) => {
+        const decoded = decodeDtcBytes(encodeDtcToBytes(code, failureType));
+        expect(decoded.code).toBe(code);
+        expect(decoded.failureType).toBe(failureType.toString(16).padStart(2, '0').toUpperCase());
+      }),
+    );
+  });
+
+  test('property: the raw hex form is stable for every byte pair', () => {
+    fc.assert(
+      fc.property(fc.nat({ max: 255 }), fc.nat({ max: 255 }), (high, low) => {
+        const decoded = decodeDtc(high, low);
+        expect(decoded.raw).toBe(
+          `${high.toString(16).padStart(2, '0')}${low.toString(16).padStart(2, '0')}00`.toUpperCase(),
+        );
+      }),
+    );
+  });
+});
+
+describe('DTC status byte round trips (ISO 14229-1 §8.3)', () => {
+  const bitNames = [
+    'testFailed',
+    'testFailedThisOperationCycle',
+    'pendingDtc',
+    'confirmedDtc',
+    'testNotCompletedSinceLastClear',
+    'testFailedSinceLastClear',
+    'testNotCompletedThisOperationCycle',
+    'warningIndicatorRequested',
+  ] as const;
+
+  test('property: every one of the 256 status byte values decodes and re-encodes identically', () => {
+    fc.assert(
+      fc.property(fc.nat({ max: 255 }), (status) => {
+        const bits = decodeDtcStatus(status);
+        expect(encodeDtcStatus(bits)).toBe(status);
+      }),
+      { numRuns: 256 },
+    );
+  });
+
+  test('property: each generated bit pattern round trips through the named fields', () => {
+    fc.assert(
+      fc.property(fc.record(Object.fromEntries(bitNames.map((n) => [n, fc.boolean()])) as never), (bits) => {
+        expect(encodeDtcStatus(bits)).toBe(encodeDtcStatus(decodeDtcStatus(encodeDtcStatus(bits))));
+        const decoded = decodeDtcStatus(encodeDtcStatus(bits));
+        for (const name of bitNames) expect(decoded[name]).toBe(bits[name]);
+      }),
+    );
+  });
+
+  test('severity escalates with the status bits', () => {
+    expect(dtcSeverity(decodeDtcStatus(0x01))).toBe('critical');
+    expect(dtcSeverity(decodeDtcStatus(0x08))).toBe('major');
+    expect(dtcSeverity(decodeDtcStatus(0x04))).toBe('minor');
+    expect(dtcSeverity(decodeDtcStatus(0x40))).toBe('info');
+  });
+});

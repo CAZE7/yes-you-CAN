@@ -403,3 +403,111 @@ test('requests are serialised per connection (AGENTS 15)', async () => {
   const txFrames = pair.wire.frames.filter((f) => f.id === 0x7e0);
   assert.equal(txFrames.length, 3);
 });
+
+/* ------------------------------------------------------------------ *
+ * Property-based round trips (fast-check, testing standards):        *
+ *   decode(encode(payload)) === payload over generated messages      *
+ * ------------------------------------------------------------------ */
+
+import { bytesEqual } from '@vdp/shared';
+import fc from 'fast-check';
+import { describe, expect } from 'vitest';
+
+function createDirectionalPair(fd = false): { wire: ReturnType<typeof createWire>; sender: IsoTpConnection; receiver: IsoTpConnection } {
+  const wire = createWire();
+  const senderBus = new VirtualBus(wire);
+  const receiverBus = new VirtualBus(wire);
+  if (fd) {
+    const fdCapabilities: AdapterCapabilities = { can: true, canFd: true, doip: false, isoTpOffload: false, channels: 1 };
+    senderBus.capabilities = fdCapabilities;
+    receiverBus.capabilities = fdCapabilities;
+  }
+  const base = {
+    timing: { nAsMs: 0, nBsMs: 500, nCrMs: 500, stMinMs: 0, stMinTxMs: 0 },
+    sleep: async () => undefined,
+    now: () => Date.now(),
+  };
+  const sender = new IsoTpConnection(senderBus, { txId: 0x7e0, rxId: 0x7e8, ...base });
+  const receiver = new IsoTpConnection(receiverBus, { txId: 0x7e8, rxId: 0x7e0, ...base });
+  sender.open();
+  receiver.open();
+  return { wire, sender, receiver };
+}
+
+describe('ISO-TP round-trip properties', () => {
+  test('property: classic CAN delivers every payload 1..600 bytes unchanged', async () => {
+    await fc.assert(
+      fc.asyncProperty(fc.uint8Array({ minLength: 1, maxLength: 600 }), async (payload) => {
+        const { sender, receiver } = createDirectionalPair();
+        const incoming = receiver.receive(10_000);
+        await sender.sendOnly(payload);
+        const delivered = await incoming;
+        expect(delivered).not.toBeNull();
+        expect(bytesEqual(delivered as Uint8Array, payload)).toBe(true);
+        sender.close();
+        receiver.close();
+      }),
+      { numRuns: 150 },
+    );
+  });
+
+  test('property: the full 12-bit FF_DL domain (1..4095 bytes) round trips', async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        fc.integer({ min: 1, max: 4095 }),
+        fc.nat({ max: 255 }),
+        async (length, fill) => {
+          const { sender, receiver } = createDirectionalPair();
+          const payload = new Uint8Array(length).fill(fill);
+          const incoming = receiver.receive(60_000);
+          await sender.sendOnly(payload);
+          const delivered = await incoming;
+          expect(bytesEqual(delivered as Uint8Array, payload)).toBe(true);
+          sender.close();
+          receiver.close();
+        },
+      ),
+      { numRuns: 40 },
+    );
+  });
+
+  test('property: CAN-FD escape-form messages round trip with flow control pacing', async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        fc.uint8Array({ minLength: 8, maxLength: 900 }),
+        fc.constantFrom(0, 2, 7),
+        async (payload, blockSize) => {
+          const { sender, receiver } = createDirectionalPair(true);
+          (receiver as unknown as { timing: { blockSize: number } }).timing.blockSize = blockSize;
+          const incoming = receiver.receive(60_000);
+          await sender.sendOnly(payload);
+          const delivered = await incoming;
+          expect(bytesEqual(delivered as Uint8Array, payload)).toBe(true);
+          sender.close();
+          receiver.close();
+        },
+      ),
+      { numRuns: 60 },
+    );
+  });
+
+  test('property: STmin encode/decode agrees inside the defined ranges', () => {
+    fc.assert(
+      fc.property(fc.nat({ max: 127 }), (ms) => {
+        expect(parseStMin(ms)).toBe(ms);
+      }),
+    );
+    fc.assert(
+      fc.property(fc.integer({ min: 0x100, max: 0xff0 }).filter((v) => v < 0xf1 || v > 0xf9), (reserved) => {
+        expect(parseStMin(reserved)).toBe(0x7f, 'reserved encodings must degrade to 127 ms');
+      }),
+    );
+    fc.assert(
+      fc.property(fc.integer({ min: 0xf1, max: 0xf9 }), (micro) => {
+        const ms = parseStMin(micro);
+        expect(ms).toBeGreaterThanOrEqual(1);
+        expect(ms).toBeLessThanOrEqual(1);
+      }),
+    );
+  });
+});

@@ -59,7 +59,7 @@ export function dtcSeverity(bits: DtcStatusBits): DtcSeverity {
   return 'info';
 }
 
-const DTC_LETTERS = ['P', 'C', 'B', 'U'] as const;
+export const DTC_LETTERS = ['P', 'C', 'B', 'U'] as const;
 
 export interface DecodedDtc {
   /** Human readable code, e.g. "P0420". */
