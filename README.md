@@ -16,7 +16,7 @@ UI (apps/web)
   └─ Application / Diagnostic Engine (packages/core)
        ├─ Protocols  (uds, kwp2000, oem)
        ├─ Transport  (iso-tp, doip, can)
-       │    └─ Adapters (elm327, canable, socketcan, generic-can)
+       │    └─ Adapters (elm327, canable, socketcan, generic-can, host)
        └─ Definitions (generisch, VAG, Mercedes)
 ```
 
@@ -66,16 +66,18 @@ node apps/web/dist/src/server.js --port=8080 --sessions=./sessions-local
 ## Entwicklung
 
 ```bash
-npm run build         # tsc -b über alle Projekt-Referenzen
-npm test              # build + node scripts/test.mjs
-npm run test:only     # nur testen, ohne neuen Build
+npm run build         # tsc -b über alle Projekt-Referenzen (TypeScript 7 / tsgo)
+npm run typecheck     # Build + strikter noEmit-Pass über Tests, Konfiguration und Specs
+npm test              # Vitest: alle 5 Ebenen (unit, protocol, regression, replay, integration)
+npm run test:unit     # nur Unit-Specs — schnelle Feedback-Schleife
+npm run test:coverage # Suite + V8-Coverage-Schwellen
 ```
 
-Einzelnes Paket:
+Einzelnes Paket bzw. einzelne Test-Datei:
 
 ```bash
 npx tsc -b packages/transport/iso-tp
-node --test packages/transport/iso-tp/dist/test/*.test.js
+npx vitest run packages/storage/src/storage.spec.ts
 ```
 
 ## Graphen
@@ -89,16 +91,20 @@ Zeitraum aus, Doppelklick zeigt die gesamte Aufnahme.
 
 ## Tests
 
-293 Tests, `node:test` auf kompiliertem Output, keine Test-Abhängigkeit
-(ADR 0008). Ebenen nach AGENTS 31:
+806 Tests, Vitest 5 mit Projektkonfiguration (ADR 0010, Schritt 1 — ersetzt
+ADR 0008). Unit-Specs liegen co-lokatiert neben dem Code (`src/*.spec.ts`);
+Property-Tests laufen mit fast-check, Coverage-Gates mit
+`npm run test:coverage` (derzeit 87 Schwellen rot — vorbestehend). Ebenen
+nach AGENTS 31:
 
 | Ebene | Ort |
 |---|---|
-| Unit | `packages/*/test`, `tools/*/test`, `apps/*/test` |
+| Unit | `packages/*/src/*.spec.ts`, `tools/*/src/*.spec.ts`, `apps/*/test` |
 | Integration | `tests/integration` |
 | Protokoll | `tests/protocol` |
 | Replay | `tests/replay` |
 | Regression | `tests/regression` |
+| Hardware (vcan) | `tests/hardware` — Projekt definiert, Fixtures und CI-Job noch offen |
 
 Der Regressionskatalog dokumentiert jeden gefundenen Fehler mit Symptom. Es
 sind durchweg Laufzeit- und Wire-Level-Fehler, die ein Typchecker prinzipiell

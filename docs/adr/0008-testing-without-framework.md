@@ -1,6 +1,15 @@
 # 0008 — node:test auf kompiliertem Output
 
-Status: accepted · Datum: 2026-09-10 · Bezug: AGENTS 31, 35, 34.10
+Status: superseded (2026-09-11) · Datum: 2026-09-10 · Bezug: AGENTS 31, 35, 34.10 · Ersetzt durch ADR 0010, Schritt 1 (Vitest), gemergt als PR #9
+
+## Ersetzung
+
+Schritt 1 von ADR 0010 (Vitest + V8-Coverage, gemergt als PR #9 am
+2026-09-11) hat die `node:test`-Orchestrierung auf `dist/**/*.test.js`
+ersetzt: Vitest-Projektkonfiguration, Unit-Specs co-lokatiert neben dem
+Code, Tests direkt auf den TypeScript-Quellen via Workspace-Aliases.
+Dieser ADR bleibt als Entscheidungsprotokoll erhalten (Konvention: ADRs
+werden superseded markiert, nie gelöscht).
 
 ## Kontext
 
