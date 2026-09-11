@@ -1,9 +1,93 @@
 # AGENTS.md — Vehicle Diagnostics Platform
 
-> **Version:** 1.1 · **Letzte Änderung:** 2026-09-10
+> **Version:** 1.2 · **Letzte Änderung:** 2026-09-11
 > **Changelog:**
+> - 1.2: Von der Bau-Spezifikation zum Fortführungs-Leitfaden: Umsetzungsstand, Betrieb und Workflow für Coding Agents (Teil 0), Dependency-Policy (ADR 0010), Security-Baseline (ADR 0009), neue Regeln 34.19–34.24, erweiterte Definition of Done (35). Die Abschnittsnummern 0–36 bleiben unverändert — alle `AGENTS x.y`-Verweise im Code bleiben gültig.
 > - 1.1: Norm-Referenzen ergänzt (ISO 14229-2, ISO 15765-2, ISO 13400-1/2/3, ISO 3779), UDS-Timing-Parameter, DoIP-Discovery-Flow, Glossar, DoIP-Netzwerksicherheit.
 > - 1.0: Erste Fassung.
+>
+> **Geltungsordnung:** Diese Datei ist normativ für das *Produkt*. ADRs in `docs/adr/` sind normativ für *Architektur- und Toolchain-Entscheidungen*. Bei Widerspruch zwischen Dokumentation und Repository gilt das Repository — und die Differenz wird im selben PR dokumentiert (Regel 34.24).
+
+---
+
+# Teil 0 — Für Coding Agents: zuerst lesen
+
+Dieser Teil steht bewusst vor der Spezifikation. Er sagt dir, *was schon existiert*, *wie du arbeitest* und *wo die harten Grenzen sind*. Die Abschnitte 0–36 dahinter bleiben die normative Produktspezifikation.
+
+## 0.A Umsetzungsstand (verifiziert gegen `main`-Commit `1b64039`, 2026-09-11)
+
+| Bereich | Stand | Bemerkung |
+|---|---|---|
+| Schichtenarchitektur | ✅ umgesetzt | ADR 0001; `tsc -b` erzwingt die Abhängigkeitsrichtung |
+| CAN-Layer + Adapter (ELM327, CANable/slcan, SocketCAN, generisch) | ✅ inkl. Node-Host-Bindings | Serial-Byte-Stream über tty (`stty`), SocketCAN-Bindings-Loader und side-effect-freier Probe-Katalog in `@vdp/adapters/host`; etablierte serialport-Library / Web Serial API (ADR 0010, Schritt 7) folgen |
+| ISO-TP (ISO 15765-2) | ✅ inkl. Block-Size-Enforcement, Escape-Sequenz > 4095, N_Bs/N_Cr | Regressionskatalog belegt gefundene Fehler und Fixes |
+| UDS (ISO 14229-1) Client + In-Prozess-Server | ✅ | inkl. NRC-0x78-Pending-Loop, Session-Timing, DTC-Codec |
+| KWP2000 (ISO 14230) | ✅ Basis-Client | für Alt-ECUs |
+| DoIP (ISO 13400) | 🚧 Codecs, Routing Activation, UDP-Discovery, TLS vorhanden | noch nicht in Engine/Workbench verdrahtet; der MVP braucht es nicht (Abschnitt 29) |
+| OEM-Hooks + Registry | ✅ | füllen nur Lücken — dokumentierte Daten gewinnen immer (ADR 0003) |
+| Definition Packages | ✅ Schema, Validator, Pflicht-Provenance | VAG-/Mercedes-Pakete sind `example-placeholder` mit erfundenen Werten, keine Fahrzeugwahrheit |
+| Core (VIN, ECU-Discovery, DTC, Live-Engine, Recorder, Safety) | ✅ | DTC-System komplett: Freeze Frames, First/Last-Seen, Safety-gated Clear (AGENTS 20); Discovery ignoriert eigene tx-Echos (Regressionskatalog) |
+| Graphen (AGENTS 16) | ✅ | DOM-freier Chart-Kern `@vdp/charts` (Viewport, Cursor, Decimierung, Statistik; 41 Unit-Tests, ADR 0011) + synchronisierte Zeitachsen in der Workbench; Rendering in `public/*.js` (s. Web-Workbench) |
+| Storage (JSON + NDJSON, Migrationen, ZIP-Export) | ✅ | ADR 0007; Session-IDs werden vor Dateizugriff validiert |
+| Reports (HTML/PDF) | ✅ | eigener PDF-Writer (ADR 0002); Ersatz durch pdf-lib in ADR 0010 vorgesehen |
+| KI-Schicht | 🚧 Provider-Abstraktion, lokaler Heuristik-Provider, HTTP-Gateway mit VIN-Redaktion | bewusst keine „große KI“ im MVP (Abschnitt 29) |
+| Web-Workbench (`apps/web`) | ✅ Node HTTP + SSE, Vanilla ESM, 9 Views | Frontend-JS (`public/*.js`) derzeit nicht typgeprüft; Vite + TS in ADR 0010 vorgesehen |
+| Simulator + Replay | ✅ | VirtualVehicle, VirtualCanNetwork, ReplayTransport mit strikter Abweichungsmelding |
+| Tests | ✅ 806 Tests auf 5 Ebenen (unit / protocol / regression / replay / integration) | Vitest 5 mit Projektkonfiguration (ADR 0010, Schritt 1 — ersetzt ADR 0008); Unit-Specs co-lokatiert (`src/*.spec.ts`), Property-Tests (fast-check), Coverage-Gates per `npm run test:coverage` — derzeit 87 Schwellen rot (vorbestehend, in der CI noch nicht aktiviert); `hardware`-Projekt definiert, aber ohne Fixtures (`tests/hardware` fehlt) und ohne CI-Job |
+| CI/CD | ✅ GitHub Actions (Node 22 + 24, checkout/setup-node v7) + Dependabot | ADR 0009; Coverage-Gates und das `hardware`-Projekt laufen noch nicht in der CI |
+| HTTP-Security-Baseline | ✅ | localhost-Default, Security-Header, Body-Limit (ADR 0009) |
+| Coding Framework (Abschnitt 25) | ❌ bewusst nicht begonnen | erst nach stabilem Read-only-System |
+| DoIP-Engine-Integration, weitere Hersteller, Mobile/Desktop | ❌ | Phase 3+ |
+
+Diese Tabelle ist ein *Stand*, keine Wahrheit auf ewig: Verifiziere sie bei jeder größeren Aufgabe gegen `git log` und die Paketliste (Regel 34.1) und pflege sie im selben PR nach, der den Stand ändert.
+
+## 0.B Betrieb — Befehle, die funktionieren
+
+Voraussetzung: Node.js ≥ 22 (siehe `engines` im Root-`package.json`).
+
+```bash
+npm ci                # installiert exakt das Lockfile — kein npm install im CI-Kontext
+npm run build         # tsc -b über alle Projekt-Referenzen (TypeScript 7 / tsgo)
+npm run typecheck     # Build + strikter noEmit-Pass über Tests, Konfiguration und Specs
+npm test              # komplette Suite auf allen 5 Ebenen (Vitest)
+npm run test:unit     # nur Unit-Specs — die schnelle Feedback-Schleife
+npm run test:coverage # Suite + V8-Coverage-Schwellen (derzeit rot, s. 0.A)
+npm run demo          # Workbench mit Simulator auf http://localhost:8080
+```
+
+Einzelnes Paket bauen bzw. einzelne Test-Datei ausführen:
+
+```bash
+npx tsc -b packages/transport/iso-tp
+npx vitest run packages/storage/src/storage.spec.ts
+```
+
+Getestet wird **direkt der TypeScript-Quelltext**: Die Root-`vitest.config.ts`
+aliasst die Workspace-Exporte von `./dist/...` auf `./src/...` (ADR 0010,
+Schritt 1) — kein Build-Schritt nötig, kein stales `dist` möglich. Der
+`build`-Schritt bleibt trotzdem Pflicht in der CI, weil `tsc -b` die
+Declaration-Maps und die Abhängigkeitsrichtung prüft.
+
+## 0.C Workflow (verbindlich)
+
+1. Kleiner, thematisch reiner Branch von `main` — ein PR behandelt genau ein Thema.
+2. PR-Template ausfüllen; es kodiert die Definition of Done (Abschnitt 35) und die Leitplanken.
+3. Die CI muss auf **Node 22 und 24 grün** sein. Kein Merge auf Rot, kein „lokal läuft es“.
+4. Commit-Messages im Stil des Verlaufs: `<scope>: <was>` als Betreff, im Body die *Begründung* und — bei Verhaltensbehauptungen — die *Messung* (Testlauf, Build-Output, Zahlen).
+5. Architektur- oder Toolchain-Entscheidungen werden als ADR in `docs/adr/` festgehalten (Regel 34.15); ein überholter ADR wird durch einen neuen als `superseded` markiert, nie gelöscht.
+6. Behauptungen über Verhalten werden durch Messung belegt, nicht geschätzt (Regel 34.21).
+
+## 0.D Leitplanken in Kurzform
+
+Die Vollversion steht in Abschnitt 34 — diese Punkte brechen ein Review garantiert:
+
+- **Niemals:** CAN-/UDS-Logik in der UI · OEM-Logik in der CAN-Schicht · monolithische Diagnoseklasse · Secrets im Code · ungeklärte Fremddaten aus Wettbewerbsprodukten · Umgehung von SFD/Security Access · Merge auf roter CI · Absenken der Security-Baseline aus ADR 0009.
+- **Immer:** Roh und dekodiert strikt getrennt (ADR 0004) · Read-only vor Write · jede Schreiboperation über den SafetyManager (Abschnitt 26) · jeder gefundene Fehler wird ein Regressionstest *mit Symptombeschreibung* · Provenance-Metadaten bei Daten (Abschnitt 24) · ISO-Nummer im Kommentar bei Norm-Details (Regel 34.18).
+- **Dependencies:** `transport/*`, `protocols/*`, `definitions` und `shared` bleiben dependency-frei (ADR 0002). Infrastruktur-Dependencies nur nach ADR 0010: Maintenance-Nachweis, Lizenz-Check (MIT/Apache-2.0/BSD), lokal regeneriertes Lockfile im selben PR.
+
+---
+
+# Produktspezifikation (Abschnitte 0–36, normativ)
 
 ## 0. Glossar
 
@@ -109,6 +193,8 @@ AGENTS.md
 ```
 
 Die konkrete Technologie darf dem bestehenden Repository angepasst werden. Die Verantwortlichkeiten müssen erhalten bleiben.
+
+> **Stand 2026-09-11:** Der tatsächliche Baum entspricht dieser Struktur. `apps/desktop` existiert noch nicht (Phase 3); die Definition-Pakete `schema/generic/vag/mercedes` sind im Paket `@vdp/definitions` gebündelt statt als Unterordner. `packages/adapters/host` (Node-Host-Bindings, s. 0.A) existiert zusätzlich.
 
 ## 4. Adapter-Abstraktion
 
@@ -750,6 +836,8 @@ UI soll später Web/Desktop/Mobile unterstützen können. Business Logic nicht i
 
 ## 30. Phasen
 
+> **Stand 2026-09-11:** Phase 1 ist implementiert und durch 806 Tests auf fünf Ebenen abgesichert. Phase 2 läuft: OEM-Definition-Pakete existieren als gekennzeichnete Platzhalter, Reports und Session-Persistenz sind gebaut, das DTC-System (Freeze Frames, First/Last-Seen, Safety-gated Clear) ist fertig, die Graphen sind nach AGENTS 16 umgesetzt, die erste KI-Analyse ist ein lokaler Heuristik-Provider hinter der Provider-Abstraktion.
+
 ### Phase 1
 ```text
 CAN Adapter
@@ -872,6 +960,12 @@ Der Coding Agent MUSS:
 16. Keine Secrets/API-Keys in den Quellcode schreiben.
 17. Keine proprietären Konkurrenzdaten ungeklärt übernehmen.
 18. Bei Unklarheit über Norm-Details (UDS-Service-Byte, DTC-Format, DoIP-Header) die relevante ISO-Nummer im Code-Kommentar referenzieren, statt Annahmen zu treffen.
+19. Die CI ist Teil der Fertigstellung: Ein Change ist erst fertig, wenn der Workflow auf Node 22 und 24 grün ist (ADR 0009). Kein Merge auf Rot, kein Umgehen der Checks.
+20. Dependency-Disziplin nach ADR 0010: `transport/*`, `protocols/*`, `definitions` und `shared` bleiben dependency-frei. Infrastruktur-Dependencies nur mit Maintenance-Nachweis, Lizenz-Check (MIT/Apache-2.0/BSD) und lokal regeneriertem Lockfile im selben PR.
+21. Messung vor Behauptung: Aussagen über Verhalten („der Compiler fängt das“, „alle Tests grün“) nur mit Beleg aus einem tatsächlichen Lauf — Testausgabe, Build-Log oder gezielte Gegenprobe im Commit oder PR.
+22. Die Security-Baseline aus ADR 0009 nicht absenken: localhost-Default, Security-Header, Body-Limit, GET-only-Stream. Neue Endpunkte übernehmen die Baseline; Abweichungen brauchen einen eigenen ADR.
+23. Kleine, thematisch reine PRs mit ausgefülltem Template; die Commit-History bleibt lesbar und begründet.
+24. Bei Widerspruch zwischen dieser Datei (oder einem ADR) und dem Repository gilt das Repository — und die Differenz wird im selben PR dokumentiert, der den Stand ändert. Dokumentation, die vom Stand abweicht, ist ein Defekt.
 
 ## 35. Definition of Done
 
@@ -884,6 +978,16 @@ Implementation
 + Logging
 + UI Integration
 + Documentation
+```
+
+Zusätzlich seit v1.2:
+
+```text
++ CI grün auf Node 22 und 24 (ADR 0009)
++ Verifikationsbeleg im PR (Testlauf, Build-Output oder Messung — Regel 34.21)
++ bei neuer Dependency: ADR-0010-Nachweise (Maintenance, Lizenz, Lockfile)
++ bei Norm-Details: ISO-Referenz im Code-Kommentar (Regel 34.18)
++ bei geändertem Verhalten: AGENTS.md-Tabelle 0.A und betroffene Doku im selben PR nachgezogen (Regel 34.24)
 ```
 
 Nicht nur „läuft bei mir“.

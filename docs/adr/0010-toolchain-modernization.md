@@ -1,6 +1,6 @@
 # 0010 — Schrittweise Toolchain-Modernisierung
 
-Status: proposed · Datum: 2026-09-10 · Bezug: ADR 0002, 0006, 0008; AGENTS 34.10, 35
+Status: accepted (2026-09-11, Schritt 1 gemergt als PR #9) · Datum: 2026-09-10 · Bezug: ADR 0002, 0006, 0008; AGENTS 34.10, 35
 
 ## Kontext
 
@@ -44,4 +44,5 @@ lokal regeneriertes Lockfile per `npm install`.
   Build-Zeit-Downloads.
 - `transport/*` und `protocols/*` bleiben dependency-frei; dort ist die
   ISO-Norm der Standard, nicht ein Paket.
-- Dieser ADR wird auf `accepted` gesetzt, sobald Schritt 1 gemergt ist.
+- Dieser ADR wurde auf `accepted` gesetzt, nachdem Schritt 1 (Vitest) am
+  2026-09-11 als PR #9 gemergt wurde.

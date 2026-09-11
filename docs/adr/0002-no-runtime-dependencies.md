@@ -19,8 +19,11 @@ Daraus folgt, dass zwei Dinge selbst geschrieben wurden:
 - **ZIP-Writer** (`packages/storage/src/zip.ts`): Store-Methode mit CRC32 für
   Session-Pakete.
 
-Ebenso: `node:test` statt Jest/Vitest (ADR 0008) und Vanilla ESM statt React
-(ADR 0006).
+Ebenso: Vanilla ESM statt React (ADR 0006). (Stand 2026-09-11: Die
+Test-Orchestrierung läuft auf Vitest als *Dev*-Dependency — ADR 0010,
+Schritt 1, ersetzt ADR 0008. Das Verbot von Laufzeit-Abhängigkeiten bleibt
+unverändert; `transport/*`, `protocols/*`, `definitions` und `shared` sind
+weiterhin dependency-frei.)
 
 ## Konsequenzen
 

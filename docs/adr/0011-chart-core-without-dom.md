@@ -24,7 +24,7 @@ Die Mathematik der Graphen liegt in **`packages/charts` (`@vdp/charts`)**:
 
 - **DOM-frei.** Kein `canvas`, kein `window`, kein `document`. Das Paket kennt
   nur Zeitpunkte, Werte, Fenster und Marker.
-- **In sich getestet.** 24 Unit-Tests (`node:test`) decken Viewport-Klemmung,
+- **In sich getestet.** 41 Unit-Tests (Vitest, ADR 0010 Schritt 1) decken Viewport-Klemmung,
   Zoom-Anker, Pan-Richtung, Follow-Verhalten, Decimierung (Min/Max und LTTB),
   Statistik über Fenster, Cursor-Snapping, Marker-Filterung und die
   Synchronisation über `ChartGroup` ab.
