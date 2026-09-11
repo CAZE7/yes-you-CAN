@@ -9,6 +9,8 @@
 /** Characters I, O and Q are not used (ISO 3779). */
 const FORBIDDEN = /[IOQ]/i;
 const VALID_PATTERN = /^[A-HJ-NPR-Z0-9]{17}$/;
+/** The same character class without the length anchor — for reporting only. */
+const CHARACTER_CLASS = /^[A-HJ-NPR-Z0-9]+$/;
 
 /** Transliteration table for the check digit calculation (ISO 3779 / 49 CFR 565). */
 const TRANSLITERATION: Record<string, number> = {
@@ -79,7 +81,11 @@ export function analyseVin(candidate: string): VinAnalysis {
   } else {
     if (vin.length !== 17) notes.push(`VIN must be 17 characters, got ${vin.length}`);
     if (FORBIDDEN.test(vin)) notes.push('VIN contains I, O or Q which ISO 3779 does not allow');
-    if (!VALID_PATTERN.test(vin)) notes.push('VIN contains characters outside A-HJ-NPR-Z0-9');
+    // The alphabet question is reported on its own terms: `VALID_PATTERN` mixes
+    // length into it, so a 22-character VIN of perfectly legal characters would be
+    // told it contains illegal ones — a wrong note is worse than no note when a
+    // human reads it back from a stored session.
+    if (vin.length > 0 && !CHARACTER_CLASS.test(vin)) notes.push('VIN contains characters outside A-HJ-NPR-Z0-9');
   }
 
   return {

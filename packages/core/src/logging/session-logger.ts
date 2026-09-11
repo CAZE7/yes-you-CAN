@@ -68,7 +68,10 @@ export class SessionLogger {
       canIdHex: `0x${frame.id.toString(16).toUpperCase()}`,
       direction: frame.direction ?? 'rx',
       dlc: frame.dlc,
-      payload: frame.payload,
+      // The adapter may reuse its buffer, so the evidence is copied out:
+      // `payloadHex` is what the exports read and `payload` is what a replay feeds
+      // back into a bus, and neither may change after this entry was recorded.
+      payload: frame.payload.slice(),
       payloadHex: toHex(frame.payload, ''),
       channel: frame.channel,
       extended: frame.extended,
@@ -201,11 +204,18 @@ export class SessionLogger {
   }
 }
 
+/** Quote exactly what RFC 4180 requires quoted, doubling embedded quotes. */
 function csvValue(value: string): string {
-  if (value.includes(',') || value.includes('"') || value.includes('\n')) return `"${value.replace(/"/g, '""')}"`;
+  if (value.includes(',') || value.includes('"') || value.includes('\n') || value.includes('\r')) return `"${value.replace(/"/g, '""')}"`;
   return value;
 }
 
-function formatValue(value: number | string | boolean): string {
-  return typeof value === 'number' ? String(value) : String(value);
+/**
+ * Values are written the way JavaScript prints them: the export adds no formatting
+ * layer of its own, so a CSV cell and the decoded sample always agree. A value that
+ * is missing stays an empty cell rather than the word "undefined", which a
+ * spreadsheet would otherwise read as data.
+ */
+function formatValue(value: number | string | boolean | null | undefined): string {
+  return value === null || value === undefined ? '' : String(value);
 }
