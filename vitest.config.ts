@@ -18,7 +18,6 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { defineConfig } from 'vitest/config';
 import type { Plugin } from 'vite';
-import flakyReporter from './tools/test-reporters/flaky-reporter.ts';
 
 // Vite may execute this config from a bundled temp file, so import.meta paths
 // are unreliable. Everything below is rooted at the workspace (the scripts and
@@ -147,7 +146,10 @@ export default defineConfig({
   test: {
     reporters: [
       'default',
-      ...(process.env.GITHUB_ACTIONS ? (['github'] as const) : []),
+      // NOTE: vitest has no built-in "github" reporter id — `'github'` makes it
+      // try to import a module named `github` and abort the run at startup
+      // (exactly what CI saw). CI failure lines come from the default reporter;
+      // our flaky reporter emits the ::warning annotations itself.
       ...(junitFile ? (['junit'] as const) : []),
       './tools/test-reporters/flaky-reporter.ts',
     ],
