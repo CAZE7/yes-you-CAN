@@ -87,13 +87,18 @@ test('session start and fault clearing use the KWP2000 services', async () => {
 test('tester present keeps the session alive and can be stopped', async () => {
   const { link, requests } = createLink((payload) => new Uint8Array([(payload[0] ?? 0) + 0x40]));
   const client = new Kwp2000Client(link);
-  const before = requests.length;
-  client.startTesterPresent(5);
-  await new Promise((resolve) => setTimeout(resolve, 25));
-  client.stopTesterPresent();
-  assert.ok(requests.length > before);
-  const after = requests.length;
-  await new Promise((resolve) => setTimeout(resolve, 15));
-  assert.equal(requests.length, after);
+  const { vi } = await import('vitest');
+  vi.useFakeTimers();
+  try {
+    client.startTesterPresent(5);
+    await vi.advanceTimersByTimeAsync(20);
+    client.stopTesterPresent();
+    assert.ok(requests.length >= 2, 'keep-alive ticks fired');
+    const after = requests.length;
+    await vi.advanceTimersByTimeAsync(50);
+    assert.equal(requests.length, after, 'no ticks after stop');
+  } finally {
+    vi.useRealTimers();
+  }
   void toHex;
 });
