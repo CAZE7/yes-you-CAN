@@ -7,6 +7,6 @@
  * ADR 0001 holds and the simulator can stay a registration done by the app.
  */
 
-export * from './serial.js';
-export * from './catalog.js';
-export * from './selection.js';
+export * from "./serial.js";
+export * from "./catalog.js";
+export * from "./selection.js";

@@ -16,7 +16,7 @@
  * absolute paths on both sides.
  */
 
-import { isAbsolute, resolve, sep } from 'node:path';
+import { isAbsolute, resolve, sep } from "node:path";
 
 /**
  * True when `candidate` is `root` itself or one of its descendants.
@@ -41,7 +41,13 @@ export function isInsideDirectory(root: string, candidate: string): boolean {
  * underlying syscalls.
  */
 export function resolveContained(rootDir: string, relative: string): string | null {
-  if (relative.length === 0 || relative.includes('\0') || isAbsolute(relative) || relative.startsWith('/')) return null;
+  if (
+    relative.length === 0 ||
+    relative.includes("\0") ||
+    isAbsolute(relative) ||
+    relative.startsWith("/")
+  )
+    return null;
   // `resolve` folds `..` segments away; what is left has to be inside the root.
   const candidate = resolve(resolve(rootDir), relative);
   return isInsideDirectory(rootDir, candidate) ? candidate : null;

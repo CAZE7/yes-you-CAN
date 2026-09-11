@@ -30,7 +30,7 @@ export interface TimeRange {
   to: number;
 }
 
-export type MarkerKind = 'dtc' | 'action' | 'note' | 'user' | 'anomaly';
+export type MarkerKind = "dtc" | "action" | "note" | "user" | "anomaly";
 
 export interface Marker {
   id: string;

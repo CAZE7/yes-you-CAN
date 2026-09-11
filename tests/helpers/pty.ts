@@ -11,8 +11,8 @@
  * failing, because the platform itself does not need socat to work.
  */
 
-import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
-import type { Writable } from 'node:stream';
+import { type ChildProcess, spawn, spawnSync } from "node:child_process";
+import type { Writable } from "node:stream";
 
 export interface PtyPair {
   /** Paths of the two connected pseudo terminals. */
@@ -22,51 +22,61 @@ export interface PtyPair {
 }
 
 export function hasSocat(): boolean {
-  const probe = spawnSync('socat', ['-V'], { stdio: 'ignore' });
+  const probe = spawnSync("socat", ["-V"], { stdio: "ignore" });
   return probe.status === 0;
 }
 
 /** Create a connected PTY pair; resolves once both device paths are known. */
 export function createPtyPair(timeoutMs = 5000): Promise<PtyPair> {
   return new Promise<PtyPair>((resolve, reject) => {
-    const child = spawn('socat', ['-d', '-d', 'pty,raw,echo=0,mode=600', 'pty,raw,echo=0,mode=600'], {
-      stdio: ['ignore', 'ignore', 'pipe'],
-    });
-    let stderr = '';
+    const child = spawn(
+      "socat",
+      ["-d", "-d", "pty,raw,echo=0,mode=600", "pty,raw,echo=0,mode=600"],
+      {
+        stdio: ["ignore", "ignore", "pipe"],
+      },
+    );
+    let stderr = "";
     const paths: string[] = [];
     const timer = setTimeout(() => {
-      child.kill('SIGKILL');
-      reject(new Error(`socat did not report two PTYs within ${timeoutMs} ms; output: ${stderr.trim()}`));
+      child.kill("SIGKILL");
+      reject(
+        new Error(`socat did not report two PTYs within ${timeoutMs} ms; output: ${stderr.trim()}`),
+      );
     }, timeoutMs);
 
     const onData = (chunk: Buffer): void => {
-      stderr += chunk.toString('utf8');
+      stderr += chunk.toString("utf8");
       for (const match of stderr.matchAll(/PTY is (\S+)/g)) {
         const path = match[1];
         if (path && !paths.includes(path)) paths.push(path);
       }
       if (paths.length >= 2) {
         clearTimeout(timer);
-        child.stderr?.off('data', onData);
+        child.stderr?.off("data", onData);
         resolve({
           a: paths[0] as string,
           b: paths[1] as string,
           dispose: () => {
-            child.kill('SIGKILL');
+            child.kill("SIGKILL");
           },
         });
       }
     };
 
-    child.stderr?.on('data', onData);
-    child.on('error', (error) => {
+    child.stderr?.on("data", onData);
+    child.on("error", (error) => {
       clearTimeout(timer);
       reject(error);
     });
-    child.on('exit', (code) => {
+    child.on("exit", (code) => {
       if (paths.length < 2) {
         clearTimeout(timer);
-        reject(new Error(`socat exited with code ${code} before creating the PTY pair: ${stderr.trim()}`));
+        reject(
+          new Error(
+            `socat exited with code ${code} before creating the PTY pair: ${stderr.trim()}`,
+          ),
+        );
       }
     });
   });
@@ -99,10 +109,14 @@ export interface DeviceSideOptions {
 }
 
 export function createDeviceSide(device: string, options: DeviceSideOptions = {}): DeviceSide {
-  const mode = options.respondWithPrompt ? 'elm327' : 'silent';
-  const child = spawn(process.execPath, ['--input-type=module', '-e', DEVICE_SCRIPT, device, mode], {
-    stdio: ['pipe', 'pipe', 'pipe'],
-  });
+  const mode = options.respondWithPrompt ? "elm327" : "silent";
+  const child = spawn(
+    process.execPath,
+    ["--input-type=module", "-e", DEVICE_SCRIPT, device, mode],
+    {
+      stdio: ["pipe", "pipe", "pipe"],
+    },
+  );
   // stdin carries the parent's WRITE commands to the device side.
   const stdin = child.stdin as Writable;
   const state: DeviceSide = {
@@ -112,11 +126,11 @@ export function createDeviceSide(device: string, options: DeviceSideOptions = {}
     async write(data: string) {
       state.sent.push(data);
       // The script reads commands from stdin and forwards them to the device.
-      stdin.write(`WRITE:${Buffer.from(data, 'latin1').toString('base64')}\n`);
+      stdin.write(`WRITE:${Buffer.from(data, "latin1").toString("base64")}\n`);
     },
     async close() {
       stdin.end();
-      child.kill('SIGTERM');
+      child.kill("SIGTERM");
     },
     waitFor(needle: string, timeoutMs = 3000) {
       return new Promise<string>((resolve, reject) => {
@@ -124,26 +138,30 @@ export function createDeviceSide(device: string, options: DeviceSideOptions = {}
         const timer = setInterval(() => {
           if (state.received.some((chunk) => chunk.includes(needle))) {
             clearInterval(timer);
-            resolve(state.received.join(''));
+            resolve(state.received.join(""));
           } else if (Date.now() - started > timeoutMs) {
             clearInterval(timer);
-            reject(new Error(`device side never received "${needle}" (got: ${JSON.stringify(state.received.join(''))})`));
+            reject(
+              new Error(
+                `device side never received "${needle}" (got: ${JSON.stringify(state.received.join(""))})`,
+              ),
+            );
           }
         }, 10);
       });
     },
   };
 
-  child.stdout?.on('data', (chunk: Buffer) => {
-    state.received.push(chunk.toString('latin1'));
+  child.stdout?.on("data", (chunk: Buffer) => {
+    state.received.push(chunk.toString("latin1"));
   });
   // A device double that cannot start must be visible, not look like a silent
   // adapter that never answers.
-  let stderr = '';
-  child.stderr?.on('data', (chunk: Buffer) => {
-    stderr += chunk.toString('utf8');
+  let stderr = "";
+  child.stderr?.on("data", (chunk: Buffer) => {
+    stderr += chunk.toString("utf8");
   });
-  child.on('exit', (code) => {
+  child.on("exit", (code) => {
     if (code !== 0 && stderr.trim().length > 0) {
       process.stderr.write(`[pty device side exited with code ${code}] ${stderr.trim()}\n`);
     }

@@ -7,7 +7,7 @@
  * "Raw protocol logging optional").
  */
 
-export type LogLevel = 'TRACE' | 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
+export type LogLevel = "TRACE" | "DEBUG" | "INFO" | "WARN" | "ERROR";
 
 export const LOG_LEVEL_ORDER: Record<LogLevel, number> = {
   TRACE: 10,
@@ -18,19 +18,19 @@ export const LOG_LEVEL_ORDER: Record<LogLevel, number> = {
 };
 
 export type LogScope =
-  | 'connection'
-  | 'can'
-  | 'isotp'
-  | 'uds'
-  | 'ecu'
-  | 'decoder'
-  | 'ui'
-  | 'ai'
-  | 'storage'
-  | 'safety'
-  | 'report'
-  | 'session'
-  | 'definition'
+  | "connection"
+  | "can"
+  | "isotp"
+  | "uds"
+  | "ecu"
+  | "decoder"
+  | "ui"
+  | "ai"
+  | "storage"
+  | "safety"
+  | "report"
+  | "session"
+  | "definition"
   | (string & {});
 
 export interface LogRecord {
@@ -69,10 +69,12 @@ export interface Logger {
 export class ConsoleSink implements LogSink {
   write(record: LogRecord): void {
     const line = `${record.timestamp} ${record.level.padEnd(5)} [${record.scope}] ${record.message}${
-      record.fields && Object.keys(record.fields).length > 0 ? ` ${safeStringify(record.fields)}` : ''
+      record.fields && Object.keys(record.fields).length > 0
+        ? ` ${safeStringify(record.fields)}`
+        : ""
     }`;
-    if (record.level === 'ERROR') console.error(line);
-    else if (record.level === 'WARN') console.warn(line);
+    if (record.level === "ERROR") console.error(line);
+    else if (record.level === "WARN") console.warn(line);
     else console.log(line);
   }
 }
@@ -119,18 +121,18 @@ export function safeStringify(value: unknown): string {
   try {
     return JSON.stringify(value, (_key, v) => {
       if (v instanceof Uint8Array) return toHexShort(v);
-      if (typeof v === 'bigint') return v.toString();
+      if (typeof v === "bigint") return v.toString();
       return v;
     });
   } catch {
-    return '[unserializable]';
+    return "[unserializable]";
   }
 }
 
 function toHexShort(data: Uint8Array): string {
   const bytes = Array.from(data.slice(0, 32))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join(' ');
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join(" ");
   return data.length > 32 ? `${bytes}…(+${data.length - 32})` : bytes;
 }
 
@@ -141,10 +143,16 @@ class DefaultLogger implements Logger {
   private readonly collected: LogRecord[];
   private readonly collectLimit: number;
 
-  constructor(scope: LogScope, options: LoggerOptions, sinks: LogSink[], collected: LogRecord[] = [], collectLimit = 10000) {
+  constructor(
+    scope: LogScope,
+    options: LoggerOptions,
+    sinks: LogSink[],
+    collected: LogRecord[] = [],
+    collectLimit = 10000,
+  ) {
     this.scope = scope;
     this.options = {
-      level: options.level ?? 'INFO',
+      level: options.level ?? "INFO",
       scopes: options.scopes ?? [],
       rawProtocol: options.rawProtocol ?? false,
     };
@@ -166,19 +174,19 @@ class DefaultLogger implements Logger {
   }
 
   trace(message: string, fields?: Record<string, unknown>): void {
-    this.emit('TRACE', message, fields);
+    this.emit("TRACE", message, fields);
   }
   debug(message: string, fields?: Record<string, unknown>): void {
-    this.emit('DEBUG', message, fields);
+    this.emit("DEBUG", message, fields);
   }
   info(message: string, fields?: Record<string, unknown>): void {
-    this.emit('INFO', message, fields);
+    this.emit("INFO", message, fields);
   }
   warn(message: string, fields?: Record<string, unknown>): void {
-    this.emit('WARN', message, fields);
+    this.emit("WARN", message, fields);
   }
   error(message: string, fields?: Record<string, unknown>): void {
-    this.emit('ERROR', message, fields);
+    this.emit("ERROR", message, fields);
   }
   /**
    * Raw protocol frames are gated by their own switch (AGENTS 33: "Raw protocol
@@ -187,10 +195,15 @@ class DefaultLogger implements Logger {
    */
   raw(message: string, fields?: Record<string, unknown>): void {
     if (!this.options.rawProtocol) return;
-    this.emit('TRACE', message, { raw: true, ...fields }, true);
+    this.emit("TRACE", message, { raw: true, ...fields }, true);
   }
 
-  private emit(level: LogLevel, message: string, fields?: Record<string, unknown>, force = false): void {
+  private emit(
+    level: LogLevel,
+    message: string,
+    fields?: Record<string, unknown>,
+    force = false,
+  ): void {
     if (!force && LOG_LEVEL_ORDER[level] < LOG_LEVEL_ORDER[this.options.level]) return;
     if (this.options.scopes.length > 0 && !this.options.scopes.includes(this.scope)) return;
     const record: LogRecord = {
@@ -201,13 +214,18 @@ class DefaultLogger implements Logger {
       ...(fields ? { fields: readableFields(fields) } : {}),
     };
     this.collected.push(record);
-    if (this.collected.length > this.collectLimit) this.collected.splice(0, this.collected.length - this.collectLimit);
+    if (this.collected.length > this.collectLimit)
+      this.collected.splice(0, this.collected.length - this.collectLimit);
     for (const sink of this.sinks) sink.write(record);
   }
 }
 
-export function createLogger(scope: LogScope = 'app', options: LoggerOptions = {}, sinks: LogSink[] = []): Logger {
+export function createLogger(
+  scope: LogScope = "app",
+  options: LoggerOptions = {},
+  sinks: LogSink[] = [],
+): Logger {
   return new DefaultLogger(scope, options, sinks);
 }
 
-export const nullLogger: Logger = createLogger('null', { level: 'ERROR' });
+export const nullLogger: Logger = createLogger("null", { level: "ERROR" });

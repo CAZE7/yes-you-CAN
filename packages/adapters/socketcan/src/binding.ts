@@ -6,7 +6,7 @@
  * supplies an implementation (node-socketcan, a N-API addon, or a fake in tests).
  */
 
-import { AdapterUnsupportedError } from '@vdp/shared';
+import { AdapterUnsupportedError } from "@vdp/shared";
 
 export interface SocketCanFrameData {
   id: number;
@@ -34,12 +34,15 @@ export interface SocketCanChannel {
  * Never throws at import time: a missing native module only becomes an error when
  * somebody actually selects the SocketCAN adapter.
  */
-export async function tryLoadSocketCanBinding(moduleName = 'socketcan'): Promise<SocketCanBinding> {
+export async function tryLoadSocketCanBinding(moduleName = "socketcan"): Promise<SocketCanBinding> {
   try {
     const loaded = (await import(/* @vite-ignore */ moduleName)) as unknown;
-    const candidate = (loaded as { default?: SocketCanBinding }).default ?? (loaded as SocketCanBinding);
-    if (typeof candidate?.open !== 'function') {
-      throw new AdapterUnsupportedError(`module "${moduleName}" does not expose the SocketCAN binding interface`);
+    const candidate =
+      (loaded as { default?: SocketCanBinding }).default ?? (loaded as SocketCanBinding);
+    if (typeof candidate?.open !== "function") {
+      throw new AdapterUnsupportedError(
+        `module "${moduleName}" does not expose the SocketCAN binding interface`,
+      );
     }
     return candidate;
   } catch (error) {
@@ -52,7 +55,7 @@ export async function tryLoadSocketCanBinding(moduleName = 'socketcan'): Promise
 
 /** In-memory binding for tests and for the simulator bridge. */
 export class FakeSocketCanBinding implements SocketCanBinding {
-  readonly name = 'fake-socketcan';
+  readonly name = "fake-socketcan";
   readonly sent: SocketCanFrameData[] = [];
   readonly opened: string[] = [];
   closed = false;
@@ -67,7 +70,7 @@ export class FakeSocketCanBinding implements SocketCanBinding {
     const self = this;
     return {
       async send(frame) {
-        if (!self.isOpen) throw new Error('channel closed');
+        if (!self.isOpen) throw new Error("channel closed");
         self.sent.push(frame);
       },
       onData(listener) {
@@ -88,7 +91,7 @@ export class FakeSocketCanBinding implements SocketCanBinding {
   }
 
   async listInterfaces(): Promise<string[]> {
-    return ['can0', 'vcan0'];
+    return ["can0", "vcan0"];
   }
 
   /** Inject a frame as if the kernel had received it. */

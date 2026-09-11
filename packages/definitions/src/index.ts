@@ -1,20 +1,26 @@
-export * from './schema.js';
-export * from './validate.js';
-export * from './json.js';
-export { genericPackage } from './generic/generic-package.js';
-export { vagExamplePackage } from './vag/vag-package.js';
-export { mercedesExamplePackage } from './mercedes/mercedes-package.js';
+export * from "./schema.js";
+export * from "./validate.js";
+export * from "./json.js";
+export { genericPackage } from "./generic/generic-package.js";
+export { vagExamplePackage } from "./vag/vag-package.js";
+export { mercedesExamplePackage } from "./mercedes/mercedes-package.js";
 
-import type { DefinitionPackage } from './schema.js';
-import { genericPackage } from './generic/generic-package.js';
-import { vagExamplePackage } from './vag/vag-package.js';
-import { mercedesExamplePackage } from './mercedes/mercedes-package.js';
+import { genericPackage } from "./generic/generic-package.js";
+import { mercedesExamplePackage } from "./mercedes/mercedes-package.js";
+import type { DefinitionPackage } from "./schema.js";
+import { vagExamplePackage } from "./vag/vag-package.js";
 
 /** Registry of built-in packages; importers can add more at runtime (AGENTS 13). */
 export class DefinitionRegistry {
   private readonly packages = new Map<string, DefinitionPackage>();
 
-  constructor(initial: readonly DefinitionPackage[] = [genericPackage, vagExamplePackage, mercedesExamplePackage]) {
+  constructor(
+    initial: readonly DefinitionPackage[] = [
+      genericPackage,
+      vagExamplePackage,
+      mercedesExamplePackage,
+    ],
+  ) {
     for (const pkg of initial) this.register(pkg);
   }
 
@@ -28,11 +34,15 @@ export class DefinitionRegistry {
   }
 
   /** Look an ECU definition up across all packages by request identifier. */
-  findEcuByAddress(txId: number, extended = false): { pkg: DefinitionPackage; ecuId: string } | undefined {
+  findEcuByAddress(
+    txId: number,
+    extended = false,
+  ): { pkg: DefinitionPackage; ecuId: string } | undefined {
     for (const pkg of this.packages.values()) {
       for (const ecu of pkg.ecus) {
         // `extended` is optional in EcuAddress; unset means 11-bit addressing.
-        if ((ecu.address.extended ?? false) === extended && ecu.address.txId === txId) return { pkg, ecuId: ecu.id };
+        if ((ecu.address.extended ?? false) === extended && ecu.address.txId === txId)
+          return { pkg, ecuId: ecu.id };
       }
     }
     return undefined;

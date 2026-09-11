@@ -11,25 +11,31 @@
  * set, request bodies are size-limited, and the event stream is GET-only.
  */
 
-import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { existsSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
-import { dirname, extname, join } from 'node:path';
-import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
-import { AdapterUnsupportedError, SafetyViolationError, StorageError, createLogger, type Logger } from '@vdp/shared';
+import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
+import { type IncomingMessage, type ServerResponse, createServer } from "node:http";
+import { createRequire } from "node:module";
+import { dirname, extname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
+  type AdapterSelection,
   formatAdapterHelp,
   parseAdapterArgv,
   selectionFromPayload,
   validateSelection,
-  type AdapterSelection,
-} from '@vdp/adapter-host';
-import { buildReport, renderHtml, renderPdf } from '@vdp/reports';
-import { DemoBackend } from './backend.js';
-import { resolveContained } from './paths.js';
-import type { VehicleStateView } from './backend.js';
-import { SIMULATOR_ADAPTER_ID, createWebAdapterCatalog } from './adapters.js';
+} from "@vdp/adapter-host";
+import { buildReport, renderHtml, renderPdf } from "@vdp/reports";
+import {
+  AdapterUnsupportedError,
+  type Logger,
+  SafetyViolationError,
+  StorageError,
+  createLogger,
+} from "@vdp/shared";
+import { SIMULATOR_ADAPTER_ID, createWebAdapterCatalog } from "./adapters.js";
+import { DemoBackend } from "./backend.js";
+import type { VehicleStateView } from "./backend.js";
+import { resolveContained } from "./paths.js";
 
 export interface ServerOptions {
   port?: number;
@@ -44,14 +50,14 @@ export interface ServerOptions {
 }
 
 const MIME: Record<string, string> = {
-  '.html': 'text/html; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.json': 'application/json; charset=utf-8',
-  '.svg': 'image/svg+xml',
-  '.csv': 'text/csv; charset=utf-8',
-  '.pdf': 'application/pdf',
-  '.ico': 'image/x-icon',
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".csv": "text/csv; charset=utf-8",
+  ".pdf": "application/pdf",
+  ".ico": "image/x-icon",
 };
 
 /** API payloads are small JSON documents; anything larger is a bug or an attack. */
@@ -63,19 +69,22 @@ const MAX_BODY_BYTES = 1_000_000;
  * CSS/JS only, no inline handlers, same-origin fetch and EventSource.
  */
 const SECURITY_HEADERS: Record<string, string> = {
-  'content-security-policy':
+  "content-security-policy":
     "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'",
-  'x-content-type-options': 'nosniff',
-  'x-frame-options': 'DENY',
-  'referrer-policy': 'no-referrer',
-  'cross-origin-resource-policy': 'same-origin',
+  "x-content-type-options": "nosniff",
+  "x-frame-options": "DENY",
+  "referrer-policy": "no-referrer",
+  "cross-origin-resource-policy": "same-origin",
 };
 
 /** Error carrying the HTTP status the request should fail with. */
 class HttpError extends Error {
-  constructor(readonly statusCode: number, message: string) {
+  constructor(
+    readonly statusCode: number,
+    message: string,
+  ) {
     super(message);
-    this.name = 'HttpError';
+    this.name = "HttpError";
   }
 }
 
@@ -86,10 +95,13 @@ class HttpError extends Error {
 function resolvePublicDir(): string {
   if (process.env.VDP_PUBLIC_DIR) return process.env.VDP_PUBLIC_DIR;
   const candidates = [
-    fileURLToPath(new URL('../../public/', import.meta.url)), // apps/web/dist/src/server.js
-    fileURLToPath(new URL('../public/', import.meta.url)), // apps/web/src/server.ts
+    fileURLToPath(new URL("../../public/", import.meta.url)), // apps/web/dist/src/server.js
+    fileURLToPath(new URL("../public/", import.meta.url)), // apps/web/src/server.ts
   ];
-  return candidates.find((candidate) => existsSync(join(candidate, 'index.html'))) ?? (candidates[0] as string);
+  return (
+    candidates.find((candidate) => existsSync(join(candidate, "index.html"))) ??
+    (candidates[0] as string)
+  );
 }
 
 const PUBLIC_DIR = resolvePublicDir();
@@ -105,9 +117,9 @@ const PUBLIC_DIR = resolvePublicDir();
  */
 function resolveChartLibDir(): string {
   try {
-    return dirname(createRequire(import.meta.url).resolve('@vdp/charts'));
+    return dirname(createRequire(import.meta.url).resolve("@vdp/charts"));
   } catch {
-    return fileURLToPath(new URL('../../packages/charts/dist/src/', import.meta.url));
+    return fileURLToPath(new URL("../../packages/charts/dist/src/", import.meta.url));
   }
 }
 
@@ -123,9 +135,11 @@ export class WebServer {
   constructor(private readonly options: ServerOptions = {}) {
     // Built here rather than as a field initializer: parameter properties are
     // assigned after field initializers run, so `this.options` is not ready yet.
-    this.log = createLogger('web', { level: 'INFO' }).child('server');
+    this.log = createLogger("web", { level: "INFO" }).child("server");
     this.backend = new DemoBackend({
-      ...(this.options.liveIntervalMs === undefined ? {} : { liveIntervalMs: this.options.liveIntervalMs }),
+      ...(this.options.liveIntervalMs === undefined
+        ? {}
+        : { liveIntervalMs: this.options.liveIntervalMs }),
       ...(this.options.sessionDir ? { sessionDir: this.options.sessionDir } : {}),
       ...(this.options.selection ? { selection: this.options.selection } : {}),
     });
@@ -136,15 +150,18 @@ export class WebServer {
   async listen(): Promise<{ port: number; url: string }> {
     // Localhost by default (ADR 0009): a diagnostic UI without authentication
     // must not appear on the network by accident. VDP_HOST/--host opts out.
-    const host = this.options.host ?? process.env.VDP_HOST ?? '127.0.0.1';
-    if (host === '0.0.0.0' || host === '::') {
-      this.log.warn('listening on all interfaces — the workbench has no authentication, restrict network access', { host });
+    const host = this.options.host ?? process.env.VDP_HOST ?? "127.0.0.1";
+    if (host === "0.0.0.0" || host === "::") {
+      this.log.warn(
+        "listening on all interfaces — the workbench has no authentication, restrict network access",
+        { host },
+      );
     }
     this.server = createServer((request, response) => {
       this.handle(request, response).catch((error) => {
         const status = statusFor(error);
         if (status >= 500) {
-          this.log.error('request failed', { url: request.url, error: messageOf(error) });
+          this.log.error("request failed", { url: request.url, error: messageOf(error) });
         }
         if (!response.headersSent) this.sendJson(response, status, { error: messageOf(error) });
         else response.end();
@@ -155,12 +172,13 @@ export class WebServer {
       this.server?.listen(this.options.port ?? 8080, host, resolve);
     });
     const address = this.server?.address();
-    const port = typeof address === 'object' && address ? address.port : (this.options.port ?? 8080);
+    const port =
+      typeof address === "object" && address ? address.port : (this.options.port ?? 8080);
     if (this.options.demo) {
       await this.backend.start();
     }
-    this.log.info('web server listening', { port, host, demo: this.options.demo === true });
-    return { port, url: `http://${host === '0.0.0.0' ? 'localhost' : host}:${port}` };
+    this.log.info("web server listening", { port, host, demo: this.options.demo === true });
+    return { port, url: `http://${host === "0.0.0.0" ? "localhost" : host}:${port}` };
   }
 
   async close(): Promise<void> {
@@ -179,16 +197,16 @@ export class WebServer {
   }
 
   private async handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
-    const url = new URL(request.url ?? '/', 'http://localhost');
+    const url = new URL(request.url ?? "/", "http://localhost");
     const path = url.pathname;
 
-    if (path === '/api/stream') {
-      if (request.method !== 'GET') throw new HttpError(405, 'the event stream is GET only');
+    if (path === "/api/stream") {
+      if (request.method !== "GET") throw new HttpError(405, "the event stream is GET only");
       return this.streamEvents(request, response);
     }
-    if (path.startsWith('/api/')) return this.api(request, response, path);
-    if (request.method !== 'GET') throw new HttpError(405, 'method not allowed');
-    if (path.startsWith('/lib/')) return this.libraryFile(response, path.slice('/lib/'.length));
+    if (path.startsWith("/api/")) return this.api(request, response, path);
+    if (request.method !== "GET") throw new HttpError(405, "method not allowed");
+    if (path.startsWith("/lib/")) return this.libraryFile(response, path.slice("/lib/".length));
     return this.staticFile(response, path);
   }
 
@@ -196,43 +214,50 @@ export class WebServer {
   private streamEvents(_request: IncomingMessage, response: ServerResponse): void {
     response.writeHead(200, {
       ...SECURITY_HEADERS,
-      'content-type': 'text/event-stream',
-      'cache-control': 'no-cache, no-transform',
-      connection: 'keep-alive',
-      'x-accel-buffering': 'no',
+      "content-type": "text/event-stream",
+      "cache-control": "no-cache, no-transform",
+      connection: "keep-alive",
+      "x-accel-buffering": "no",
     });
-    response.write(`retry: 2000\n\n`);
+    response.write("retry: 2000\n\n");
     this.streams.add(response);
     // Send the current state immediately so a reconnecting client is in sync.
     response.write(`event: state\ndata: ${JSON.stringify(this.backend.state())}\n\n`);
-    const keepAlive = setInterval(() => response.write(': ping\n\n'), 15_000);
-    response.on('close', () => {
+    const keepAlive = setInterval(() => response.write(": ping\n\n"), 15_000);
+    response.on("close", () => {
       clearInterval(keepAlive);
       this.streams.delete(response);
     });
   }
 
-  private async api(request: IncomingMessage, response: ServerResponse, path: string): Promise<void> {
-    const method = request.method ?? 'GET';
+  private async api(
+    request: IncomingMessage,
+    response: ServerResponse,
+    path: string,
+  ): Promise<void> {
+    const method = request.method ?? "GET";
 
-    if (path === '/api/state' && method === 'GET') return this.sendJson(response, 200, this.backend.state());
+    if (path === "/api/state" && method === "GET")
+      return this.sendJson(response, 200, this.backend.state());
     // Complete recording for the graph view: the live stream only carries the
     // newest samples, the graphs also have to show what happened before the
     // browser was opened (AGENTS 16 "Zeitraum auswählen").
-    if (path === '/api/history' && method === 'GET') return this.sendJson(response, 200, this.backend.history());
+    if (path === "/api/history" && method === "GET")
+      return this.sendJson(response, 200, this.backend.history());
 
-    if (path === '/api/start' && method === 'POST') return this.sendJson(response, 200, await this.backend.start());
+    if (path === "/api/start" && method === "POST")
+      return this.sendJson(response, 200, await this.backend.start());
 
     // Adapter management (AGENTS 4, 29). Listing probes the host but never opens
     // a bus, so it is safe while a vehicle is connected.
-    if (path === '/api/adapters' && method === 'GET') {
+    if (path === "/api/adapters" && method === "GET") {
       return this.sendJson(response, 200, {
         selected: this.backend.adapterSelection,
         mode: this.backend.currentMode,
         adapters: await this.backend.listAdapters(),
       });
     }
-    if (path === '/api/adapter/select' && method === 'POST') {
+    if (path === "/api/adapter/select" && method === "POST") {
       const body = await this.readBody<Record<string, unknown>>(request);
       const selection = selectionFromPayload(body);
       const result = await this.backend.selectAdapter(selection);
@@ -242,25 +267,37 @@ export class WebServer {
         connected: this.backend.state().connected,
       });
     }
-    if (path === '/api/identify' && method === 'POST') return this.sendJson(response, 200, { ecus: await this.backend.identify() });
-    if (path === '/api/dtc/scan' && method === 'POST') return this.sendJson(response, 200, { dtcs: await this.backend.scanDtcs() });
+    if (path === "/api/identify" && method === "POST")
+      return this.sendJson(response, 200, { ecus: await this.backend.identify() });
+    if (path === "/api/dtc/scan" && method === "POST")
+      return this.sendJson(response, 200, { dtcs: await this.backend.scanDtcs() });
 
     // Fault details and the only write path so far (AGENTS 20, 25, 26).
-    if (path === '/api/dtc/snapshot' && method === 'POST') {
-      const body = await this.readBody<{ rxId?: string; code?: string; recordNumber?: number }>(request);
+    if (path === "/api/dtc/snapshot" && method === "POST") {
+      const body = await this.readBody<{ rxId?: string; code?: string; recordNumber?: number }>(
+        request,
+      );
       const rxId = parseCanId(body.rxId);
-      if (!body.code) throw new HttpError(400, 'a DTC code is required');
+      if (!body.code) throw new HttpError(400, "a DTC code is required");
       return this.sendJson(response, 200, {
         snapshot: await this.backend.readFreezeFrame(rxId, body.code, body.recordNumber ?? 0xff),
       });
     }
-    if (path === '/api/dtc/clear/precheck' && method === 'POST') {
-      const body = await this.readBody<{ rxId?: string; vehicleState?: Record<string, unknown> }>(request);
+    if (path === "/api/dtc/clear/precheck" && method === "POST") {
+      const body = await this.readBody<{ rxId?: string; vehicleState?: Record<string, unknown> }>(
+        request,
+      );
       const rxId = parseCanId(body.rxId);
-      return this.sendJson(response, 200, { precheck: await this.backend.precheckDtcClear(rxId, parseVehicleState(body.vehicleState)) });
+      return this.sendJson(response, 200, {
+        precheck: await this.backend.precheckDtcClear(rxId, parseVehicleState(body.vehicleState)),
+      });
     }
-    if (path === '/api/dtc/clear' && method === 'POST') {
-      const body = await this.readBody<{ rxId?: string; confirmed?: boolean; vehicleState?: Record<string, unknown> }>(request);
+    if (path === "/api/dtc/clear" && method === "POST") {
+      const body = await this.readBody<{
+        rxId?: string;
+        confirmed?: boolean;
+        vehicleState?: Record<string, unknown>;
+      }>(request);
       const rxId = parseCanId(body.rxId);
       const result = await this.backend.clearDtcs(rxId, {
         confirmed: body.confirmed === true,
@@ -269,48 +306,79 @@ export class WebServer {
       return this.sendJson(response, 200, { result });
     }
 
-    if (path === '/api/live/start' && method === 'POST') {
+    if (path === "/api/live/start" && method === "POST") {
       const body = await this.readBody<{ signalIds?: string[] }>(request);
       await this.backend.startLive(body.signalIds);
       return this.sendJson(response, 200, { live: true });
     }
-    if (path === '/api/live/stop' && method === 'POST') {
+    if (path === "/api/live/stop" && method === "POST") {
       this.backend.stopLive();
       return this.sendJson(response, 200, { live: false });
     }
-    if (path === '/api/marker' && method === 'POST') {
+    if (path === "/api/marker" && method === "POST") {
       const body = await this.readBody<{ label?: string }>(request);
-      this.backend.addMarker(body.label ?? 'marker');
+      this.backend.addMarker(body.label ?? "marker");
       return this.sendJson(response, 200, { ok: true });
     }
-    if (path === '/api/analyze' && method === 'POST') return this.sendJson(response, 200, await this.backend.analyze());
+    if (path === "/api/analyze" && method === "POST")
+      return this.sendJson(response, 200, await this.backend.analyze());
 
     // Session persistence (AGENTS 10, 17, 29)
-    if (path === '/api/session/save' && method === 'POST') return this.sendJson(response, 200, await this.backend.saveSession());
-    if (path === '/api/sessions' && method === 'GET') return this.sendJson(response, 200, { sessions: await this.backend.listSessions() });
-    if (path.startsWith('/api/session/') && path.endsWith('/package') && method === 'GET') {
-      const id = path.slice('/api/session/'.length, -'/package'.length);
+    if (path === "/api/session/save" && method === "POST")
+      return this.sendJson(response, 200, await this.backend.saveSession());
+    if (path === "/api/sessions" && method === "GET")
+      return this.sendJson(response, 200, { sessions: await this.backend.listSessions() });
+    if (path.startsWith("/api/session/") && path.endsWith("/package") && method === "GET") {
+      const id = path.slice("/api/session/".length, -"/package".length);
       const bytes = await this.backend.sessionPackage(id);
-      return this.sendBytes(response, `session-${id}.zip`, 'application/zip', bytes);
+      return this.sendBytes(response, `session-${id}.zip`, "application/zip", bytes);
     }
 
-    if (path === '/api/export/measurements.csv') return this.sendFile(response, 'measurements.csv', 'text/csv; charset=utf-8', this.backend.exportCsv());
-    if (path === '/api/export/trace.csv') return this.sendFile(response, 'raw-trace.csv', 'text/csv; charset=utf-8', this.backend.exportTraceCsv());
-    if (path === '/api/export/session.json') return this.sendFile(response, 'session.json', 'application/json; charset=utf-8', this.backend.exportJson());
+    if (path === "/api/export/measurements.csv")
+      return this.sendFile(
+        response,
+        "measurements.csv",
+        "text/csv; charset=utf-8",
+        this.backend.exportCsv(),
+      );
+    if (path === "/api/export/trace.csv")
+      return this.sendFile(
+        response,
+        "raw-trace.csv",
+        "text/csv; charset=utf-8",
+        this.backend.exportTraceCsv(),
+      );
+    if (path === "/api/export/session.json")
+      return this.sendFile(
+        response,
+        "session.json",
+        "application/json; charset=utf-8",
+        this.backend.exportJson(),
+      );
 
-    if (path === '/api/export/report.html' || path === '/api/export/report.pdf') {
+    if (path === "/api/export/report.html" || path === "/api/export/report.pdf") {
       const state = this.backend.state();
       const document = buildReport({
         session: this.backend.sessionData(),
-        dtcs: state.dtcs.map((dtc) => ({ code: dtc.code, description: dtc.description, severity: dtc.severity, ecu: dtc.ecu })),
+        dtcs: state.dtcs.map((dtc) => ({
+          code: dtc.code,
+          description: dtc.description,
+          severity: dtc.severity,
+          ecu: dtc.ecu,
+        })),
         statistics: state.statistics,
         anomalies: state.anomalies,
       });
-      if (path.endsWith('.pdf')) {
+      if (path.endsWith(".pdf")) {
         const bytes = renderPdf(document);
-        return this.sendBytes(response, 'diagnostic-report.pdf', 'application/pdf', bytes);
+        return this.sendBytes(response, "diagnostic-report.pdf", "application/pdf", bytes);
       }
-      return this.sendFile(response, 'diagnostic-report.html', MIME['.html'] ?? 'text/html', renderHtml(document));
+      return this.sendFile(
+        response,
+        "diagnostic-report.html",
+        MIME[".html"] ?? "text/html",
+        renderHtml(document),
+      );
     }
 
     this.sendJson(response, 404, { error: `no route ${method} ${path}` });
@@ -324,21 +392,21 @@ export class WebServer {
    * a workspace package instead of living in `public/`.
    */
   private async libraryFile(response: ServerResponse, relative: string): Promise<void> {
-    if (relative.includes('..')) {
-      this.sendJson(response, 403, { error: 'forbidden' });
+    if (relative.includes("..")) {
+      this.sendJson(response, 403, { error: "forbidden" });
       return;
     }
     const resolved = resolveContained(LIB_DIR, relative);
     if (resolved === null) {
-      this.sendJson(response, 403, { error: 'forbidden' });
+      this.sendJson(response, 403, { error: "forbidden" });
       return;
     }
     try {
       const content = await readFile(resolved);
       response.writeHead(200, {
         ...SECURITY_HEADERS,
-        'content-type': MIME[extname(resolved)] ?? 'text/javascript; charset=utf-8',
-        'cache-control': 'no-cache',
+        "content-type": MIME[extname(resolved)] ?? "text/javascript; charset=utf-8",
+        "cache-control": "no-cache",
       });
       response.end(content);
     } catch {
@@ -347,18 +415,22 @@ export class WebServer {
   }
 
   private async staticFile(response: ServerResponse, path: string): Promise<void> {
-    const relative = path === '/' ? 'index.html' : path.replace(/^\/+/, '');
+    const relative = path === "/" ? "index.html" : path.replace(/^\/+/, "");
     // Reject anything that would escape the public directory. The containment
     // test compares path segments — a plain prefix test would also accept a
     // sibling whose name merely starts with the directory name (SECURITY).
     const resolved = resolveContained(PUBLIC_DIR, relative);
     if (resolved === null) {
-      this.sendJson(response, 403, { error: 'forbidden' });
+      this.sendJson(response, 403, { error: "forbidden" });
       return;
     }
     try {
       const content = await readFile(resolved);
-      response.writeHead(200, { ...SECURITY_HEADERS, 'content-type': MIME[extname(resolved)] ?? 'application/octet-stream', 'cache-control': 'no-cache' });
+      response.writeHead(200, {
+        ...SECURITY_HEADERS,
+        "content-type": MIME[extname(resolved)] ?? "application/octet-stream",
+        "cache-control": "no-cache",
+      });
       response.end(content);
     } catch {
       this.sendJson(response, 404, { error: `not found: ${path}` });
@@ -367,20 +439,34 @@ export class WebServer {
 
   private sendJson(response: ServerResponse, status: number, payload: unknown): void {
     const body = JSON.stringify(payload);
-    response.writeHead(status, { ...SECURITY_HEADERS, 'content-type': MIME['.json'] ?? 'application/json', 'cache-control': 'no-cache' });
+    response.writeHead(status, {
+      ...SECURITY_HEADERS,
+      "content-type": MIME[".json"] ?? "application/json",
+      "cache-control": "no-cache",
+    });
     response.end(body);
   }
 
-  private sendFile(response: ServerResponse, filename: string, contentType: string, content: string): void {
+  private sendFile(
+    response: ServerResponse,
+    filename: string,
+    contentType: string,
+    content: string,
+  ): void {
     this.sendBytes(response, filename, contentType, new TextEncoder().encode(content));
   }
 
-  private sendBytes(response: ServerResponse, filename: string, contentType: string, bytes: Uint8Array): void {
+  private sendBytes(
+    response: ServerResponse,
+    filename: string,
+    contentType: string,
+    bytes: Uint8Array,
+  ): void {
     response.writeHead(200, {
       ...SECURITY_HEADERS,
-      'content-type': contentType,
-      'content-length': String(bytes.length),
-      'content-disposition': `attachment; filename="${filename}"`,
+      "content-type": contentType,
+      "content-length": String(bytes.length),
+      "content-disposition": `attachment; filename="${filename}"`,
     });
     response.end(bytes);
   }
@@ -390,14 +476,15 @@ export class WebServer {
     let total = 0;
     for await (const chunk of request) {
       total += (chunk as Buffer).length;
-      if (total > MAX_BODY_BYTES) throw new HttpError(413, `request body exceeds the ${MAX_BODY_BYTES} byte limit`);
+      if (total > MAX_BODY_BYTES)
+        throw new HttpError(413, `request body exceeds the ${MAX_BODY_BYTES} byte limit`);
       chunks.push(chunk as Buffer);
     }
     if (chunks.length === 0) return {} as T;
     try {
-      return JSON.parse(Buffer.concat(chunks).toString('utf8')) as T;
+      return JSON.parse(Buffer.concat(chunks).toString("utf8")) as T;
     } catch {
-      throw new HttpError(400, 'request body is not valid JSON');
+      throw new HttpError(400, "request body is not valid JSON");
     }
   }
 }
@@ -408,9 +495,10 @@ function messageOf(error: unknown): string {
 
 /** Parse a CAN identifier from the UI (`0x7E8`, `7e8` or `2024`). */
 function parseCanId(value: unknown): number {
-  if (typeof value === 'number' && Number.isInteger(value) && value >= 0) return value;
-  if (typeof value !== 'string' || value.trim().length === 0) throw new HttpError(400, 'an ECU response id (rxId) is required');
-  const text = value.trim().toLowerCase().replace(/^0x/, '');
+  if (typeof value === "number" && Number.isInteger(value) && value >= 0) return value;
+  if (typeof value !== "string" || value.trim().length === 0)
+    throw new HttpError(400, "an ECU response id (rxId) is required");
+  const text = value.trim().toLowerCase().replace(/^0x/, "");
   const parsed = Number.parseInt(text, 16);
   if (!Number.isFinite(parsed) || parsed < 0 || parsed > 0x1fffffff) {
     throw new HttpError(400, `"${value}" is not a CAN identifier`);
@@ -426,12 +514,12 @@ function parseCanId(value: unknown): number {
  */
 function parseVehicleState(payload: Record<string, unknown> | undefined): VehicleStateView {
   const record = payload ?? {};
-  const voltage = record['batteryVoltage'];
+  const voltage = record["batteryVoltage"];
   return {
-    stationary: record['stationary'] === true,
-    ignitionOn: record['ignitionOn'] === true,
-    parkingBrake: record['parkingBrake'] === true,
-    ...(typeof voltage === 'number' && Number.isFinite(voltage) ? { batteryVoltage: voltage } : {}),
+    stationary: record["stationary"] === true,
+    ignitionOn: record["ignitionOn"] === true,
+    parkingBrake: record["parkingBrake"] === true,
+    ...(typeof voltage === "number" && Number.isFinite(voltage) ? { batteryVoltage: voltage } : {}),
   };
 }
 
@@ -461,41 +549,49 @@ function statusFor(error: unknown): number {
 function parseArgs(argv: readonly string[]): ServerOptions {
   const options: ServerOptions = {};
   for (const arg of argv) {
-    if (arg === '--demo') options.demo = true;
-    else if (arg === '--no-autostart') options.demo = false;
-    else if (arg.startsWith('--port=')) options.port = Number.parseInt(arg.slice(7), 10);
-    else if (arg.startsWith('--host=')) options.host = arg.slice(7);
-    else if (arg.startsWith('--interval=')) options.liveIntervalMs = Number.parseInt(arg.slice(11), 10);
-    else if (arg.startsWith('--sessions=')) options.sessionDir = arg.slice(11);
+    if (arg === "--demo") options.demo = true;
+    else if (arg === "--no-autostart") options.demo = false;
+    else if (arg.startsWith("--port=")) options.port = Number.parseInt(arg.slice(7), 10);
+    else if (arg.startsWith("--host=")) options.host = arg.slice(7);
+    else if (arg.startsWith("--interval="))
+      options.liveIntervalMs = Number.parseInt(arg.slice(11), 10);
+    else if (arg.startsWith("--sessions=")) options.sessionDir = arg.slice(11);
   }
   const parsed = parseAdapterArgv(argv, SIMULATOR_ADAPTER_ID);
-  if (parsed.errors.length > 0) throw new HttpError(400, parsed.errors.join('; '));
+  if (parsed.errors.length > 0) throw new HttpError(400, parsed.errors.join("; "));
   options.selection = parsed.selection;
   // Naming an adapter means "use it": auto-start only stays on for the
   // simulator, which needs no hardware and no confirmation.
-  if (parsed.selection.id === SIMULATOR_ADAPTER_ID && options.demo === undefined) options.demo = true;
+  if (parsed.selection.id === SIMULATOR_ADAPTER_ID && options.demo === undefined)
+    options.demo = true;
   return options;
 }
 
 /** Settings that were given but cannot be used, e.g. a typo in the adapter id. */
 function validateStartupSelection(options: ServerOptions): string[] {
   const catalog = createWebAdapterCatalog();
-  const validation = validateSelection(catalog, options.selection ?? { id: SIMULATOR_ADAPTER_ID, config: {} });
+  const validation = validateSelection(
+    catalog,
+    options.selection ?? { id: SIMULATOR_ADAPTER_ID, config: {} },
+  );
   return validation.ok ? [] : validation.errors;
 }
 
-const invokedDirectly = process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.argv[1];
+const invokedDirectly =
+  process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.argv[1];
 if (invokedDirectly) {
   const argv = process.argv.slice(2);
-  const log = createLogger('web', { level: 'INFO' });
+  const log = createLogger("web", { level: "INFO" });
   const catalog = createWebAdapterCatalog();
 
-  if (argv.includes('--list-adapters')) {
+  if (argv.includes("--list-adapters")) {
     const selection = parseAdapterArgv(argv, SIMULATOR_ADAPTER_ID).selection;
     const described = await catalog.describeAll(selection.config);
     process.stdout.write(`${formatAdapterHelp(catalog)}\n\nAvailability on this host:\n`);
     for (const entry of described) {
-      process.stdout.write(`  ${entry.id.padEnd(10)} ${entry.probe.available ? 'ready  ' : 'unusable'} ${entry.probe.detail}\n`);
+      process.stdout.write(
+        `  ${entry.id.padEnd(10)} ${entry.probe.available ? "ready  " : "unusable"} ${entry.probe.detail}\n`,
+      );
       for (const hint of entry.probe.hints ?? []) process.stdout.write(`             → ${hint}\n`);
     }
     process.exit(0);
@@ -511,27 +607,35 @@ if (invokedDirectly) {
 
   const problems = validateStartupSelection(options);
   if (problems.length > 0) {
-    process.stderr.write(`invalid adapter settings:\n${problems.map((problem) => `  - ${problem}`).join('\n')}\n\n${formatAdapterHelp(catalog)}\n`);
+    process.stderr.write(
+      `invalid adapter settings:\n${problems.map((problem) => `  - ${problem}`).join("\n")}\n\n${formatAdapterHelp(catalog)}\n`,
+    );
     process.exit(2);
   }
 
   // Sessions land in a local, gitignored directory unless told otherwise.
-  const server = new WebServer({ sessionDir: 'sessions-local', ...options });
+  const server = new WebServer({ sessionDir: "sessions-local", ...options });
   const { url } = await server.listen();
   const selection = server.backend.adapterSelection;
   process.stdout.write(`yes-you-CAN workbench listening on ${url}\n`);
-  process.stdout.write(`adapter: ${selection.id} (mode ${server.backend.currentMode})${selection.config.device ? ` · ${selection.config.device}` : ''}\n`);
-  if (server.backend.currentMode === 'simulator') {
-    process.stdout.write('kein Fahrzeug nötig — Hardware mit --list-adapters prüfen und mit --adapter=<id> --device=<pfad> verbinden\n');
+  process.stdout.write(
+    `adapter: ${selection.id} (mode ${server.backend.currentMode})${selection.config.device ? ` · ${selection.config.device}` : ""}\n`,
+  );
+  if (server.backend.currentMode === "simulator") {
+    process.stdout.write(
+      "kein Fahrzeug nötig — Hardware mit --list-adapters prüfen und mit --adapter=<id> --device=<pfad> verbinden\n",
+    );
   }
   let shuttingDown = false;
   const shutdown = async (signal: string): Promise<void> => {
     if (shuttingDown) return;
     shuttingDown = true;
-    log.info('shutting down', { signal });
-    await server.close().catch((error: unknown) => log.warn('shutdown failed', { error: messageOf(error) }));
+    log.info("shutting down", { signal });
+    await server
+      .close()
+      .catch((error: unknown) => log.warn("shutdown failed", { error: messageOf(error) }));
     process.exit(0);
   };
-  process.on('SIGINT', () => void shutdown('SIGINT'));
-  process.on('SIGTERM', () => void shutdown('SIGTERM'));
+  process.on("SIGINT", () => void shutdown("SIGINT"));
+  process.on("SIGTERM", () => void shutdown("SIGTERM"));
 }

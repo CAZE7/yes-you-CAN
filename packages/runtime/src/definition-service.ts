@@ -8,6 +8,7 @@
  * SQLite or a cloud API without the runtime changing.
  */
 
+import { type DefinitionPackage, type EcuDefinition, indexPackage } from "@vdp/definitions";
 import type {
   DefinitionProvider,
   DidDefinitionRef,
@@ -16,15 +17,14 @@ import type {
   FindEcuQuery,
   SignalDefinitionRef,
   VehicleDefinitionRef,
-} from '@vdp/domain';
-import { indexPackage, type DefinitionPackage, type EcuDefinition } from '@vdp/definitions';
+} from "@vdp/domain";
 
 export class PackageDefinitionProvider implements DefinitionProvider {
   readonly source: string;
 
   constructor(
     private readonly packages: readonly DefinitionPackage[],
-    source = 'builtin-packages',
+    source = "builtin-packages",
   ) {
     this.source = source;
   }
@@ -105,7 +105,9 @@ export class PackageDefinitionProvider implements DefinitionProvider {
         rxId: ecu.address.rxId,
         ...(ecu.address.extended !== undefined ? { extended: ecu.address.extended } : {}),
       },
-      ...(ecu.services !== undefined && ecu.services.length > 0 ? { services: [...ecu.services] } : {}),
+      ...(ecu.services !== undefined && ecu.services.length > 0
+        ? { services: [...ecu.services] }
+        : {}),
     };
   }
 }

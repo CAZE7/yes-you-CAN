@@ -8,8 +8,13 @@
  * engine, the app and every protocol file.
  */
 
-import type { DiagnosticCapability, EcuSummary, VehicleStateReading, WriteOperationKind } from '@vdp/domain';
-import { capabilitiesOf, missingCapabilities } from '@vdp/domain';
+import type {
+  DiagnosticCapability,
+  EcuSummary,
+  VehicleStateReading,
+  WriteOperationKind,
+} from "@vdp/domain";
+import { capabilitiesOf, missingCapabilities } from "@vdp/domain";
 
 /** What an action needs to know about the current situation. */
 export interface DiagnosticContext {
@@ -34,7 +39,7 @@ export interface ActionDescriptor {
    * Read actions carry `'read'`; write actions carry their kind so risk
    * policy and safety chain apply (domain §15).
    */
-  operation: 'read' | WriteOperationKind;
+  operation: "read" | WriteOperationKind;
   requiredCapabilities: readonly DiagnosticCapability[];
   description?: string;
 }
@@ -56,13 +61,15 @@ export class ActionRegistry {
   }
 
   list(): ActionDescriptor[] {
-    return Array.from(this.actions.values()).map(({ id, name, operation, requiredCapabilities, description }) => ({
-      id,
-      name,
-      operation,
-      requiredCapabilities,
-      ...(description !== undefined ? { description } : {}),
-    }));
+    return Array.from(this.actions.values()).map(
+      ({ id, name, operation, requiredCapabilities, description }) => ({
+        id,
+        name,
+        operation,
+        requiredCapabilities,
+        ...(description !== undefined ? { description } : {}),
+      }),
+    );
   }
 
   /**
@@ -75,7 +82,9 @@ export class ActionRegistry {
     for (const action of this.actions.values()) {
       const verdict = action.canExecute(context);
       if (!verdict.ok) continue;
-      const ecuCapabilities = context.ecu ? capabilitiesOf(...context.ecu.capabilities) : capabilitiesOf();
+      const ecuCapabilities = context.ecu
+        ? capabilitiesOf(...context.ecu.capabilities)
+        : capabilitiesOf();
       if (missingCapabilities(ecuCapabilities, action.requiredCapabilities).length > 0) continue;
       result.push({
         id: action.id,
@@ -97,68 +106,76 @@ export class ActionRegistry {
 export function createStandardActions(): readonly DiagnosticActionDefinition[] {
   return [
     {
-      id: 'dtc.read',
-      name: 'Read fault memory',
-      operation: 'read',
-      requiredCapabilities: ['read-dtc'],
-      description: 'Read stored fault codes incl. status and enrichment.',
+      id: "dtc.read",
+      name: "Read fault memory",
+      operation: "read",
+      requiredCapabilities: ["read-dtc"],
+      description: "Read stored fault codes incl. status and enrichment.",
       canExecute: (context) =>
         !context.connected
-          ? { ok: false, reason: 'no vehicle connection' }
+          ? { ok: false, reason: "no vehicle connection" }
           : context.ecu === undefined
-            ? { ok: false, reason: 'no ECU selected' }
+            ? { ok: false, reason: "no ECU selected" }
             : { ok: true },
     },
     {
-      id: 'dtc.clear',
-      name: 'Clear fault memory',
-      operation: 'clear-dtc',
-      requiredCapabilities: ['clear-dtc'],
-      description: 'Clear the fault memory after explicit confirmation and safety check.',
+      id: "dtc.clear",
+      name: "Clear fault memory",
+      operation: "clear-dtc",
+      requiredCapabilities: ["clear-dtc"],
+      description: "Clear the fault memory after explicit confirmation and safety check.",
       canExecute: (context) => {
-        if (!context.connected) return { ok: false, reason: 'no vehicle connection' };
-        if (!context.ecu) return { ok: false, reason: 'no ECU selected' };
-        if (context.ecu.sessionType === 0x01) return { ok: false, reason: 'ECU is in the default session — writes require an extended session' };
+        if (!context.connected) return { ok: false, reason: "no vehicle connection" };
+        if (!context.ecu) return { ok: false, reason: "no ECU selected" };
+        if (context.ecu.sessionType === 0x01)
+          return {
+            ok: false,
+            reason: "ECU is in the default session — writes require an extended session",
+          };
         return { ok: true };
       },
     },
     {
-      id: 'did.read',
-      name: 'Read data',
-      operation: 'read',
-      requiredCapabilities: ['read-did'],
-      description: 'Read a Data Identifier from the ECU.',
+      id: "did.read",
+      name: "Read data",
+      operation: "read",
+      requiredCapabilities: ["read-did"],
+      description: "Read a Data Identifier from the ECU.",
       canExecute: (context) =>
         !context.connected
-          ? { ok: false, reason: 'no vehicle connection' }
+          ? { ok: false, reason: "no vehicle connection" }
           : context.ecu === undefined
-            ? { ok: false, reason: 'no ECU selected' }
+            ? { ok: false, reason: "no ECU selected" }
             : { ok: true },
     },
     {
-      id: 'did.write',
-      name: 'Write data',
-      operation: 'write-did',
-      requiredCapabilities: ['write-did'],
-      description: 'Write a Data Identifier (backup + confirmation required).',
+      id: "did.write",
+      name: "Write data",
+      operation: "write-did",
+      requiredCapabilities: ["write-did"],
+      description: "Write a Data Identifier (backup + confirmation required).",
       canExecute: (context) => {
-        if (!context.connected) return { ok: false, reason: 'no vehicle connection' };
-        if (!context.ecu) return { ok: false, reason: 'no ECU selected' };
-        if (context.ecu.sessionType === 0x01) return { ok: false, reason: 'ECU is in the default session — writes require an extended session' };
+        if (!context.connected) return { ok: false, reason: "no vehicle connection" };
+        if (!context.ecu) return { ok: false, reason: "no ECU selected" };
+        if (context.ecu.sessionType === 0x01)
+          return {
+            ok: false,
+            reason: "ECU is in the default session — writes require an extended session",
+          };
         return { ok: true };
       },
     },
     {
-      id: 'routine.run',
-      name: 'Run routine',
-      operation: 'routine',
-      requiredCapabilities: ['routine-control'],
-      description: 'Start/stop an ECU routine defined by the package.',
+      id: "routine.run",
+      name: "Run routine",
+      operation: "routine",
+      requiredCapabilities: ["routine-control"],
+      description: "Start/stop an ECU routine defined by the package.",
       canExecute: (context) =>
         !context.connected
-          ? { ok: false, reason: 'no vehicle connection' }
+          ? { ok: false, reason: "no vehicle connection" }
           : context.ecu === undefined
-            ? { ok: false, reason: 'no ECU selected' }
+            ? { ok: false, reason: "no ECU selected" }
             : { ok: true },
     },
   ];

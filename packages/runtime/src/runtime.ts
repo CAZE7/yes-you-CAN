@@ -19,16 +19,36 @@
  * the services and the command bus.
  */
 
-import { createLogger, type Logger } from '@vdp/shared';
-import { DiagnosticEngine, type DiagnosticEngineOptions, type EcuLinkFactory, type SafetyManager, type VehicleSessionData } from '@vdp/core';
-import type { DefinitionPackage } from '@vdp/definitions';
-import type { CanBus } from '@vdp/transport-can';
-import { ActionRegistry, CommandBus, createStandardActions } from '@vdp/application';
-import { DefaultIdGenerator, InMemoryEventBus, type Clock, type EventBus, type IdGenerator, type SessionStore } from '@vdp/domain';
-import { PackageDefinitionProvider } from './definition-service.js';
-import { EventAuditRecorder } from './event-recorder.js';
-import { registerRuntimeHandlers } from './handlers.js';
-import { DtcService, EcuService, MeasurementService, SafetyService, SessionService, VehicleService } from './services.js';
+import { ActionRegistry, CommandBus, createStandardActions } from "@vdp/application";
+import {
+  DiagnosticEngine,
+  type DiagnosticEngineOptions,
+  type EcuLinkFactory,
+  type SafetyManager,
+  type VehicleSessionData,
+} from "@vdp/core";
+import type { DefinitionPackage } from "@vdp/definitions";
+import {
+  type Clock,
+  DefaultIdGenerator,
+  type EventBus,
+  type IdGenerator,
+  InMemoryEventBus,
+  type SessionStore,
+} from "@vdp/domain";
+import { type Logger, createLogger } from "@vdp/shared";
+import type { CanBus } from "@vdp/transport-can";
+import { PackageDefinitionProvider } from "./definition-service.js";
+import { EventAuditRecorder } from "./event-recorder.js";
+import { registerRuntimeHandlers } from "./handlers.js";
+import {
+  DtcService,
+  EcuService,
+  MeasurementService,
+  SafetyService,
+  SessionService,
+  VehicleService,
+} from "./services.js";
 
 export interface RuntimeOptions {
   /**
@@ -59,9 +79,9 @@ export interface RuntimeOptions {
   /** Poll interval for live measurements. */
   pollIntervalMs?: number;
   /** Extra ISO-TP settings applied to every ECU (pass-through). */
-  isoTpDefaults?: DiagnosticEngineOptions['isoTpDefaults'];
+  isoTpDefaults?: DiagnosticEngineOptions["isoTpDefaults"];
   /** Manufacturer hooks, consulted only where definitions are silent. */
-  oemProtocols?: DiagnosticEngineOptions['oemProtocols'];
+  oemProtocols?: DiagnosticEngineOptions["oemProtocols"];
 }
 
 export interface DiagnosticRuntime {
@@ -88,7 +108,7 @@ export interface DiagnosticRuntime {
 
 export function createDiagnosticRuntime(options: RuntimeOptions): DiagnosticRuntime {
   const events = options.events ?? new InMemoryEventBus();
-  const log = (options.logger ?? createLogger('runtime', { level: 'INFO' })).child('runtime');
+  const log = (options.logger ?? createLogger("runtime", { level: "INFO" })).child("runtime");
   const clock = options.clock;
   const ids = options.idGenerator ?? new DefaultIdGenerator(clock);
 

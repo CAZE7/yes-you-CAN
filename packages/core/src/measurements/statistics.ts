@@ -7,7 +7,7 @@
  * comparison whose sides are computed differently is worthless (AGENTS 15, 16, 30).
  */
 
-import type { MeasurementSample, SignalStatistics } from './types.js';
+import type { MeasurementSample, SignalStatistics } from "./types.js";
 
 export interface SampleSummaryNames {
   readonly names?: ReadonlyMap<string, string>;
@@ -16,7 +16,9 @@ export interface SampleSummaryNames {
 
 /** Samples that can take part in a numeric statistic. */
 function numericValues(samples: readonly MeasurementSample[]): number[] {
-  return samples.map((sample) => sample.value).filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+  return samples
+    .map((sample) => sample.value)
+    .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
 }
 
 /**
@@ -33,7 +35,10 @@ export function summarizeSamples(
 ): SignalStatistics {
   const values = numericValues(samples);
   const unit = samples.find((sample) => sample.unit)?.unit ?? names.units?.get(signal);
-  const name = names.names?.get(signal) ?? samples.find((sample) => sample.signal === signal)?.signal ?? signal;
+  const name =
+    names.names?.get(signal) ??
+    samples.find((sample) => sample.signal === signal)?.signal ??
+    signal;
   const outOfRangeCount = samples.filter((sample) => sample.outOfRange).length;
   const base = {
     signal,
@@ -42,13 +47,22 @@ export function summarizeSamples(
     outOfRangeCount,
   };
   if (values.length === 0) {
-    return { ...base, samples: 0, min: null, max: null, average: null, delta: null, first: null, last: null };
+    return {
+      ...base,
+      samples: 0,
+      min: null,
+      max: null,
+      average: null,
+      delta: null,
+      first: null,
+      last: null,
+    };
   }
   // No spread here on purpose: `Math.min(...values)` passes every sample as a call
   // argument and exceeds the argument limit at roughly 100 000 samples, which is a
   // few minutes of a 100 Hz signal — a long recording would then be unsummarisable.
-  let min = Infinity;
-  let max = -Infinity;
+  let min = Number.POSITIVE_INFINITY;
+  let max = Number.NEGATIVE_INFINITY;
   for (const value of values) {
     if (value < min) min = value;
     if (value > max) max = value;

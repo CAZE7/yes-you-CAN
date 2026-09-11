@@ -7,8 +7,8 @@
  * which keeps the UDS layer completely transport agnostic (AGENTS 5, 36).
  */
 
-import { TransportClosedError, createLogger, type Logger } from '@vdp/shared';
-import type { UdsLink } from './link.js';
+import { type Logger, TransportClosedError, createLogger } from "@vdp/shared";
+import type { UdsLink } from "./link.js";
 
 /** Structural subset of VehicleTransport — deliberately not importing it. */
 export interface MessageTransport {
@@ -35,9 +35,12 @@ export class RequestResponseLink implements UdsLink {
   /** Requests are serialised: UDS allows no parallel requests per session. */
   private lock: Promise<unknown> = Promise.resolve();
 
-  constructor(private readonly transport: MessageTransport, options: RequestResponseLinkOptions = {}) {
+  constructor(
+    private readonly transport: MessageTransport,
+    options: RequestResponseLinkOptions = {},
+  ) {
     this.defaultTimeoutMs = options.defaultTimeoutMs ?? 5000;
-    this.log = (options.logger ?? createLogger('uds', { level: 'WARN' })).child('uds');
+    this.log = (options.logger ?? createLogger("uds", { level: "WARN" })).child("uds");
   }
 
   async request(payload: Uint8Array, timeoutMs?: number): Promise<Uint8Array> {
@@ -85,11 +88,14 @@ export class RequestResponseLink implements UdsLink {
   }
 }
 
-export function createRequestResponseLink(transport: MessageTransport, options: RequestResponseLinkOptions = {}): UdsLink {
+export function createRequestResponseLink(
+  transport: MessageTransport,
+  options: RequestResponseLinkOptions = {},
+): UdsLink {
   return new RequestResponseLink(transport, options);
 }
 
 export function isMessageTransport(candidate: unknown): candidate is MessageTransport {
   const value = candidate as Partial<MessageTransport> | null;
-  return typeof value?.send === 'function' && typeof value?.receive === 'function';
+  return typeof value?.send === "function" && typeof value?.receive === "function";
 }

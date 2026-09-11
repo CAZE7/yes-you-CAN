@@ -1,7 +1,8 @@
 # AGENTS.md — Vehicle Diagnostics Platform
 
-> **Version:** 1.2 · **Letzte Änderung:** 2026-09-11
+> **Version:** 1.3 · **Letzte Änderung:** 2026-09-11
 > **Changelog:**
+> - 1.3: Industriestandard-Härtung (ADR 0016): Biome Lint/Format, realistische Coverage-Gates (80/75 global, per-file für core/protocols), CI-Matrix mit Quality-Gates (lint·typecheck·audit) + Coverage-Upload, CodeQL + Dependency-Review, hardware-Platzhalter `tests/hardware/vcan.test.ts`, LICENSE/CONTRIBUTING/CODEOWNERS, `.nvmrc`/`.npmrc` (AGENTS 35 erweitert).
 > - 1.2: Von der Bau-Spezifikation zum Fortführungs-Leitfaden: Umsetzungsstand, Betrieb und Workflow für Coding Agents (Teil 0), Dependency-Policy (ADR 0010), Security-Baseline (ADR 0009), neue Regeln 34.19–34.24, erweiterte Definition of Done (35). Die Abschnittsnummern 0–36 bleiben unverändert — alle `AGENTS x.y`-Verweise im Code bleiben gültig.
 > - 1.1: Norm-Referenzen ergänzt (ISO 14229-2, ISO 15765-2, ISO 13400-1/2/3, ISO 3779), UDS-Timing-Parameter, DoIP-Discovery-Flow, Glossar, DoIP-Netzwerksicherheit.
 > - 1.0: Erste Fassung.
@@ -14,7 +15,7 @@
 
 Dieser Teil steht bewusst vor der Spezifikation. Er sagt dir, *was schon existiert*, *wie du arbeitest* und *wo die harten Grenzen sind*. Die Abschnitte 0–36 dahinter bleiben die normative Produktspezifikation.
 
-## 0.A Umsetzungsstand (verifiziert gegen `main`-Commit `1b64039`, 2026-09-11)
+## 0.A Umsetzungsstand (verifiziert gegen `arena/01a09119` 2026-09-11, Basis `51b8b19`)
 
 | Bereich | Stand | Bemerkung |
 |---|---|---|
@@ -31,10 +32,10 @@ Dieser Teil steht bewusst vor der Spezifikation. Er sagt dir, *was schon existie
 | Storage (JSON + NDJSON, Migrationen, ZIP-Export) | ✅ | ADR 0007; Session-IDs werden vor Dateizugriff validiert |
 | Reports (HTML/PDF) | ✅ | eigener PDF-Writer (ADR 0002); Ersatz durch pdf-lib in ADR 0010 vorgesehen |
 | KI-Schicht | 🚧 Provider-Abstraktion, lokaler Heuristik-Provider, HTTP-Gateway mit VIN-Redaktion | bewusst keine „große KI“ im MVP (Abschnitt 29) |
-| Web-Workbench (`apps/web`) | ✅ Node HTTP + SSE, Vanilla ESM, 9 Views | Frontend-JS (`public/*.js`) derzeit nicht typgeprüft; Vite + TS in ADR 0010 vorgesehen |
+| Web-Workbench (`apps/web`) | ✅ Node HTTP + SSE, Vanilla ESM, 9 Views | `public/*.js` via Biome formatiert, `/lib` liefert `@vdp/charts`; Security-Header + Body-Limit (ADR 0009) |
 | Simulator + Replay | ✅ | VirtualVehicle, VirtualCanNetwork, ReplayTransport mit strikter Abweichungsmelding |
-| Tests | ✅ 806 Tests auf 5 Ebenen (unit / protocol / regression / replay / integration) | Vitest 5 mit Projektkonfiguration (ADR 0010, Schritt 1 — ersetzt ADR 0008); Unit-Specs co-lokatiert (`src/*.spec.ts`), Property-Tests (fast-check), Coverage-Gates per `npm run test:coverage` — derzeit 87 Schwellen rot (vorbestehend, in der CI noch nicht aktiviert); `hardware`-Projekt definiert, aber ohne Fixtures (`tests/hardware` fehlt) und ohne CI-Job |
-| CI/CD | ✅ GitHub Actions (Node 22 + 24, checkout/setup-node v7) + Dependabot | ADR 0009; Coverage-Gates und das `hardware`-Projekt laufen noch nicht in der CI |
+| Tests | ✅ 951 Tests auf 6 Ebenen (unit / protocol / regression / replay / integration / architecture) + 1 hardware smoke | Vitest 5 mit Projektkonfiguration (ADR 0010, Schritt 1); Unit-Specs co-lokatiert (`src/*.spec.ts`), Property-Tests (fast-check), Coverage-Gates `80/75` global / per-file für `core`/`protocols`/`adapters`/`transport`/`storage`/`charts` (ADR 0016) — grün; `hardware` (`tests/hardware/vcan.test.ts`) läuft nightly/manual |
+| CI/CD | ✅ GitHub Actions (Node 22 + 24, checkout/setup-node v7) + Dependabot (gruppiert) + CodeQL + Dependency-Review | ADR 0009 + ADR 0016: Quality-Gates `lint·typecheck·build·audit`, Matrix-Tests, Coverage-Upload; `hardware` als eigenes Projekt |
 | HTTP-Security-Baseline | ✅ | localhost-Default, Security-Header, Body-Limit (ADR 0009) |
 | Coding Framework (Abschnitt 25) | ❌ bewusst nicht begonnen | erst nach stabilem Read-only-System |
 | DoIP-Engine-Integration, weitere Hersteller, Mobile/Desktop | ❌ | Phase 3+ |
@@ -43,15 +44,16 @@ Diese Tabelle ist ein *Stand*, keine Wahrheit auf ewig: Verifiziere sie bei jede
 
 ## 0.B Betrieb — Befehle, die funktionieren
 
-Voraussetzung: Node.js ≥ 22 (siehe `engines` im Root-`package.json`).
+Voraussetzung: Node.js ≥ 22 (siehe `engines` im Root-`package.json`, `.nvmrc`).
 
 ```bash
 npm ci                # installiert exakt das Lockfile — kein npm install im CI-Kontext
 npm run build         # tsc -b über alle Projekt-Referenzen (TypeScript 7 / tsgo)
 npm run typecheck     # Build + strikter noEmit-Pass über Tests, Konfiguration und Specs
-npm test              # komplette Suite auf allen 5 Ebenen (Vitest)
+npx biome check .     # Lint + Format (Biome 1.9)
+npm test              # komplette Suite auf 6 Ebenen (unit / protocol / regression / replay / integration / architecture)
 npm run test:unit     # nur Unit-Specs — die schnelle Feedback-Schleife
-npm run test:coverage # Suite + V8-Coverage-Schwellen (derzeit rot, s. 0.A)
+npm run test:coverage # Suite + V8-Coverage (80/75 global, per-file für core/protocols) — grün
 npm run demo          # Workbench mit Simulator auf http://localhost:8080
 ```
 
@@ -836,7 +838,7 @@ UI soll später Web/Desktop/Mobile unterstützen können. Business Logic nicht i
 
 ## 30. Phasen
 
-> **Stand 2026-09-11:** Phase 1 ist implementiert und durch 806 Tests auf fünf Ebenen abgesichert. Phase 2 läuft: OEM-Definition-Pakete existieren als gekennzeichnete Platzhalter, Reports und Session-Persistenz sind gebaut, das DTC-System (Freeze Frames, First/Last-Seen, Safety-gated Clear) ist fertig, die Graphen sind nach AGENTS 16 umgesetzt, die erste KI-Analyse ist ein lokaler Heuristik-Provider hinter der Provider-Abstraktion.
+> **Stand 2026-09-11:** Phase 1 ist implementiert und durch 951 Tests auf sechs Ebenen abgesichert. Phase 2 läuft: OEM-Definition-Pakete existieren als gekennzeichnete Platzhalter, Reports und Session-Persistenz sind gebaut, das DTC-System (Freeze Frames, First/Last-Seen, Safety-gated Clear) ist fertig, die Graphen sind nach AGENTS 16 umgesetzt, die erste KI-Analyse ist ein lokaler Heuristik-Provider hinter der Provider-Abstraktion. Industriestandard-Härtung (ADR 0016) ist gemergt: Biome, Coverage-Gates grün, CI-Matrix mit Quality + Security, `LICENSE`/`CONTRIBUTING`/`CODEOWNERS`.
 
 ### Phase 1
 ```text

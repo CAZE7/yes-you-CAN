@@ -32,7 +32,12 @@ function writeU16(value: number): Uint8Array {
 }
 
 function writeU32(value: number): Uint8Array {
-  return new Uint8Array([value & 0xff, (value >>> 8) & 0xff, (value >>> 16) & 0xff, (value >>> 24) & 0xff]);
+  return new Uint8Array([
+    value & 0xff,
+    (value >>> 8) & 0xff,
+    (value >>> 16) & 0xff,
+    (value >>> 24) & 0xff,
+  ]);
 }
 
 function concat(chunks: Uint8Array[]): Uint8Array {
@@ -47,7 +52,10 @@ function concat(chunks: Uint8Array[]): Uint8Array {
 }
 
 /** Build a ZIP archive from in-memory entries. */
-export function createZip(entries: readonly ZipEntry[], comment = 'vdp session package'): Uint8Array {
+export function createZip(
+  entries: readonly ZipEntry[],
+  comment = "vdp session package",
+): Uint8Array {
   const localParts: Uint8Array[] = [];
   const centralParts: Uint8Array[] = [];
   let offset = 0;
@@ -120,12 +128,19 @@ export function listZipEntries(archive: Uint8Array): string[] {
   const names: string[] = [];
   let offset = 0;
   while (offset + 4 <= archive.length) {
-    const signature = (archive[offset] ?? 0) | ((archive[offset + 1] ?? 0) << 8) | ((archive[offset + 2] ?? 0) << 16) | ((archive[offset + 3] ?? 0) << 24);
+    const signature =
+      (archive[offset] ?? 0) |
+      ((archive[offset + 1] ?? 0) << 8) |
+      ((archive[offset + 2] ?? 0) << 16) |
+      ((archive[offset + 3] ?? 0) << 24);
     if (signature !== 0x04034b50) break;
     const nameLength = (archive[offset + 26] ?? 0) | ((archive[offset + 27] ?? 0) << 8);
     const extraLength = (archive[offset + 28] ?? 0) | ((archive[offset + 29] ?? 0) << 8);
     const compressedSize =
-      (archive[offset + 18] ?? 0) | ((archive[offset + 19] ?? 0) << 8) | ((archive[offset + 20] ?? 0) << 16) | ((archive[offset + 21] ?? 0) << 24);
+      (archive[offset + 18] ?? 0) |
+      ((archive[offset + 19] ?? 0) << 8) |
+      ((archive[offset + 20] ?? 0) << 16) |
+      ((archive[offset + 21] ?? 0) << 24);
     const name = decoder.decode(archive.subarray(offset + 30, offset + 30 + nameLength));
     names.push(name);
     offset += 30 + nameLength + extraLength + compressedSize;

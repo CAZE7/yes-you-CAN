@@ -8,20 +8,20 @@
  */
 
 export type SignalEncoding =
-  | 'uint8'
-  | 'uint16'
-  | 'uint24'
-  | 'uint32'
-  | 'int8'
-  | 'int16'
-  | 'int32'
-  | 'float32'
-  | 'ascii'
-  | 'bool'
-  | 'bitmask'
-  | 'bcd';
+  | "uint8"
+  | "uint16"
+  | "uint24"
+  | "uint32"
+  | "int8"
+  | "int16"
+  | "int32"
+  | "float32"
+  | "ascii"
+  | "bool"
+  | "bitmask"
+  | "bcd";
 
-export type Endianness = 'big' | 'little';
+export type Endianness = "big" | "little";
 
 export interface SignalDefinition {
   /** Stable identifier, namespaced by ECU, e.g. "engine.coolant_temperature". */
@@ -60,7 +60,7 @@ export interface EcuAddress {
   /** Physical response identifier (ECU → tester). */
   rxId: number;
   extended?: boolean;
-  addressing?: 'normal' | 'extended';
+  addressing?: "normal" | "extended";
   /** Functional request identifier used for discovery (e.g. 0x7DF). */
   functionalId?: number;
 }
@@ -100,7 +100,7 @@ export interface DtcDefinition {
   code: string;
   description: string;
   /** Optional curated severity override; otherwise derived from status bits. */
-  severity?: 'info' | 'minor' | 'major' | 'critical';
+  severity?: "info" | "minor" | "major" | "critical";
   /** Suggested next diagnostic step (feeds reports and the AI layer). */
   hint?: string;
   /**
@@ -121,7 +121,7 @@ export interface EcuDefinition {
   id: string;
   name: string;
   address: EcuAddress;
-  protocol: 'uds' | 'kwp2000';
+  protocol: "uds" | "kwp2000";
   timing?: EcuTiming;
   /** DIDs holding identification data (part number, software/hardware version). */
   identification?: { label: string; did: number; encoding?: SignalEncoding }[];
@@ -133,7 +133,13 @@ export interface EcuDefinition {
 
 /** Provenance is mandatory — no undocumented data sources (AGENTS 24). */
 export interface Provenance {
-  sourceType: 'own' | 'standard' | 'licensed' | 'community' | 'reverse-engineered' | 'example-placeholder';
+  sourceType:
+    | "own"
+    | "standard"
+    | "licensed"
+    | "community"
+    | "reverse-engineered"
+    | "example-placeholder";
   source: string;
   license?: string;
   version?: string;
@@ -179,7 +185,10 @@ export interface SignalIndex {
  * served from a stale view.
  */
 const signalIndexCache = new WeakMap<DefinitionPackage, { signals: number; index: SignalIndex }>();
-const ecuIndexCache = new WeakMap<DefinitionPackage, { ecus: number; index: Map<string, EcuDefinition> }>();
+const ecuIndexCache = new WeakMap<
+  DefinitionPackage,
+  { ecus: number; index: Map<string, EcuDefinition> }
+>();
 
 export function indexPackage(pkg: DefinitionPackage): SignalIndex {
   const cached = signalIndexCache.get(pkg);

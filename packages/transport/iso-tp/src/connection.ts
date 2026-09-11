@@ -6,8 +6,8 @@
  * Nothing above this layer sees CAN frames; nothing here interprets UDS.
  */
 
-import { IsoTpError, TransportError, concatBytes, createLogger, type Logger } from '@vdp/shared';
-import { type CanBus, type CanFrame, createFrame } from '@vdp/transport-can';
+import { IsoTpError, type Logger, TransportError, concatBytes, createLogger } from "@vdp/shared";
+import { type CanBus, type CanFrame, createFrame } from "@vdp/transport-can";
 import {
   DEFAULT_TIMING,
   FLOW_STATUS,
@@ -16,7 +16,7 @@ import {
   type IsoTpTiming,
   encodeStMin,
   parseStMin,
-} from './params.js';
+} from "./params.js";
 
 export interface IsoTpStats {
   txFrames: number;
@@ -96,13 +96,13 @@ export class IsoTpConnection {
     this.timing = { ...DEFAULT_TIMING, ...(options.timing ?? {}) };
     this.sleep = options.sleep ?? defaultSleep;
     this.now = options.now ?? (() => Date.now());
-    this.log = (logger ?? createLogger('isotp', { level: 'INFO' })).child('isotp');
+    this.log = (logger ?? createLogger("isotp", { level: "INFO" })).child("isotp");
     this.mtu = options.fd && bus.capabilities.canFd ? 64 : 8;
   }
 
   /** Effective payload of one frame after PCI/address-extension bytes. */
   get framePayloadCapacity(): number {
-    const addressingOverhead = this.options.addressing === 'extended' ? 1 : 0;
+    const addressingOverhead = this.options.addressing === "extended" ? 1 : 0;
     return this.mtu - addressingOverhead;
   }
 
@@ -112,13 +112,17 @@ export class IsoTpConnection {
       (frame) => this.handleFrame(frame),
       [{ id: this.options.rxId, mask: this.options.extended ? 0x1fffffff : 0x7ff }],
     );
-    this.log.debug('ISO-TP open', { txId: hex(this.options.txId), rxId: hex(this.options.rxId), mtu: this.mtu });
+    this.log.debug("ISO-TP open", {
+      txId: hex(this.options.txId),
+      rxId: hex(this.options.rxId),
+      mtu: this.mtu,
+    });
   }
 
   close(): void {
     this.unsubscribe?.();
     this.unsubscribe = null;
-    this.failPending(new IsoTpError('ISO-TP connection closed'));
+    this.failPending(new IsoTpError("ISO-TP connection closed"));
     // Everything waiting on the *send* side has to be released as well, or the
     // serialisation queue keeps a transaction that can never finish: Flow Control
     // waiters are settled with a close reason, the lock is handed an already resolved
@@ -127,7 +131,8 @@ export class IsoTpConnection {
     for (const waiter of this.fcWaiters.splice(0)) waiter(null);
     // A write that never returns is abandoned as well, and every transaction that was
     // still queued behind it is invalidated instead of being run on a closed socket.
-    for (const abort of this.writeWaiters.splice(0)) abort(new IsoTpError('ISO-TP connection closed while a frame was being written'));
+    for (const abort of this.writeWaiters.splice(0))
+      abort(new IsoTpError("ISO-TP connection closed while a frame was being written"));
     this.queueGeneration++;
     this.fcQueue = [];
     this.rxState = null;
@@ -174,7 +179,10 @@ export class IsoTpConnection {
     await previous.catch(() => undefined);
     try {
       if (generation !== this.queueGeneration) {
-        throw new IsoTpError('ISO-TP connection was closed while this transaction was queued', { serialised: true, closed: true });
+        throw new IsoTpError("ISO-TP connection was closed while this transaction was queued", {
+          serialised: true,
+          closed: true,
+        });
       }
       return await task();
     } finally {
@@ -234,7 +242,7 @@ export class IsoTpConnection {
         if (attempt >= this.timing.maxRetries || !isRetryable(error)) throw error;
         attempt++;
         this.stats.retries++;
-        this.log.warn('retrying ISO-TP request', { attempt, reason: messageOf(error) });
+        this.log.warn("retrying ISO-TP request", { attempt, reason: messageOf(error) });
         await this.sleep(this.timing.nAsMs);
       }
     }
@@ -250,11 +258,18 @@ export class IsoTpConnection {
         // silently orphaning the first request until its timeout, fail it and log it.
         const stale = this.pending;
         this.pending = null;
-        this.log.error('ISO-TP response slot reused while a request is still open — serialisation bypassed', {
-          txId: this.options.txId,
-          rxId: this.options.rxId,
-        });
-        stale.reject(new IsoTpError('another request took over while this one awaited its response', { serialised: false }));
+        this.log.error(
+          "ISO-TP response slot reused while a request is still open — serialisation bypassed",
+          {
+            txId: this.options.txId,
+            rxId: this.options.rxId,
+          },
+        );
+        stale.reject(
+          new IsoTpError("another request took over while this one awaited its response", {
+            serialised: false,
+          }),
+        );
       }
       const id = ++this.pendingSequence;
       let settled = false;
@@ -263,7 +278,12 @@ export class IsoTpConnection {
         settled = true;
         if (this.pending?.id === id) this.pending = null;
         this.stats.timeouts++;
-        reject(new IsoTpError(`ISO-TP response timeout after ${timeoutMs} ms`, { timeoutMs, timeout: 'response' }));
+        reject(
+          new IsoTpError(`ISO-TP response timeout after ${timeoutMs} ms`, {
+            timeoutMs,
+            timeout: "response",
+          }),
+        );
       }, timeoutMs);
       this.pending = {
         id,
@@ -314,12 +334,17 @@ export class IsoTpConnection {
     // (ISO 15765-2 §9.4.2), only available when the frame has room for it.
     const needsEscape = payload.length > 7;
     if (needsEscape && payload.length > this.framePayloadCapacity - 2) {
-      throw new IsoTpError(`payload of ${payload.length} bytes does not fit a Single Frame on this MTU`, {
-        payloadLength: payload.length,
-        capacity: this.framePayloadCapacity,
-      });
+      throw new IsoTpError(
+        `payload of ${payload.length} bytes does not fit a Single Frame on this MTU`,
+        {
+          payloadLength: payload.length,
+          capacity: this.framePayloadCapacity,
+        },
+      );
     }
-    const header = needsEscape ? [FRAME_TYPE.SINGLE, payload.length] : [FRAME_TYPE.SINGLE | (payload.length & 0x0f)];
+    const header = needsEscape
+      ? [FRAME_TYPE.SINGLE, payload.length]
+      : [FRAME_TYPE.SINGLE | (payload.length & 0x0f)];
     const body = new Uint8Array(header.length + payload.length);
     body.set(header, 0);
     body.set(payload, header.length);
@@ -334,7 +359,17 @@ export class IsoTpConnection {
     this.fcQueue = [];
     this.waitCount = 0;
 
-    const ffHeader = length > 0xfff ? [FRAME_TYPE.FIRST, 0x00, (length >>> 24) & 0xff, (length >>> 16) & 0xff, (length >>> 8) & 0xff, length & 0xff] : [FRAME_TYPE.FIRST | ((length >>> 8) & 0x0f), length & 0xff];
+    const ffHeader =
+      length > 0xfff
+        ? [
+            FRAME_TYPE.FIRST,
+            0x00,
+            (length >>> 24) & 0xff,
+            (length >>> 16) & 0xff,
+            (length >>> 8) & 0xff,
+            length & 0xff,
+          ]
+        : [FRAME_TYPE.FIRST | ((length >>> 8) & 0x0f), length & 0xff];
     const firstChunkLength = Math.min(capacity - ffHeader.length, length);
     const first = new Uint8Array(ffHeader.length + firstChunkLength);
     first.set(ffHeader, 0);
@@ -388,14 +423,20 @@ export class IsoTpConnection {
           this.waitCount += 1;
           if (this.waitCount > this.timing.wftMax) {
             this.stats.timeouts++;
-            reject(new IsoTpError('WFTmax exceeded while waiting for Flow Control', { timeout: 'WFTmax' }));
+            reject(
+              new IsoTpError("WFTmax exceeded while waiting for Flow Control", {
+                timeout: "WFTmax",
+              }),
+            );
             return;
           }
           this.awaitFlowControl().then(resolve, reject);
           return;
         }
         if (fc.status === FLOW_STATUS.OVERFLOW) {
-          reject(new IsoTpError('Flow Control reported buffer overflow — message too long for receiver'));
+          reject(
+            new IsoTpError("Flow Control reported buffer overflow — message too long for receiver"),
+          );
           return;
         }
         this.waitCount = 0;
@@ -411,7 +452,11 @@ export class IsoTpConnection {
       const waiter = (fc: FlowControlFrame | null): void => {
         clearTimeout(timer);
         if (!fc) {
-          reject(new IsoTpError('ISO-TP connection closed while waiting for a Flow Control frame', { timeout: 'N_Bs' }));
+          reject(
+            new IsoTpError("ISO-TP connection closed while waiting for a Flow Control frame", {
+              timeout: "N_Bs",
+            }),
+          );
           return;
         }
         settle(fc);
@@ -419,14 +464,18 @@ export class IsoTpConnection {
       const timer = setTimeout(() => {
         this.fcWaiters = this.fcWaiters.filter((w) => w !== waiter);
         this.stats.timeouts++;
-        reject(new IsoTpError(`N_Bs timeout: no Flow Control frame within ${this.timing.nBsMs} ms`, { timeout: 'N_Bs' }));
+        reject(
+          new IsoTpError(`N_Bs timeout: no Flow Control frame within ${this.timing.nBsMs} ms`, {
+            timeout: "N_Bs",
+          }),
+        );
       }, this.timing.nBsMs);
       this.fcWaiters.push(waiter);
     });
   }
 
   private padded(body: Uint8Array): Uint8Array {
-    const addressingOverhead = this.options.addressing === 'extended' ? 1 : 0;
+    const addressingOverhead = this.options.addressing === "extended" ? 1 : 0;
     const target = this.options.padding ? this.mtu - addressingOverhead : body.length;
     if (body.length >= target) return body;
     const out = new Uint8Array(target);
@@ -437,18 +486,18 @@ export class IsoTpConnection {
 
   private async writeFrame(body: Uint8Array): Promise<void> {
     const withAddress =
-      this.options.addressing === 'extended'
+      this.options.addressing === "extended"
         ? concatBytes([new Uint8Array([this.options.targetAddress ?? 0x00]), body])
         : body;
     const frame = createFrame(this.options.txId, withAddress, {
       extended: this.options.extended ?? this.options.txId > 0x7ff,
       fd: this.options.fd ?? false,
-      channel: this.options.channel ?? this.bus.info.channels[0] ?? 'can0',
+      channel: this.options.channel ?? this.bus.info.channels[0] ?? "can0",
       timestamp: this.now(),
-      direction: 'tx',
+      direction: "tx",
     });
     this.stats.txFrames++;
-    this.log.raw('isotp tx', { id: hex(frame.id), data: frame.payload });
+    this.log.raw("isotp tx", { id: hex(frame.id), data: frame.payload });
     // Bound the hand-off to the adapter: a `send()` that never settles used to keep the
     // serialisation lock — and every request behind it — pending for as long as the
     // cable stayed half-dead (§34.26). A rejection is still reported the same way.
@@ -467,12 +516,23 @@ export class IsoTpConnection {
           if (index >= 0) this.writeWaiters.splice(index, 1);
         };
         if (limit > 0) {
-          timer = setTimeout(() => reject(new TransportError(`ISO-TP transmit stalled: the adapter did not accept the frame within ${limit} ms`, { cause: 'N_As', txId: this.options.txId })), limit);
+          timer = setTimeout(
+            () =>
+              reject(
+                new TransportError(
+                  `ISO-TP transmit stalled: the adapter did not accept the frame within ${limit} ms`,
+                  { cause: "N_As", txId: this.options.txId },
+                ),
+              ),
+            limit,
+          );
         }
       });
       await Promise.race([write, aborted]);
     } catch (error) {
-      throw new TransportError(`ISO-TP transmit failed: ${messageOf(error)}`, { cause: messageOf(error) });
+      throw new TransportError(`ISO-TP transmit failed: ${messageOf(error)}`, {
+        cause: messageOf(error),
+      });
     } finally {
       clearTimeout(timer);
       detach();
@@ -484,12 +544,13 @@ export class IsoTpConnection {
 
   private handleFrame(frame: CanFrame): void {
     this.stats.rxFrames++;
-    this.log.raw('isotp rx', { id: hex(frame.id), data: frame.payload });
+    this.log.raw("isotp rx", { id: hex(frame.id), data: frame.payload });
     let body = frame.payload;
-    if (this.options.addressing === 'extended') {
+    if (this.options.addressing === "extended") {
       if (body.length < 2) return;
       const address = body[0] ?? 0;
-      if (this.options.sourceAddress !== undefined && address !== this.options.sourceAddress) return;
+      if (this.options.sourceAddress !== undefined && address !== this.options.sourceAddress)
+        return;
       body = body.subarray(1);
     }
     const pci = body[0] ?? 0;
@@ -497,7 +558,8 @@ export class IsoTpConnection {
 
     if (type === FRAME_TYPE.SINGLE) {
       const length = pci & 0x0f;
-      const payload = length === 0 ? body.subarray(2, 2 + (body[1] ?? 0)) : body.subarray(1, 1 + length);
+      const payload =
+        length === 0 ? body.subarray(2, 2 + (body[1] ?? 0)) : body.subarray(1, 1 + length);
       this.stats.rxSingleFrames++;
       this.rxState = null;
       this.deliver(payload.slice());
@@ -511,7 +573,9 @@ export class IsoTpConnection {
       // message whose length is below 256 bytes.
       const ffDl = ((pci & 0x0f) << 8) | (body[1] ?? 0);
       const escaped = ffDl === 0;
-      const length = escaped ? ((body[2] ?? 0) << 24) | ((body[3] ?? 0) << 16) | ((body[4] ?? 0) << 8) | (body[5] ?? 0) : ffDl;
+      const length = escaped
+        ? ((body[2] ?? 0) << 24) | ((body[3] ?? 0) << 16) | ((body[4] ?? 0) << 8) | (body[5] ?? 0)
+        : ffDl;
       const headerLength = escaped ? 6 : 2;
       const first = body.subarray(headerLength);
       this.rxState = {
@@ -530,13 +594,15 @@ export class IsoTpConnection {
       const state = this.rxState;
       if (!state) {
         this.stats.sequenceErrors++;
-        this.log.warn('Consecutive Frame without an active reception — dropped');
+        this.log.warn("Consecutive Frame without an active reception — dropped");
         return;
       }
       const sequence = pci & 0x0f;
       if (sequence !== state.nextSequence) {
         this.stats.sequenceErrors++;
-        const error = new IsoTpError(`ISO-TP sequence error: expected ${state.nextSequence}, got ${sequence}`);
+        const error = new IsoTpError(
+          `ISO-TP sequence error: expected ${state.nextSequence}, got ${sequence}`,
+        );
         this.rxState = null;
         this.failPending(error);
         return;
@@ -568,19 +634,30 @@ export class IsoTpConnection {
 
     if (type === FRAME_TYPE.FLOW_CONTROL) {
       this.stats.rxFlowControlFrames++;
-      const fc: FlowControlFrame = { status: pci & 0x0f, blockSize: body[1] ?? 0, stMinMs: parseStMin(body[2] ?? 0) };
+      const fc: FlowControlFrame = {
+        status: pci & 0x0f,
+        blockSize: body[1] ?? 0,
+        stMinMs: parseStMin(body[2] ?? 0),
+      };
       const waiter = this.fcWaiters.shift();
       if (waiter) waiter(fc);
       else if (this.fcQueue.length < FC_QUEUE_LIMIT) this.fcQueue.push(fc);
-      else this.log.warn('Flow Control queue overflow — frame dropped', { queueLength: this.fcQueue.length });
+      else
+        this.log.warn("Flow Control queue overflow — frame dropped", {
+          queueLength: this.fcQueue.length,
+        });
       return;
     }
 
-    this.log.debug('unknown ISO-TP PCI dropped', { pci });
+    this.log.debug("unknown ISO-TP PCI dropped", { pci });
   }
 
   private async sendFlowControl(status: number): Promise<void> {
-    const body = new Uint8Array([FRAME_TYPE.FLOW_CONTROL | status, this.timing.blockSize & 0xff, encodeStMin(this.timing.stMinMs)]);
+    const body = new Uint8Array([
+      FRAME_TYPE.FLOW_CONTROL | status,
+      this.timing.blockSize & 0xff,
+      encodeStMin(this.timing.stMinMs),
+    ]);
     this.stats.txFlowControlFrames++;
     try {
       await this.writeFrame(body);
@@ -588,7 +665,7 @@ export class IsoTpConnection {
       // This runs from the *receive* path, where nobody awaits us — a rejection would be
       // an unhandled one, i.e. a dead process over a log line. The sender of the First
       // Frame is not lost: its own N_Bs expires and it retries the whole message.
-      this.log.warn('Flow Control could not be written', { status, error: messageOf(error) });
+      this.log.warn("Flow Control could not be written", { status, error: messageOf(error) });
     }
   }
 
@@ -609,7 +686,11 @@ export class IsoTpConnection {
     if (this.now() - state.lastFrameAt > this.timing.nCrMs) {
       this.rxState = null;
       this.stats.timeouts++;
-      this.failPending(new IsoTpError(`N_Cr timeout: Consecutive Frame missing for ${this.timing.nCrMs} ms`, { timeout: 'N_Cr' }));
+      this.failPending(
+        new IsoTpError(`N_Cr timeout: Consecutive Frame missing for ${this.timing.nCrMs} ms`, {
+          timeout: "N_Cr",
+        }),
+      );
       return true;
     }
     return false;
@@ -625,7 +706,10 @@ export class IsoTpConnection {
 }
 
 function isRetryable(error: unknown): boolean {
-  return error instanceof IsoTpError && (error.details['timeout'] === 'N_Bs' || error.details['timeout'] === 'N_Cr');
+  return (
+    error instanceof IsoTpError &&
+    (error.details["timeout"] === "N_Bs" || error.details["timeout"] === "N_Cr")
+  );
 }
 
 function messageOf(error: unknown): string {

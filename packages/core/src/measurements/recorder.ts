@@ -5,14 +5,14 @@
  * decoded one. Recording is append-only so replay and exports stay lossless.
  */
 
-import { toHex } from '@vdp/shared';
-import type { DecodedSignal } from './decoder.js';
-import { summarizeSamples } from './statistics.js';
-import type { MeasurementSample, Marker, RecordingWindow, SignalStatistics } from './types.js';
+import { toHex } from "@vdp/shared";
+import type { DecodedSignal } from "./decoder.js";
+import { summarizeSamples } from "./statistics.js";
+import type { Marker, MeasurementSample, RecordingWindow, SignalStatistics } from "./types.js";
 
 // Re-exported so the existing importers keep working; the definitions themselves
 // live in `types.ts` to keep this module free of cycles (statistics.ts needs them).
-export type { MeasurementSample, Marker, RecordingWindow, SignalStatistics } from './types.js';
+export type { MeasurementSample, Marker, RecordingWindow, SignalStatistics } from "./types.js";
 
 export class MeasurementRecorder {
   private readonly samples: MeasurementSample[] = [];
@@ -69,7 +69,12 @@ export class MeasurementRecorder {
     this.names.set(signalId, name);
   }
 
-  addMarker(label: string, kind: Marker['kind'] = 'user', detail?: string, timestampMs = this.clock()): Marker {
+  addMarker(
+    label: string,
+    kind: Marker["kind"] = "user",
+    detail?: string,
+    timestampMs = this.clock(),
+  ): Marker {
     const marker: Marker = {
       id: `marker_${++this.markerSequence}`,
       t: timestampMs - this.startedAt,
@@ -87,7 +92,9 @@ export class MeasurementRecorder {
   }
 
   samplesFor(signalId: string, window?: RecordingWindow): MeasurementSample[] {
-    return this.samples.filter((s) => s.signal === signalId && (!window || (s.t >= window.fromT && s.t <= window.toT)));
+    return this.samples.filter(
+      (s) => s.signal === signalId && (!window || (s.t >= window.fromT && s.t <= window.toT)),
+    );
   }
 
   /** Samples of several signals merged on the shared time axis (AGENTS 16). */
@@ -99,7 +106,10 @@ export class MeasurementRecorder {
   }
 
   statistics(signalId: string, window?: RecordingWindow): SignalStatistics {
-    return summarizeSamples(signalId, this.samplesFor(signalId, window), { names: this.names, units: this.units });
+    return summarizeSamples(signalId, this.samplesFor(signalId, window), {
+      names: this.names,
+      units: this.units,
+    });
   }
 
   statisticsForAll(window?: RecordingWindow): SignalStatistics[] {
@@ -117,10 +127,17 @@ export class MeasurementRecorder {
     const median = deltas.length > 0 ? (deltas[Math.floor(deltas.length / 2)] ?? 0) : 0;
     for (const stat of stats) {
       if (stat.outOfRangeCount > 0) {
-        result.push({ signal: stat.signal, reason: `${stat.outOfRangeCount} samples outside the declared range` });
+        result.push({
+          signal: stat.signal,
+          reason: `${stat.outOfRangeCount} samples outside the declared range`,
+        });
       }
       if (stat.delta !== null && median > 0 && stat.delta > median * 6 && stat.samples > 5) {
-        result.push({ signal: stat.signal, reason: `delta ${stat.delta.toFixed(2)} is far above the median ${median.toFixed(2)}`, value: stat.delta });
+        result.push({
+          signal: stat.signal,
+          reason: `delta ${stat.delta.toFixed(2)} is far above the median ${median.toFixed(2)}`,
+          value: stat.delta,
+        });
       }
     }
     return result;

@@ -6,15 +6,15 @@
  * unknown origin must never look authoritative in the UI.
  */
 
-import { DefinitionError, createLogger, type Logger } from '@vdp/shared';
 import {
-  validateDefinitionPackage,
   type DefinitionPackage,
   type EcuDefinition,
   type Provenance,
   type SignalDefinition,
   type SignalEncoding,
-} from '@vdp/definitions';
+  validateDefinitionPackage,
+} from "@vdp/definitions";
+import { DefinitionError, type Logger, createLogger } from "@vdp/shared";
 
 export interface ImportOptions {
   oem: string;
@@ -34,7 +34,20 @@ export interface ImportResult {
   skipped: Array<{ line: number; text: string; reason: string }>;
 }
 
-const ENCODINGS: ReadonlySet<string> = new Set(['uint8', 'uint16', 'uint24', 'uint32', 'int8', 'int16', 'int32', 'float32', 'ascii', 'bool', 'bitmask', 'bcd']);
+const ENCODINGS: ReadonlySet<string> = new Set([
+  "uint8",
+  "uint16",
+  "uint24",
+  "uint32",
+  "int8",
+  "int16",
+  "int32",
+  "float32",
+  "ascii",
+  "bool",
+  "bitmask",
+  "bcd",
+]);
 
 /**
  * Minimal DBC reader.
@@ -48,20 +61,20 @@ export function importDbc(content: string, options: ImportOptions): ImportResult
   const log = logger(options);
   const ecus = new Map<number, EcuDefinition>();
   const signals: SignalDefinition[] = [];
-  const skipped: ImportResult['skipped'] = [];
+  const skipped: ImportResult["skipped"] = [];
   let currentEcuId: string | null = null;
   let currentMessageId = 0;
   let lineNumber = 0;
 
-  for (const rawLine of content.split('\n')) {
+  for (const rawLine of content.split("\n")) {
     lineNumber++;
     const line = rawLine.trim();
-    if (!line || line.startsWith('//')) continue;
+    if (!line || line.startsWith("//")) continue;
 
     const message = /^BO_\s+(\d+)\s+([A-Za-z0-9_]+)\s*:\s*(\d+)/.exec(line);
     if (message) {
-      const id = Number.parseInt(message[1] ?? '0', 10);
-      const name = message[2] ?? 'Unknown';
+      const id = Number.parseInt(message[1] ?? "0", 10);
+      const name = message[2] ?? "Unknown";
       currentMessageId = id;
       const extended = id > 0x7ff;
       const txId = diagnosticRequestFor(id, extended);
@@ -70,7 +83,11 @@ export function importDbc(content: string, options: ImportOptions): ImportResult
         // response. Turning it into an ECU would invent a request identifier
         // that the vehicle never answers, so it is reported instead (AGENTS 34.6).
         currentEcuId = null;
-        skipped.push({ line: lineNumber, text: line.slice(0, 120), reason: 'message id is not a diagnostic response identifier' });
+        skipped.push({
+          line: lineNumber,
+          text: line.slice(0, 120),
+          reason: "message id is not a diagnostic response identifier",
+        });
         continue;
       }
       currentEcuId = `ecu_${name.toLowerCase()}`;
@@ -78,26 +95,33 @@ export function importDbc(content: string, options: ImportOptions): ImportResult
         id: currentEcuId,
         name,
         address: { txId, rxId: id, extended },
-        protocol: 'uds',
+        protocol: "uds",
         services: [0x22],
       });
       continue;
     }
 
-    const signal = /^SG_\s+([A-Za-z0-9_]+)\s*(?:M\d*)?\s*:\s*(\d+)\|(\d+)@(\d)([+-])\s*\(([^,]+),([^)]+)\)\s*\[([^|]*)\|([^\]]*)\]\s*"([^"]*)"/.exec(line);
+    const signal =
+      /^SG_\s+([A-Za-z0-9_]+)\s*(?:M\d*)?\s*:\s*(\d+)\|(\d+)@(\d)([+-])\s*\(([^,]+),([^)]+)\)\s*\[([^|]*)\|([^\]]*)\]\s*"([^"]*)"/.exec(
+        line,
+      );
     if (signal && currentEcuId) {
-      const bitStart = Number.parseInt(signal[2] ?? '0', 10);
-      const bitLength = Number.parseInt(signal[3] ?? '0', 10);
+      const bitStart = Number.parseInt(signal[2] ?? "0", 10);
+      const bitLength = Number.parseInt(signal[3] ?? "0", 10);
       // The definition schema supports bit ranges of 1..32 bits. Longer DBC
       // signals (a VIN stored as one 136 bit signal, for example) are reported
       // rather than silently truncated into an invalid package.
       if (bitLength < 1 || bitLength > 32) {
-        skipped.push({ line: lineNumber, text: line.slice(0, 120), reason: `bitLength ${bitLength} exceeds the supported 1..32 bit range` });
+        skipped.push({
+          line: lineNumber,
+          text: line.slice(0, 120),
+          reason: `bitLength ${bitLength} exceeds the supported 1..32 bit range`,
+        });
         continue;
       }
-      const littleEndian = (signal[4] ?? '1') === '1';
-      const unit = (signal[10] ?? '').trim();
-      const signalName = signal[1] ?? 'Signal';
+      const littleEndian = (signal[4] ?? "1") === "1";
+      const unit = (signal[10] ?? "").trim();
+      const signalName = signal[1] ?? "Signal";
       signals.push({
         id: `${currentEcuId}.${signalName.toLowerCase()}`,
         name: signalName,
@@ -107,17 +131,25 @@ export function importDbc(content: string, options: ImportOptions): ImportResult
         length: Math.max(1, Math.ceil(bitLength / 8)),
         bitOffset: bitStart % 8,
         bitLength,
-        endianness: littleEndian ? 'little' : 'big',
+        endianness: littleEndian ? "little" : "big",
         encoding: encodingFor(bitLength, unit),
-        scale: Number.parseFloat(signal[6] ?? '1'),
-        offsetValue: Number.parseFloat(signal[7] ?? '0'),
+        scale: Number.parseFloat(signal[6] ?? "1"),
+        offsetValue: Number.parseFloat(signal[7] ?? "0"),
         ...(unit ? { unit } : {}),
       });
       continue;
     }
 
-    if (!/^(VERSION|NS_|BS_:|BU_:|CM_|BA_|BA_DEF|VAL_|BO_TX_BU_|SIG_GROUP_|EV_|SIG_VALTYPE)/.test(line)) {
-      skipped.push({ line: lineNumber, text: line.slice(0, 120), reason: 'unsupported DBC record' });
+    if (
+      !/^(VERSION|NS_|BS_:|BU_:|CM_|BA_|BA_DEF|VAL_|BO_TX_BU_|SIG_GROUP_|EV_|SIG_VALTYPE)/.test(
+        line,
+      )
+    ) {
+      skipped.push({
+        line: lineNumber,
+        text: line.slice(0, 120),
+        reason: "unsupported DBC record",
+      });
     }
   }
 
@@ -132,45 +164,50 @@ export function importCsv(content: string, options: ImportOptions): ImportResult
   const log = logger(options);
   const ecus = new Map<string, EcuDefinition>();
   const signals: SignalDefinition[] = [];
-  const skipped: ImportResult['skipped'] = [];
-  const lines = content.split('\n').filter((line) => line.trim().length > 0);
-  const header = (lines[0] ?? '').split(',').map((cell) => cell.trim());
+  const skipped: ImportResult["skipped"] = [];
+  const lines = content.split("\n").filter((line) => line.trim().length > 0);
+  const header = (lines[0] ?? "").split(",").map((cell) => cell.trim());
   const column = (name: string): number => header.indexOf(name);
-  for (const required of ['ecu', 'did', 'byteOffset', 'length', 'encoding', 'name']) {
-    if (column(required) < 0) throw new DefinitionError(`CSV import requires a "${required}" column`, { columns: header });
+  for (const required of ["ecu", "did", "byteOffset", "length", "encoding", "name"]) {
+    if (column(required) < 0)
+      throw new DefinitionError(`CSV import requires a "${required}" column`, { columns: header });
   }
 
   for (let i = 1; i < lines.length; i++) {
-    const cells = (lines[i] ?? '').split(',').map((cell) => cell.trim());
-    const ecuName = cells[column('ecu')] ?? '';
-    const ecuId = `ecu_${ecuName.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`;
+    const cells = (lines[i] ?? "").split(",").map((cell) => cell.trim());
+    const ecuName = cells[column("ecu")] ?? "";
+    const ecuId = `ecu_${ecuName.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`;
     if (!ecus.has(ecuId)) {
-      const txId = Number.parseInt(cells[column('txId')] ?? '', 16) || 0x7e0;
-      const rxId = Number.parseInt(cells[column('rxId')] ?? '', 16) || txId + 8;
+      const txId = Number.parseInt(cells[column("txId")] ?? "", 16) || 0x7e0;
+      const rxId = Number.parseInt(cells[column("rxId")] ?? "", 16) || txId + 8;
       ecus.set(ecuId, {
         id: ecuId,
         name: ecuName,
         address: { txId, rxId, extended: txId > 0x7ff },
-        protocol: 'uds',
+        protocol: "uds",
         services: [0x10, 0x22, 0x19],
       });
     }
-    const encoding = cells[column('encoding')] ?? 'uint8';
+    const encoding = cells[column("encoding")] ?? "uint8";
     if (!ENCODINGS.has(encoding)) {
-      skipped.push({ line: i + 1, text: (lines[i] ?? '').slice(0, 120), reason: `unknown encoding "${encoding}"` });
+      skipped.push({
+        line: i + 1,
+        text: (lines[i] ?? "").slice(0, 120),
+        reason: `unknown encoding "${encoding}"`,
+      });
       continue;
     }
-    const unit = cells[column('unit')] ?? '';
-    const scale = cells[column('scale')];
-    const offset = cells[column('offset')];
-    const name = cells[column('name')] ?? 'Signal';
+    const unit = cells[column("unit")] ?? "";
+    const scale = cells[column("scale")];
+    const offset = cells[column("offset")];
+    const name = cells[column("name")] ?? "Signal";
     signals.push({
-      id: `${ecuId}.${name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`,
+      id: `${ecuId}.${name.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`,
       name,
       ecu: ecuId,
-      did: Number.parseInt(cells[column('did')] ?? '0', 16),
-      byteOffset: Number.parseInt(cells[column('byteOffset')] ?? '0', 10),
-      length: Number.parseInt(cells[column('length')] ?? '1', 10),
+      did: Number.parseInt(cells[column("did")] ?? "0", 16),
+      byteOffset: Number.parseInt(cells[column("byteOffset")] ?? "0", 10),
+      length: Number.parseInt(cells[column("length")] ?? "1", 10),
       encoding: encoding as SignalEncoding,
       ...(unit ? { unit } : {}),
       ...(scale ? { scale: Number.parseFloat(scale) } : {}),
@@ -190,8 +227,8 @@ export function importJson(content: string, options: ImportOptions): ImportResul
   } catch (error) {
     throw new DefinitionError(`JSON definition is not valid: ${messageOf(error)}`);
   }
-  const ecus = (parsed['ecus'] as EcuDefinition[] | undefined) ?? [];
-  const signals = (parsed['signals'] as SignalDefinition[] | undefined) ?? [];
+  const ecus = (parsed["ecus"] as EcuDefinition[] | undefined) ?? [];
+  const signals = (parsed["signals"] as SignalDefinition[] | undefined) ?? [];
   return finish(ecus, signals, options, log, []);
 }
 
@@ -200,22 +237,22 @@ function finish(
   signals: SignalDefinition[],
   options: ImportOptions,
   log: Logger,
-  skipped: ImportResult['skipped'],
+  skipped: ImportResult["skipped"],
 ): ImportResult {
   if (skipped.length > 0) {
-    log.warn('definition import skipped lines', { count: skipped.length, first: skipped[0] });
+    log.warn("definition import skipped lines", { count: skipped.length, first: skipped[0] });
   }
   const pkg: DefinitionPackage = {
     schemaVersion: 1,
     oem: options.oem,
     name: options.name,
-    version: options.version ?? '0.1.0',
+    version: options.version ?? "0.1.0",
     provenance: options.provenance,
     ecus,
     signals,
   };
   const validation = validateDefinitionPackage(pkg);
-  log.info('definition package imported', {
+  log.info("definition package imported", {
     oem: pkg.oem,
     ecus: ecus.length,
     signals: signals.length,
@@ -233,12 +270,12 @@ function finish(
  * else maps to the smallest unsigned integer that holds the bit length.
  */
 function encodingFor(bitLength: number, unit: string): SignalEncoding {
-  if (/^(ascii|text|string|vin)$/i.test(unit)) return 'ascii';
-  if (bitLength === 1) return 'bool';
-  if (bitLength <= 8) return 'uint8';
-  if (bitLength <= 16) return 'uint16';
-  if (bitLength <= 24) return 'uint24';
-  return 'uint32';
+  if (/^(ascii|text|string|vin)$/i.test(unit)) return "ascii";
+  if (bitLength === 1) return "bool";
+  if (bitLength <= 8) return "uint8";
+  if (bitLength <= 16) return "uint16";
+  if (bitLength <= 24) return "uint24";
+  return "uint32";
 }
 
 /**
@@ -261,7 +298,9 @@ export function diagnosticRequestFor(rxId: number, extended: boolean): number | 
 }
 
 function logger(options: ImportOptions): Logger {
-  return (options.logger ?? createLogger('definition-importer', { level: 'INFO' })).child('definition-importer');
+  return (options.logger ?? createLogger("definition-importer", { level: "INFO" })).child(
+    "definition-importer",
+  );
 }
 
 function messageOf(error: unknown): string {

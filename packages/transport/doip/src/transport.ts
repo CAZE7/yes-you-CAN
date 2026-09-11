@@ -13,8 +13,14 @@
  * send/receive/getStatus.
  */
 
-import { ProtocolError, TransportClosedError, TransportError, createLogger, type Logger } from '@vdp/shared';
-import type { ConnectionStatus, VehicleTransport } from '@vdp/transport-can';
+import {
+  type Logger,
+  ProtocolError,
+  TransportClosedError,
+  TransportError,
+  createLogger,
+} from "@vdp/shared";
+import type { ConnectionStatus, VehicleTransport } from "@vdp/transport-can";
 import {
   DOIP_HEADER_LENGTH,
   DOIP_TLS_PORT,
@@ -29,7 +35,7 @@ import {
   encodeHeader,
   encodeMessage,
   encodeRoutingActivationRequest,
-} from './message.js';
+} from "./message.js";
 
 /** Minimal duplex socket contract so Node, browser and test doubles all fit. */
 export interface DoipSocket {
@@ -70,8 +76,11 @@ export class DoipTransport implements VehicleTransport {
   private buffer: Uint8Array = new Uint8Array();
   private unsubscribe: (() => void) | null = null;
   private queue: Uint8Array[] = [];
-  private waiters: Array<{ resolve: (payload: Uint8Array | null) => void; timer: ReturnType<typeof setTimeout> }> = [];
-  private state: ConnectionStatus['state'] = 'disconnected';
+  private waiters: Array<{
+    resolve: (payload: Uint8Array | null) => void;
+    timer: ReturnType<typeof setTimeout>;
+  }> = [];
+  private state: ConnectionStatus["state"] = "disconnected";
   private lastError: string | undefined;
   private lastActivityAt: number | undefined;
   private txCount = 0;
@@ -79,7 +88,9 @@ export class DoipTransport implements VehicleTransport {
   private entityLogicalAddress: number | null = null;
 
   constructor(private readonly options: DoipTransportOptions) {
-    this.log = (options.logger ?? createLogger('connection', { level: 'INFO' })).child('connection');
+    this.log = (options.logger ?? createLogger("connection", { level: "INFO" })).child(
+      "connection",
+    );
     this.testerAddress = options.testerAddress ?? 0x0e00;
     this.targetAddress = options.targetAddress;
     this.activationType = options.activationType ?? ROUTING_ACTIVATION_TYPE.DEFAULT;
@@ -99,16 +110,16 @@ export class DoipTransport implements VehicleTransport {
 
   async connect(): Promise<void> {
     if (this.requireTls && !this.isSecure) {
-      this.state = 'error';
-      this.lastError = 'TLS is required but the socket is not secure (ISO 13400-2 port 3496)';
+      this.state = "error";
+      this.lastError = "TLS is required but the socket is not secure (ISO 13400-2 port 3496)";
       throw new TransportError(this.lastError);
     }
-    this.state = 'connecting';
+    this.state = "connecting";
     await this.options.socket.connect();
     this.unsubscribe = this.options.socket.onData((chunk) => this.onData(chunk));
     await this.activateRouting();
-    this.state = 'connected';
-    this.log.info('DoIP routing activated', {
+    this.state = "connected";
+    this.log.info("DoIP routing activated", {
       tester: `0x${this.testerAddress.toString(16)}`,
       target: `0x${this.targetAddress.toString(16)}`,
       secure: this.isSecure,
@@ -119,7 +130,7 @@ export class DoipTransport implements VehicleTransport {
     this.unsubscribe?.();
     this.unsubscribe = null;
     await this.options.socket.close();
-    this.state = 'disconnected';
+    this.state = "disconnected";
     for (const waiter of this.waiters) {
       clearTimeout(waiter.timer);
       waiter.resolve(null);
@@ -128,16 +139,18 @@ export class DoipTransport implements VehicleTransport {
   }
 
   async send(data: Uint8Array): Promise<void> {
-    if (this.state !== 'connected') throw new TransportClosedError('DoIP transport is not connected');
+    if (this.state !== "connected")
+      throw new TransportClosedError("DoIP transport is not connected");
     const payload = encodeDiagnosticMessage(this.testerAddress, this.targetAddress, data);
     this.txCount++;
     this.lastActivityAt = Date.now();
-    this.log.raw('doip tx', { type: 'diagnosticMessage', bytes: payload.length });
+    this.log.raw("doip tx", { type: "diagnosticMessage", bytes: payload.length });
     await this.options.socket.send(encodeMessage(PAYLOAD_TYPE.DIAGNOSTIC_MESSAGE, payload));
   }
 
   async receive(timeoutMs?: number): Promise<Uint8Array | null> {
-    if (this.state !== 'connected') throw new TransportClosedError('DoIP transport is not connected');
+    if (this.state !== "connected")
+      throw new TransportClosedError("DoIP transport is not connected");
     const queued = this.queue.shift();
     if (queued) return queued;
     const limit = timeoutMs ?? this.receiveTimeoutMs;
@@ -153,8 +166,8 @@ export class DoipTransport implements VehicleTransport {
   getStatus(): ConnectionStatus {
     return {
       state: this.state,
-      adapterId: 'doip',
-      detail: `DoIP target 0x${this.targetAddress.toString(16)}${this.isSecure ? ' (TLS)' : ''}`,
+      adapterId: "doip",
+      detail: `DoIP target 0x${this.targetAddress.toString(16)}${this.isSecure ? " (TLS)" : ""}`,
       txCount: this.txCount,
       rxCount: this.rxCount,
       ...(this.lastError ? { lastError: this.lastError } : {}),
@@ -169,13 +182,16 @@ export class DoipTransport implements VehicleTransport {
     );
     // Register the waiter before sending: a peer (or a test double) may answer
     // synchronously inside send(), and an unregistered waiter would drop it.
-    const responsePromise = this.waitForPayload(PAYLOAD_TYPE.ROUTING_ACTIVATION_RESPONSE, this.activationTimeoutMs);
+    const responsePromise = this.waitForPayload(
+      PAYLOAD_TYPE.ROUTING_ACTIVATION_RESPONSE,
+      this.activationTimeoutMs,
+    );
     await this.options.socket.send(request);
     const response = await responsePromise;
-    if (!response) throw new TransportError('no routing activation response within the timeout');
+    if (!response) throw new TransportError("no routing activation response within the timeout");
     const decoded = decodeRoutingActivationResponse(response);
     if (decoded.code !== 0x10) {
-      this.state = 'error';
+      this.state = "error";
       this.lastError = `routing activation refused: ${decoded.codeName}`;
       throw new TransportError(this.lastError, { code: decoded.code, codeName: decoded.codeName });
     }
@@ -192,7 +208,11 @@ export class DoipTransport implements VehicleTransport {
     });
   }
 
-  private routingWaiters: Array<{ payloadType: number; resolve: (payload: Uint8Array | null) => void; timer: ReturnType<typeof setTimeout> }> = [];
+  private routingWaiters: Array<{
+    payloadType: number;
+    resolve: (payload: Uint8Array | null) => void;
+    timer: ReturnType<typeof setTimeout>;
+  }> = [];
 
   private onData(chunk: Uint8Array): void {
     this.buffer = concat(this.buffer, chunk);
@@ -203,7 +223,7 @@ export class DoipTransport implements VehicleTransport {
         header = decodeHeader(this.buffer);
       } catch (error) {
         this.lastError = error instanceof Error ? error.message : String(error);
-        this.log.error('DoIP framing error', { error: this.lastError });
+        this.log.error("DoIP framing error", { error: this.lastError });
         this.buffer = new Uint8Array();
         return;
       }
@@ -230,13 +250,16 @@ export class DoipTransport implements VehicleTransport {
     switch (payloadType) {
       case PAYLOAD_TYPE.DIAGNOSTIC_MESSAGE: {
         const decoded = decodeDiagnosticMessage(payload);
-        this.log.raw('doip rx', { type: 'diagnosticMessage', from: `0x${decoded.sourceAddress.toString(16)}` });
+        this.log.raw("doip rx", {
+          type: "diagnosticMessage",
+          from: `0x${decoded.sourceAddress.toString(16)}`,
+        });
         this.deliver(decoded.udsPayload);
         return;
       }
       case PAYLOAD_TYPE.DIAGNOSTIC_MESSAGE_POSITIVE_ACK: {
         const ack = decodeDiagnosticAck(payload);
-        this.log.trace('diagnostic message acknowledged', { ackCode: ack.ackCode });
+        this.log.trace("diagnostic message acknowledged", { ackCode: ack.ackCode });
         return;
       }
       case PAYLOAD_TYPE.DIAGNOSTIC_MESSAGE_NEGATIVE_ACK: {
@@ -254,12 +277,21 @@ export class DoipTransport implements VehicleTransport {
       case PAYLOAD_TYPE.ALIVE_CHECK_REQUEST: {
         // Answer with our tester address so the entity keeps the connection.
         void this.options.socket
-          .send(encodeMessage(PAYLOAD_TYPE.ALIVE_CHECK_RESPONSE, new Uint8Array([(this.testerAddress >> 8) & 0xff, this.testerAddress & 0xff])))
-          .catch((error) => this.log.warn('alive check response failed', { error: messageOf(error) }));
+          .send(
+            encodeMessage(
+              PAYLOAD_TYPE.ALIVE_CHECK_RESPONSE,
+              new Uint8Array([(this.testerAddress >> 8) & 0xff, this.testerAddress & 0xff]),
+            ),
+          )
+          .catch((error) =>
+            this.log.warn("alive check response failed", { error: messageOf(error) }),
+          );
         return;
       }
       default:
-        this.log.debug('unhandled DoIP payload type', { payloadType: `0x${payloadType.toString(16)}` });
+        this.log.debug("unhandled DoIP payload type", {
+          payloadType: `0x${payloadType.toString(16)}`,
+        });
     }
   }
 

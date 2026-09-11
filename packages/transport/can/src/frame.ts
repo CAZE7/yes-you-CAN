@@ -16,7 +16,7 @@ export interface CanFrame {
   payload: Uint8Array;
   channel: string;
   /** true when this frame was sent by us (raw trace `direction`, AGENTS 18). */
-  direction?: 'tx' | 'rx';
+  direction?: "tx" | "rx";
   /** Bitrate switch (CAN-FD BRS). */
   brs?: boolean;
 }
@@ -44,14 +44,17 @@ export function dlcToLength(dlc: number, fd = false): number {
 
 export function lengthToDlc(length: number, fd = false): number {
   if (!fd) return Math.min(length, CAN_MAX_DLC);
-  for (let dlc = 0; dlc < FD_LENGTHS.length; dlc++) if ((FD_LENGTHS[dlc] ?? 0) >= length) return dlc;
+  for (let dlc = 0; dlc < FD_LENGTHS.length; dlc++)
+    if ((FD_LENGTHS[dlc] ?? 0) >= length) return dlc;
   return FD_LENGTHS.length - 1;
 }
 
 export function createFrame(
   id: number,
   payload: Uint8Array,
-  options: Partial<Pick<CanFrame, 'extended' | 'fd' | 'channel' | 'timestamp' | 'direction' | 'brs' | 'dlc'>> = {},
+  options: Partial<
+    Pick<CanFrame, "extended" | "fd" | "channel" | "timestamp" | "direction" | "brs" | "dlc">
+  > = {},
 ): CanFrame {
   const fd = options.fd ?? false;
   return {
@@ -61,7 +64,7 @@ export function createFrame(
     fd,
     dlc: options.dlc ?? lengthToDlc(payload.length, fd),
     payload,
-    channel: options.channel ?? 'can0',
+    channel: options.channel ?? "can0",
     ...(options.direction ? { direction: options.direction } : {}),
     ...(options.brs === undefined ? {} : { brs: options.brs }),
   };

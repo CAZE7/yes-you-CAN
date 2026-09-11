@@ -59,15 +59,15 @@ export interface YRange {
  */
 export function computeYRange(values: readonly number[], options: YRangeOptions = {}): YRange {
   const padFraction = options.padFraction ?? 0.08;
-  let min = Infinity;
-  let max = -Infinity;
+  let min = Number.POSITIVE_INFINITY;
+  let max = Number.NEGATIVE_INFINITY;
   for (const value of values) {
     if (!Number.isFinite(value)) continue;
     if (value < min) min = value;
     if (value > max) max = value;
   }
 
-  if (min === Infinity || max === -Infinity) {
+  if (min === Number.POSITIVE_INFINITY || max === Number.NEGATIVE_INFINITY) {
     min = options.min ?? 0;
     max = options.max ?? (options.min === undefined ? 1 : options.min + 1);
     return padTo({ min, max }, padFraction, options);
@@ -104,13 +104,13 @@ function roundTo(value: number, decimals: number): number {
  * Used by axis labels and the cursor readout.
  */
 export function formatValue(value: number | null | undefined): string {
-  if (value === null || value === undefined || !Number.isFinite(value)) return '—';
+  if (value === null || value === undefined || !Number.isFinite(value)) return "—";
   const abs = Math.abs(value);
-  if (abs >= 10_000) return Math.round(value).toLocaleString('de-DE');
+  if (abs >= 10_000) return Math.round(value).toLocaleString("de-DE");
   if (abs >= 100) return value.toFixed(0);
   if (abs >= 10) return value.toFixed(1);
   if (abs >= 1) return value.toFixed(2);
-  if (abs === 0) return '0';
+  if (abs === 0) return "0";
   return value.toFixed(3);
 }
 
@@ -122,17 +122,17 @@ export function formatDuration(ms: number): string {
   if (abs < 60_000) return `${roundTo(ms / 1000, abs < 10_000 ? 2 : 1)} s`;
   const minutes = Math.floor(abs / 60_000);
   const seconds = roundTo((abs % 60_000) / 1000, 1);
-  return `${ms < 0 ? '-' : ''}${minutes}:${seconds.toFixed(1).padStart(4, '0')} min`;
+  return `${ms < 0 ? "-" : ""}${minutes}:${seconds.toFixed(1).padStart(4, "0")} min`;
 }
 
 /** Short clock label (mm:ss.mmm) for the shared time axis of a recording. */
 export function formatClock(ms: number): string {
-  const sign = ms < 0 ? '-' : '';
+  const sign = ms < 0 ? "-" : "";
   const abs = Math.abs(ms);
   const minutes = Math.floor(abs / 60_000);
   const seconds = Math.floor((abs % 60_000) / 1000);
   const millis = Math.floor(abs % 1000);
-  return `${sign}${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(millis).padStart(3, '0')}`;
+  return `${sign}${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}.${String(millis).padStart(3, "0")}`;
 }
 
 /**

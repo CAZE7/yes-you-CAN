@@ -6,19 +6,26 @@
  * without changing the query objects or the callers.
  */
 
-import type { DiagnosticCapability, DtcInfo, EcuSummary, MeasurementReading, SessionSummary, VehicleSummary } from '@vdp/domain';
-import type { Query } from './command-bus.js';
-import type { ActionDescriptor } from './actions.js';
+import type {
+  DiagnosticCapability,
+  DtcInfo,
+  EcuSummary,
+  MeasurementReading,
+  SessionSummary,
+  VehicleSummary,
+} from "@vdp/domain";
+import type { ActionDescriptor } from "./actions.js";
+import type { Query } from "./command-bus.js";
 
 export const QueryKinds = {
-  GetSession: 'session.get',
-  GetVehicle: 'vehicle.get',
-  GetEcuList: 'ecu.list',
-  GetEcu: 'ecu.get',
-  GetEcuCapabilities: 'ecu.capabilities',
-  GetDtcList: 'dtc.list',
-  GetMeasurements: 'measurement.list',
-  GetAvailableActions: 'actions.available',
+  GetSession: "session.get",
+  GetVehicle: "vehicle.get",
+  GetEcuList: "ecu.list",
+  GetEcu: "ecu.get",
+  GetEcuCapabilities: "ecu.capabilities",
+  GetDtcList: "dtc.list",
+  GetMeasurements: "measurement.list",
+  GetAvailableActions: "actions.available",
 } as const;
 
 export type QueryKind = (typeof QueryKinds)[keyof typeof QueryKinds];
@@ -72,7 +79,9 @@ export interface GetDtcListQuery extends Query<readonly DtcInfo[]> {
 }
 
 export function getDtcList(ecuId?: string): GetDtcListQuery {
-  return ecuId === undefined ? { kind: QueryKinds.GetDtcList } : { kind: QueryKinds.GetDtcList, ecuId };
+  return ecuId === undefined
+    ? { kind: QueryKinds.GetDtcList }
+    : { kind: QueryKinds.GetDtcList, ecuId };
 }
 
 export interface GetMeasurementsQuery extends Query<readonly MeasurementReading[]> {

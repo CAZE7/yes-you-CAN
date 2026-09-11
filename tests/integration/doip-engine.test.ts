@@ -8,23 +8,23 @@
  * `DoipTransport`.
  */
 
-import assert from 'node:assert/strict';
-import { test } from 'vitest';
-import { createLogger, fromHex } from '@vdp/shared';
+import assert from "node:assert/strict";
+import { DiagnosticEngine } from "@vdp/core";
+import { createDoipEcuLinkFactory } from "@vdp/runtime";
+import { createLogger, fromHex } from "@vdp/shared";
 import {
   DOIP_HEADER_LENGTH,
+  type DoipSocket,
   PAYLOAD_TYPE,
   decodeDiagnosticMessage,
   decodeHeader,
   encodeDiagnosticMessage,
   encodeMessage,
-  type DoipSocket,
-} from '@vdp/transport-doip';
-import { DiagnosticEngine } from '@vdp/core';
-import { createDoipEcuLinkFactory } from '@vdp/runtime';
+} from "@vdp/transport-doip";
+import { test } from "vitest";
 
-const logger = createLogger('doip-engine', { level: 'ERROR' });
-const VIN = '1HGCM82633A004352';
+const logger = createLogger("doip-engine", { level: "ERROR" });
+const VIN = "1HGCM82633A004352";
 
 /** Fake TCP endpoint: activates routing and answers one UDS DID read. */
 class FakeDoipEndpoint implements DoipSocket {
@@ -42,7 +42,12 @@ class FakeDoipEndpoint implements DoipSocket {
     const header = decodeHeader(data);
     const payload = data.subarray(DOIP_HEADER_LENGTH);
     if (header.payloadType === PAYLOAD_TYPE.ROUTING_ACTIVATION_REQUEST) {
-      this.emit(encodeMessage(PAYLOAD_TYPE.ROUTING_ACTIVATION_RESPONSE, fromHex('0E 00 10 00 10 00 00 00 00')));
+      this.emit(
+        encodeMessage(
+          PAYLOAD_TYPE.ROUTING_ACTIVATION_RESPONSE,
+          fromHex("0E 00 10 00 10 00 00 00 00"),
+        ),
+      );
       return;
     }
     if (header.payloadType === PAYLOAD_TYPE.DIAGNOSTIC_MESSAGE) {
@@ -51,10 +56,19 @@ class FakeDoipEndpoint implements DoipSocket {
       // 0x22 F1 90 → positive response with the VIN.
       const reply =
         uds[0] === 0x22 && uds[1] === 0xf1 && uds[2] === 0x90
-          ? fromHex(`62 F1 90 ${Buffer.from(VIN, 'ascii').toString('hex').toUpperCase().match(/.{2}/g)?.join(' ') ?? ''}`)
+          ? fromHex(
+              `62 F1 90 ${Buffer.from(VIN, "ascii").toString("hex").toUpperCase().match(/.{2}/g)?.join(" ") ?? ""}`,
+            )
           : new Uint8Array([(uds[0] ?? 0) + 0x40, 0x00]);
-      this.emit(encodeMessage(PAYLOAD_TYPE.DIAGNOSTIC_MESSAGE_POSITIVE_ACK, fromHex('10 00 0E 00 00')));
-      this.emit(encodeMessage(PAYLOAD_TYPE.DIAGNOSTIC_MESSAGE, encodeDiagnosticMessage(decoded.targetAddress, decoded.sourceAddress, reply)));
+      this.emit(
+        encodeMessage(PAYLOAD_TYPE.DIAGNOSTIC_MESSAGE_POSITIVE_ACK, fromHex("10 00 0E 00 00")),
+      );
+      this.emit(
+        encodeMessage(
+          PAYLOAD_TYPE.DIAGNOSTIC_MESSAGE,
+          encodeDiagnosticMessage(decoded.targetAddress, decoded.sourceAddress, reply),
+        ),
+      );
     }
   }
   onData(listener: (chunk: Uint8Array) => void): () => void {
@@ -77,12 +91,12 @@ class FakeDoipEndpoint implements DoipSocket {
   }
 }
 
-test('DoipEcuLinkFactory drives the engine over DoIP (no CAN anywhere)', async () => {
+test("DoipEcuLinkFactory drives the engine over DoIP (no CAN anywhere)", async () => {
   const endpoints: FakeDoipEndpoint[] = [];
   const engine = new DiagnosticEngine({
     logger,
     linkFactory: createDoipEcuLinkFactory({
-      createSocket: (targetAddress) => {
+      createSocket: (_targetAddress) => {
         const endpoint = new FakeDoipEndpoint();
         endpoints.push(endpoint);
         return endpoint;
@@ -98,7 +112,10 @@ test('DoipEcuLinkFactory drives the engine over DoIP (no CAN anywhere)', async (
   // Routing activation must have run before the first UDS request.
   assert.ok(endpoints.length >= 1);
   const first = endpoints[0] as FakeDoipEndpoint;
-  assert.equal(decodeHeader(first.received[0] as Uint8Array).payloadType, PAYLOAD_TYPE.ROUTING_ACTIVATION_REQUEST);
+  assert.equal(
+    decodeHeader(first.received[0] as Uint8Array).payloadType,
+    PAYLOAD_TYPE.ROUTING_ACTIVATION_REQUEST,
+  );
 
   const vin = await handle.session.client.readVin();
   assert.equal(vin, VIN);
@@ -106,7 +123,7 @@ test('DoipEcuLinkFactory drives the engine over DoIP (no CAN anywhere)', async (
   await engine.disconnect();
 });
 
-test('DoipEcuLinkFactory honours per-ECU logical addressing', async () => {
+test("DoipEcuLinkFactory honours per-ECU logical addressing", async () => {
   const openedTargets: number[] = [];
   const engine = new DiagnosticEngine({
     logger,
@@ -127,7 +144,7 @@ test('DoipEcuLinkFactory honours per-ECU logical addressing', async () => {
   await engine.disconnect();
 });
 
-test('tester address, TLS enforcement and the default response timeout', async () => {
+test("tester address, TLS enforcement and the default response timeout", async () => {
   // A secure endpoint satisfies requireTls.
   const engine = new DiagnosticEngine({
     logger,
@@ -155,14 +172,14 @@ test('tester address, TLS enforcement and the default response timeout', async (
   await assert.rejects(refusing.attach({ txId: 0x0e00, rxId: 0x1000 }), /TLS is required/);
 });
 
-test('a failing socket teardown is logged by the factory, never thrown', async () => {
+test("a failing socket teardown is logged by the factory, never thrown", async () => {
   const engine = new DiagnosticEngine({
     logger,
     linkFactory: createDoipEcuLinkFactory({
       createSocket: () => {
         const endpoint = new FakeDoipEndpoint();
         endpoint.close = async () => {
-          throw new Error('socket teardown failed');
+          throw new Error("socket teardown failed");
         };
         return endpoint;
       },

@@ -10,11 +10,19 @@
  * went.
  */
 
-import { createLogger, type Logger } from '@vdp/shared';
-import { AnalysisError, type AnalysisInput, type AnalysisProvider, type AnalysisResult } from './types.js';
+import { type Logger, createLogger } from "@vdp/shared";
+import {
+  AnalysisError,
+  type AnalysisInput,
+  type AnalysisProvider,
+  type AnalysisResult,
+} from "./types.js";
 
 export interface HttpClient {
-  fetch(url: string, init: { method: string; headers: Record<string, string>; body: string; signal?: AbortSignal }): Promise<{
+  fetch(
+    url: string,
+    init: { method: string; headers: Record<string, string>; body: string; signal?: AbortSignal },
+  ): Promise<{
     ok: boolean;
     status: number;
     text(): Promise<string>;
@@ -38,14 +46,14 @@ export interface HttpAnalysisProviderOptions {
 }
 
 export class HttpAnalysisProvider implements AnalysisProvider {
-  readonly id = 'http';
+  readonly id = "http";
   readonly label: string;
   readonly sendsDataOffBox = true;
   private readonly log: Logger;
 
   constructor(private readonly options: HttpAnalysisProviderOptions) {
     this.label = `Model gateway (${safeHost(options.endpoint)})`;
-    this.log = (options.logger ?? createLogger('ai', { level: 'INFO' })).child('ai');
+    this.log = (options.logger ?? createLogger("ai", { level: "INFO" })).child("ai");
   }
 
   async analyze(input: AnalysisInput): Promise<AnalysisResult> {
@@ -54,13 +62,13 @@ export class HttpAnalysisProvider implements AnalysisProvider {
       ...(this.options.model ? { model: this.options.model } : {}),
       input: payload,
       instruction:
-        'You are assisting a vehicle diagnostics technician. Answer from the supplied measurements and fault codes only. ' +
-        'State uncertainty explicitly and never invent measured values.',
+        "You are assisting a vehicle diagnostics technician. Answer from the supplied measurements and fault codes only. " +
+        "State uncertainty explicitly and never invent measured values.",
     });
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.options.timeoutMs ?? 20_000);
-    this.log.info('analysis request', {
+    this.log.info("analysis request", {
       endpoint: this.options.endpoint,
       vinIncluded: this.options.sendVin === true,
       signals: payload.signals.length,
@@ -68,24 +76,31 @@ export class HttpAnalysisProvider implements AnalysisProvider {
     });
 
     try {
-      const response = await (this.options.httpClient ?? defaultHttpClient()).fetch(this.options.endpoint, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          accept: 'application/json',
-          ...(this.options.apiKey ? { authorization: `Bearer ${this.options.apiKey}` } : {}),
+      const response = await (this.options.httpClient ?? defaultHttpClient()).fetch(
+        this.options.endpoint,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            accept: "application/json",
+            ...(this.options.apiKey ? { authorization: `Bearer ${this.options.apiKey}` } : {}),
+          },
+          body,
+          signal: controller.signal,
         },
-        body,
-        signal: controller.signal,
-      });
+      );
       if (!response.ok) {
-        throw new AnalysisError(`analysis gateway returned ${response.status}`, { status: response.status });
+        throw new AnalysisError(`analysis gateway returned ${response.status}`, {
+          status: response.status,
+        });
       }
       const text = await response.text();
       return normalise(JSON.parse(text) as Partial<AnalysisResult>, this.options.model);
     } catch (error) {
       if (error instanceof AnalysisError) throw error;
-      throw new AnalysisError(`analysis request failed: ${messageOf(error)}`, { endpoint: this.options.endpoint });
+      throw new AnalysisError(`analysis request failed: ${messageOf(error)}`, {
+        endpoint: this.options.endpoint,
+      });
     } finally {
       clearTimeout(timeout);
     }
@@ -95,18 +110,18 @@ export class HttpAnalysisProvider implements AnalysisProvider {
 /** Replace the VIN with a placeholder without touching anything else. */
 export function redactVin(input: AnalysisInput): AnalysisInput {
   if (!input.vehicle?.vin) return input;
-  return { ...input, vehicle: { ...input.vehicle, vin: '[redacted]' } };
+  return { ...input, vehicle: { ...input.vehicle, vin: "[redacted]" } };
 }
 
 function normalise(result: Partial<AnalysisResult>, model: string | undefined): AnalysisResult {
   return {
-    provider: result.provider ?? 'http',
+    provider: result.provider ?? "http",
     ...(model ? { model } : {}),
-    summary: result.summary ?? '',
+    summary: result.summary ?? "",
     findings: result.findings ?? [],
     recommendations: result.recommendations ?? [],
     confidence: clamp(result.confidence ?? 0.3),
-    source: 'model',
+    source: "model",
     generatedAt: result.generatedAt ?? new Date().toISOString(),
     ...(result.warnings ? { warnings: result.warnings } : {}),
   };
@@ -121,7 +136,7 @@ function safeHost(endpoint: string): string {
   try {
     return new URL(endpoint).host;
   } catch {
-    return 'invalid endpoint';
+    return "invalid endpoint";
   }
 }
 

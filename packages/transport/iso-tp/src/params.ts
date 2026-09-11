@@ -1,6 +1,6 @@
 /** ISO 15765-2 addressing, timing and flow-control parameters (AGENTS 7). */
 
-export type IsoTpAddressing = 'normal' | 'extended';
+export type IsoTpAddressing = "normal" | "extended";
 
 export interface IsoTpTiming {
   /** N_As: time to transmit a single frame (adapter dependent, approximated). */

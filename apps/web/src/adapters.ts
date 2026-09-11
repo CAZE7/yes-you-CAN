@@ -17,14 +17,14 @@
  * requires layers above the adapter layer.
  */
 
-import { AdapterUnsupportedError } from '@vdp/shared';
-import { AdapterCatalog, createHostAdapterCatalog, type AdapterEntry } from '@vdp/adapter-host';
+import { AdapterCatalog, type AdapterEntry, createHostAdapterCatalog } from "@vdp/adapter-host";
+import { AdapterUnsupportedError } from "@vdp/shared";
 
-export const SIMULATOR_ADAPTER_ID = 'simulator';
-export const REPLAY_ADAPTER_ID = 'replay';
+export const SIMULATOR_ADAPTER_ID = "simulator";
+export const REPLAY_ADAPTER_ID = "replay";
 
 /** Entries whose bus is built by the application, not by the adapter layer. */
-export const APPLICATION_MANAGED = 'application' as const;
+export const APPLICATION_MANAGED = "application" as const;
 
 /**
  * The simulator entry: no hardware requirements, always available.
@@ -35,11 +35,11 @@ export const APPLICATION_MANAGED = 'application' as const;
 function simulatorEntry(): AdapterEntry {
   return {
     id: SIMULATOR_ADAPTER_ID,
-    displayName: 'Simulator (virtuelles Fahrzeug)',
-    kind: 'simulator',
-    transport: 'can',
+    displayName: "Simulator (virtuelles Fahrzeug)",
+    kind: "simulator",
+    transport: "can",
     description:
-      'Virtuelles Fahrzeug mit UDS-Servern, DTCs und zeitlich veränderlichen Messwerten (AGENTS 32). Kein Adapter, kein Fahrzeug nötig.',
+      "Virtuelles Fahrzeug mit UDS-Servern, DTCs und zeitlich veränderlichen Messwerten (AGENTS 32). Kein Adapter, kein Fahrzeug nötig.",
     capabilities: {
       can: true,
       canFd: false,
@@ -49,8 +49,11 @@ function simulatorEntry(): AdapterEntry {
       supportsFunctionalAddressing: true,
     },
     requires: {},
-    managedBy: 'application',
-    probe: async () => ({ available: true, detail: 'virtuelle ECUs über ein virtuelles CAN-Netz — immer verfügbar' }),
+    managedBy: "application",
+    probe: async () => ({
+      available: true,
+      detail: "virtuelle ECUs über ein virtuelles CAN-Netz — immer verfügbar",
+    }),
     create: async () => {
       throw new AdapterUnsupportedError(
         'the simulator bus is created by the application — select it with mode "simulator"',
@@ -70,11 +73,11 @@ function simulatorEntry(): AdapterEntry {
 function replayEntry(): AdapterEntry {
   return {
     id: REPLAY_ADAPTER_ID,
-    displayName: 'Trace-Replay (aufgezeichnete Sitzung)',
-    kind: 'replay',
-    transport: 'can',
+    displayName: "Trace-Replay (aufgezeichnete Sitzung)",
+    kind: "replay",
+    transport: "can",
     description:
-      'Spielt den Roh-Trace einer gespeicherten Sitzung ab (AGENTS 19). Abweichungen zu den aufgezeichneten Requests werden gemeldet statt geglättet.',
+      "Spielt den Roh-Trace einer gespeicherten Sitzung ab (AGENTS 19). Abweichungen zu den aufgezeichneten Requests werden gemeldet statt geglättet.",
     capabilities: {
       can: true,
       canFd: true,
@@ -85,10 +88,13 @@ function replayEntry(): AdapterEntry {
     // `--trace` is optional: a stored session id (selected in the UI) works the
     // same way, so demanding a file would reject the common case.
     requires: {},
-    managedBy: 'application',
+    managedBy: "application",
     probe: async (config) => {
       if (config.trace) return { available: true, detail: `recording: ${config.trace}` };
-      return { available: true, detail: 'recording: gespeicherte Sitzung oder Session-Export wählen' };
+      return {
+        available: true,
+        detail: "recording: gespeicherte Sitzung oder Session-Export wählen",
+      };
     },
     create: async () => {
       throw new AdapterUnsupportedError(
@@ -123,8 +129,10 @@ export function isApplicationManaged(entry: AdapterEntry): boolean {
 }
 
 /** Availability line for the UI header: the first usable adapter wins. */
-export function summarizeAvailability(descriptions: ReadonlyArray<{ id: string; displayName: string; probe: { available: boolean } }>): string {
+export function summarizeAvailability(
+  descriptions: ReadonlyArray<{ id: string; displayName: string; probe: { available: boolean } }>,
+): string {
   const usable = descriptions.filter((entry) => entry.probe.available);
-  if (usable.length === 0) return 'kein Adapter einsatzbereit';
+  if (usable.length === 0) return "kein Adapter einsatzbereit";
   return `${usable.length} von ${descriptions.length} Adaptern einsatzbereit`;
 }

@@ -12,17 +12,26 @@
  *   Y-Achsen · Ein-/Ausblenden · Min/Max/Durchschnitt · Delta · Event-Marker
  */
 
-import { ChartGroup, formatClock, formatDuration, formatValue } from '/lib/index.js';
-import { SignalChart } from '/chart.js';
+import { SignalChart } from "/chart.js";
+import { ChartGroup, formatClock, formatDuration, formatValue } from "/lib/index.js";
 
-const PALETTE = ['#4f9cf9', '#f9a94f', '#4ff9a9', '#f94f9c', '#c74ff9', '#f9f14f', '#5ce1e6', '#f9f14f'];
+const PALETTE = [
+  "#4f9cf9",
+  "#f9a94f",
+  "#4ff9a9",
+  "#f94f9c",
+  "#c74ff9",
+  "#f9f14f",
+  "#5ce1e6",
+  "#f9f14f",
+];
 
 /** Window presets in ms — "all" is handled separately (fit). */
 const WINDOW_PRESETS = [
-  { label: '5 s', ms: 5_000 },
-  { label: '20 s', ms: 20_000 },
-  { label: '1 min', ms: 60_000 },
-  { label: '5 min', ms: 300_000 },
+  { label: "5 s", ms: 5_000 },
+  { label: "20 s", ms: 20_000 },
+  { label: "1 min", ms: 60_000 },
+  { label: "5 min", ms: 300_000 },
 ];
 
 const $ = (selector) => document.querySelector(selector);
@@ -30,28 +39,34 @@ const $ = (selector) => document.querySelector(selector);
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
   for (const [key, value] of Object.entries(attrs)) {
-    if (key === 'class') node.className = value;
-    else if (key === 'text') node.textContent = value;
-    else if (key.startsWith('on')) node.addEventListener(key.slice(2), value);
+    if (key === "class") node.className = value;
+    else if (key === "text") node.textContent = value;
+    else if (key.startsWith("on")) node.addEventListener(key.slice(2), value);
     else node.setAttribute(key, value);
   }
   for (const child of [].concat(children)) {
     if (child == null) continue;
-    node.append(typeof child === 'string' ? document.createTextNode(child) : child);
+    node.append(typeof child === "string" ? document.createTextNode(child) : child);
   }
   return node;
 }
 
 export class GraphBoard {
   constructor(selectors = {}) {
-    this.host = $(selectors.charts ?? '#charts');
-    this.statusHost = $(selectors.status ?? '#graph-status');
-    this.readoutHost = $(selectors.readout ?? '#graph-readout');
-    this.selectionHost = $(selectors.selection ?? '#graph-selection');
-    this.markerHost = $(selectors.markers ?? '#graph-markers');
-    this.followButton = $(selectors.follow ?? '#graph-follow');
+    this.host = $(selectors.charts ?? "#charts");
+    this.statusHost = $(selectors.status ?? "#graph-status");
+    this.readoutHost = $(selectors.readout ?? "#graph-readout");
+    this.selectionHost = $(selectors.selection ?? "#graph-selection");
+    this.markerHost = $(selectors.markers ?? "#graph-markers");
+    this.followButton = $(selectors.follow ?? "#graph-follow");
 
-    this.group = new ChartGroup({ defaultSpanMs: 20_000, minSpanMs: 500, maxSpanMs: 30 * 60_000, follow: true, maxPointsPerSeries: 50_000 });
+    this.group = new ChartGroup({
+      defaultSpanMs: 20_000,
+      minSpanMs: 500,
+      maxSpanMs: 30 * 60_000,
+      follow: true,
+      maxPointsPerSeries: 50_000,
+    });
     /** @type {Map<string, {chart: SignalChart, card: HTMLElement, stats: HTMLElement, value: HTMLElement}>} */
     this.charts = new Map();
     this.signalMeta = new Map();
@@ -84,7 +99,8 @@ export class GraphBoard {
     if (this.charts.size === 0 && history.samples.length > 0) {
       // The graph view can be opened before the signal list arrives.
       for (const sample of history.samples) {
-        if (!this.signalMeta.has(sample.signal)) this.ensureChart({ id: sample.signal, name: sample.name, unit: sample.unit });
+        if (!this.signalMeta.has(sample.signal))
+          this.ensureChart({ id: sample.signal, name: sample.name, unit: sample.unit });
       }
     }
     this.group.clear();
@@ -92,12 +108,23 @@ export class GraphBoard {
     const bySignal = new Map();
     for (const sample of history.samples) {
       if (sample.numeric === null) continue;
-      const entry = bySignal.get(sample.signal) ?? { points: [], name: sample.name, ...(sample.unit ? { unit: sample.unit } : {}) };
-      entry.points.push({ t: sample.t, value: sample.numeric, ...(sample.outOfRange ? { outOfRange: true } : {}) });
+      const entry = bySignal.get(sample.signal) ?? {
+        points: [],
+        name: sample.name,
+        ...(sample.unit ? { unit: sample.unit } : {}),
+      };
+      entry.points.push({
+        t: sample.t,
+        value: sample.numeric,
+        ...(sample.outOfRange ? { outOfRange: true } : {}),
+      });
       bySignal.set(sample.signal, entry);
     }
     for (const [signal, entry] of bySignal) {
-      this.group.push(signal, entry.points, { name: entry.name, ...(entry.unit ? { unit: entry.unit } : {}) });
+      this.group.push(signal, entry.points, {
+        name: entry.name,
+        ...(entry.unit ? { unit: entry.unit } : {}),
+      });
       this.ensureChart({ id: signal, name: entry.name, unit: entry.unit });
     }
     this.group.setMarkers(history.markers ?? []);
@@ -112,7 +139,11 @@ export class GraphBoard {
     this.group.push(
       sample.signal,
       [{ t: sample.t, value: sample.numeric, ...(sample.outOfRange ? { outOfRange: true } : {}) }],
-      { name: sample.name, ...(sample.unit ? { unit: sample.unit } : {}), ...this.metaFor(sample.signal) },
+      {
+        name: sample.name,
+        ...(sample.unit ? { unit: sample.unit } : {}),
+        ...this.metaFor(sample.signal),
+      },
     );
     this.ensureChart({ id: sample.signal, name: sample.name, unit: sample.unit });
   }
@@ -141,24 +172,28 @@ export class GraphBoard {
     });
     series.color ??= color;
 
-    const canvas = el('canvas', { class: 'chart' });
-    const value = el('span', { class: 'chart-value' });
-    const stats = el('span', { class: 'chart-stats muted small' });
-    const toggle = el('button', {
-      class: 'chart-toggle',
-      title: 'Signal ein-/ausblenden',
-      'aria-pressed': 'true',
-      onclick: (event) => {
-        event.stopPropagation();
-        this.group.toggleVisible(signal.id);
+    const canvas = el("canvas", { class: "chart" });
+    const value = el("span", { class: "chart-value" });
+    const stats = el("span", { class: "chart-stats muted small" });
+    const toggle = el(
+      "button",
+      {
+        class: "chart-toggle",
+        title: "Signal ein-/ausblenden",
+        "aria-pressed": "true",
+        onclick: (event) => {
+          event.stopPropagation();
+          this.group.toggleVisible(signal.id);
+        },
       },
-    }, [el('span', { class: 'dot' })]);
+      [el("span", { class: "dot" })],
+    );
 
-    const card = el('div', { class: 'chart-card' }, [
-      el('div', { class: 'chart-head' }, [
+    const card = el("div", { class: "chart-card" }, [
+      el("div", { class: "chart-head" }, [
         toggle,
-        el('span', { class: 'chart-title', text: signal.name ?? signal.id }),
-        el('span', { class: 'chart-unit muted small', text: signal.unit ?? '' }),
+        el("span", { class: "chart-title", text: signal.name ?? signal.id }),
+        el("span", { class: "chart-unit muted small", text: signal.unit ?? "" }),
         value,
         stats,
       ]),
@@ -176,32 +211,36 @@ export class GraphBoard {
   onChange(reason) {
     for (const entry of this.charts.values()) {
       const visible = entry.chart.series.visible;
-      entry.card.classList.toggle('hidden-series', !visible);
-      entry.toggle.setAttribute('aria-pressed', String(visible));
+      entry.card.classList.toggle("hidden-series", !visible);
+      entry.toggle.setAttribute("aria-pressed", String(visible));
       entry.chart.schedule();
     }
     this.renderReadout();
     this.renderSelection();
-    if (reason === 'markers') this.renderMarkers();
+    if (reason === "markers") this.renderMarkers();
     this.renderStatus();
   }
 
   renderReadout() {
     if (!this.readoutHost) return;
     const readout = this.group.readout();
-    const body = this.readoutHost.tBodies[0] ?? this.readoutHost.querySelector('tbody') ?? this.readoutHost;
+    const body =
+      this.readoutHost.tBodies[0] ?? this.readoutHost.querySelector("tbody") ?? this.readoutHost;
     body.replaceChildren();
     for (const row of readout.rows) {
       const stats = row.stats;
       body.append(
-        el('tr', { class: row.visible ? '' : 'is-hidden' }, [
-          el('td', {}, [el('span', { class: 'swatch', style: `background:${row.color ?? PALETTE[0]}` }), row.name]),
-          el('td', { class: 'num', text: row.value === null ? '—' : formatValue(row.value) }),
-          el('td', { class: 'num', text: formatValue(stats.min) }),
-          el('td', { class: 'num', text: formatValue(stats.max) }),
-          el('td', { class: 'num', text: formatValue(stats.average) }),
-          el('td', { class: 'num', text: formatValue(stats.delta) }),
-          el('td', { class: 'muted', text: row.unit ?? '—' }),
+        el("tr", { class: row.visible ? "" : "is-hidden" }, [
+          el("td", {}, [
+            el("span", { class: "swatch", style: `background:${row.color ?? PALETTE[0]}` }),
+            row.name,
+          ]),
+          el("td", { class: "num", text: row.value === null ? "—" : formatValue(row.value) }),
+          el("td", { class: "num", text: formatValue(stats.min) }),
+          el("td", { class: "num", text: formatValue(stats.max) }),
+          el("td", { class: "num", text: formatValue(stats.average) }),
+          el("td", { class: "num", text: formatValue(stats.delta) }),
+          el("td", { class: "muted", text: row.unit ?? "—" }),
         ]),
       );
     }
@@ -210,25 +249,33 @@ export class GraphBoard {
   renderSelection() {
     if (!this.selectionHost) return;
     const selection = this.group.selection;
-    const body = this.selectionHost.querySelector('tbody') ?? this.selectionHost;
+    const body = this.selectionHost.querySelector("tbody") ?? this.selectionHost;
     body.replaceChildren();
     if (!selection) {
-      this.selectionHost.classList.add('empty');
-      body.append(el('tr', {}, [el('td', { colspan: '6', class: 'muted', text: 'Umschalt + Ziehen im Graphen wählt einen Zeitraum aus.' })]));
+      this.selectionHost.classList.add("empty");
+      body.append(
+        el("tr", {}, [
+          el("td", {
+            colspan: "6",
+            class: "muted",
+            text: "Umschalt + Ziehen im Graphen wählt einen Zeitraum aus.",
+          }),
+        ]),
+      );
       return;
     }
-    this.selectionHost.classList.remove('empty');
+    this.selectionHost.classList.remove("empty");
     for (const series of this.group.visibleSeries) {
       const stats = this.group.selectionStats(series.id);
       if (!stats) continue;
       body.append(
-        el('tr', {}, [
-          el('td', { text: series.name }),
-          el('td', { class: 'num', text: formatValue(stats.min) }),
-          el('td', { class: 'num', text: formatValue(stats.max) }),
-          el('td', { class: 'num', text: formatValue(stats.average) }),
-          el('td', { class: 'num', text: formatValue(stats.delta) }),
-          el('td', { class: 'num muted', text: String(stats.count) }),
+        el("tr", {}, [
+          el("td", { text: series.name }),
+          el("td", { class: "num", text: formatValue(stats.min) }),
+          el("td", { class: "num", text: formatValue(stats.max) }),
+          el("td", { class: "num", text: formatValue(stats.average) }),
+          el("td", { class: "num", text: formatValue(stats.delta) }),
+          el("td", { class: "num muted", text: String(stats.count) }),
         ]),
       );
     }
@@ -239,20 +286,25 @@ export class GraphBoard {
     this.markerHost.replaceChildren();
     const markers = this.group.markers;
     if (markers.length === 0) {
-      this.markerHost.append(el('li', { class: 'muted', text: 'keine Marker — Fehlerspeicher lesen erzeugt DTC-Marker' }));
+      this.markerHost.append(
+        el("li", {
+          class: "muted",
+          text: "keine Marker — Fehlerspeicher lesen erzeugt DTC-Marker",
+        }),
+      );
       return;
     }
     for (const marker of markers.slice(-40).reverse()) {
       this.markerHost.append(
-        el('li', { class: `marker marker-${marker.kind}` }, [
-          el('button', {
-            class: 'link',
+        el("li", { class: `marker marker-${marker.kind}` }, [
+          el("button", {
+            class: "link",
             title: marker.detail ?? marker.label,
             onclick: () => this.group.showAround(marker.t),
             text: formatClock(marker.t),
           }),
-          el('span', { class: 'marker-kind', text: marker.kind }),
-          el('span', { text: marker.label }),
+          el("span", { class: "marker-kind", text: marker.kind }),
+          el("span", { text: marker.label }),
         ]),
       );
     }
@@ -266,12 +318,12 @@ export class GraphBoard {
       `${this.group.visibleSeries.length}/${this.group.seriesList.length} Signale sichtbar`,
       `${this.group.markers.length} Marker`,
     ];
-    if (this.group.follow) parts.push('folgt live');
+    if (this.group.follow) parts.push("folgt live");
     if (this.group.cursor !== null) parts.push(`Cursor ${formatClock(this.group.cursor)}`);
-    this.statusHost.textContent = parts.join(' · ');
+    this.statusHost.textContent = parts.join(" · ");
     if (this.followButton) {
-      this.followButton.textContent = this.group.follow ? 'Live folgen: an' : 'Live folgen: aus';
-      this.followButton.classList.toggle('primary', this.group.follow);
+      this.followButton.textContent = this.group.follow ? "Live folgen: an" : "Live folgen: aus";
+      this.followButton.classList.toggle("primary", this.group.follow);
     }
   }
 
@@ -284,16 +336,16 @@ export class GraphBoard {
       return node;
     };
 
-    on('#graph-follow', 'click', () => this.group.setFollow(!this.group.follow));
-    on('#graph-fit', 'click', () => this.group.fitAll());
-    on('#graph-zoom-in', 'click', () => this.group.zoomBy(1.5));
-    on('#graph-zoom-out', 'click', () => this.group.zoomBy(1 / 1.5));
-    on('#graph-clear-selection', 'click', () => this.group.clearSelection());
-    on('#graph-clear-cursor', 'click', () => this.group.setCursor(null));
+    on("#graph-follow", "click", () => this.group.setFollow(!this.group.follow));
+    on("#graph-fit", "click", () => this.group.fitAll());
+    on("#graph-zoom-in", "click", () => this.group.zoomBy(1.5));
+    on("#graph-zoom-out", "click", () => this.group.zoomBy(1 / 1.5));
+    on("#graph-clear-selection", "click", () => this.group.clearSelection());
+    on("#graph-clear-cursor", "click", () => this.group.setCursor(null));
 
-    const windowSelect = on('#graph-window', 'change', (event) => {
+    const windowSelect = on("#graph-window", "change", (event) => {
       const value = event.target.value;
-      if (value === 'all') {
+      if (value === "all") {
         this.group.fitAll();
         return;
       }
@@ -301,19 +353,20 @@ export class GraphBoard {
       if (Number.isFinite(ms)) this.group.setSpan(ms);
     });
     if (windowSelect && windowSelect.options.length === 0) {
-      for (const preset of WINDOW_PRESETS) windowSelect.append(el('option', { value: String(preset.ms), text: preset.label }));
-      windowSelect.append(el('option', { value: 'all', text: 'gesamte Aufnahme' }));
-      windowSelect.value = '20000';
+      for (const preset of WINDOW_PRESETS)
+        windowSelect.append(el("option", { value: String(preset.ms), text: preset.label }));
+      windowSelect.append(el("option", { value: "all", text: "gesamte Aufnahme" }));
+      windowSelect.value = "20000";
     }
 
-    const decimateSelect = on('#graph-decimate', 'change', (event) => {
-      const mode = event.target.value === 'lttb' ? 'lttb' : 'minmax';
+    const decimateSelect = on("#graph-decimate", "change", (event) => {
+      const mode = event.target.value === "lttb" ? "lttb" : "minmax";
       for (const entry of this.charts.values()) {
         entry.chart.decimationMode = mode;
         entry.chart.schedule();
       }
     });
-    if (decimateSelect) decimateSelect.value = 'minmax';
+    if (decimateSelect) decimateSelect.value = "minmax";
   }
 
   metaFor(signalId) {

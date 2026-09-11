@@ -6,8 +6,8 @@
  * ids (§24: ids travel through the whole system, so they must be trustworthy).
  */
 
-import { createId } from '@vdp/shared';
-import { systemClock, type Clock } from './clock.js';
+import { createId } from "@vdp/shared";
+import { type Clock, systemClock } from "./clock.js";
 
 export interface IdGenerator {
   /** Produce a new id with the given prefix, e.g. `sess_…`, `ecu_…`. */
@@ -27,7 +27,7 @@ export class DefaultIdGenerator implements IdGenerator {
 export class FixedIdGenerator implements IdGenerator {
   private counter = 0;
 
-  constructor(private readonly prefix = 'id') {}
+  constructor(private readonly prefix = "id") {}
 
   next(prefix: string): string {
     this.counter += 1;

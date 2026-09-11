@@ -16,14 +16,14 @@ export interface OemIdentificationHint {
   label: string;
   did: number;
   /** 'ascii' for printable identifiers, 'hex' otherwise. */
-  encoding?: 'ascii' | 'hex';
+  encoding?: "ascii" | "hex";
 }
 
 export interface OemDtcInterpretation {
   code: string;
   description?: string;
   hint?: string;
-  severity?: 'info' | 'minor' | 'major' | 'critical';
+  severity?: "info" | "minor" | "major" | "critical";
 }
 
 export interface OemProtocol {
@@ -93,20 +93,26 @@ export class OemProtocolRegistry {
  * (AGENTS 24).
  */
 export const vagExampleProtocol: OemProtocol = {
-  oem: 'vag',
-  displayName: 'VAG example (placeholder)',
-  provenance: { sourceType: 'example-placeholder', source: 'invented example values, no OEM documentation used' },
+  oem: "vag",
+  displayName: "VAG example (placeholder)",
+  provenance: {
+    sourceType: "example-placeholder",
+    source: "invented example values, no OEM documentation used",
+  },
   identifyEcu(rxId) {
-    if (rxId === 0x7e8) return 'engine';
-    if (rxId === 0x7e9) return 'transmission';
+    if (rxId === 0x7e8) return "engine";
+    if (rxId === 0x7e9) return "transmission";
     return undefined;
   },
   identificationDids: (role) =>
-    role === 'engine'
+    role === "engine"
       ? [
-          { label: 'Part number', did: 0xf187, encoding: 'ascii' },
-          { label: 'Coding', did: 0x2002, encoding: 'hex' },
+          { label: "Part number", did: 0xf187, encoding: "ascii" },
+          { label: "Coding", did: 0x2002, encoding: "hex" },
         ]
       : [],
-  interpretDtc: (code) => (code === 'P1234' ? { code, description: 'Example: boost pressure control deviation', severity: 'minor' } : undefined),
+  interpretDtc: (code) =>
+    code === "P1234"
+      ? { code, description: "Example: boost pressure control deviation", severity: "minor" }
+      : undefined,
 };

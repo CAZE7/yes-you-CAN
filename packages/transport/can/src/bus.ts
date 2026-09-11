@@ -3,8 +3,8 @@
  * Sits *below* ISO-TP, above the physical adapter (AGENTS 5 layer stack).
  */
 
-import type { CanFilter, CanFrame } from './frame.js';
-import type { AdapterCapabilities, AdapterInfo } from './transport.js';
+import type { CanFilter, CanFrame } from "./frame.js";
+import type { AdapterCapabilities, AdapterInfo } from "./transport.js";
 
 export type FrameListener = (frame: CanFrame) => void;
 
@@ -41,11 +41,17 @@ export class CanAdapterRegistry {
 
   create(id: string, options?: Record<string, unknown>): CanBus {
     const factory = this.factories.get(id);
-    if (!factory) throw new Error(`Unknown CAN adapter "${id}". Registered: ${Array.from(this.factories.keys()).join(', ')}`);
+    if (!factory)
+      throw new Error(
+        `Unknown CAN adapter "${id}". Registered: ${Array.from(this.factories.keys()).join(", ")}`,
+      );
     return factory.create(options);
   }
 
   list(): Array<{ id: string; displayName: string }> {
-    return Array.from(this.factories.values()).map((f) => ({ id: f.id, displayName: f.displayName }));
+    return Array.from(this.factories.values()).map((f) => ({
+      id: f.id,
+      displayName: f.displayName,
+    }));
   }
 }

@@ -1,15 +1,15 @@
-import assert from 'node:assert/strict';
-import { test } from 'vitest';
-import { fromHex, toHex } from '@vdp/shared';
-import {
-  type AdapterCapabilities,
-  type AdapterInfo,
-  type CanBus,
-  type CanFilter,
-  type CanFrame,
-  type FrameListener,
-} from '@vdp/transport-can';
-import { IsoTpConnection, parseStMin } from './index.js';
+import assert from "node:assert/strict";
+import { fromHex, toHex } from "@vdp/shared";
+import type {
+  AdapterCapabilities,
+  AdapterInfo,
+  CanBus,
+  CanFilter,
+  CanFrame,
+  FrameListener,
+} from "@vdp/transport-can";
+import { test } from "vitest";
+import { IsoTpConnection, parseStMin } from "./index.js";
 
 /**
  * Minimal virtual CAN wire.
@@ -32,14 +32,19 @@ function createWire(): Wire {
       wire.frames.push(frame);
       for (const bus of wire.buses) {
         if (bus === from) continue;
-        bus.receiveFrame({ ...frame, direction: 'rx' });
+        bus.receiveFrame({ ...frame, direction: "rx" });
       }
     },
   };
   return wire;
 }
 
-const INFO: AdapterInfo = { id: 'virtual', kind: 'virtual', name: 'Virtual CAN', channels: ['vcan0'] };
+const INFO: AdapterInfo = {
+  id: "virtual",
+  kind: "virtual",
+  name: "Virtual CAN",
+  channels: ["vcan0"],
+};
 
 /** Yield to the microtask queue so a started request can register its pending slot. */
 function tick(): Promise<void> {
@@ -56,12 +61,18 @@ async function until(condition: () => boolean, rounds = 40): Promise<void> {
     if (condition()) return;
     await tick();
   }
-  assert.fail('condition was never reached: ' + condition.toString());
+  assert.fail("condition was never reached: " + condition.toString());
 }
 
 class VirtualBus implements CanBus {
   readonly info = INFO;
-  capabilities: AdapterCapabilities = { can: true, canFd: false, doip: false, isoTpOffload: false, channels: 1 };
+  capabilities: AdapterCapabilities = {
+    can: true,
+    canFd: false,
+    doip: false,
+    isoTpOffload: false,
+    channels: 1,
+  };
   private listeners: Array<{ listener: FrameListener; filters?: readonly CanFilter[] }> = [];
   private opened = false;
 
@@ -90,13 +101,23 @@ class VirtualBus implements CanBus {
   }
   receiveFrame(frame: CanFrame): void {
     for (const entry of this.listeners) {
-      if (entry.filters && !entry.filters.some((f) => (frame.id & f.mask) === (f.id & f.mask))) continue;
+      if (entry.filters && !entry.filters.some((f) => (frame.id & f.mask) === (f.id & f.mask)))
+        continue;
       entry.listener(frame);
     }
   }
   /** Simulate an incoming frame on this node. */
   inject(id: number, payload: Uint8Array, extended = false): void {
-    this.receiveFrame({ timestamp: Date.now(), id, extended, fd: false, dlc: payload.length, payload, channel: 'vcan0', direction: 'rx' });
+    this.receiveFrame({
+      timestamp: Date.now(),
+      id,
+      extended,
+      fd: false,
+      dlc: payload.length,
+      payload,
+      channel: "vcan0",
+      direction: "rx",
+    });
   }
 }
 
@@ -108,23 +129,43 @@ interface Pair {
   respond(payload: Uint8Array | null): void;
 }
 
-function createPair(options: { fd?: boolean; extendedAddressing?: boolean; timing?: Record<string, number> } = {}): Pair {
+function createPair(
+  options: { fd?: boolean; extendedAddressing?: boolean; timing?: Record<string, number> } = {},
+): Pair {
   const wire = createWire();
   const testerBus = new VirtualBus(wire);
   const ecuBus = new VirtualBus(wire);
   if (options.fd) {
-    const fdCapabilities: AdapterCapabilities = { can: true, canFd: true, doip: false, isoTpOffload: false, channels: 1 };
+    const fdCapabilities: AdapterCapabilities = {
+      can: true,
+      canFd: true,
+      doip: false,
+      isoTpOffload: false,
+      channels: 1,
+    };
     testerBus.capabilities = fdCapabilities;
     ecuBus.capabilities = fdCapabilities;
   }
   const base = {
-    ...(options.extendedAddressing ? { addressing: 'extended' as const, extended: true } : {}),
+    ...(options.extendedAddressing ? { addressing: "extended" as const, extended: true } : {}),
     timing: { nBsMs: 60, nCrMs: 60, nAsMs: 0, stMinMs: 0, stMinTxMs: 0, ...(options.timing ?? {}) },
     sleep: async () => undefined,
     now: () => Date.now(),
   };
-  const tester = new IsoTpConnection(testerBus, { txId: 0x7e0, rxId: 0x7e8, targetAddress: 0xf1, sourceAddress: 0x10, ...base });
-  const ecu = new IsoTpConnection(ecuBus, { txId: 0x7e8, rxId: 0x7e0, targetAddress: 0x10, sourceAddress: 0xf1, ...base });
+  const tester = new IsoTpConnection(testerBus, {
+    txId: 0x7e0,
+    rxId: 0x7e8,
+    targetAddress: 0xf1,
+    sourceAddress: 0x10,
+    ...base,
+  });
+  const ecu = new IsoTpConnection(ecuBus, {
+    txId: 0x7e8,
+    rxId: 0x7e0,
+    targetAddress: 0x10,
+    sourceAddress: 0xf1,
+    ...base,
+  });
   const requests: Uint8Array[] = [];
   let responder: (() => void) | null = null;
   ecu.onUnsolicited((payload) => {
@@ -146,7 +187,7 @@ function createPair(options: { fd?: boolean; extendedAddressing?: boolean; timin
   };
 }
 
-test('STmin decoding follows ISO 15765-2 (ms range, 100-900us range, reserved)', () => {
+test("STmin decoding follows ISO 15765-2 (ms range, 100-900us range, reserved)", () => {
   assert.equal(parseStMin(0x00), 0);
   assert.equal(parseStMin(0x14), 20);
   assert.equal(parseStMin(0x7f), 127);
@@ -156,40 +197,43 @@ test('STmin decoding follows ISO 15765-2 (ms range, 100-900us range, reserved)',
   assert.equal(parseStMin(0xf1), 0.1);
   assert.equal(parseStMin(0xf5), 0.5);
   assert.equal(parseStMin(0xf9), 0.9);
-  assert.equal(parseStMin(0x80), 127, 'reserved values must be treated as maximum');
+  assert.equal(parseStMin(0x80), 127, "reserved values must be treated as maximum");
   assert.equal(parseStMin(0xf0), 127);
 });
 
-test('single frame request/response round trip', async () => {
+test("single frame request/response round trip", async () => {
   const pair = createPair();
-  pair.respond(fromHex('50 03 00 32 01 F4'));
-  const response = await pair.tester.request(fromHex('10 03'));
-  assert.equal(toHex(response), '50 03 00 32 01 F4');
+  pair.respond(fromHex("50 03 00 32 01 F4"));
+  const response = await pair.tester.request(fromHex("10 03"));
+  assert.equal(toHex(response), "50 03 00 32 01 F4");
   assert.equal(pair.requests.length, 1);
-  assert.equal(toHex(pair.requests[0] as Uint8Array), '10 03');
+  assert.equal(toHex(pair.requests[0] as Uint8Array), "10 03");
   assert.equal(pair.tester.stats.txSingleFrames, 1);
   assert.equal(pair.tester.stats.rxSingleFrames, 1);
 });
 
-test('multi-frame response is reassembled and flow control is sent', async () => {
+test("multi-frame response is reassembled and flow control is sent", async () => {
   const pair = createPair();
-  const payload = fromHex('62 F1 90 57 56 57 5A 5A 39 4B 5A 31 32 33 34 35 36');
+  const payload = fromHex("62 F1 90 57 56 57 5A 5A 39 4B 5A 31 32 33 34 35 36");
   pair.respond(payload);
-  const response = await pair.tester.request(fromHex('22 F1 90'));
+  const response = await pair.tester.request(fromHex("22 F1 90"));
   await tick(); // the responder counts its frames one step after the last write, and now sends through the queue
   assert.equal(toHex(response), toHex(payload));
   assert.equal(pair.tester.stats.rxMultiFrameMessages, 1);
   assert.equal(pair.ecu.stats.txMultiFrameMessages, 1);
-  assert.ok(pair.tester.stats.txFlowControlFrames >= 1, 'tester must send at least one Flow Control frame');
+  assert.ok(
+    pair.tester.stats.txFlowControlFrames >= 1,
+    "tester must send at least one Flow Control frame",
+  );
   assert.equal(pair.ecu.stats.rxFlowControlFrames >= 1, true);
 });
 
-test('a 17-byte First Frame is decoded via the 12-bit FF_DL field, not the escape form', async () => {
+test("a 17-byte First Frame is decoded via the 12-bit FF_DL field, not the escape form", async () => {
   // Regression: `10 11` means FF_DL = 0x011 (17 bytes). Treating a zero PCI nibble
   // as the 4-byte escape would corrupt every message below 256 bytes.
   const pair = createPair();
   pair.respond(new Uint8Array(17).fill(0x5a));
-  const response = await pair.tester.request(fromHex('22 F1 90'));
+  const response = await pair.tester.request(fromHex("22 F1 90"));
   assert.equal(response.length, 17);
   const firstFrame = pair.wire.frames.find((f) => f.id === 0x7e8);
   assert.ok(firstFrame);
@@ -197,50 +241,55 @@ test('a 17-byte First Frame is decoded via the 12-bit FF_DL field, not the escap
   assert.equal(firstFrame.payload[1], 0x11);
 });
 
-test('multi-frame request is segmented by the tester', async () => {
+test("multi-frame request is segmented by the tester", async () => {
   const pair = createPair();
   const request = new Uint8Array(40).fill(0xab);
-  pair.respond(fromHex('71 01 00 01'));
+  pair.respond(fromHex("71 01 00 01"));
   const response = await pair.tester.request(request);
-  assert.equal(toHex(response), '71 01 00 01');
+  assert.equal(toHex(response), "71 01 00 01");
   const sent = pair.wire.frames.filter((f) => f.id === 0x7e0);
-  assert.equal((sent[0]?.payload[0] ?? 0) & 0xf0, 0x10, 'first frame expected');
-  assert.equal((sent[1]?.payload[0] ?? 0) & 0xf0, 0x20, 'consecutive frame expected');
+  assert.equal((sent[0]?.payload[0] ?? 0) & 0xf0, 0x10, "first frame expected");
+  assert.equal((sent[1]?.payload[0] ?? 0) & 0xf0, 0x20, "consecutive frame expected");
   assert.equal(toHex(pair.requests[0] as Uint8Array), toHex(request));
 });
 
-test('sequence number wraps at 16 consecutive frames', () => {
+test("sequence number wraps at 16 consecutive frames", () => {
   const wire = createWire();
   const bus = new VirtualBus(wire);
   const conn = new IsoTpConnection(bus, { txId: 0x7e0, rxId: 0x7e8, sleep: async () => undefined });
   assert.equal(conn.frameCountFor(7), 1);
   assert.equal(conn.frameCountFor(8), 2);
   // 6 bytes in the First Frame + 7 bytes per Consecutive Frame
-  assert.equal(conn.frameCountFor(6 + 7 * 15), 16, 'sequence counter wraps after 15 CFs');
+  assert.equal(conn.frameCountFor(6 + 7 * 15), 16, "sequence counter wraps after 15 CFs");
 });
 
-test('sequence error aborts the request with an ISO-TP error', async () => {
+test("sequence error aborts the request with an ISO-TP error", async () => {
   const wire = createWire();
   const testerBus = new VirtualBus(wire);
-  const tester = new IsoTpConnection(testerBus, { txId: 0x7e0, rxId: 0x7e8, sleep: async () => undefined, timing: { nCrMs: 50 } });
+  const tester = new IsoTpConnection(testerBus, {
+    txId: 0x7e0,
+    rxId: 0x7e8,
+    sleep: async () => undefined,
+    timing: { nCrMs: 50 },
+  });
   tester.open();
-  const promise = tester.request(fromHex('22 F1 90'));
+  const promise = tester.request(fromHex("22 F1 90"));
   // Let request() register its pending slot before frames start arriving.
   await tick();
   // ECU announces 20 bytes, then sends a Consecutive Frame with the wrong sequence.
-  testerBus.inject(0x7e8, fromHex('10 14 62 F1 90 00 00'));
-  testerBus.inject(0x7e8, fromHex('25 AA AA AA AA AA AA'));
+  testerBus.inject(0x7e8, fromHex("10 14 62 F1 90 00 00"));
+  testerBus.inject(0x7e8, fromHex("25 AA AA AA AA AA AA"));
   await assert.rejects(promise, /sequence error/i);
   assert.equal(tester.stats.sequenceErrors, 1);
 });
 
-test('response timeout surfaces as ISO-TP timeout error', async () => {
+test("response timeout surfaces as ISO-TP timeout error", async () => {
   const pair = createPair({ timing: { nBsMs: 20, nCrMs: 20 } });
-  await assert.rejects(pair.tester.request(fromHex('22 F1 90'), 25), /timeout/i);
+  await assert.rejects(pair.tester.request(fromHex("22 F1 90"), 25), /timeout/i);
   assert.equal(pair.tester.stats.timeouts, 1);
 });
 
-test('N_Bs timeout triggers a retry when maxRetries is configured', async () => {
+test("N_Bs timeout triggers a retry when maxRetries is configured", async () => {
   const wire = createWire();
   const testerBus = new VirtualBus(wire);
   const tester = new IsoTpConnection(testerBus, {
@@ -252,40 +301,46 @@ test('N_Bs timeout triggers a retry when maxRetries is configured', async () => 
   tester.open();
   // Multi-frame path with nobody answering Flow Control → N_Bs timeout.
   await assert.rejects(tester.request(new Uint8Array(30).fill(0x11)), /N_Bs timeout/);
-  assert.equal(tester.stats.retries, 2, 'both configured retries must be attempted');
+  assert.equal(tester.stats.retries, 2, "both configured retries must be attempted");
 });
 
-test('padding fills frames to the MTU with the pad byte', async () => {
+test("padding fills frames to the MTU with the pad byte", async () => {
   const wire = createWire();
   const bus = new VirtualBus(wire);
-  const conn = new IsoTpConnection(bus, { txId: 0x7e0, rxId: 0x7e8, padding: true, padByte: 0x55, sleep: async () => undefined });
+  const conn = new IsoTpConnection(bus, {
+    txId: 0x7e0,
+    rxId: 0x7e8,
+    padding: true,
+    padByte: 0x55,
+    sleep: async () => undefined,
+  });
   conn.open();
-  await conn.sendOnly(fromHex('3E 80'));
+  await conn.sendOnly(fromHex("3E 80"));
   const frame = wire.frames[0];
   assert.ok(frame);
   assert.equal(frame.payload.length, 8);
-  assert.equal(toHex(frame.payload), '02 3E 80 55 55 55 55 55');
+  assert.equal(toHex(frame.payload), "02 3E 80 55 55 55 55 55");
 });
 
-test('extended addressing prefixes the address byte and filters foreign senders', async () => {
+test("extended addressing prefixes the address byte and filters foreign senders", async () => {
   const pair = createPair({ extendedAddressing: true });
-  pair.respond(fromHex('7F 22 31'));
-  const response = await pair.tester.request(fromHex('22 F1 90'));
-  assert.equal(toHex(response), '7F 22 31');
+  pair.respond(fromHex("7F 22 31"));
+  const response = await pair.tester.request(fromHex("22 F1 90"));
+  assert.equal(toHex(response), "7F 22 31");
   const sent = pair.wire.frames.filter((f) => f.id === 0x7e0)[0];
   assert.ok(sent);
-  assert.equal(sent.payload[0], 0xf1, 'target address must be the first byte');
-  assert.equal(sent.payload[1], 0x03, 'PCI follows the address byte (3 data bytes)');
+  assert.equal(sent.payload[0], 0xf1, "target address must be the first byte");
+  assert.equal(sent.payload[1], 0x03, "PCI follows the address byte (3 data bytes)");
 });
 
-test('frames from a foreign source address are ignored under extended addressing', () => {
+test("frames from a foreign source address are ignored under extended addressing", () => {
   const wire = createWire();
   const testerBus = new VirtualBus(wire);
   const tester = new IsoTpConnection(testerBus, {
     txId: 0x7e0,
     rxId: 0x7e8,
     extended: true,
-    addressing: 'extended',
+    addressing: "extended",
     targetAddress: 0xf1,
     sourceAddress: 0x10,
     sleep: async () => undefined,
@@ -295,10 +350,10 @@ test('frames from a foreign source address are ignored under extended addressing
   tester.onUnsolicited(() => {
     unsolicited++;
   });
-  testerBus.inject(0x7e8, fromHex('99 02 50 03'), true);
-  assert.equal(unsolicited, 0, 'frames from an unexpected source address must be dropped');
-  testerBus.inject(0x7e8, fromHex('10 02 50 03'), true);
-  assert.equal(unsolicited, 1, 'the expected source address is accepted');
+  testerBus.inject(0x7e8, fromHex("99 02 50 03"), true);
+  assert.equal(unsolicited, 0, "frames from an unexpected source address must be dropped");
+  testerBus.inject(0x7e8, fromHex("10 02 50 03"), true);
+  assert.equal(unsolicited, 1, "the expected source address is accepted");
 });
 
 /**
@@ -329,70 +384,94 @@ test('Flow Control "Wait" frames are tolerated up to WFTmax', async () => {
   pair.ecuBus.subscribe((frame) => {
     if (((frame.payload[0] ?? 0) & 0xf0) !== 0x10) return;
     // Two Wait frames, then Continue-To-Send (BS = 0 → send all).
-    pair.sendToTester(fromHex('31 00 00'));
-    pair.sendToTester(fromHex('31 00 00'));
-    pair.sendToTester(fromHex('30 00 00'));
+    pair.sendToTester(fromHex("31 00 00"));
+    pair.sendToTester(fromHex("31 00 00"));
+    pair.sendToTester(fromHex("30 00 00"));
   });
   await pair.tester.sendOnly(new Uint8Array(30).fill(0x22));
-  const cfFrames = pair.wire.frames.filter((f) => f.id === 0x7e0 && ((f.payload[0] ?? 0) & 0xf0) === 0x20);
-  assert.equal(cfFrames.length, 4, '30 bytes - 6 byte FF chunk = 24 bytes over 4 Consecutive Frames');
+  const cfFrames = pair.wire.frames.filter(
+    (f) => f.id === 0x7e0 && ((f.payload[0] ?? 0) & 0xf0) === 0x20,
+  );
+  assert.equal(
+    cfFrames.length,
+    4,
+    "30 bytes - 6 byte FF chunk = 24 bytes over 4 Consecutive Frames",
+  );
   assert.equal(pair.tester.stats.rxFlowControlFrames, 3);
 });
 
-test('WFTmax exceeding aborts the transmission', async () => {
+test("WFTmax exceeding aborts the transmission", async () => {
   const pair = createScriptedPair({ wftMax: 1 });
   pair.ecuBus.subscribe((frame) => {
     if (((frame.payload[0] ?? 0) & 0xf0) !== 0x10) return;
-    pair.sendToTester(fromHex('31 00 00'));
-    pair.sendToTester(fromHex('31 00 00'));
+    pair.sendToTester(fromHex("31 00 00"));
+    pair.sendToTester(fromHex("31 00 00"));
   });
   await assert.rejects(pair.tester.sendOnly(new Uint8Array(30).fill(0x22)), /WFTmax/);
 });
 
-test('block size from Flow Control paces consecutive frames', async () => {
+test("block size from Flow Control paces consecutive frames", async () => {
   const pair = createScriptedPair();
   let cfCount = 0;
   pair.ecuBus.subscribe((frame) => {
     const pci = frame.payload[0] ?? 0;
     if ((pci & 0xf0) === 0x10) {
-      pair.sendToTester(fromHex('30 02 00'));
+      pair.sendToTester(fromHex("30 02 00"));
       return;
     }
     if ((pci & 0xf0) === 0x20) {
       cfCount++;
-      if (cfCount % 2 === 0) pair.sendToTester(fromHex('30 02 00'));
+      if (cfCount % 2 === 0) pair.sendToTester(fromHex("30 02 00"));
     }
   });
   await pair.tester.sendOnly(new Uint8Array(30).fill(0x33));
   assert.equal(cfCount, 4);
-  assert.ok(pair.tester.stats.rxFlowControlFrames >= 2, 'additional Flow Control required after each block');
+  assert.ok(
+    pair.tester.stats.rxFlowControlFrames >= 2,
+    "additional Flow Control required after each block",
+  );
 });
 
-test('CAN-FD single frame escape carries payloads longer than 7 bytes', async () => {
+test("CAN-FD single frame escape carries payloads longer than 7 bytes", async () => {
   const wire = createWire();
   const bus = new VirtualBus(wire);
   bus.capabilities = { can: true, canFd: true, doip: false, isoTpOffload: false, channels: 1 };
-  const conn = new IsoTpConnection(bus, { txId: 0x7e0, rxId: 0x7e8, fd: true, sleep: async () => undefined });
+  const conn = new IsoTpConnection(bus, {
+    txId: 0x7e0,
+    rxId: 0x7e8,
+    fd: true,
+    sleep: async () => undefined,
+  });
   conn.open();
   await conn.sendOnly(new Uint8Array(10).fill(0x77));
   const frame = wire.frames[0];
   assert.ok(frame);
-  assert.equal(frame.payload[0], 0x00, 'escape PCI');
-  assert.equal(frame.payload[1], 10, 'explicit length byte');
+  assert.equal(frame.payload[0], 0x00, "escape PCI");
+  assert.equal(frame.payload[1], 10, "explicit length byte");
   assert.equal(frame.fd, true);
 });
 
-test('a CAN-FD payload too long for a Single Frame is segmented, not refused', async () => {
+test("a CAN-FD payload too long for a Single Frame is segmented, not refused", async () => {
   const wire = createWire();
   const bus = new VirtualBus(wire);
   bus.capabilities = { can: true, canFd: true, doip: false, isoTpOffload: false, channels: 1 };
   const ecuBus = new VirtualBus(wire);
   ecuBus.capabilities = bus.capabilities;
-  const ecu = new IsoTpConnection(ecuBus, { txId: 0x7e8, rxId: 0x7e0, fd: true, sleep: async () => undefined });
+  const ecu = new IsoTpConnection(ecuBus, {
+    txId: 0x7e8,
+    rxId: 0x7e0,
+    fd: true,
+    sleep: async () => undefined,
+  });
   const received: Uint8Array[] = [];
   ecu.open();
   ecu.onUnsolicited((payload) => received.push(payload));
-  const conn = new IsoTpConnection(bus, { txId: 0x7e0, rxId: 0x7e8, fd: true, sleep: async () => undefined });
+  const conn = new IsoTpConnection(bus, {
+    txId: 0x7e0,
+    rxId: 0x7e8,
+    fd: true,
+    sleep: async () => undefined,
+  });
   conn.open();
   // 63 bytes do not fit the escape form (PCI + length byte + payload > 64) but fit a
   // First Frame plus one Consecutive Frame. Refusing them left the service unsendable:
@@ -400,29 +479,29 @@ test('a CAN-FD payload too long for a Single Frame is segmented, not refused', a
   await conn.sendOnly(new Uint8Array(63).fill(0x77));
   await tick();
   const first = wire.frames[0];
-  assert.ok(first, 'a frame was written');
-  assert.equal((first.payload[0] ?? 0) >> 4, 0x01, 'and it is a First Frame');
-  assert.equal(received.length, 1, 'the peer reassembles exactly one message');
+  assert.ok(first, "a frame was written");
+  assert.equal((first.payload[0] ?? 0) >> 4, 0x01, "and it is a First Frame");
+  assert.equal(received.length, 1, "the peer reassembles exactly one message");
   assert.equal(received[0]?.length, 63);
   // 62 still fits the escape form, so nothing that used to be a Single Frame changed.
   wire.frames.length = 0;
   await conn.sendOnly(new Uint8Array(62).fill(0x76));
-  assert.equal(wire.frames[0]?.payload[0], 0x00, '62 bytes stay a Single Frame with an escape PCI');
+  assert.equal(wire.frames[0]?.payload[0], 0x00, "62 bytes stay a Single Frame with an escape PCI");
 });
 
-test('receive() delivers messages that arrive without a pending request', async () => {
+test("receive() delivers messages that arrive without a pending request", async () => {
   const wire = createWire();
   const bus = new VirtualBus(wire);
   const conn = new IsoTpConnection(bus, { txId: 0x7e0, rxId: 0x7e8, sleep: async () => undefined });
   conn.open();
   const promise = conn.receive(100);
-  bus.inject(0x7e8, fromHex('02 7E 00'));
+  bus.inject(0x7e8, fromHex("02 7E 00"));
   const message = await promise;
   assert.ok(message);
-  assert.equal(toHex(message), '7E 00');
+  assert.equal(toHex(message), "7E 00");
 });
 
-test('receive() returns null on timeout', async () => {
+test("receive() returns null on timeout", async () => {
   const wire = createWire();
   const bus = new VirtualBus(wire);
   const conn = new IsoTpConnection(bus, { txId: 0x7e0, rxId: 0x7e8, sleep: async () => undefined });
@@ -430,17 +509,21 @@ test('receive() returns null on timeout', async () => {
   assert.equal(await conn.receive(15), null);
 });
 
-test('requests are serialised per connection (AGENTS 15)', async () => {
+test("requests are serialised per connection (AGENTS 15)", async () => {
   const pair = createPair();
-  pair.respond(fromHex('7E 00'));
-  const results = await Promise.all([pair.tester.request(fromHex('3E 00')), pair.tester.request(fromHex('3E 00')), pair.tester.request(fromHex('3E 00'))]);
+  pair.respond(fromHex("7E 00"));
+  const results = await Promise.all([
+    pair.tester.request(fromHex("3E 00")),
+    pair.tester.request(fromHex("3E 00")),
+    pair.tester.request(fromHex("3E 00")),
+  ]);
   assert.equal(results.length, 3);
   assert.equal(pair.requests.length, 3);
   const txFrames = pair.wire.frames.filter((f) => f.id === 0x7e0);
   assert.equal(txFrames.length, 3);
 });
 
-test('the serialisation covers traffic that is not a request (AGENTS 15)', async () => {
+test("the serialisation covers traffic that is not a request (AGENTS 15)", async () => {
   // Three single-frame requests prove the queue exists; this proves it is the
   // *connection's* queue and not only the request() path. Two multi-frame sends
   // from sendOnly() used to interleave, which corrupts both messages on the wire.
@@ -452,35 +535,55 @@ test('the serialisation covers traffic that is not a request (AGENTS 15)', async
   const pci = mine.map((frame) => (frame.payload[0] ?? 0) >> 4);
   // 20 bytes = a First Frame plus two Consecutive Frames; the second message may only
   // start once the first one has been handed over completely.
-  assert.deepEqual(pci, [1, 2, 2, 1, 2, 2], 'a First Frame is always followed by its own Consecutive Frames');
+  assert.deepEqual(
+    pci,
+    [1, 2, 2, 1, 2, 2],
+    "a First Frame is always followed by its own Consecutive Frames",
+  );
 });
 
-test('a deferred response after NRC 0x78 stays with the request that asked for it', async () => {
+test("a deferred response after NRC 0x78 stays with the request that asked for it", async () => {
   const pair = createPair();
   const conn = pair.tester;
   conn.open();
-  const request = conn.request(fromHex('22 F1 90'));
+  const request = conn.request(fromHex("22 F1 90"));
   await tick();
-  await pair.ecu.sendOnly(fromHex('7F 22 78'));
-  assert.equal(toHex(await request), '7F 22 78', 'the responsePending notice reaches its requester');
+  await pair.ecu.sendOnly(fromHex("7F 22 78"));
+  assert.equal(
+    toHex(await request),
+    "7F 22 78",
+    "the responsePending notice reaches its requester",
+  );
 
   // What the UDS layer does next is where the bug lived: it waits for the final
   // response, and a TesterPresent used to push into that gap and take the DID payload.
   const finalAnswer = conn.receive(500);
-  const testerPresent = conn.request(fromHex('3E 00'));
+  const testerPresent = conn.request(fromHex("3E 00"));
   await tick();
-  assert.equal(pair.wire.frames.filter((frame) => frame.id === 0x7e0).length, 1, 'nothing else goes on the wire while the deferred answer is still owed');
-  await pair.ecu.sendOnly(fromHex('62 F1 90 11 22 33 44'));
-  assert.equal(toHex((await finalAnswer) ?? new Uint8Array()), '62 F1 90 11 22 33 44', 'the deferred answer goes to the waiter it belongs to');
+  assert.equal(
+    pair.wire.frames.filter((frame) => frame.id === 0x7e0).length,
+    1,
+    "nothing else goes on the wire while the deferred answer is still owed",
+  );
+  await pair.ecu.sendOnly(fromHex("62 F1 90 11 22 33 44"));
+  assert.equal(
+    toHex((await finalAnswer) ?? new Uint8Array()),
+    "62 F1 90 11 22 33 44",
+    "the deferred answer goes to the waiter it belongs to",
+  );
   // The TesterPresent is still queued behind the transaction: it has to arrive, just
   // not inside the gap.
   await until(() => pair.requests.length === 2);
-  assert.equal(toHex(pair.requests[1] as Uint8Array), '3E 00', 'the TesterPresent is transmitted after the transaction it waited behind');
-  await pair.ecu.sendOnly(fromHex('7E 00'));
-  assert.equal(toHex(await testerPresent), '7E 00', 'and is answered on its own terms');
+  assert.equal(
+    toHex(pair.requests[1] as Uint8Array),
+    "3E 00",
+    "the TesterPresent is transmitted after the transaction it waited behind",
+  );
+  await pair.ecu.sendOnly(fromHex("7E 00"));
+  assert.equal(toHex(await testerPresent), "7E 00", "and is answered on its own terms");
 });
 
-test('a send the adapter never finishes is bounded', async () => {
+test("a send the adapter never finishes is bounded", async () => {
   // An unplugged USB cable leaves bus.send() pending forever. Untimed, that one
   // frame wedges the connection: the lock is never released, close() does not
   // clear it, and every later request parks behind it for the whole session.
@@ -491,23 +594,44 @@ test('a send the adapter never finishes is bounded', async () => {
     }
   }
   const bus = new BlackholeBus(wire);
-  const conn = new IsoTpConnection(bus, { txId: 0x7e0, rxId: 0x7e8, timing: { nBsMs: 500, nCrMs: 500, nAsMs: 5, sendTimeoutMs: 15, stMinMs: 0, stMinTxMs: 0, blockSize: 0, wftMax: 8, maxRetries: 0 }, sleep: async () => undefined });
+  const conn = new IsoTpConnection(bus, {
+    txId: 0x7e0,
+    rxId: 0x7e8,
+    timing: {
+      nBsMs: 500,
+      nCrMs: 500,
+      nAsMs: 5,
+      sendTimeoutMs: 15,
+      stMinMs: 0,
+      stMinTxMs: 0,
+      blockSize: 0,
+      wftMax: 8,
+      maxRetries: 0,
+    },
+    sleep: async () => undefined,
+  });
   conn.open();
-  const stuck = conn.request(fromHex('22 F1 90'), 5000);
+  const stuck = conn.request(fromHex("22 F1 90"), 5000);
   await assert.rejects(stuck, /did not accept the frame within 15 ms/);
   // The queue moved on instead of inheriting the stuck write: the next transaction
   // fails on its own, in its own time, and the connection stays usable.
   const started = Date.now();
-  await assert.rejects(conn.request(fromHex('22 F1 90'), 5000), /did not accept the frame within 15 ms/);
-  assert.ok(Date.now() - started < 500, 'the second request did not wait for the first one');
+  await assert.rejects(
+    conn.request(fromHex("22 F1 90"), 5000),
+    /did not accept the frame within 15 ms/,
+  );
+  assert.ok(Date.now() - started < 500, "the second request did not wait for the first one");
   // And a wedged connection can be torn down and reopened: close() released the queue,
   // so the next cycle stalls on its own adapter instead of hanging forever.
   conn.close();
   conn.open();
-  await assert.rejects(conn.request(fromHex('22 F1 90'), 5000), /did not accept the frame within 15 ms/);
+  await assert.rejects(
+    conn.request(fromHex("22 F1 90"), 5000),
+    /did not accept the frame within 15 ms/,
+  );
 });
 
-test('close() aborts a write that is already in flight and the queue behind it', async () => {
+test("close() aborts a write that is already in flight and the queue behind it", async () => {
   // The stall guard alone is not enough for a teardown: without an abort channel the
   // caller would sit and wait for the (here: five second) sendTimeoutMs after the
   // connection is gone, and a request queued behind it would run on a dead adapter.
@@ -518,39 +642,66 @@ test('close() aborts a write that is already in flight and the queue behind it',
     }
   }
   const bus = new BlackholeBus(wire);
-  const conn = new IsoTpConnection(bus, { txId: 0x7e0, rxId: 0x7e8, timing: { nBsMs: 5000, nCrMs: 5000, nAsMs: 5, sendTimeoutMs: 5000, stMinMs: 0, stMinTxMs: 0, blockSize: 0, wftMax: 8, maxRetries: 0 }, sleep: async () => undefined });
+  const conn = new IsoTpConnection(bus, {
+    txId: 0x7e0,
+    rxId: 0x7e8,
+    timing: {
+      nBsMs: 5000,
+      nCrMs: 5000,
+      nAsMs: 5,
+      sendTimeoutMs: 5000,
+      stMinMs: 0,
+      stMinTxMs: 0,
+      blockSize: 0,
+      wftMax: 8,
+      maxRetries: 0,
+    },
+    sleep: async () => undefined,
+  });
   conn.open();
-  const inFlight = conn.request(fromHex('22 F1 90'), 5000);
-  const queued = conn.request(fromHex('3E 00'), 5000);
+  const inFlight = conn.request(fromHex("22 F1 90"), 5000);
+  const queued = conn.request(fromHex("3E 00"), 5000);
   await tick();
   const started = Date.now();
   conn.close();
   await assert.rejects(inFlight, /closed while a frame was being written/);
   await assert.rejects(queued, /closed while this transaction was queued/);
-  assert.ok(Date.now() - started < 250, 'teardown released both immediately, not after the 5 s stall timeout');
+  assert.ok(
+    Date.now() - started < 250,
+    "teardown released both immediately, not after the 5 s stall timeout",
+  );
 });
 
-test('an unanswerable Flow Control is logged, not raised out of the receive path', async () => {
+test("an unanswerable Flow Control is logged, not raised out of the receive path", async () => {
   // A Flow Control in reply to a peer's First Frame is written from handleFrame, where
   // no caller awaits the promise: a rejection there is an unhandled rejection, i.e. the
   // process dies over one lost frame instead of the peer retrying after its N_Bs.
   const wire = createWire();
   class BrokenSendBus extends VirtualBus {
     override async send(): Promise<void> {
-      throw new Error('ENOBUFS: adapter write buffer full');
+      throw new Error("ENOBUFS: adapter write buffer full");
     }
   }
   const bus = new BrokenSendBus(wire);
-  const conn = new IsoTpConnection(bus, { txId: 0x7e8, rxId: 0x7e0, timing: { nBsMs: 5, nCrMs: 5, nAsMs: 1, sendTimeoutMs: 5 }, sleep: async () => undefined });
+  const conn = new IsoTpConnection(bus, {
+    txId: 0x7e8,
+    rxId: 0x7e0,
+    timing: { nBsMs: 5, nCrMs: 5, nAsMs: 1, sendTimeoutMs: 5 },
+    sleep: async () => undefined,
+  });
   conn.open();
-  bus.inject(0x7e0, fromHex('10 11 41 42 43 44 45 46')); // First Frame announcing 17 bytes
+  bus.inject(0x7e0, fromHex("10 11 41 42 43 44 45 46")); // First Frame announcing 17 bytes
   await tick();
-  assert.equal(conn.stats.txFlowControlFrames, 1, 'the Flow Control was attempted');
-  assert.equal(conn.stats.rxMultiFrameMessages, 0, 'and the reassembly was abandoned by timeout, not by an exception');
+  assert.equal(conn.stats.txFlowControlFrames, 1, "the Flow Control was attempted");
+  assert.equal(
+    conn.stats.rxMultiFrameMessages,
+    0,
+    "and the reassembly was abandoned by timeout, not by an exception",
+  );
   conn.close();
 });
 
-test('close() wakes a waiting receive() instead of leaving it hanging', async () => {
+test("close() wakes a waiting receive() instead of leaving it hanging", async () => {
   const wire = createWire();
   const bus = new VirtualBus(wire);
   const conn = new IsoTpConnection(bus, { txId: 0x7e0, rxId: 0x7e8, sleep: async () => undefined });
@@ -558,7 +709,11 @@ test('close() wakes a waiting receive() instead of leaving it hanging', async ()
   const waiting = conn.receive(5000);
   await tick();
   conn.close();
-  assert.equal(await waiting, null, 'a closed connection answers "no message" — the caller keeps its timeout');
+  assert.equal(
+    await waiting,
+    null,
+    'a closed connection answers "no message" — the caller keeps its timeout',
+  );
 });
 
 /* ------------------------------------------------------------------ *
@@ -566,16 +721,26 @@ test('close() wakes a waiting receive() instead of leaving it hanging', async ()
  *   decode(encode(payload)) === payload over generated messages      *
  * ------------------------------------------------------------------ */
 
-import { bytesEqual } from '@vdp/shared';
-import fc from 'fast-check';
-import { describe, expect } from 'vitest';
+import { bytesEqual } from "@vdp/shared";
+import fc from "fast-check";
+import { describe, expect } from "vitest";
 
-function createDirectionalPair(fd = false): { wire: ReturnType<typeof createWire>; sender: IsoTpConnection; receiver: IsoTpConnection } {
+function createDirectionalPair(fd = false): {
+  wire: ReturnType<typeof createWire>;
+  sender: IsoTpConnection;
+  receiver: IsoTpConnection;
+} {
   const wire = createWire();
   const senderBus = new VirtualBus(wire);
   const receiverBus = new VirtualBus(wire);
   if (fd) {
-    const fdCapabilities: AdapterCapabilities = { can: true, canFd: true, doip: false, isoTpOffload: false, channels: 1 };
+    const fdCapabilities: AdapterCapabilities = {
+      can: true,
+      canFd: true,
+      doip: false,
+      isoTpOffload: false,
+      channels: 1,
+    };
     senderBus.capabilities = fdCapabilities;
     receiverBus.capabilities = fdCapabilities;
   }
@@ -591,8 +756,8 @@ function createDirectionalPair(fd = false): { wire: ReturnType<typeof createWire
   return { wire, sender, receiver };
 }
 
-describe('ISO-TP round-trip properties', () => {
-  test('property: classic CAN delivers every payload 1..600 bytes unchanged', async () => {
+describe("ISO-TP round-trip properties", () => {
+  test("property: classic CAN delivers every payload 1..600 bytes unchanged", async () => {
     await fc.assert(
       fc.asyncProperty(fc.uint8Array({ minLength: 1, maxLength: 600 }), async (payload) => {
         const { sender, receiver } = createDirectionalPair();
@@ -608,7 +773,7 @@ describe('ISO-TP round-trip properties', () => {
     );
   });
 
-  test('property: the full 12-bit FF_DL domain (1..4095 bytes) round trips', async () => {
+  test("property: the full 12-bit FF_DL domain (1..4095 bytes) round trips", async () => {
     await fc.assert(
       fc.asyncProperty(
         fc.integer({ min: 1, max: 4095 }),
@@ -628,7 +793,7 @@ describe('ISO-TP round-trip properties', () => {
     );
   });
 
-  test('property: CAN-FD escape-form messages round trip with flow control pacing', async () => {
+  test("property: CAN-FD escape-form messages round trip with flow control pacing", async () => {
     await fc.assert(
       fc.asyncProperty(
         fc.uint8Array({ minLength: 8, maxLength: 900 }),
@@ -648,17 +813,20 @@ describe('ISO-TP round-trip properties', () => {
     );
   });
 
-  test('property: STmin encode/decode agrees inside the defined ranges', () => {
+  test("property: STmin encode/decode agrees inside the defined ranges", () => {
     fc.assert(
       fc.property(fc.nat({ max: 127 }), (ms) => {
         expect(parseStMin(ms)).toBe(ms);
       }),
     );
     fc.assert(
-      fc.property(fc.integer({ min: 0x100, max: 0xff0 }).filter((v) => v < 0xf1 || v > 0xf9), (reserved) => {
-        // reserved encodings must degrade to 127 ms
-        expect(parseStMin(reserved)).toBe(0x7f);
-      }),
+      fc.property(
+        fc.integer({ min: 0x100, max: 0xff0 }).filter((v) => v < 0xf1 || v > 0xf9),
+        (reserved) => {
+          // reserved encodings must degrade to 127 ms
+          expect(parseStMin(reserved)).toBe(0x7f);
+        },
+      ),
     );
     fc.assert(
       fc.property(fc.integer({ min: 0xf1, max: 0xf9 }), (micro) => {

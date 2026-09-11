@@ -6,8 +6,18 @@
  * Raw and decoded values are kept separate end to end (AGENTS 34.7).
  */
 
-import { DecodeError, ascii, readBitsBE, readFloat32BE, readIntBE, readUintBE, toHex, type Logger, createLogger } from '@vdp/shared';
-import type { SignalDefinition } from '@vdp/definitions';
+import type { SignalDefinition } from "@vdp/definitions";
+import {
+  DecodeError,
+  type Logger,
+  ascii,
+  createLogger,
+  readBitsBE,
+  readFloat32BE,
+  readIntBE,
+  readUintBE,
+  toHex,
+} from "@vdp/shared";
 
 export interface DecodedSignal {
   signalId: string;
@@ -39,7 +49,7 @@ export class SignalDecoder {
   private readonly strict: boolean;
 
   constructor(options: DecodeOptions = {}) {
-    this.log = (options.logger ?? createLogger('decoder', { level: 'WARN' })).child('decoder');
+    this.log = (options.logger ?? createLogger("decoder", { level: "WARN" })).child("decoder");
     this.strict = options.strict ?? false;
   }
 
@@ -80,40 +90,48 @@ export class SignalDecoder {
     }
 
     switch (signal.encoding) {
-      case 'ascii': {
+      case "ascii": {
         const text = ascii(slice);
         return this.finishText(signal, slice, text);
       }
-      case 'bool': {
+      case "bool": {
         const raw = (slice[0] ?? 0) !== 0;
         return this.finishBoolean(signal, slice, raw);
       }
-      case 'bitmask': {
+      case "bitmask": {
         const raw = signal.length === 1 ? (slice[0] ?? 0) : readUintBE(slice, 0, signal.length);
         return this.finish(signal, slice, raw, raw, { skipScaling: true });
       }
-      case 'bcd': {
-        let digits = '';
-        for (const byte of slice) digits += byte.toString(16).padStart(2, '0');
-        const raw = parseInt(digits, 10);
+      case "bcd": {
+        let digits = "";
+        for (const byte of slice) digits += byte.toString(16).padStart(2, "0");
+        const raw = Number.parseInt(digits, 10);
         if (!Number.isFinite(raw)) return this.fail(signal, `invalid BCD payload ${toHex(slice)}`);
         return this.finish(signal, slice, raw, raw);
       }
-      case 'float32': {
-        const raw = readFloat32BE(signal.endianness === 'little' ? reverse(slice) : slice, 0);
+      case "float32": {
+        const raw = readFloat32BE(signal.endianness === "little" ? reverse(slice) : slice, 0);
         return this.finish(signal, slice, raw, raw);
       }
-      case 'uint8':
-      case 'uint16':
-      case 'uint24':
-      case 'uint32': {
-        const raw = readUintBE(signal.endianness === 'little' ? reverse(slice) : slice, 0, signal.length);
+      case "uint8":
+      case "uint16":
+      case "uint24":
+      case "uint32": {
+        const raw = readUintBE(
+          signal.endianness === "little" ? reverse(slice) : slice,
+          0,
+          signal.length,
+        );
         return this.finish(signal, slice, raw, raw);
       }
-      case 'int8':
-      case 'int16':
-      case 'int32': {
-        const raw = readIntBE(signal.endianness === 'little' ? reverse(slice) : slice, 0, signal.length);
+      case "int8":
+      case "int16":
+      case "int32": {
+        const raw = readIntBE(
+          signal.endianness === "little" ? reverse(slice) : slice,
+          0,
+          signal.length,
+        );
         return this.finish(signal, slice, raw, raw);
       }
       default:
@@ -143,10 +161,11 @@ export class SignalDecoder {
     const value = options.skipScaling ? rawValue : round(physicalInput * scale + offset, scale);
     const enumText = signal.enumMapping ? signal.enumMapping[rawValue] : undefined;
     const outOfRange =
-      typeof value === 'number' &&
-      ((signal.min !== undefined && value < signal.min) || (signal.max !== undefined && value > signal.max));
+      typeof value === "number" &&
+      ((signal.min !== undefined && value < signal.min) ||
+        (signal.max !== undefined && value > signal.max));
     if (outOfRange) {
-      this.log.warn('decoded value outside declared range', {
+      this.log.warn("decoded value outside declared range", {
         signal: signal.id,
         value,
         min: signal.min,
@@ -199,8 +218,9 @@ export class SignalDecoder {
   }
 
   private fail(signal: SignalDefinition, reason: string): null {
-    if (this.strict) throw new DecodeError(`cannot decode ${signal.id}: ${reason}`, { signalId: signal.id });
-    this.log.error('decode failed', { signal: signal.id, reason });
+    if (this.strict)
+      throw new DecodeError(`cannot decode ${signal.id}: ${reason}`, { signalId: signal.id });
+    this.log.error("decode failed", { signal: signal.id, reason });
     return null;
   }
 }

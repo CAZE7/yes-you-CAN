@@ -7,10 +7,25 @@
  * changing the outward API.
  */
 
-import type { ClearDtcResult, DecodedSignal, EnrichedDtc, EcuSession, MeasurementSample, VehicleIdentity, VehicleSession } from '@vdp/core';
-import { describeVehicle } from '@vdp/core';
-import type { ClearDtcOutcome, DtcInfo, EcuSummary, MeasurementReading, SessionSummary, VehicleSummary } from '@vdp/domain';
-import { capabilitiesFromServices } from './capability-map.js';
+import type {
+  ClearDtcResult,
+  DecodedSignal,
+  EcuSession,
+  EnrichedDtc,
+  MeasurementSample,
+  VehicleIdentity,
+  VehicleSession,
+} from "@vdp/core";
+import { describeVehicle } from "@vdp/core";
+import type {
+  ClearDtcOutcome,
+  DtcInfo,
+  EcuSummary,
+  MeasurementReading,
+  SessionSummary,
+  VehicleSummary,
+} from "@vdp/domain";
+import { capabilitiesFromServices } from "./capability-map.js";
 
 export function toEcuSummary(record: EcuSession): EcuSummary {
   return {
@@ -29,7 +44,9 @@ export function toEcuSummary(record: EcuSession): EcuSummary {
   };
 }
 
-export function toVehicleSummary(identity: VehicleIdentity | undefined): VehicleSummary | undefined {
+export function toVehicleSummary(
+  identity: VehicleIdentity | undefined,
+): VehicleSummary | undefined {
   if (!identity) return undefined;
   return {
     ...(identity.vin !== undefined ? { vin: identity.vin } : {}),
@@ -58,7 +75,9 @@ export function toSessionSummary(session: VehicleSession): SessionSummary {
     dtcCount: counts.dtcCount,
     actionCount: counts.actionCount,
     measurementCount: counts.signalCount,
-    ...(data.definitionPackage !== undefined ? { definitionPackage: { ...data.definitionPackage } } : {}),
+    ...(data.definitionPackage !== undefined
+      ? { definitionPackage: { ...data.definitionPackage } }
+      : {}),
   };
 }
 
@@ -110,7 +129,10 @@ export function decodedToReading(decoded: DecodedSignal, timestamp: string): Mea
   };
 }
 
-export function toClearDtcOutcome(result: ClearDtcResult, warnings: readonly string[] = []): ClearDtcOutcome {
+export function toClearDtcOutcome(
+  result: ClearDtcResult,
+  warnings: readonly string[] = [],
+): ClearDtcOutcome {
   return {
     ok: result.cleared,
     verified: result.verified,
@@ -125,7 +147,11 @@ export function toClearDtcOutcome(result: ClearDtcResult, warnings: readonly str
   };
 }
 
-export function deniedClearOutcome(ecuId: string, ecuName: string, reasons: readonly string[]): ClearDtcOutcome {
+export function deniedClearOutcome(
+  ecuId: string,
+  ecuName: string,
+  reasons: readonly string[],
+): ClearDtcOutcome {
   return {
     ok: false,
     verified: false,

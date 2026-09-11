@@ -9,11 +9,17 @@
  * the synchronisation is state, not pixels.
  */
 
-import { Series, type SeriesOptions } from './series.js';
-import { TimeViewport } from './viewport.js';
-import type { Marker, Point, TimeRange, WindowStats } from './types.js';
+import { Series, type SeriesOptions } from "./series.js";
+import type { Marker, Point, TimeRange, WindowStats } from "./types.js";
+import { TimeViewport } from "./viewport.js";
 
-export type ChartGroupChange = 'viewport' | 'cursor' | 'selection' | 'series' | 'markers' | 'follow';
+export type ChartGroupChange =
+  | "viewport"
+  | "cursor"
+  | "selection"
+  | "series"
+  | "markers"
+  | "follow";
 
 export interface ChartGroupOptions {
   /** Initial visible span in ms. */
@@ -59,7 +65,9 @@ export class ChartGroup {
       ...(options.defaultSpanMs !== undefined ? { span: options.defaultSpanMs } : {}),
       ...(options.minSpanMs !== undefined ? { minSpan: options.minSpanMs } : {}),
       ...(options.maxSpanMs !== undefined ? { maxSpan: options.maxSpanMs } : {}),
-      ...(options.paddingFraction !== undefined ? { paddingFraction: options.paddingFraction } : {}),
+      ...(options.paddingFraction !== undefined
+        ? { paddingFraction: options.paddingFraction }
+        : {}),
     });
     this.followEnabled = options.follow ?? true;
     this.maxPoints = options.maxPointsPerSeries ?? 200_000;
@@ -83,7 +91,7 @@ export class ChartGroup {
     const series = new Series({ ...options, maxPoints: options.maxPoints ?? this.maxPoints });
     this.seriesMap.set(series.id, series);
     this.refreshBounds();
-    this.notify('series');
+    this.notify("series");
     return series;
   }
 
@@ -97,7 +105,7 @@ export class ChartGroup {
     const series = this.ensureSeries(id, options);
     series.pushMany(points);
     this.refreshBounds();
-    this.notify('series');
+    this.notify("series");
     return series;
   }
 
@@ -105,7 +113,7 @@ export class ChartGroup {
     const series = this.seriesMap.get(id);
     if (!series || series.visible === visible) return;
     series.visible = visible;
-    this.notify('series');
+    this.notify("series");
   }
 
   toggleVisible(id: string): void {
@@ -126,20 +134,20 @@ export class ChartGroup {
       const latest = this.dataBounds()?.to;
       if (latest !== undefined) this.viewport.followTo(latest);
     }
-    this.notify('follow');
+    this.notify("follow");
   }
 
   /** Time extent of all series combined — the recording length. */
   dataBounds(): TimeRange | null {
-    let from = Infinity;
-    let to = -Infinity;
+    let from = Number.POSITIVE_INFINITY;
+    let to = Number.NEGATIVE_INFINITY;
     for (const series of this.seriesMap.values()) {
       const extent = series.extent();
       if (!extent) continue;
       if (extent.from < from) from = extent.from;
       if (extent.to > to) to = extent.to;
     }
-    if (from === Infinity) return null;
+    if (from === Number.POSITIVE_INFINITY) return null;
     return { from, to };
   }
 
@@ -155,7 +163,7 @@ export class ChartGroup {
     // A manual zoom means the user wants to look at something — stop following.
     this.followEnabled = false;
     this.viewport.zoomAt(factor, anchorT);
-    this.notify('viewport');
+    this.notify("viewport");
   }
 
   zoomBy(factor: number): void {
@@ -165,20 +173,20 @@ export class ChartGroup {
   panByPixels(deltaPixels: number, widthPx: number): void {
     this.followEnabled = false;
     this.viewport.panByPixels(deltaPixels, widthPx);
-    this.notify('viewport');
+    this.notify("viewport");
   }
 
   panByMs(deltaMs: number): void {
     this.followEnabled = false;
     this.viewport.panByMs(deltaMs);
-    this.notify('viewport');
+    this.notify("viewport");
   }
 
   /** Show the whole recording. */
   fitAll(): void {
     this.followEnabled = false;
     this.viewport.fit();
-    this.notify('viewport');
+    this.notify("viewport");
   }
 
   /**
@@ -190,14 +198,14 @@ export class ChartGroup {
     this.followEnabled = false;
     const to = this.viewport.to;
     this.viewport.setRange(to - spanMs, to);
-    this.notify('viewport');
+    this.notify("viewport");
   }
 
   /** Jump the window to a span around `t` (used by marker click-to-jump). */
   showAround(t: number, spanMs = this.viewport.span): void {
     this.followEnabled = false;
     this.viewport.setRange(t - spanMs / 2, t + spanMs / 2);
-    this.notify('viewport');
+    this.notify("viewport");
   }
 
   // ----------------------------------------------------------------- cursor
@@ -209,7 +217,7 @@ export class ChartGroup {
   setCursor(t: number | null): void {
     if (this.cursorT === t) return;
     this.cursorT = t;
-    this.notify('cursor');
+    this.notify("cursor");
   }
 
   get selection(): TimeRange | null {
@@ -217,10 +225,12 @@ export class ChartGroup {
   }
 
   setSelection(range: TimeRange | null): void {
-    const normalized = range ? { from: Math.min(range.from, range.to), to: Math.max(range.from, range.to) } : null;
+    const normalized = range
+      ? { from: Math.min(range.from, range.to), to: Math.max(range.from, range.to) }
+      : null;
     if (normalized && normalized.to - normalized.from < 1e-9) return;
     this.selectionRange = normalized;
-    this.notify('selection');
+    this.notify("selection");
   }
 
   clearSelection(): void {
@@ -236,13 +246,13 @@ export class ChartGroup {
   addMarker(marker: Marker): Marker {
     this.markerList.push(marker);
     this.markerList.sort((a, b) => a.t - b.t);
-    this.notify('markers');
+    this.notify("markers");
     return marker;
   }
 
   setMarkers(markers: readonly Marker[]): void {
     this.markerList = [...markers].sort((a, b) => a.t - b.t);
-    this.notify('markers');
+    this.notify("markers");
   }
 
   markersInWindow(range: TimeRange = this.viewport.range): readonly Marker[] {
@@ -254,7 +264,16 @@ export class ChartGroup {
   /** Statistics of one series over an explicit or the visible window. */
   stats(seriesId: string, range?: TimeRange): WindowStats {
     const series = this.seriesMap.get(seriesId);
-    if (!series) return { count: 0, min: null, max: null, average: null, delta: null, first: null, last: null };
+    if (!series)
+      return {
+        count: 0,
+        min: null,
+        max: null,
+        average: null,
+        delta: null,
+        first: null,
+        last: null,
+      };
     return series.stats(range ?? this.viewport.range);
   }
 
@@ -302,7 +321,7 @@ export class ChartGroup {
     this.cursorT = null;
     this.selectionRange = null;
     this.viewport.bounds = null;
-    this.notify('series');
+    this.notify("series");
   }
 
   private notify(reason: ChartGroupChange): void {

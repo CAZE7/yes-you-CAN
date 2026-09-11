@@ -5,7 +5,7 @@
  * 4-byte payload length. Everything else is a payload type specific body.
  */
 
-import { ProtocolError, concatBytes, u16be, u32be, writeU16be, writeU32be } from '@vdp/shared';
+import { ProtocolError, concatBytes, u16be, u32be, writeU16be, writeU32be } from "@vdp/shared";
 
 export const DOIP_PROTOCOL_VERSION = 0x02;
 export const DOIP_UDP_PORT = 13400;
@@ -29,11 +29,11 @@ export const PAYLOAD_TYPE = {
 } as const;
 
 export const NACK_CODES: Record<number, string> = {
-  0x00: 'incorrectPatternFormat',
-  0x01: 'unknownPayloadType',
-  0x02: 'messageTooLarge',
-  0x03: 'outOfMemory',
-  0x04: 'invalidPayloadLength',
+  0: "incorrectPatternFormat",
+  1: "unknownPayloadType",
+  2: "messageTooLarge",
+  3: "outOfMemory",
+  4: "invalidPayloadLength",
 };
 
 export const ROUTING_ACTIVATION_TYPE = {
@@ -43,15 +43,15 @@ export const ROUTING_ACTIVATION_TYPE = {
 } as const;
 
 export const ROUTING_ACTIVATION_RESPONSE_CODES: Record<number, string> = {
-  0x00: 'unknownSourceAddress',
-  0x01: 'allConcurrentSocketsRegisteredAndActive',
-  0x02: 'sourceAddressAlreadyRegisteredOnAnotherSocket',
-  0x03: 'sourceAddressMissingAuthentication',
-  0x04: 'sourceAddressMissingRejectionConfirmation',
-  0x05: 'missingRoutingActivationConfirmation',
-  0x06: 'routingActivationDenied',
-  0x07: 'routingActivationTypeNotSupported',
-  0x10: 'success',
+  0: "unknownSourceAddress",
+  1: "allConcurrentSocketsRegisteredAndActive",
+  2: "sourceAddressAlreadyRegisteredOnAnotherSocket",
+  3: "sourceAddressMissingAuthentication",
+  4: "sourceAddressMissingRejectionConfirmation",
+  5: "missingRoutingActivationConfirmation",
+  6: "routingActivationDenied",
+  7: "routingActivationTypeNotSupported",
+  16: "success",
 };
 
 export interface DoipHeader {
@@ -64,18 +64,21 @@ export const DOIP_HEADER_LENGTH = 8;
 
 export function encodeHeader(payloadType: number, payloadLength: number): Uint8Array {
   return concatBytes([
-    new Uint8Array([DOIP_PROTOCOL_VERSION, (~DOIP_PROTOCOL_VERSION) & 0xff]),
+    new Uint8Array([DOIP_PROTOCOL_VERSION, ~DOIP_PROTOCOL_VERSION & 0xff]),
     writeU16be(payloadType),
     writeU32be(payloadLength),
   ]);
 }
 
 export function decodeHeader(data: Uint8Array): DoipHeader {
-  if (data.length < DOIP_HEADER_LENGTH) throw new ProtocolError(`DoIP header needs ${DOIP_HEADER_LENGTH} bytes, got ${data.length}`);
+  if (data.length < DOIP_HEADER_LENGTH)
+    throw new ProtocolError(`DoIP header needs ${DOIP_HEADER_LENGTH} bytes, got ${data.length}`);
   const version = data[0] ?? 0;
   const inverse = data[1] ?? 0;
   if ((version ^ inverse) !== 0xff) {
-    throw new ProtocolError(`DoIP header version check failed: version 0x${version.toString(16)}, inverse 0x${inverse.toString(16)}`);
+    throw new ProtocolError(
+      `DoIP header version check failed: version 0x${version.toString(16)}, inverse 0x${inverse.toString(16)}`,
+    );
   }
   return { version, payloadType: u16be(data, 2), payloadLength: u32be(data, 4) };
 }
@@ -103,10 +106,15 @@ export function encodeVehicleIdentificationRequest(vin?: string): Uint8Array {
   return bytes;
 }
 
-export function decodeVehicleIdentificationResponse(payload: Uint8Array): VehicleIdentificationResponse {
-  if (payload.length < 32) throw new ProtocolError(`vehicle identification response needs at least 32 bytes, got ${payload.length}`);
+export function decodeVehicleIdentificationResponse(
+  payload: Uint8Array,
+): VehicleIdentificationResponse {
+  if (payload.length < 32)
+    throw new ProtocolError(
+      `vehicle identification response needs at least 32 bytes, got ${payload.length}`,
+    );
   const vinBytes = payload.subarray(0, 17);
-  let vin = '';
+  let vin = "";
   for (const byte of vinBytes) vin += String.fromCharCode(byte);
   return {
     vin: vin.trim(),
@@ -118,7 +126,9 @@ export function decodeVehicleIdentificationResponse(payload: Uint8Array): Vehicl
   };
 }
 
-export function encodeVehicleIdentificationResponse(response: VehicleIdentificationResponse): Uint8Array {
+export function encodeVehicleIdentificationResponse(
+  response: VehicleIdentificationResponse,
+): Uint8Array {
   const vin = new Uint8Array(17);
   for (let i = 0; i < 17; i++) {
     const code = response.vin.charCodeAt(i);
@@ -134,8 +144,14 @@ export function encodeVehicleIdentificationResponse(response: VehicleIdentificat
   ]);
 }
 
-export function encodeRoutingActivationRequest(sourceAddress: number, activationType: number = ROUTING_ACTIVATION_TYPE.DEFAULT): Uint8Array {
-  return concatBytes([writeU16be(sourceAddress), new Uint8Array([activationType, 0x00, 0x00, 0x00, 0x00])]);
+export function encodeRoutingActivationRequest(
+  sourceAddress: number,
+  activationType: number = ROUTING_ACTIVATION_TYPE.DEFAULT,
+): Uint8Array {
+  return concatBytes([
+    writeU16be(sourceAddress),
+    new Uint8Array([activationType, 0x00, 0x00, 0x00, 0x00]),
+  ]);
 }
 
 export function decodeRoutingActivationResponse(payload: Uint8Array): {
@@ -149,7 +165,10 @@ export function decodeRoutingActivationResponse(payload: Uint8Array): {
   // bytes are a complete answer — and 5 is also the shortest thing real gateways send.
   // Reading the code at byte 8 instead made every denial look like success, because
   // the reserved bytes are zero and zero happens to be a valid refusal code.
-  if (payload.length < 5) throw new ProtocolError(`routing activation response needs at least 5 bytes, got ${payload.length}`);
+  if (payload.length < 5)
+    throw new ProtocolError(
+      `routing activation response needs at least 5 bytes, got ${payload.length}`,
+    );
   const code = payload[4] ?? 0;
   return {
     testerLogicalAddress: u16be(payload, 0),
@@ -163,21 +182,51 @@ export function decodeRoutingActivationResponse(payload: Uint8Array): {
  * Encode the routing activation response an entity sends back: addresses, response code
  * at byte 4, then the four reserved ISO bytes (written as zeros, as required).
  */
-export function encodeRoutingActivationResponse(testerAddress: number, entityAddress: number, code: number): Uint8Array {
-  return concatBytes([writeU16be(testerAddress), writeU16be(entityAddress), new Uint8Array([code, 0x00, 0x00, 0x00, 0x00])]);
+export function encodeRoutingActivationResponse(
+  testerAddress: number,
+  entityAddress: number,
+  code: number,
+): Uint8Array {
+  return concatBytes([
+    writeU16be(testerAddress),
+    writeU16be(entityAddress),
+    new Uint8Array([code, 0x00, 0x00, 0x00, 0x00]),
+  ]);
 }
 
 /** Diagnostic message: source address, target address, UDS payload (ISO 14229-5). */
-export function encodeDiagnosticMessage(sourceAddress: number, targetAddress: number, udsPayload: Uint8Array): Uint8Array {
+export function encodeDiagnosticMessage(
+  sourceAddress: number,
+  targetAddress: number,
+  udsPayload: Uint8Array,
+): Uint8Array {
   return concatBytes([writeU16be(sourceAddress), writeU16be(targetAddress), udsPayload]);
 }
 
-export function decodeDiagnosticMessage(payload: Uint8Array): { sourceAddress: number; targetAddress: number; udsPayload: Uint8Array } {
-  if (payload.length < 4) throw new ProtocolError(`diagnostic message needs at least 4 bytes, got ${payload.length}`);
-  return { sourceAddress: u16be(payload, 0), targetAddress: u16be(payload, 2), udsPayload: payload.subarray(4).slice() };
+export function decodeDiagnosticMessage(payload: Uint8Array): {
+  sourceAddress: number;
+  targetAddress: number;
+  udsPayload: Uint8Array;
+} {
+  if (payload.length < 4)
+    throw new ProtocolError(`diagnostic message needs at least 4 bytes, got ${payload.length}`);
+  return {
+    sourceAddress: u16be(payload, 0),
+    targetAddress: u16be(payload, 2),
+    udsPayload: payload.subarray(4).slice(),
+  };
 }
 
-export function decodeDiagnosticAck(payload: Uint8Array): { sourceAddress: number; targetAddress: number; ackCode: number } {
-  if (payload.length < 5) throw new ProtocolError(`diagnostic ack needs at least 5 bytes, got ${payload.length}`);
-  return { sourceAddress: u16be(payload, 0), targetAddress: u16be(payload, 2), ackCode: payload[4] ?? 0 };
+export function decodeDiagnosticAck(payload: Uint8Array): {
+  sourceAddress: number;
+  targetAddress: number;
+  ackCode: number;
+} {
+  if (payload.length < 5)
+    throw new ProtocolError(`diagnostic ack needs at least 5 bytes, got ${payload.length}`);
+  return {
+    sourceAddress: u16be(payload, 0),
+    targetAddress: u16be(payload, 2),
+    ackCode: payload[4] ?? 0,
+  };
 }

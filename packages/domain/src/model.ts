@@ -8,8 +8,8 @@
  * authoritative domain entities. Everything is referenced by id (§24).
  */
 
-import type { DiagnosticCapability } from './capabilities.js';
-import type { RiskLevel } from './risk.js';
+import type { DiagnosticCapability } from "./capabilities.js";
+import type { RiskLevel } from "./risk.js";
 
 export interface IdentificationEntry {
   label: string;
@@ -35,7 +35,7 @@ export interface EcuSummary {
   /** Definition package ECU id when one matched, e.g. "engine". */
   definitionEcuId?: string;
   name: string;
-  protocol: 'uds' | 'kwp2000' | 'unknown';
+  protocol: "uds" | "kwp2000" | "unknown";
   /** Physical request identifier (tester → ECU). */
   txId: number;
   /** Physical response identifier (ECU → tester). */

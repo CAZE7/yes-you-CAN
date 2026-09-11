@@ -17,14 +17,14 @@ export interface DtcStatusBits {
 }
 
 const STATUS_BIT_ORDER = [
-  'testFailed',
-  'testFailedThisOperationCycle',
-  'pendingDtc',
-  'confirmedDtc',
-  'testNotCompletedSinceLastClear',
-  'testFailedSinceLastClear',
-  'testNotCompletedThisOperationCycle',
-  'warningIndicatorRequested',
+  "testFailed",
+  "testFailedThisOperationCycle",
+  "pendingDtc",
+  "confirmedDtc",
+  "testNotCompletedSinceLastClear",
+  "testFailedSinceLastClear",
+  "testNotCompletedThisOperationCycle",
+  "warningIndicatorRequested",
 ] as const;
 
 export function decodeDtcStatus(status: number): DtcStatusBits {
@@ -50,16 +50,16 @@ export function encodeDtcStatus(bits: Partial<DtcStatusBits>): number {
 }
 
 /** Severity heuristic derived from the status bits (AGENTS 20 "Severity"). */
-export type DtcSeverity = 'info' | 'minor' | 'major' | 'critical';
+export type DtcSeverity = "info" | "minor" | "major" | "critical";
 
 export function dtcSeverity(bits: DtcStatusBits): DtcSeverity {
-  if (bits.testFailed) return 'critical';
-  if (bits.confirmedDtc) return 'major';
-  if (bits.pendingDtc) return 'minor';
-  return 'info';
+  if (bits.testFailed) return "critical";
+  if (bits.confirmedDtc) return "major";
+  if (bits.pendingDtc) return "minor";
+  return "info";
 }
 
-export const DTC_LETTERS = ['P', 'C', 'B', 'U'] as const;
+export const DTC_LETTERS = ["P", "C", "B", "U"] as const;
 
 export interface DecodedDtc {
   /** Human readable code, e.g. "P0420". */
@@ -78,16 +78,21 @@ export interface DecodedDtc {
  * Bits 7-6 of the first byte select the letter, bits 5-4 the first digit.
  */
 export function decodeDtc(highByte: number, lowByte: number, failureType = 0): DecodedDtc {
-  const letter = DTC_LETTERS[(highByte >> 6) & 0x03] ?? 'P';
-  const digits = [((highByte >> 4) & 0x03).toString(16), (highByte & 0x0f).toString(16), ((lowByte >> 4) & 0x0f).toString(16), (lowByte & 0x0f).toString(16)]
-    .join('')
+  const letter = DTC_LETTERS[(highByte >> 6) & 0x03] ?? "P";
+  const digits = [
+    ((highByte >> 4) & 0x03).toString(16),
+    (highByte & 0x0f).toString(16),
+    ((lowByte >> 4) & 0x0f).toString(16),
+    (lowByte & 0x0f).toString(16),
+  ]
+    .join("")
     .toUpperCase();
   return {
     code: `${letter}${digits}`,
     letter,
     digits,
-    failureType: failureType.toString(16).padStart(2, '0').toUpperCase(),
-    raw: `${highByte.toString(16).padStart(2, '0')}${lowByte.toString(16).padStart(2, '0')}${failureType.toString(16).padStart(2, '0')}`.toUpperCase(),
+    failureType: failureType.toString(16).padStart(2, "0").toUpperCase(),
+    raw: `${highByte.toString(16).padStart(2, "0")}${lowByte.toString(16).padStart(2, "0")}${failureType.toString(16).padStart(2, "0")}`.toUpperCase(),
   };
 }
 
@@ -97,13 +102,16 @@ export function decodeDtcBytes(raw: Uint8Array): DecodedDtc {
 
 /** Encode "P0420" back into [high, low]. Throws on malformed input. */
 export function encodeDtc(code: string): { high: number; low: number } {
-  const match = /^([PCBU])([0-3])([0-9A-Fa-f])([0-9A-Fa-f])([0-9A-Fa-f])$/.exec(code.trim().toUpperCase());
+  const match = /^([PCBU])([0-3])([0-9A-Fa-f])([0-9A-Fa-f])([0-9A-Fa-f])$/.exec(
+    code.trim().toUpperCase(),
+  );
   if (!match) throw new Error(`Invalid DTC code "${code}" (expected e.g. P0420)`);
   const letterIndex = DTC_LETTERS.indexOf(match[1] as (typeof DTC_LETTERS)[number]);
-  const firstDigit = parseInt(match[2] as string, 10);
-  const secondDigit = parseInt(match[3] as string, 16);
+  const firstDigit = Number.parseInt(match[2] as string, 10);
+  const secondDigit = Number.parseInt(match[3] as string, 16);
   const high = (letterIndex << 6) | (firstDigit << 4) | secondDigit;
-  const low = (parseInt(match[4] as string, 16) << 4) | parseInt(match[5] as string, 16);
+  const low =
+    (Number.parseInt(match[4] as string, 16) << 4) | Number.parseInt(match[5] as string, 16);
   return { high, low };
 }
 

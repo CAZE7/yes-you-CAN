@@ -6,8 +6,8 @@
  * mutate in place, so a failed migration cannot leave a half-converted session.
  */
 
-import { StorageError } from '@vdp/shared';
-import { SESSION_SCHEMA_VERSION, type VehicleSessionData } from '@vdp/core';
+import { SESSION_SCHEMA_VERSION, type VehicleSessionData } from "@vdp/core";
+import { StorageError } from "@vdp/shared";
 
 export interface Migration {
   /** Version this migration upgrades *from*. */
@@ -27,41 +27,53 @@ export class MigrationRegistry {
 
   register(migration: Migration): void {
     if (migration.toVersion !== migration.fromVersion + 1) {
-      throw new StorageError(`migration ${migration.fromVersion} → ${migration.toVersion} must advance exactly one version`, {
-        fromVersion: migration.fromVersion,
-        toVersion: migration.toVersion,
-      });
+      throw new StorageError(
+        `migration ${migration.fromVersion} → ${migration.toVersion} must advance exactly one version`,
+        {
+          fromVersion: migration.fromVersion,
+          toVersion: migration.toVersion,
+        },
+      );
     }
     this.migrations.push(migration);
     this.migrations.sort((a, b) => a.fromVersion - b.fromVersion);
   }
 
   get latestVersion(): number {
-    return this.migrations.length > 0 ? (this.migrations.at(-1)?.toVersion ?? SESSION_SCHEMA_VERSION) : SESSION_SCHEMA_VERSION;
+    return this.migrations.length > 0
+      ? (this.migrations.at(-1)?.toVersion ?? SESSION_SCHEMA_VERSION)
+      : SESSION_SCHEMA_VERSION;
   }
 
   /** Apply every migration between the stored version and the current one. */
   migrate(data: Record<string, unknown>): { data: VehicleSessionData; applied: string[] } {
     let current = data;
-    let version = typeof current['schemaVersion'] === 'number' ? (current['schemaVersion'] as number) : 0;
+    let version =
+      typeof current["schemaVersion"] === "number" ? (current["schemaVersion"] as number) : 0;
     const applied: string[] = [];
 
     while (version < SESSION_SCHEMA_VERSION) {
       const migration = this.migrations.find((m) => m.fromVersion === version);
       if (!migration) {
-        throw new StorageError(`no migration registered from schema version ${version} (current is ${SESSION_SCHEMA_VERSION})`, {
-          fromVersion: version,
-        });
+        throw new StorageError(
+          `no migration registered from schema version ${version} (current is ${SESSION_SCHEMA_VERSION})`,
+          {
+            fromVersion: version,
+          },
+        );
       }
       current = migration.up(current);
-      current['schemaVersion'] = migration.toVersion;
+      current["schemaVersion"] = migration.toVersion;
       applied.push(`${migration.fromVersion}→${migration.toVersion}: ${migration.description}`);
       version = migration.toVersion;
     }
     if (version > SESSION_SCHEMA_VERSION) {
-      throw new StorageError(`session was written by a newer version (schema ${version}, this build supports ${SESSION_SCHEMA_VERSION})`, {
-        fromVersion: version,
-      });
+      throw new StorageError(
+        `session was written by a newer version (schema ${version}, this build supports ${SESSION_SCHEMA_VERSION})`,
+        {
+          fromVersion: version,
+        },
+      );
     }
     return { data: current as unknown as VehicleSessionData, applied };
   }

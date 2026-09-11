@@ -15,23 +15,30 @@
  *   move             move the shared cursor
  */
 
-import { computeYRange, decimate, formatClock, formatValue, niceTicks, niceTimeTicks } from '/lib/index.js';
+import {
+  computeYRange,
+  decimate,
+  formatClock,
+  formatValue,
+  niceTicks,
+  niceTimeTicks,
+} from "/lib/index.js";
 
 const THEME = {
-  grid: 'rgba(141, 149, 167, 0.16)',
-  axisText: 'rgba(141, 149, 167, 0.85)',
-  hint: 'rgba(141, 149, 167, 0.55)',
-  line: '#4f9cf9',
-  cursor: 'rgba(230, 233, 240, 0.75)',
-  selection: 'rgba(79, 156, 249, 0.18)',
-  selectionEdge: 'rgba(79, 156, 249, 0.6)',
-  outOfRange: '#f9654f',
+  grid: "rgba(141, 149, 167, 0.16)",
+  axisText: "rgba(141, 149, 167, 0.85)",
+  hint: "rgba(141, 149, 167, 0.55)",
+  line: "#4f9cf9",
+  cursor: "rgba(230, 233, 240, 0.75)",
+  selection: "rgba(79, 156, 249, 0.18)",
+  selectionEdge: "rgba(79, 156, 249, 0.6)",
+  outOfRange: "#f9654f",
   marker: {
-    dtc: '#f9654f',
-    user: '#4ff9a9',
-    action: '#4f9cf9',
-    note: '#f9a94f',
-    anomaly: '#f9a94f',
+    dtc: "#f9654f",
+    user: "#4ff9a9",
+    action: "#4f9cf9",
+    note: "#f9a94f",
+    anomaly: "#f9a94f",
   },
 };
 
@@ -48,9 +55,9 @@ export class SignalChart {
     this.group = group;
     this.series = series;
     this.canvas = canvas;
-    this.ctx = canvas.getContext('2d');
+    this.ctx = canvas.getContext("2d");
     this.color = series.color ?? color;
-    this.decimationMode = 'minmax';
+    this.decimationMode = "minmax";
     this.plot = { left: PADDING.left, width: 1, top: PADDING.top, height: 1 };
     this.frame = 0;
     this.drag = null;
@@ -62,23 +69,23 @@ export class SignalChart {
     this.onDoubleClick = this.onDoubleClick.bind(this);
     this.onResize = this.onResize.bind(this);
 
-    canvas.addEventListener('wheel', this.onWheel, { passive: false });
-    canvas.addEventListener('pointerdown', this.onPointerDown);
-    canvas.addEventListener('pointermove', this.onPointerMove);
-    canvas.addEventListener('pointerup', this.onPointerUp);
-    canvas.addEventListener('pointercancel', this.onPointerUp);
-    canvas.addEventListener('dblclick', this.onDoubleClick);
-    window.addEventListener('resize', this.onResize);
+    canvas.addEventListener("wheel", this.onWheel, { passive: false });
+    canvas.addEventListener("pointerdown", this.onPointerDown);
+    canvas.addEventListener("pointermove", this.onPointerMove);
+    canvas.addEventListener("pointerup", this.onPointerUp);
+    canvas.addEventListener("pointercancel", this.onPointerUp);
+    canvas.addEventListener("dblclick", this.onDoubleClick);
+    window.addEventListener("resize", this.onResize);
   }
 
   destroy() {
-    this.canvas.removeEventListener('wheel', this.onWheel);
-    this.canvas.removeEventListener('pointerdown', this.onPointerDown);
-    this.canvas.removeEventListener('pointermove', this.onPointerMove);
-    this.canvas.removeEventListener('pointerup', this.onPointerUp);
-    this.canvas.removeEventListener('pointercancel', this.onPointerUp);
-    this.canvas.removeEventListener('dblclick', this.onDoubleClick);
-    window.removeEventListener('resize', this.onResize);
+    this.canvas.removeEventListener("wheel", this.onWheel);
+    this.canvas.removeEventListener("pointerdown", this.onPointerDown);
+    this.canvas.removeEventListener("pointermove", this.onPointerMove);
+    this.canvas.removeEventListener("pointerup", this.onPointerUp);
+    this.canvas.removeEventListener("pointercancel", this.onPointerUp);
+    this.canvas.removeEventListener("dblclick", this.onDoubleClick);
+    window.removeEventListener("resize", this.onResize);
     if (this.frame) cancelAnimationFrame(this.frame);
   }
 
@@ -113,7 +120,13 @@ export class SignalChart {
   onPointerDown(event) {
     this.canvas.setPointerCapture?.(event.pointerId);
     const t = this.timeAt(event);
-    this.drag = { startX: event.clientX, lastX: event.clientX, startT: t, select: event.shiftKey, moved: false };
+    this.drag = {
+      startX: event.clientX,
+      lastX: event.clientX,
+      startT: t,
+      select: event.shiftKey,
+      moved: false,
+    };
     if (event.shiftKey) this.group.setSelection({ from: t, to: t });
     else this.group.setCursor(t);
   }
@@ -166,8 +179,8 @@ export class SignalChart {
     const ctx = this.ctx;
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
     ctx.clearRect(0, 0, width, height);
-    ctx.font = '10px system-ui, -apple-system, sans-serif';
-    ctx.textBaseline = 'middle';
+    ctx.font = "10px system-ui, -apple-system, sans-serif";
+    ctx.textBaseline = "middle";
 
     const plotW = width - PADDING.left - PADDING.right;
     const plotH = height - PADDING.top - PADDING.bottom;
@@ -179,10 +192,14 @@ export class SignalChart {
     const points = this.series.slice(range);
     const yRange = computeYRange(
       points.map((point) => point.value),
-      { ...(this.series.min !== undefined ? { min: this.series.min } : {}), ...(this.series.max !== undefined ? { max: this.series.max } : {}) },
+      {
+        ...(this.series.min !== undefined ? { min: this.series.min } : {}),
+        ...(this.series.max !== undefined ? { max: this.series.max } : {}),
+      },
     );
     const x = (t) => PADDING.left + viewport.toX(t, plotW);
-    const y = (value) => PADDING.top + plotH - ((value - yRange.min) / (yRange.max - yRange.min)) * plotH;
+    const y = (value) =>
+      PADDING.top + plotH - ((value - yRange.min) / (yRange.max - yRange.min)) * plotH;
 
     this.drawGrid(ctx, PADDING, plotW, plotH, yRange, range, x);
     this.drawSelection(ctx, PADDING, plotH, x);
@@ -190,7 +207,7 @@ export class SignalChart {
 
     if (points.length === 0) {
       ctx.fillStyle = THEME.hint;
-      ctx.fillText('keine Daten im gewählten Zeitraum', PADDING.left + 8, PADDING.top + plotH / 2);
+      ctx.fillText("keine Daten im gewählten Zeitraum", PADDING.left + 8, PADDING.top + plotH / 2);
     } else {
       this.drawSeries(ctx, points, x, y, plotW);
     }
@@ -217,7 +234,7 @@ export class SignalChart {
       ctx.fillText(formatValue(tick), 6, y);
     }
 
-    ctx.textAlign = 'center';
+    ctx.textAlign = "center";
     for (const tick of niceTimeTicks(range.from, range.to, 6)) {
       const px = x(tick);
       if (px < padding.left || px > padding.left + plotW) continue;
@@ -227,7 +244,7 @@ export class SignalChart {
       ctx.stroke();
       ctx.fillText(formatClock(tick), px, padding.top + plotH + 10);
     }
-    ctx.textAlign = 'left';
+    ctx.textAlign = "left";
   }
 
   drawSelection(ctx, padding, plotH, x) {
@@ -249,7 +266,7 @@ export class SignalChart {
 
   drawMarkers(ctx, padding, plotH, range, x) {
     const markers = this.group.markersInWindow(range);
-    let lastLabelRight = -Infinity;
+    let lastLabelRight = Number.NEGATIVE_INFINITY;
     for (const marker of markers) {
       const px = x(marker.t);
       ctx.strokeStyle = THEME.marker[marker.kind] ?? THEME.marker.note;
