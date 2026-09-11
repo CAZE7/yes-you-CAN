@@ -119,7 +119,20 @@ export class IsoTpConnection {
     this.unsubscribe?.();
     this.unsubscribe = null;
     this.failPending(new IsoTpError('ISO-TP connection closed'));
+    // Everything waiting on the *send* side has to be released as well, or the
+    // serialisation queue keeps a transaction that can never finish: Flow Control
+    // waiters are settled with a close reason, the lock is handed an already resolved
+    // promise so the next open() starts clean, and a waiting receive() gets its answer
+    // instead of hanging for the rest of its timeout (§34.26).
+    for (const waiter of this.fcWaiters.splice(0)) waiter(null);
+    // A write that never returns is abandoned as well, and every transaction that was
+    // still queued behind it is invalidated instead of being run on a closed socket.
+    for (const abort of this.writeWaiters.splice(0)) abort(new IsoTpError('ISO-TP connection closed while a frame was being written'));
+    this.queueGeneration++;
+    this.fcQueue = [];
     this.rxState = null;
+    this.transmitLock = Promise.resolve();
+    for (const wake of this.receiveWaiters.splice(0)) wake();
   }
 
   onUnsolicited(listener: (payload: Uint8Array) => void): () => void {
@@ -130,25 +143,45 @@ export class IsoTpConnection {
   }
 
   /** Send + wait for the matching response. Requests are serialised (AGENTS 15: UDS forbids parallel requests per session). */
-  async request(payload: Uint8Array, timeoutMs?: number): Promise<Uint8Array> {
+  request(payload: Uint8Array, timeoutMs?: number): Promise<Uint8Array> {
     this.open();
+    return this.enqueue(() => this.requestExclusive(payload, timeoutMs));
+  }
+
+  /**
+   * Fire-and-forget transmission (functional addressing / suppress-positive-response).
+   * Also under the serialisation lock: two transmissions from one connection
+   * interleaving on the wire do not produce two messages but one corrupted pair, and
+   * cutting a frame into somebody else's First/Consecutive sequence is AGENTS 15
+   * broken at the transport level.
+   */
+  sendOnly(payload: Uint8Array): Promise<void> {
+    this.open();
+    return this.enqueue(() => this.transmit(payload));
+  }
+
+  /** Counts closes, so a transaction queued before one never runs after it. */
+  private queueGeneration = 0;
+
+  /** One transaction at a time per connection, whatever kind of transaction it is. */
+  private async enqueue<T>(task: () => Promise<T>): Promise<T> {
     const previous = this.transmitLock;
+    const generation = this.queueGeneration;
     let release!: () => void;
     this.transmitLock = new Promise<void>((resolve) => {
       release = resolve;
     });
-    await previous;
+    await previous.catch(() => undefined);
     try {
-      return await this.requestExclusive(payload, timeoutMs);
+      if (generation !== this.queueGeneration) {
+        throw new IsoTpError('ISO-TP connection was closed while this transaction was queued', { serialised: true, closed: true });
+      }
+      return await task();
     } finally {
+      // Also on the refusal above: a queue slot that is not released is the exact wedge
+      // this whole path exists to prevent, and everything behind it would inherit it.
       release();
     }
-  }
-
-  /** Fire-and-forget transmission (functional addressing / suppress-positive-response). */
-  async sendOnly(payload: Uint8Array): Promise<void> {
-    this.open();
-    await this.transmit(payload);
   }
 
   /**
@@ -156,21 +189,31 @@ export class IsoTpConnection {
    * Needed by the UDS layer for the ISO 14229-2 "Response Pending" (NRC 0x78) flow,
    * where the final response arrives as a separate message after P2*Client.
    */
-  async receive(timeoutMs?: number): Promise<Uint8Array | null> {
+  receive(timeoutMs?: number): Promise<Uint8Array | null> {
     this.open();
     const limit = timeoutMs ?? this.timing.nCrMs;
-    return new Promise<Uint8Array | null>((resolve) => {
-      const timer = setTimeout(() => {
-        off();
-        resolve(null);
-      }, limit);
-      const off = this.onUnsolicited((payload) => {
+    let wake: () => void = () => undefined;
+    // Listening starts at the moment of the call — a message that arrives one
+    // microtask later must not be missed — while the queue claim below keeps every
+    // other transaction off the wire until the answer has been delivered.
+    const awaited = new Promise<Uint8Array | null>((resolve) => {
+      const finish = (value: Uint8Array | null): void => {
         clearTimeout(timer);
+        const index = this.receiveWaiters.indexOf(wake);
+        if (index >= 0) this.receiveWaiters.splice(index, 1);
         off();
-        resolve(payload);
-      });
+        resolve(value);
+      };
+      const timer = setTimeout(() => finish(null), limit);
+      wake = () => finish(null);
+      this.receiveWaiters.push(wake);
+      const off = this.onUnsolicited((payload) => finish(payload));
     });
+    return this.enqueue(() => awaited);
   }
+
+  /** Receivers waiting for an unsolicited message; woken by close(). */
+  private readonly receiveWaiters: Array<() => void> = [];
 
   private async requestExclusive(payload: Uint8Array, timeoutMs?: number): Promise<Uint8Array> {
     const deadline = timeoutMs ?? this.timing.nBsMs + this.timing.nCrMs * 4;
@@ -201,6 +244,18 @@ export class IsoTpConnection {
 
   private awaitResponse(timeoutMs: number): Promise<Uint8Array> {
     return new Promise<Uint8Array>((resolve, reject) => {
+      if (this.pending) {
+        // One slot per connection is what makes a response reach the right requester.
+        // Filling it twice means something bypassed the serialisation lock — instead of
+        // silently orphaning the first request until its timeout, fail it and log it.
+        const stale = this.pending;
+        this.pending = null;
+        this.log.error('ISO-TP response slot reused while a request is still open — serialisation bypassed', {
+          txId: this.options.txId,
+          rxId: this.options.rxId,
+        });
+        stale.reject(new IsoTpError('another request took over while this one awaited its response', { serialised: false }));
+      }
       const id = ++this.pendingSequence;
       let settled = false;
       const timer = setTimeout(() => {
@@ -233,9 +288,20 @@ export class IsoTpConnection {
     this.pending = null;
   }
 
-  private async transmit(payload: Uint8Array): Promise<void> {
+  /**
+   * Largest payload a Single Frame can carry. On classic CAN the PCI nibble states the
+   * length, so 7 of 8 usable bytes; on CAN FD the escape form (PCI 0x00 plus an
+   * explicit length byte) reaches capacity - 2. Anything larger is a multi-frame
+   * message — choosing the frame by what fits, instead of demanding a Single Frame and
+   * throwing, is what keeps a 63-byte FD payload sendable at all.
+   */
+  private get singleFrameCapacity(): number {
     const capacity = this.framePayloadCapacity;
-    if (payload.length <= capacity - 1) {
+    return capacity > 8 ? capacity - 2 : Math.min(capacity - 1, 7);
+  }
+
+  private async transmit(payload: Uint8Array): Promise<void> {
+    if (payload.length <= this.singleFrameCapacity) {
       await this.sendSingleFrame(payload);
       return;
     }
@@ -303,7 +369,8 @@ export class IsoTpConnection {
     this.stats.txMultiFrameMessages++;
   }
 
-  private fcWaiters: Array<(fc: FlowControlFrame) => void> = [];
+  /** Waiters for the next Flow Control; a `null` frame settles them as "closed". */
+  private fcWaiters: Array<(fc: FlowControlFrame | null) => void> = [];
   /**
    * Flow Control frames can arrive before the sender has registered its waiter
    * (the bus may deliver synchronously), and several may pile up — e.g. repeated
@@ -341,8 +408,12 @@ export class IsoTpConnection {
         return;
       }
 
-      const waiter = (fc: FlowControlFrame): void => {
+      const waiter = (fc: FlowControlFrame | null): void => {
         clearTimeout(timer);
+        if (!fc) {
+          reject(new IsoTpError('ISO-TP connection closed while waiting for a Flow Control frame', { timeout: 'N_Bs' }));
+          return;
+        }
         settle(fc);
       };
       const timer = setTimeout(() => {
@@ -378,12 +449,38 @@ export class IsoTpConnection {
     });
     this.stats.txFrames++;
     this.log.raw('isotp tx', { id: hex(frame.id), data: frame.payload });
+    // Bound the hand-off to the adapter: a `send()` that never settles used to keep the
+    // serialisation lock — and every request behind it — pending for as long as the
+    // cable stayed half-dead (§34.26). A rejection is still reported the same way.
+    const limit = this.timing.sendTimeoutMs;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let detach: () => void = () => undefined;
     try {
-      await this.bus.send(frame);
+      const write = Promise.resolve(this.bus.send(frame));
+      // A stall timer *and* close() both have to reach a write that is already in
+      // flight: without this, a teardown leaves the caller waiting for the stall timeout.
+      const aborted = new Promise<never>((_, reject) => {
+        const waiter = (reason: Error): void => reject(reason);
+        this.writeWaiters.push(waiter);
+        detach = () => {
+          const index = this.writeWaiters.indexOf(waiter);
+          if (index >= 0) this.writeWaiters.splice(index, 1);
+        };
+        if (limit > 0) {
+          timer = setTimeout(() => reject(new TransportError(`ISO-TP transmit stalled: the adapter did not accept the frame within ${limit} ms`, { cause: 'N_As', txId: this.options.txId })), limit);
+        }
+      });
+      await Promise.race([write, aborted]);
     } catch (error) {
       throw new TransportError(`ISO-TP transmit failed: ${messageOf(error)}`, { cause: messageOf(error) });
+    } finally {
+      clearTimeout(timer);
+      detach();
     }
   }
+
+  /** In-flight adapter writes; close() rejects them so the queue cannot outlive the connection. */
+  private readonly writeWaiters: Array<(reason: Error) => void> = [];
 
   private handleFrame(frame: CanFrame): void {
     this.stats.rxFrames++;
@@ -485,7 +582,14 @@ export class IsoTpConnection {
   private async sendFlowControl(status: number): Promise<void> {
     const body = new Uint8Array([FRAME_TYPE.FLOW_CONTROL | status, this.timing.blockSize & 0xff, encodeStMin(this.timing.stMinMs)]);
     this.stats.txFlowControlFrames++;
-    await this.writeFrame(body);
+    try {
+      await this.writeFrame(body);
+    } catch (error) {
+      // This runs from the *receive* path, where nobody awaits us — a rejection would be
+      // an unhandled one, i.e. a dead process over a log line. The sender of the First
+      // Frame is not lost: its own N_Bs expires and it retries the whole message.
+      this.log.warn('Flow Control could not be written', { status, error: messageOf(error) });
+    }
   }
 
   private deliver(payload: Uint8Array): void {

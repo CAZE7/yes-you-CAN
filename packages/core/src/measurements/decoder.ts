@@ -50,15 +50,31 @@ export class SignalDecoder {
   decode(signal: SignalDefinition, payload: Uint8Array): DecodedSignal | null {
     const start = signal.byteOffset;
     const end = start + signal.length;
-    if (end > payload.length) {
+    // The window has to lie inside the payload, ordered, at *both* ends.
+    // `subarray` is forgiving about a negative start — it wraps around to the end
+    // of the buffer — and about a negative length, which turns `end` into a count
+    // from the end; either one would return bytes belonging to somebody else,
+    // which is worse than no answer at all (AGENTS 34.7: raw and decoded never
+    // mix, AGENTS 24: no invented data). Validated packages cannot produce such a
+    // window; live and imported definitions can.
+    if (start < 0 || end < start || end > payload.length) {
       return this.fail(
         signal,
-        `payload for DID 0x${signal.did.toString(16)} has ${payload.length} bytes but signal needs ${end}`,
+        `payload for DID 0x${signal.did.toString(16)} has ${payload.length} bytes but signal needs ${signal.length} at offset ${start}`,
       );
     }
     const slice = payload.subarray(start, end);
 
     if (signal.bitOffset !== undefined && signal.bitLength !== undefined) {
+      // A bit window is read zero-padded outside the container, so an oversized
+      // declaration would silently produce a plausible-looking low value.
+      const bitEnd = signal.bitOffset + signal.bitLength;
+      if (signal.bitOffset < 0 || signal.bitLength < 1 || bitEnd > slice.length * 8) {
+        return this.fail(
+          signal,
+          `bit window ${signal.bitOffset}..${bitEnd} does not fit the ${slice.length * 8} bit container of DID 0x${signal.did.toString(16)}`,
+        );
+      }
       const rawBits = readBitsBE(slice, signal.bitOffset, signal.bitLength);
       return this.finish(signal, slice, rawBits, rawBits);
     }
@@ -191,7 +207,10 @@ export class SignalDecoder {
 
 /** Round to the resolution implied by the scale so floats stay readable. */
 function round(value: number, scale: number): number {
-  const decimals = Math.max(0, Math.min(6, Math.ceil(-Math.log10(scale))));
+  // The magnitude of the scale says how many decimals are meaningful, its sign
+  // does not: an inverted sensor (scale -0.1) still wants one decimal, and a
+  // negative scale inside log10 would answer NaN and smear every value.
+  const decimals = Math.max(0, Math.min(6, Math.ceil(-Math.log10(Math.abs(scale)))));
   const factor = 10 ** decimals;
   return Math.round(value * factor) / factor;
 }

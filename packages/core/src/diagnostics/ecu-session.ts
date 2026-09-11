@@ -8,7 +8,7 @@
 import { UdsNegativeResponseError, createLogger, toHex, type Logger } from '@vdp/shared';
 import { IsoTpConnection } from '@vdp/transport-iso-tp';
 import { DID, NRC, SESSION, SID, UdsClient, nrcName, type DtcRecord } from '@vdp/protocols-uds';
-import { indexPackage, type DefinitionPackage, type DtcDefinition, type EcuDefinition, type SignalDefinition, type SignalIndex } from '@vdp/definitions';
+import { indexEcus, indexPackage, type DefinitionPackage, type DtcDefinition, type EcuDefinition, type SignalDefinition, type SignalIndex } from '@vdp/definitions';
 import { SignalDecoder, type DecodedSignal } from '../measurements/decoder.js';
 import { decodeFreezeFrame, type FreezeFrame } from '../dtc/freeze-frame.js';
 import { createEcuSession, type EcuIdentification, type EcuSession, type ServiceProbeResult } from '../session/session.js';
@@ -88,10 +88,13 @@ export class EcuDiagnosticSession {
     this.client = client;
     this.log = (options.logger ?? createLogger('ecu', { level: 'INFO' })).child('ecu');
     this.decoder = options.decoder ?? new SignalDecoder({ logger: this.log });
+    // The definition id comes from discovery and is resolved through the
+    // package's cached id index — scanning `pkg.ecus` per session would repeat
+    // the same linear search for every ECU that is attached (AGENTS 12/13).
     this.definitionEcu =
       options.definitionEcu ??
       (options.definitionPackage && options.definitionEcuId
-        ? options.definitionPackage.ecus.find((e) => e.id === options.definitionEcuId)
+        ? indexEcus(options.definitionPackage).get(options.definitionEcuId)
         : undefined);
 
     this.record = createEcuSession({

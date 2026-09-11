@@ -40,6 +40,29 @@ describe('summarizeSamples', () => {
     });
   });
 
+  test('a long recording is summarised, not crashed on', () => {
+    // `Math.min(...values)` hands every single sample to the call as one argument.
+    // Around 100 000 of them the spread exceeds the argument limit and throws
+    // RangeError, so a long drive could not be summarised at all — the exact list the
+    // recorder produces, and a crash is the one answer the core must not give (§9).
+    let lo = Infinity;
+    let hi = -Infinity;
+    const many = [];
+    for (let i = 0; i < 200_000; i++) {
+      const value = (i * 7919) % 1000 - 500;
+      lo = Math.min(lo, value);
+      hi = Math.max(hi, value);
+      many.push(sample('speed', value));
+    }
+    const stats = summarizeSamples('speed', many);
+    assert.equal(stats.samples, 200_000);
+    assert.equal(stats.min, lo);
+    assert.equal(stats.max, hi);
+    assert.equal(stats.delta, hi - lo);
+    assert.equal(stats.first, many[0]?.value);
+    assert.equal(stats.last, many[many.length - 1]?.value);
+  });
+
   test('non-numeric and non-finite samples are excluded from the math but not hidden', () => {
     const stats = summarizeSamples('mix', [
       sample('mix', 10),

@@ -150,7 +150,14 @@ export class UdsServer {
     } catch (error) {
       this.stats.negativeResponses++;
       this.log.error('server handler failed', { ecu: this.name, error: error instanceof Error ? error.message : String(error) });
-      await this.link.send(negativeResponse(serviceId, NRC.GENERAL_REJECT));
+      // Reporting the failure must not fail on its own: the transport is what broke
+      // here, and `start()` calls us as `void this.handle(payload)` — a rejection on
+      // this path would be an unhandled rejection, i.e. a dead process instead of a log.
+      try {
+        await this.link.send(negativeResponse(serviceId, NRC.GENERAL_REJECT));
+      } catch (sendError) {
+        this.log.warn('could not report the failure to the caller', { ecu: this.name, error: sendError instanceof Error ? sendError.message : String(sendError) });
+      }
     }
   }
 

@@ -137,8 +137,15 @@ export class EcuDiscovery {
       padding: true,
       sleep: this.sleep,
     });
-    await conn.sendOnly(new Uint8Array([serviceId, 0x80]));
-    this.log.debug('functional probe sent', { functionalId: `0x${functionalId.toString(16)}`, serviceId: `0x${serviceId.toString(16)}` });
+    // A probe that cannot be written must not abort the scan: the listener is armed
+    // already, and ECUs that answer a previous broadcast are worth collecting even
+    // when this adapter is unhappy (§34.26 — every probe path reports, none throws).
+    try {
+      await conn.sendOnly(new Uint8Array([serviceId, 0x80]));
+      this.log.debug('functional probe sent', { functionalId: `0x${functionalId.toString(16)}`, serviceId: `0x${serviceId.toString(16)}` });
+    } catch (error) {
+      this.log.warn('functional probe could not be sent', { functionalId: `0x${functionalId.toString(16)}`, error: error instanceof Error ? error.message : String(error) });
+    }
   }
 
   private async probeSingle(txId: number, serviceId: number, extended: boolean): Promise<void> {

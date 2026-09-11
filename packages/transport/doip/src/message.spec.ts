@@ -9,7 +9,7 @@
 import assert from 'node:assert/strict';
 import fc from 'fast-check';
 import { describe, expect, test } from 'vitest';
-import { ProtocolError } from '@vdp/shared';
+import { ProtocolError, fromHex, toHex } from '@vdp/shared';
 import {
   DOIP_HEADER_LENGTH,
   DOIP_PROTOCOL_VERSION,
@@ -118,10 +118,25 @@ describe('vehicle identification (ISO 13400-2 §9.2)', () => {
 });
 
 describe('routing activation (ISO 13400-2 §9.3)', () => {
+  test('the response layout is the one ISO 13400-2 writes on the wire', () => {
+    // A round trip through our own encoder cannot catch a shifted field, so the bytes
+    // are pinned from the standard: 0-1 tester, 2-3 entity, 4 response code, 5-8
+    // reserved. Getting byte 4 wrong reads a refusal (0x00-0x07) as `success`, because
+    // the reserved bytes are zero — this fixture is what keeps that from coming back.
+    assert.equal(toHex(encodeRoutingActivationResponse(0x0e80, 0x0001, 0x10)), '0E 80 00 01 10 00 00 00 00');
+    const decoded = decodeRoutingActivationResponse(fromHex('0E 80 00 01 10 11 22 33 44'));
+    assert.deepEqual(
+      { tester: decoded.testerLogicalAddress, entity: decoded.entityLogicalAddress, code: decoded.code },
+      { tester: 0x0e80, entity: 0x0001, code: 0x10 },
+    );
+  });
+
   test('property: response round trip preserves addresses and every code byte', () => {
     fc.assert(
       fc.property(addressArb, addressArb, fc.nat({ max: 255 }), (tester, entity, code) => {
-        const decoded = decodeRoutingActivationResponse(encodeRoutingActivationResponse(tester, entity, code));
+        const payload = encodeRoutingActivationResponse(tester, entity, code);
+        assert.equal(payload[4], code, 'the code sits at byte 4 whatever the addresses are');
+        const decoded = decodeRoutingActivationResponse(payload);
         assert.equal(decoded.testerLogicalAddress, tester);
         assert.equal(decoded.entityLogicalAddress, entity);
         assert.equal(decoded.code, code);
@@ -142,7 +157,8 @@ describe('routing activation (ISO 13400-2 §9.3)', () => {
   });
 
   test('short routing activation responses are rejected', () => {
-    assert.throws(() => decodeRoutingActivationResponse(new Uint8Array(8)), ProtocolError);
+    assert.throws(() => decodeRoutingActivationResponse(new Uint8Array(4)), ProtocolError);
+    assert.doesNotThrow(() => decodeRoutingActivationResponse(new Uint8Array(5)));
   });
 });
 

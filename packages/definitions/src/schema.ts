@@ -163,7 +163,28 @@ export interface SignalIndex {
   byDid: Map<string, Map<number, SignalDefinition[]>>;
 }
 
+/**
+ * Index caches (per package object).
+ *
+ * A definition package is plain data with a SemVer, and a recorded session
+ * references that exact version — so a package is never edited in place
+ * (AGENTS 13/24). That makes it safe to build the indexes once and reuse them:
+ * every session, decoder instance, live-data round and freeze frame would
+ * otherwise rebuild the same maps over and over (a package with a few hundred
+ * signals is re-indexed on every single `findSignal` call).
+ *
+ * A `WeakMap` keeps the cache from outliving the package, and the entry stores
+ * the length it was built for, so a package that *was* grown after all — an
+ * importer that registers signals incrementally — is re-indexed instead of being
+ * served from a stale view.
+ */
+const signalIndexCache = new WeakMap<DefinitionPackage, { signals: number; index: SignalIndex }>();
+const ecuIndexCache = new WeakMap<DefinitionPackage, { ecus: number; index: Map<string, EcuDefinition> }>();
+
 export function indexPackage(pkg: DefinitionPackage): SignalIndex {
+  const cached = signalIndexCache.get(pkg);
+  if (cached && cached.signals === pkg.signals.length) return cached.index;
+
   const byId = new Map<string, SignalDefinition>();
   const byEcu = new Map<string, SignalDefinition[]>();
   const byDid = new Map<string, Map<number, SignalDefinition[]>>();
@@ -181,5 +202,23 @@ export function indexPackage(pkg: DefinitionPackage): SignalIndex {
     list.push(signal);
     dids.set(signal.did, list);
   }
-  return { byId, byEcu, byDid };
+  const index: SignalIndex = { byId, byEcu, byDid };
+  signalIndexCache.set(pkg, { signals: pkg.signals.length, index });
+  return index;
+}
+
+/**
+ * ECU definitions of a package by id.
+ *
+ * Exists so a session that only knows the definition id (`"engine"`) resolves its
+ * ECU definition in one map lookup instead of scanning `pkg.ecus` on every
+ * attach (AGENTS 12/13).
+ */
+export function indexEcus(pkg: DefinitionPackage): Map<string, EcuDefinition> {
+  const cached = ecuIndexCache.get(pkg);
+  if (cached && cached.ecus === pkg.ecus.length) return cached.index;
+  const index = new Map<string, EcuDefinition>();
+  for (const ecu of pkg.ecus) index.set(ecu.id, ecu);
+  ecuIndexCache.set(pkg, { ecus: pkg.ecus.length, index });
+  return index;
 }

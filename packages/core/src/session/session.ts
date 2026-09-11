@@ -152,12 +152,48 @@ export function createEcuSession(options: {
   };
 }
 
+/** Derived lookup tables for the ECU list of a session. */
+interface EcuLookup {
+  /** Session id and definition package ECU id → record. */
+  byId: Map<string, EcuSession>;
+  /** `txId:rxId` → record, so re-attaching the same ECU updates instead of duplicating. */
+  byAddress: Map<string, EcuSession>;
+}
+
 /** Live view over a session, owned by the diagnostic engine. */
 export class VehicleSession {
   readonly data: VehicleSessionData;
 
+  /**
+   * Derived lookup index over `data.ecus`.
+   *
+   * `data.ecus` stays the single source of truth — it is what gets serialised,
+   * and the storage layer may hand back a session whose array was filled
+   * directly. So the index is not maintained on every mutation, it is rebuilt on
+   * demand and reused while the array is untouched, which turns the per-attach
+   * `upsertEcu` scan and the id lookups into map hits for a session with dozens
+   * of ECUs (AGENTS 10/12).
+   */
+  private ecuIndex: EcuLookup | null = null;
+  private indexedEcuCount = -1;
+
   constructor(data: VehicleSessionData) {
     this.data = data;
+  }
+
+  /** Id → record (session id and definition package id) plus address → record. */
+  private index(): EcuLookup {
+    if (this.ecuIndex === null || this.indexedEcuCount !== this.data.ecus.length) {
+      const lookup: EcuLookup = { byId: new Map(), byAddress: new Map() };
+      for (const ecu of this.data.ecus) {
+        lookup.byId.set(ecu.id, ecu);
+        if (ecu.definitionEcuId) lookup.byId.set(ecu.definitionEcuId, ecu);
+        lookup.byAddress.set(`${ecu.txId}:${ecu.rxId}`, ecu);
+      }
+      this.ecuIndex = lookup;
+      this.indexedEcuCount = this.data.ecus.length;
+    }
+    return this.ecuIndex;
   }
 
   get id(): string {
@@ -169,9 +205,15 @@ export class VehicleSession {
   }
 
   upsertEcu(ecu: EcuSession): EcuSession {
-    const existing = this.data.ecus.find((e) => e.id === ecu.id || (e.txId === ecu.txId && e.rxId === ecu.rxId));
+    const lookup = this.index();
+    // Same preference as the lookup order of `findEcu`: a record that is already
+    // known under this id is updated, otherwise the ECU on the same address is.
+    const existing = lookup.byId.get(ecu.id) ?? lookup.byAddress.get(`${ecu.txId}:${ecu.rxId}`);
     if (existing) {
       Object.assign(existing, ecu);
+      // Identity fields may have moved (an upsert under a new session id for a
+      // known address), so the derived view is dropped and rebuilt on next use.
+      this.ecuIndex = null;
       return existing;
     }
     this.data.ecus.push(ecu);
@@ -179,7 +221,7 @@ export class VehicleSession {
   }
 
   findEcu(id: string): EcuSession | undefined {
-    return this.data.ecus.find((e) => e.id === id || e.definitionEcuId === id);
+    return this.index().byId.get(id);
   }
 
   recordAction(action: Omit<DiagnosticAction, 'id' | 'timestamp'> & { timestamp?: string }): DiagnosticAction {

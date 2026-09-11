@@ -10,7 +10,7 @@
 
 import { toHex } from '@vdp/shared';
 import type { CanFrame } from '@vdp/transport-can';
-import { indexPackage, type DefinitionPackage, type EcuDefinition, type SignalDefinition } from '@vdp/definitions';
+import { indexPackage, type DefinitionPackage, type EcuDefinition, type SignalDefinition, type SignalIndex } from '@vdp/definitions';
 import { NEGATIVE_RESPONSE_SID, POSITIVE_RESPONSE_OFFSET, serviceName } from '@vdp/protocols-uds';
 
 export interface TraceEntry {
@@ -198,21 +198,53 @@ export function decodeUdsRequest(payload: Uint8Array): { serviceId: number; did?
 /** Analyse a trace: group identifiers, rebuild ISO-TP messages, decode what definitions allow. */
 export function analyzeTrace(entries: readonly TraceEntry[], options: AnalyzerOptions = {}): TraceAnalysis {
   const pkg = options.definitions;
-  const signalIndex = pkg ? indexPackage(pkg) : undefined;
+  const ecusByAddress = indexEcuAddresses(pkg);
+  const findings: TraceFinding[] = [];
+
+  const ids = summarizeIdentifiers(entries, ecusByAddress, findings, options.highRateFramesPerSecond ?? 200);
+  const pairs = options.pairs ?? derivePairs(pkg, entries);
+  const messages = rebuildIsoTpMessages(entries, pairs, findings);
+  const decodedSignals = decodeMessages(messages, { ecusByAddress, ...(pkg ? { signalIndex: indexPackage(pkg) } : {}) }, findings);
+
+  return {
+    frames: entries.length,
+    durationMs: traceDurationMs(entries),
+    ids: ids.sort((a, b) => b.frames - a.frames),
+    messages,
+    findings,
+    decodedSignals,
+  };
+}
+
+/** Both identifiers of every defined ECU, so a frame is recognised in either direction. */
+export function indexEcuAddresses(pkg: DefinitionPackage | undefined): Map<number, EcuDefinition> {
   const ecusByAddress = new Map<number, EcuDefinition>();
   for (const ecu of pkg?.ecus ?? []) {
     ecusByAddress.set(ecu.address.rxId, ecu);
     ecusByAddress.set(ecu.address.txId, ecu);
   }
+  return ecusByAddress;
+}
 
-  const findings: TraceFinding[] = [];
-  const idMap = new Map<number, CanIdSummary>();
-  const timestamps: number[] = [];
+/**
+ * Per identifier summary: frame count, DLC distribution, period and the
+ * `unknown-id` findings for identifiers no definition package explains.
+ *
+ * Split out of `analyzeTrace` because the bus-load question needs the finished
+ * summaries, not the raw frames — and a periodic identifier is exactly what an
+ * operator asks about first (AGENTS 15).
+ */
+export function summarizeIdentifiers(
+  entries: readonly TraceEntry[],
+  ecusByAddress: ReadonlyMap<number, EcuDefinition>,
+  findings: TraceFinding[],
+  highRateFramesPerSecond = 200,
+): CanIdSummary[] {
+  const grouped = new Map<number, CanIdSummary>();
 
   for (const entry of entries) {
-    timestamps.push(entry.t);
     const knownEcu = ecusByAddress.get(entry.frame.id);
-    const existing = idMap.get(entry.frame.id);
+    const existing = grouped.get(entry.frame.id);
     if (existing) {
       existing.frames++;
       existing.lastT = entry.t;
@@ -220,7 +252,7 @@ export function analyzeTrace(entries: readonly TraceEntry[], options: AnalyzerOp
       existing.dlcDistribution[key] = (existing.dlcDistribution[key] ?? 0) + 1;
       continue;
     }
-    idMap.set(entry.frame.id, {
+    grouped.set(entry.frame.id, {
       canId: entry.frame.id,
       extended: entry.frame.extended,
       frames: 1,
@@ -242,16 +274,19 @@ export function analyzeTrace(entries: readonly TraceEntry[], options: AnalyzerOp
     }
   }
 
-  const durationMs = timestamps.length > 1 ? (timestamps.at(-1) ?? 0) - (timestamps[0] ?? 0) : 0;
-  const ids = Array.from(idMap.values()).map((summary) => ({
+  const summaries = Array.from(grouped.values(), (summary) => ({
     ...summary,
     periodMs: summary.frames > 1 ? Number(((summary.lastT - summary.firstT) / (summary.frames - 1)).toFixed(1)) : null,
   }));
+  flagHighRate(summaries, findings, highRateFramesPerSecond);
+  return summaries;
+}
 
-  const highRate = options.highRateFramesPerSecond ?? 200;
+/** Bus load question: an identifier that floods the bus is a finding of its own. */
+function flagHighRate(ids: readonly CanIdSummary[], findings: TraceFinding[], highRateFramesPerSecond: number): void {
   for (const summary of ids) {
     const seconds = (summary.lastT - summary.firstT) / 1000;
-    if (seconds > 0 && summary.frames / seconds > highRate) {
+    if (seconds > 0 && summary.frames / seconds > highRateFramesPerSecond) {
       findings.push({
         kind: 'high-rate',
         severity: 'info',
@@ -260,14 +295,37 @@ export function analyzeTrace(entries: readonly TraceEntry[], options: AnalyzerOp
       });
     }
   }
+}
 
-  const pairs = options.pairs ?? derivePairs(pkg, entries);
-  const messages = rebuildIsoTpMessages(entries, pairs, findings);
+/** Elapsed time between the first and the last recorded frame. */
+export function traceDurationMs(entries: readonly TraceEntry[]): number {
+  if (entries.length < 2) return 0;
+  return (entries.at(-1)?.t ?? 0) - (entries[0]?.t ?? 0);
+}
+
+/** What a message can be decoded against: the ECU it came from and its signals. */
+export interface MessageDecodeContext {
+  ecusByAddress: ReadonlyMap<number, EcuDefinition>;
+  signalIndex?: SignalIndex;
+}
+
+/**
+ * Annotate every rebuilt ISO-TP message with its UDS meaning and collect the
+ * decoded signal values.
+ *
+ * Requests and responses never share a decode path: reading a request payload as
+ * a response would report a positive answer that never happened (AGENTS 18 —
+ * raw stays raw). Anything that cannot be decoded becomes a finding instead of a
+ * guess, so the report distinguishes "not understood" from "understood and fine".
+ */
+export function decodeMessages(
+  messages: IsoTpMessageSummary[],
+  context: MessageDecodeContext,
+  findings: TraceFinding[],
+): TraceAnalysis['decodedSignals'] {
   const decodedSignals: TraceAnalysis['decodedSignals'] = [];
 
   for (const message of messages) {
-    // A request payload is not a response: decoding it as one would report a
-    // positive response that never happened (AGENTS 18 — raw vs decoded).
     if (message.direction === 'request') {
       const request = decodeUdsRequest(message.bytes);
       message.decoded = request ? `REQUEST ${serviceName(request.serviceId)}${request.did !== undefined ? ` 0x${request.did.toString(16).toUpperCase().padStart(4, '0')}` : ''}` : undefined;
@@ -290,9 +348,9 @@ export function analyzeTrace(entries: readonly TraceEntry[], options: AnalyzerOp
       : `NEGATIVE ${serviceName(response.serviceId)} (NRC 0x${(response.nrc ?? 0).toString(16).padStart(2, '0')})`;
     if (response.did !== undefined) message.did = response.did;
 
-    if (response.positive && response.serviceId === 0x22 && response.did !== undefined && signalIndex && response.data) {
-      const ecu = ecusByAddress.get(message.sourceId);
-      const candidates = ecu ? signalIndex.byDid.get(ecu.id)?.get(response.did) ?? [] : [];
+    if (response.positive && response.serviceId === 0x22 && response.did !== undefined && context.signalIndex && response.data) {
+      const ecu = context.ecusByAddress.get(message.sourceId);
+      const candidates = ecu ? context.signalIndex.byDid.get(ecu.id)?.get(response.did) ?? [] : [];
       for (const signal of candidates) {
         const decoded = decodeSignalAt(signal, response.data);
         if (decoded) {
@@ -310,8 +368,7 @@ export function analyzeTrace(entries: readonly TraceEntry[], options: AnalyzerOp
       });
     }
   }
-
-  return { frames: entries.length, durationMs, ids: ids.sort((a, b) => b.frames - a.frames), messages, findings, decodedSignals };
+  return decodedSignals;
 }
 
 /** Rebuild ISO-TP messages from a trace: single frames plus first/consecutive frame runs. */

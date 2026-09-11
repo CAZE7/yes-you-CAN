@@ -12,6 +12,18 @@ export interface CanableOptions {
   stream: ByteStream;
   channel?: string;
   bitrate?: keyof typeof BITRATES;
+  /**
+   * Budget for the device answer to a configuration command (`S6`, `O`, ...).
+   *
+   * Labelled honestly because it matters on real hardware: slcan confirms every
+   * command with an empty line and rejects it with BEL. This adapter writes the command
+   * and counts a BEL when one arrives, but it does not *wait* for the confirmation —
+   * so open() returns once the bytes are handed to the serial layer, not once the
+   * CANable has accepted the bitrate. `commandTimeoutMs` is the budget for that wait
+   * and is not read yet; adding it changes when open() fails against firmware that
+   * stays silent, which is why it needs a hardware run before it goes in (see the
+   * audit finding on adapter command serialisation).
+   */
   commandTimeoutMs?: number;
   logger?: Logger;
   name?: string;
@@ -33,6 +45,7 @@ export class CanableAdapter implements CanBus {
 
   private readonly log: Logger;
   private readonly channel: string;
+  /** Documented at {@link CanableOptions.commandTimeoutMs}: a budget nothing spends yet. */
   private readonly commandTimeoutMs: number;
   private readonly bitrate: keyof typeof BITRATES;
   private listeners: Array<{ listener: FrameListener; filters?: readonly CanFilter[] }> = [];

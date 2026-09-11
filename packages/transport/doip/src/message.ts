@@ -144,8 +144,13 @@ export function decodeRoutingActivationResponse(payload: Uint8Array): {
   code: number;
   codeName: string;
 } {
-  if (payload.length < 9) throw new ProtocolError(`routing activation response needs 9 bytes, got ${payload.length}`);
-  const code = payload[8] ?? 0;
+  // ISO 13400-2 §9.3.2.2 Table: tester address (0-1), entity address (2-3), response
+  // code (4), reserved (5-8). The reserved tail is what an entity "may" append, so 5
+  // bytes are a complete answer — and 5 is also the shortest thing real gateways send.
+  // Reading the code at byte 8 instead made every denial look like success, because
+  // the reserved bytes are zero and zero happens to be a valid refusal code.
+  if (payload.length < 5) throw new ProtocolError(`routing activation response needs at least 5 bytes, got ${payload.length}`);
+  const code = payload[4] ?? 0;
   return {
     testerLogicalAddress: u16be(payload, 0),
     entityLogicalAddress: u16be(payload, 2),
@@ -154,8 +159,12 @@ export function decodeRoutingActivationResponse(payload: Uint8Array): {
   };
 }
 
+/**
+ * Encode the routing activation response an entity sends back: addresses, response code
+ * at byte 4, then the four reserved ISO bytes (written as zeros, as required).
+ */
 export function encodeRoutingActivationResponse(testerAddress: number, entityAddress: number, code: number): Uint8Array {
-  return concatBytes([writeU16be(testerAddress), writeU16be(entityAddress), new Uint8Array([0x00, 0x00, 0x00, 0x00, code])]);
+  return concatBytes([writeU16be(testerAddress), writeU16be(entityAddress), new Uint8Array([code, 0x00, 0x00, 0x00, 0x00])]);
 }
 
 /** Diagnostic message: source address, target address, UDS payload (ISO 14229-5). */

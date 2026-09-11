@@ -8,6 +8,7 @@
  * Optional trailing 3-digit timestamp in milliseconds when "Z1" is enabled.
  */
 
+import { TransportError } from '@vdp/shared';
 import type { CanFrame } from '@vdp/transport-can';
 
 export const BITRATES: Record<string, string> = {
@@ -27,11 +28,14 @@ export const SLCAN_COMMANDS = {
 /**
  * Parse a frame line deterministically.
  *
- * slcan distinguishes standard (3 hex digit) from extended (8 hex digit)
- * identifiers by length alone, so both are tried and each candidate has to
- * validate completely: identifier, DLC, payload length and the optional 3-digit
- * timestamp suffix. A regex alternation would backtrack data bytes into the
- * timestamp group and silently corrupt payloads.
+ * The leading character states the identifier width — `t` is 11-bit (3 hex digits),
+ * `T` is 29-bit (8) — and that is the only reading that is ever attempted. Guessing by
+ * digit count instead is what corrupted standard frames: for `t7E84410C0BB8`
+ * (id 0x7E8, DLC 4, four data bytes) the 8-digit reading wins, and the line comes out
+ * as an *extended* frame with an empty payload and "0BB8" for a timestamp. The
+ * remaining fields are validated completely — identifier, DLC, payload length and the
+ * optional 3-digit timestamp suffix — because a regex alternation would backtrack data
+ * bytes into the timestamp group and silently corrupt payloads.
  */
 export function parseSlcanLine(line: string, channel: string, now = Date.now()): CanFrame | null {
   const trimmed = line.trim();
@@ -39,18 +43,15 @@ export function parseSlcanLine(line: string, channel: string, now = Date.now()):
   if (!type || !'tTrR'.includes(type)) return null;
   if (type === 'r' || type === 'R') return null; // remote frames carry no diagnostic payload
   const rest = trimmed.slice(1);
+  const idLength = type === 't' ? 3 : 8;
 
-  for (const idLength of [8, 3] as const) {
-    const idHex = rest.slice(0, idLength);
-    if (idHex.length !== idLength) continue;
-    if (!/^[0-9A-Fa-f]+$/.test(idHex)) continue;
-    const frame = parseWithId(idHex, rest.slice(idLength), channel, now);
-    if (frame) return frame;
-  }
-  return null;
+  const idHex = rest.slice(0, idLength);
+  if (idHex.length !== idLength) return null;
+  if (!/^[0-9A-Fa-f]+$/.test(idHex)) return null;
+  return parseWithId(idHex, rest.slice(idLength), channel, now, type === 'T');
 }
 
-function parseWithId(idHex: string, rest: string, channel: string, now: number): CanFrame | null {
+function parseWithId(idHex: string, rest: string, channel: string, now: number, extended: boolean): CanFrame | null {
   const dlcChar = rest[0];
   if (!dlcChar || !/^[0-9A-Fa-f]$/.test(dlcChar)) return null;
   const dlc = parseInt(dlcChar, 16);
@@ -68,7 +69,7 @@ function parseWithId(idHex: string, rest: string, channel: string, now: number):
   return {
     timestamp: suffix.length === 3 ? now - parseInt(suffix, 16) : now,
     id: parseInt(idHex, 16),
-    extended: idHex.length === 8,
+    extended,
     fd: false,
     dlc,
     payload,
@@ -77,12 +78,23 @@ function parseWithId(idHex: string, rest: string, channel: string, now: number):
   };
 }
 
+/**
+ * Encode a frame as one slcan line.
+ *
+ * slcan has no CAN-FD variant and no way to express "more bytes than fit here": cutting
+ * the payload to eight would put a valid-looking, truncated frame on the bus, which is
+ * the one mistake nothing downstream can detect. So an oversized frame is refused here,
+ * exactly as `CanableAdapter.send` refuses `fd` frames.
+ */
 export function formatSlcanFrame(frame: CanFrame): string {
+  if (frame.payload.length > 8) {
+    throw new TransportError(`slcan carries at most 8 data bytes, got ${frame.payload.length}`, { id: frame.id, requested: frame.payload.length });
+  }
   const prefix = frame.extended ? 'T' : 't';
   const id = (frame.extended ? frame.id.toString(16).padStart(8, '0') : frame.id.toString(16).padStart(3, '0')).toUpperCase();
-  const dlc = Math.min(frame.payload.length, 8).toString(16);
+  const dlc = frame.payload.length.toString(16);
   // Upper case, consistent with the other serial adapters and the traces we parse.
-  const data = Array.from(frame.payload.slice(0, 8))
+  const data = Array.from(frame.payload)
     .map((byte) => byte.toString(16).padStart(2, '0'))
     .join('')
     .toUpperCase();
