@@ -145,7 +145,8 @@ export function niceTimeTicks(from: number, to: number, target = 6): number[] {
   const first = Math.ceil(from / step - 1e-9) * step;
   const ticks: number[] = [];
   for (let value = first; value <= to + step * 1e-9; value += step) {
-    ticks.push(roundTo(value, 6));
+    // Same near-zero snap as niceTicks — a "-0" label on a time axis is noise.
+    ticks.push(Math.abs(value) < step * 1e-9 ? 0 : roundTo(value, 6));
     if (ticks.length > 500) break;
   }
   return ticks;
