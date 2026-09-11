@@ -65,6 +65,13 @@ export class VirtualVehicle {
   /** Tester-side bus — hand this to the diagnostic engine. */
   readonly testerBus: VirtualCanBus;
   readonly ecus: VirtualEcu[] = [];
+  /**
+   * `ecus` by definition id. `ecu(ecuId)` is called for every injected fault and
+   * for every DID write of every test, and a fresh ECU list is only ever built in
+   * the constructor — so the id lookup is a map hit here instead of a scan of the
+   * array (AGENTS 32).
+   */
+  private readonly ecusById = new Map<string, VirtualEcu>();
 
   private readonly log: Logger;
   private readonly definitions: DefinitionPackage;
@@ -88,31 +95,48 @@ export class VirtualVehicle {
     this.pendingResponseServices = options.pendingResponseServices ?? [];
     this.network = options.network ?? createVirtualCanNetwork(options.networkOptions ?? {});
     this.testerBus = this.network.createBus('tester');
-    for (const ecu of this.definitions.ecus) this.ecus.push(this.createEcu(ecu));
+    for (const definition of this.definitions.ecus) {
+      const ecu = this.createEcu(definition);
+      this.ecus.push(ecu);
+      this.ecusById.set(definition.id, ecu);
+    }
   }
 
   get definitionPackage(): DefinitionPackage {
     return this.definitions;
   }
 
-  /** Open every ECU bus plus the tester bus. */
+  /**
+   * Open every ECU bus plus the tester bus.
+   *
+   * The buses are independent nodes of one virtual network, so each open is
+   * started in the same pass and awaited together: awaiting inside the loop used
+   * to serialise the whole setup — one event-loop turn per ECU, and with
+   * `latencyMs` configured even the transport `open()` of every connection — and
+   * the tester could already see frames from a bus that had not opened yet.
+   */
   async start(): Promise<void> {
+    const opening: Array<Promise<void>> = [];
     for (const ecu of this.ecus) {
-      await ecu.bus.open();
       ecu.isoTp.open();
       ecu.server.start();
+      opening.push(ecu.bus.open());
     }
-    await this.testerBus.open();
+    opening.push(this.testerBus.open());
+    await Promise.all(opening);
     this.log.info('virtual vehicle started', { vin: this.vin, ecus: this.ecus.length });
   }
 
+  /** Stop every ECU first, then close the buses together. */
   async stop(): Promise<void> {
+    const closing: Array<Promise<void>> = [];
     for (const ecu of this.ecus) {
       ecu.server.stop();
       ecu.isoTp.close();
-      await ecu.bus.close();
+      closing.push(ecu.bus.close());
     }
-    await this.testerBus.close();
+    closing.push(this.testerBus.close());
+    await Promise.all(closing);
   }
 
   /** Inject a DTC (simulates a fault appearing while recording). */
@@ -125,7 +149,7 @@ export class VirtualVehicle {
   }
 
   ecu(ecuId: string): VirtualEcu | undefined {
-    return this.ecus.find((e) => e.definition.id === ecuId);
+    return this.ecusById.get(ecuId);
   }
 
   /**

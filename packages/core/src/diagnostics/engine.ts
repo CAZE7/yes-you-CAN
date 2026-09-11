@@ -67,7 +67,18 @@ export class DiagnosticEngine {
   private readonly log: Logger;
   private readonly dtcScanner: DtcScanner;
   private readonly dtcClear: DtcClearService;
+  /** ECU handles by response identifier — the key every UDS operation uses. */
   private readonly handles = new Map<number, EcuHandle>();
+  /**
+   * Secondary index by request identifier.
+   *
+   * Traffic in the raw trace and on a functional bus is keyed by the id the
+   * *tester* addressed, so `handleForTxId` is on the hot path of the replay and
+   * trace tooling. Walking `handles.values()` there is a linear scan per frame;
+   * one extra map keeps it O(1) and stays in step with `handles` because both are
+   * only written in `attachEcu`/`disconnect`.
+   */
+  private readonly handlesByTxId = new Map<number, EcuHandle>();
   private session: VehicleSession | null = null;
   private liveEngine: LiveDataEngine | null = null;
 
@@ -193,6 +204,7 @@ export class DiagnosticEngine {
     };
     const handle: EcuHandle = { session, reader, discovered: ecu };
     this.handles.set(ecu.rxId, handle);
+    this.handlesByTxId.set(ecu.txId, handle);
     return handle;
   }
 
@@ -413,8 +425,7 @@ export class DiagnosticEngine {
 
   /** ECU handle by physical request identifier. */
   handleForTxId(txId: number): EcuHandle | undefined {
-    for (const handle of this.handles.values()) if (handle.discovered.txId === txId) return handle;
-    return undefined;
+    return this.handlesByTxId.get(txId);
   }
 
   async disconnect(): Promise<void> {
@@ -424,6 +435,7 @@ export class DiagnosticEngine {
       handle.session.isoTp.close();
     }
     this.handles.clear();
+    this.handlesByTxId.clear();
     this.session?.close();
     await this.options.bus.close();
     this.log.info('session closed', { session: this.session?.id });

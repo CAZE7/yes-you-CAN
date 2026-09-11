@@ -52,15 +52,42 @@ export interface ReportDocument {
 
 export function buildReport(input: ReportInput): ReportDocument {
   const session = input.session;
-  const vin = input.maskVin ? maskVin(session.vehicle?.vin) : (session.vehicle?.vin ?? '—');
-  const sections: ReportSection[] = [];
+  const dtcs = input.dtcs ?? [];
+  const statistics = input.statistics ?? [];
+  const anomalies = input.anomalies ?? [];
+  const recommendations = input.recommendations ?? defaultRecommendations(dtcs, anomalies);
 
-  sections.push({
+  return {
+    title: 'Vehicle Diagnostic Report',
+    subtitle: `${describeVehicle(session.vehicle)} · ${session.startedAt}`,
+    generatedAt: new Date().toISOString(),
+    // The section order is the AGENTS 21 report order — vehicle first, findings
+    // in the middle, what to do next last, because that is the order a workshop
+    // reads a handout in.
+    sections: [
+      vehicleSection(input),
+      transportSection(session),
+      ecuOverviewSection(session),
+      dtcSummarySection(dtcs),
+      measurementsSection(statistics),
+      anomalySection(anomalies),
+      actionSection(session),
+      noteSection(session),
+      recommendationSection(recommendations),
+    ],
+  };
+}
+
+/** Vehicle, VIN (masked on request, AGENTS 27), model year, mileage and session window. */
+function vehicleSection(input: ReportInput): ReportSection {
+  const session = input.session;
+  const analysis = session.vehicle?.vinAnalysis;
+  return {
     heading: 'Vehicle',
     rows: [
       { label: 'Vehicle', value: describeVehicle(session.vehicle) },
-      { label: 'VIN', value: vin },
-      { label: 'VIN check digit', value: session.vehicle?.vinAnalysis ? `${session.vehicle.vinAnalysis.checkDigit} (expected ${session.vehicle.vinAnalysis.expectedCheckDigitChar || '—'})` : '—' },
+      { label: 'VIN', value: input.maskVin ? maskVin(session.vehicle?.vin) : (session.vehicle?.vin ?? '—') },
+      { label: 'VIN check digit', value: analysis ? `${analysis.checkDigit} (expected ${analysis.expectedCheckDigitChar || '—'})` : '—' },
       { label: 'Model year', value: session.vehicle?.modelYear ? String(session.vehicle.modelYear) : '—' },
       { label: 'Mileage', value: session.mileageKm !== undefined ? `${session.mileageKm.toLocaleString('de-DE')} km` : '—' },
       { label: 'Session started', value: session.startedAt },
@@ -68,18 +95,24 @@ export function buildReport(input: ReportInput): ReportDocument {
       ...(input.workshop ? [{ label: 'Workshop', value: input.workshop }] : []),
       ...(input.technician ? [{ label: 'Technician', value: input.technician }] : []),
     ],
-  });
+  };
+}
 
-  sections.push({
+/** Which adapter and transport produced the data, and which definition version interpreted it. */
+function transportSection(session: VehicleSessionData): ReportSection {
+  return {
     heading: 'Adapter and transport',
     rows: [
       { label: 'Adapter', value: `${session.adapter.name} (${session.adapter.id})` },
       { label: 'Transport', value: `${session.transport.kind} on ${session.transport.channel}, MTU ${session.transport.mtu}` },
       { label: 'Definition package', value: session.definitionPackage ? `${session.definitionPackage.oem} v${session.definitionPackage.version}` : 'none' },
     ],
-  });
+  };
+}
 
-  sections.push({
+/** ECU explorer summary: one row per ECU plus the identification table (AGENTS 12). */
+function ecuOverviewSection(session: VehicleSessionData): ReportSection {
+  return {
     heading: 'ECU overview',
     rows: session.ecus.map((ecu) => ({
       label: `${ecu.name} (0x${ecu.txId.toString(16)} → 0x${ecu.rxId.toString(16)})`,
@@ -94,11 +127,13 @@ export function buildReport(input: ReportInput): ReportDocument {
         String(ecu.dtcs?.length ?? 0),
       ]),
     },
-  });
+  };
+}
 
-  const dtcs = input.dtcs ?? [];
+/** Fault counts per severity plus the code list (AGENTS 20/21). */
+function dtcSummarySection(dtcs: readonly ReportDtc[]): ReportSection {
   const severityCount = (severity: string): number => dtcs.filter((dtc) => dtc.severity === severity).length;
-  sections.push({
+  return {
     heading: 'DTC summary',
     rows: [
       { label: 'Total', value: String(dtcs.length) },
@@ -111,10 +146,12 @@ export function buildReport(input: ReportInput): ReportDocument {
       columns: ['Code', 'Severity', 'ECU', 'Description'],
       rows: dtcs.map((dtc) => [dtc.code, dtc.severity, dtc.ecu, dtc.description ?? '—']),
     },
-  });
+  };
+}
 
-  const statistics = input.statistics ?? [];
-  sections.push({
+/** Min/max/average/delta per recorded signal (AGENTS 16 statistics). */
+function measurementsSection(statistics: readonly SignalStatistics[]): ReportSection {
+  return {
     heading: 'Measurements',
     rows: [
       { label: 'Signals recorded', value: String(statistics.length) },
@@ -131,18 +168,22 @@ export function buildReport(input: ReportInput): ReportDocument {
         stat.unit ?? '',
       ]),
     },
-  });
+  };
+}
 
-  const anomalies = input.anomalies ?? [];
-  sections.push({
+/** "Nothing found" is a result of its own — an empty section must not read as an omission. */
+function anomalySection(anomalies: readonly ReportAnomaly[]): ReportSection {
+  return {
     heading: 'Anomalies',
-    rows:
-      anomalies.length === 0
-        ? [{ label: 'Result', value: 'no anomalies detected in the recorded window' }]
-        : anomalies.map((anomaly) => ({ label: anomaly.signal, value: anomaly.reason })),
-  });
+    rows: anomalies.length === 0
+      ? [{ label: 'Result', value: 'no anomalies detected in the recorded window' }]
+      : anomalies.map((anomaly) => ({ label: anomaly.signal, value: anomaly.reason })),
+  };
+}
 
-  sections.push({
+/** Audit log of everything this session wrote (AGENTS 25). */
+function actionSection(session: VehicleSessionData): ReportSection {
+  return {
     heading: 'Diagnostic actions',
     rows: session.actions.length === 0
       ? [{ label: 'Result', value: 'read-only session — no write actions performed' }]
@@ -150,28 +191,24 @@ export function buildReport(input: ReportInput): ReportDocument {
           label: `${action.timestamp} · ${action.kind} · ${action.ecuId}`,
           value: `${action.description} → ${action.result}${action.detail ? ` (${action.detail})` : ''}`,
         })),
-  });
+  };
+}
 
-  sections.push({
+function noteSection(session: VehicleSessionData): ReportSection {
+  return {
     heading: 'Notes',
     rows: session.notes.length === 0
       ? [{ label: 'Result', value: '—' }]
       : session.notes.map((note) => ({ label: note.timestamp, value: note.text })),
-  });
+  };
+}
 
-  const recommendations = input.recommendations ?? defaultRecommendations(dtcs, anomalies);
-  sections.push({
+function recommendationSection(recommendations: readonly string[]): ReportSection {
+  return {
     heading: 'Recommendations',
     rows: recommendations.length === 0
       ? [{ label: 'Result', value: 'no recommendations' }]
       : recommendations.map((recommendation, index) => ({ label: String(index + 1), value: recommendation })),
-  });
-
-  return {
-    title: 'Vehicle Diagnostic Report',
-    subtitle: `${describeVehicle(session.vehicle)} · ${session.startedAt}`,
-    generatedAt: new Date().toISOString(),
-    sections,
   };
 }
 

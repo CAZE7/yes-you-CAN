@@ -14,7 +14,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import { dirname, extname, join, normalize } from 'node:path';
+import { dirname, extname, join } from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { AdapterUnsupportedError, SafetyViolationError, StorageError, createLogger, type Logger } from '@vdp/shared';
@@ -27,6 +27,7 @@ import {
 } from '@vdp/adapter-host';
 import { buildReport, renderHtml, renderPdf } from '@vdp/reports';
 import { DemoBackend } from './backend.js';
+import { resolveContained } from './paths.js';
 import type { VehicleStateView } from './backend.js';
 import { SIMULATOR_ADAPTER_ID, createWebAdapterCatalog } from './adapters.js';
 
@@ -323,12 +324,12 @@ export class WebServer {
    * a workspace package instead of living in `public/`.
    */
   private async libraryFile(response: ServerResponse, relative: string): Promise<void> {
-    if (relative.length === 0 || relative.startsWith('/') || relative.includes('\0') || relative.includes('..')) {
+    if (relative.includes('..')) {
       this.sendJson(response, 403, { error: 'forbidden' });
       return;
     }
-    const resolved = normalize(join(LIB_DIR, relative));
-    if (!resolved.startsWith(normalize(LIB_DIR))) {
+    const resolved = resolveContained(LIB_DIR, relative);
+    if (resolved === null) {
       this.sendJson(response, 403, { error: 'forbidden' });
       return;
     }
@@ -347,9 +348,11 @@ export class WebServer {
 
   private async staticFile(response: ServerResponse, path: string): Promise<void> {
     const relative = path === '/' ? 'index.html' : path.replace(/^\/+/, '');
-    // Reject anything that would escape the public directory.
-    const resolved = normalize(join(PUBLIC_DIR, relative));
-    if (!resolved.startsWith(normalize(PUBLIC_DIR))) {
+    // Reject anything that would escape the public directory. The containment
+    // test compares path segments — a plain prefix test would also accept a
+    // sibling whose name merely starts with the directory name (SECURITY).
+    const resolved = resolveContained(PUBLIC_DIR, relative);
+    if (resolved === null) {
       this.sendJson(response, 403, { error: 'forbidden' });
       return;
     }
