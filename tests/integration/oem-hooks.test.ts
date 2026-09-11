@@ -6,7 +6,7 @@
  */
 
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { test } from 'vitest';
 import { createLogger } from '@vdp/shared';
 import { genericPackage } from '@vdp/definitions';
 import { VirtualVehicle } from '@vdp/simulators';

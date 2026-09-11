@@ -16,14 +16,25 @@
   "scripts": {
     "clean": "node scripts/clean.mjs",
     "build": "tsc -b tsconfig.json",
-    "test": "npm run build && node scripts/test.mjs",
-    "test:only": "node scripts/test.mjs",
+    "typecheck": "npm run build && tsc --noEmit -p tsconfig.typecheck.json",
+    "test": "vitest run --project unit --project protocol --project regression --project replay --project integration",
+    "test:unit": "vitest run --project unit",
+    "test:protocol": "vitest run --project protocol",
+    "test:regression": "vitest run --project regression",
+    "test:replay": "vitest run --project replay",
+    "test:integration": "vitest run --project integration",
+    "test:hardware": "vitest run --project hardware",
+    "test:coverage": "vitest run --coverage --project unit --project protocol --project regression --project replay --project integration",
+    "test:watch": "vitest --project unit",
     "demo": "npm run build && node apps/web/dist/src/server.js --demo --sessions=./sessions-local",
-    "sim": "node apps/web/dist/src/server.js --demo",
+    "sim": "npm run build && node apps/web/dist/src/server.js --demo",
     "web": "npm run build && node apps/web/dist/src/server.js --demo"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
-    "typescript": "^5.7.2"
+    "@vitest/coverage-v8": "5.0.0",
+    "fast-check": "4.9.0",
+    "typescript": "^5.7.2",
+    "vitest": "5.0.0"
   }
 }

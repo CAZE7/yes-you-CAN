@@ -1,6 +1,25 @@
 {
   "extends": "../../../tsconfig.base.json",
-  "compilerOptions": { "rootDir": ".", "outDir": "dist", "tsBuildInfoFile": "dist/.tsbuildinfo" },
-  "include": ["src/**/*.ts", "test/**/*.ts"],
-  "references": [{ "path": "../../shared" }, { "path": "../../transport/can" }, { "path": "../elm327" }]
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "dist",
+    "tsBuildInfoFile": "dist/.tsbuildinfo"
+  },
+  "include": [
+    "src/**/*.ts"
+  ],
+  "references": [
+    {
+      "path": "../../shared"
+    },
+    {
+      "path": "../../transport/can"
+    },
+    {
+      "path": "../elm327"
+    }
+  ],
+  "exclude": [
+    "src/**/*.spec.ts"
+  ]
 }

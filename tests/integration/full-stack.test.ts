@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { after, before, test } from 'node:test';
+import { afterAll, beforeAll, test } from 'vitest';
 import { MemorySink, createLogger, fromHex, toHex } from '@vdp/shared';
 import { DiagnosticEngine, DtcScanner, MeasurementRecorder, SessionLogger, analyseVin, deriveTxId } from '@vdp/core';
 import { genericPackage } from '@vdp/definitions';
@@ -17,11 +17,11 @@ const logger = createLogger('app', { level: 'WARN', rawProtocol: true }, [logSin
 const vehicle = new VirtualVehicle({ logger, dynamic: true, seed: 42 });
 const engine = new DiagnosticEngine({ bus: vehicle.testerBus, definitions: [genericPackage], logger });
 
-before(async () => {
+beforeAll(async () => {
   await vehicle.start();
 });
 
-after(async () => {
+afterAll(async () => {
   await engine.disconnect();
   await vehicle.stop();
 });

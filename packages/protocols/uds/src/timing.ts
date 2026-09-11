@@ -27,8 +27,10 @@ export const DEFAULT_UDS_TIMING: UdsTiming = {
  */
 export function parseSessionTiming(response: Uint8Array): { p2Ms: number; p2StarMs: number } | null {
   if (response.length < 6) return null;
-  const p2 = ((response[2] ?? 0) << 8) | (response[3] ?? 0);
-  const p2StarUnits = ((response[4] ?? 0) << 8) | (response[5] ?? 0);
+  // Length is validated above, so the indexed reads cannot fall off the end
+  // (casts instead of `?? 0` — the fallback would be dead code and untestable).
+  const p2 = ((response[2] as number) << 8) | (response[3] as number);
+  const p2StarUnits = ((response[4] as number) << 8) | (response[5] as number);
   if (p2 === 0xffff || p2StarUnits === 0xffff) return null;
   return { p2Ms: p2, p2StarMs: p2StarUnits * 10 };
 }

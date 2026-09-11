@@ -1,0 +1,50 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "composite": false,
+    "allowImportingTsExtensions": true,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "rootDir": ".",
+    "types": ["node"],
+    "paths": {
+      "@vdp/shared": ["./packages/shared/src/index.ts"],
+      "@vdp/core": ["./packages/core/src/index.ts"],
+      "@vdp/definitions": ["./packages/definitions/src/index.ts"],
+      "@vdp/definitions/generic": ["./packages/definitions/src/generic/generic-package.ts"],
+      "@vdp/definitions/vag": ["./packages/definitions/src/vag/vag-package.ts"],
+      "@vdp/definitions/mercedes": ["./packages/definitions/src/mercedes/mercedes-package.ts"],
+      "@vdp/transport-can": ["./packages/transport/can/src/index.ts"],
+      "@vdp/transport-iso-tp": ["./packages/transport/iso-tp/src/index.ts"],
+      "@vdp/transport-doip": ["./packages/transport/doip/src/index.ts"],
+      "@vdp/protocols-uds": ["./packages/protocols/uds/src/index.ts"],
+      "@vdp/protocols-kwp2000": ["./packages/protocols/kwp2000/src/index.ts"],
+      "@vdp/protocols-oem": ["./packages/protocols/oem/src/index.ts"],
+      "@vdp/adapter-canable": ["./packages/adapters/canable/src/index.ts"],
+      "@vdp/adapter-elm327": ["./packages/adapters/elm327/src/index.ts"],
+      "@vdp/adapter-generic-can": ["./packages/adapters/generic-can/src/index.ts"],
+      "@vdp/adapter-host": ["./packages/adapters/host/src/index.ts"],
+      "@vdp/adapter-socketcan": ["./packages/adapters/socketcan/src/index.ts"],
+      "@vdp/storage": ["./packages/storage/src/index.ts"],
+      "@vdp/reports": ["./packages/reports/src/index.ts"],
+      "@vdp/ai": ["./packages/ai/src/index.ts"],
+      "@vdp/charts": ["./packages/charts/src/index.ts"],
+      "@vdp/simulators": ["./tools/simulators/src/index.ts"],
+      "@vdp/trace-analyzer": ["./tools/trace-analyzer/src/index.ts"],
+      "@vdp/definition-importer": ["./tools/definition-importer/src/index.ts"],
+      "@vdp/web": ["./apps/web/src/index.ts"]
+    }
+  },
+  "include": [
+    "vitest.config.ts",
+    "tools/test-reporters/**/*.ts",
+    "packages/**/*.spec.ts",
+    "tests/helpers/pty.ts",
+    "tools/**/*.spec.ts",
+    "tests/**/*.ts",
+    "apps/web/test/**/*.spec.ts"
+  ],
+  "exclude": ["**/dist", "**/node_modules"]
+}

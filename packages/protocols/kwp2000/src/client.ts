@@ -98,12 +98,13 @@ export class Kwp2000Client {
 
   async readVin(): Promise<string | null> {
     const data = await this.readLocalIdentifier(KWP_LOCAL_ID.VEHICLE_IDENTIFICATION_NUMBER);
-    return data ? decodeAscii(data) : null;
+    // An empty field is "no VIN", matching the UDS client (readDid → null).
+    return data ? decodeAscii(data) || null : null;
   }
 
   async readEcuIdentificationCode(): Promise<string | null> {
     const data = await this.readLocalIdentifier(KWP_LOCAL_ID.ECU_IDENTIFICATION_CODE);
-    return data ? decodeAscii(data) : null;
+    return data ? decodeAscii(data) || null : null;
   }
 
   /**

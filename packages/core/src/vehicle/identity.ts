@@ -51,5 +51,8 @@ export function describeVehicle(identity: VehicleIdentity | undefined): string {
 export function maskVin(vin: string | undefined, visiblePrefix = 3, visibleSuffix = 4): string {
   if (!vin) return '—';
   if (vin.length <= visiblePrefix + visibleSuffix) return '*'.repeat(vin.length);
-  return `${vin.slice(0, visiblePrefix)}${'*'.repeat(vin.length - visiblePrefix - visibleSuffix)}${vin.slice(-visibleSuffix)}`;
+  // No slice(-n) tricks: slice(-0) is slice(0) and would leak the whole VIN when
+  // visibleSuffix is 0. The tail is cut by positive index only.
+  const tailStart = Math.max(visiblePrefix, vin.length - visibleSuffix);
+  return `${vin.slice(0, visiblePrefix)}${'*'.repeat(tailStart - visiblePrefix)}${vin.slice(tailStart)}`;
 }
