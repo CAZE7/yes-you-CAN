@@ -361,4 +361,29 @@ describe('lifecycle', () => {
   });
 });
 
+describe('failure handling', () => {
+  test('a broken transport does not turn the error path into an unhandled rejection', async () => {
+    // `start()` calls the handler as `void this.handle(payload)`. If the catch block
+    // rejects too — the NRC that cannot be written because the transport is what broke —
+    // that rejection has no handler left, which means a dead process instead of a line
+    // in the log.
+    const attempts: Uint8Array[] = [];
+    const link: UdsServerLink = {
+      onMessage: () => () => undefined,
+      send: async (payload) => {
+        attempts.push(payload);
+        throw new Error('write failed');
+      },
+    };
+    const server = new UdsServer(link, { name: 'flaky-ecu', logger });
+    await server.handle(new Uint8Array([0x00])); // no such service: dispatch throws
+    await server.handle(new Uint8Array([SID.READ_DATA_BY_IDENTIFIER, 0xf1])); // too short, then a failing send
+    // Reaching these lines is the whole assertion: a rejection here would surface as an
+    // unhandled rejection (and vitest fails the file for it), not as a nicer number.
+    assert.equal(server.stats.requests, 2, 'both requests were taken');
+    assert.ok(attempts.length >= 2, 'the failing transport was exercised on both paths');
+    assert.ok(server.stats.negativeResponses >= 2, 'each one was reported as refused');
+  });
+});
+
 beforeEach(() => undefined);

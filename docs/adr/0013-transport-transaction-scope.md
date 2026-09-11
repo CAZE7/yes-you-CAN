@@ -43,10 +43,14 @@ Ursache ist jeweils derselbe Kategorienfehler: Die Sperre wurde als Schutz von
   (praktisches N_As, Standard 1000 ms; 0 schaltet die Begrenzung ab). Ein Schreiben, das
   nicht annimmt, wird als `TransportError` gemeldet und gibt die Kette frei. Die
   Protokoll-Timer N_Bs/N_Cr bleiben davon unberührt — sie betreffen das Gegenüber.
-- **`close()` räumt auf beiden Seiten auf:** offene Anfragen, Flow-Control-Wartende und
-  ein lauschendes `receive()` werden erfüllt, die Kette auf einen bereits erfüllten
-  Promise gesetzt. Ein „später sowieso weg" gibt es nicht, weil das Aufräumverhalten
-  genau den Fall bestimmt, in dem ein erneutes `open()` wieder benutzbar ist.
+- **`close()` räumt auf beiden Seiten auf — und zwar sofort.** Offene Anfragen,
+  Flow-Control-Wartende und ein lauschendes `receive()` werden erfüllt; ein Schreiben,
+  das beim Adapter hängt, wird abgebrochen (nicht erst nach Ablauf von `sendTimeoutMs`);
+  die Kette geht an einen bereits erfüllten Promise über. Dazu kommt
+  `queueGeneration`: eine Transaktion, *vor* dem Schließen eingereiht, wird danach nicht
+  mehr ausgeführt, sondern scheitert ansagbar. Ein „später sowieso weg" gibt es nicht,
+  weil das Aufräumverhalten genau den Fall bestimmt, in dem ein erneutes `open()`
+  wieder benutzbar ist.
 - **Ein wiedergenutzter Antwort-Slot ist ein Fehler, kein Zustand.** Wäre die
   Serialisierung jemals umgangen, wird der alte Wartende laut abgewiesen und
   `log.error` gemeldet — nicht schweigend bis zum Timeout vertröstet.
@@ -62,9 +66,17 @@ Ursache ist jeweils derselbe Kategorienfehler: Die Sperre wurde als Schutz von
 - `sendTimeoutMs` ist eine neue Stellschraube für Embedder langsamer Strecken (seriell
   über Bluetooth, gateway-seitige Puffer). Der Default liegt deutlich über realistischer
   USB-Seriell-Latenz; ein Wert `< 1` deaktiviert die Begrenzung, statt sie zu halbieren.
+- Wer die Kette blockieren *könnte*, darf dabei nicht selbst scheitern: Der
+  UDS-Server antwortet im Fehlerfall mit einer NRC — schlägt auch dieses Senden fehl,
+  wird das protokolliert und *geschluckt*. `start()` ruft `handle()` als
+  `void this.handle(payload)`; eine Ablehnung auf diesem Pfad wäre eine ungehandelte
+  Rejection, also ein toter Prozess statt einer Warnung. Dasselbe gilt für die
+  functionale Sonde der Entdeckung, die weiterhin nur warnt und den Scan fortsetzt.
 - Die Regressionstests sitzen in `packages/transport/iso-tp/src/connection.spec.ts`
-  (Rahmenreihenfolge, 0x78-Schwanz, blockiertes Senden, `close()`) und
-  `packages/protocols/uds/src/link.spec.ts` (Brücke). Alle vier sind
+  (Rahmenreihenfolge, 0x78-Schwanz, blockiertes Senden, `close()` inkl. Abbruch),
+  `packages/protocols/uds/src/link.spec.ts` (Brücke),
+  `packages/protocols/uds/src/server.spec.ts` (Fehlerpfad) und
+  `packages/core/src/diagnostics/discovery.spec.ts` (Scan trotz kaputtem Adapter). Alle vier sind
   Mikrosekunden-deterministisch über das virtuelle Bussystem, ohne echte Zeit und ohne
   Socket (AGENTS 31).
 - Nicht Teil dieser Entscheidung: die Konformitätskorrekturen an STmin, slcan und

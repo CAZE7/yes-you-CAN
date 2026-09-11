@@ -48,6 +48,17 @@ test('the type character, not the digit count, decides how long the id is', () =
   assert.equal(stamped.timestamp, 5000 - 0x1a2, 'the suffix is milliseconds already elapsed');
 });
 
+test('a frame that does not fit slcan is refused, not truncated', () => {
+  // slcan has no FD variant: cutting a 20-byte payload to eight would put a valid
+  // looking, silently shortened frame on the bus — the one mistake no receiver can
+  // detect. Same rule as `send()` refusing `fd` frames, enforced at the encoder.
+  const tooLong = createFrame(0x7e0, fromHex('02 3E 80 01 02 03 04 05 06 07 08 09 0A 0B'));
+  assert.throws(() => formatSlcanFrame(tooLong), /at most 8 data bytes/);
+  // Exactly eight still goes out, and the DLC follows the payload length.
+  assert.equal(formatSlcanFrame(createFrame(0x7e0, fromHex('11 22 33 44 55 66 77 88'))), 't7E081122334455667788\r');
+  assert.equal(parseSlcanLine('t7E081122334455667788', 'slcan0', 1)?.payload.length, 8, 'and it reads back the same');
+});
+
 test('lines that are not frames are rejected', () => {
   assert.equal(parseSlcanLine('V1234', 'slcan0'), null);
   assert.equal(parseSlcanLine('OK', 'slcan0'), null);

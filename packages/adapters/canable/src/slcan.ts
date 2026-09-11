@@ -8,6 +8,7 @@
  * Optional trailing 3-digit timestamp in milliseconds when "Z1" is enabled.
  */
 
+import { TransportError } from '@vdp/shared';
 import type { CanFrame } from '@vdp/transport-can';
 
 export const BITRATES: Record<string, string> = {
@@ -50,7 +51,7 @@ export function parseSlcanLine(line: string, channel: string, now = Date.now()):
   return parseWithId(idHex, rest.slice(idLength), channel, now, type === 'T');
 }
 
-function parseWithId(idHex: string, rest: string, channel: string, now: number, extended = idHex.length === 8): CanFrame | null {
+function parseWithId(idHex: string, rest: string, channel: string, now: number, extended: boolean): CanFrame | null {
   const dlcChar = rest[0];
   if (!dlcChar || !/^[0-9A-Fa-f]$/.test(dlcChar)) return null;
   const dlc = parseInt(dlcChar, 16);
@@ -77,12 +78,23 @@ function parseWithId(idHex: string, rest: string, channel: string, now: number, 
   };
 }
 
+/**
+ * Encode a frame as one slcan line.
+ *
+ * slcan has no CAN-FD variant and no way to express "more bytes than fit here": cutting
+ * the payload to eight would put a valid-looking, truncated frame on the bus, which is
+ * the one mistake nothing downstream can detect. So an oversized frame is refused here,
+ * exactly as `CanableAdapter.send` refuses `fd` frames.
+ */
 export function formatSlcanFrame(frame: CanFrame): string {
+  if (frame.payload.length > 8) {
+    throw new TransportError(`slcan carries at most 8 data bytes, got ${frame.payload.length}`, { id: frame.id, requested: frame.payload.length });
+  }
   const prefix = frame.extended ? 'T' : 't';
   const id = (frame.extended ? frame.id.toString(16).padStart(8, '0') : frame.id.toString(16).padStart(3, '0')).toUpperCase();
-  const dlc = Math.min(frame.payload.length, 8).toString(16);
+  const dlc = frame.payload.length.toString(16);
   // Upper case, consistent with the other serial adapters and the traces we parse.
-  const data = Array.from(frame.payload.slice(0, 8))
+  const data = Array.from(frame.payload)
     .map((byte) => byte.toString(16).padStart(2, '0'))
     .join('')
     .toUpperCase();

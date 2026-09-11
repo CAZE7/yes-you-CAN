@@ -125,6 +125,10 @@ export class IsoTpConnection {
     // promise so the next open() starts clean, and a waiting receive() gets its answer
     // instead of hanging for the rest of its timeout (§34.26).
     for (const waiter of this.fcWaiters.splice(0)) waiter(null);
+    // A write that never returns is abandoned as well, and every transaction that was
+    // still queued behind it is invalidated instead of being run on a closed socket.
+    for (const abort of this.writeWaiters.splice(0)) abort(new IsoTpError('ISO-TP connection closed while a frame was being written'));
+    this.queueGeneration++;
     this.fcQueue = [];
     this.rxState = null;
     this.transmitLock = Promise.resolve();
@@ -156,17 +160,26 @@ export class IsoTpConnection {
     return this.enqueue(() => this.transmit(payload));
   }
 
+  /** Counts closes, so a transaction queued before one never runs after it. */
+  private queueGeneration = 0;
+
   /** One transaction at a time per connection, whatever kind of transaction it is. */
   private async enqueue<T>(task: () => Promise<T>): Promise<T> {
     const previous = this.transmitLock;
+    const generation = this.queueGeneration;
     let release!: () => void;
     this.transmitLock = new Promise<void>((resolve) => {
       release = resolve;
     });
     await previous.catch(() => undefined);
     try {
+      if (generation !== this.queueGeneration) {
+        throw new IsoTpError('ISO-TP connection was closed while this transaction was queued', { serialised: true, closed: true });
+      }
       return await task();
     } finally {
+      // Also on the refusal above: a queue slot that is not released is the exact wedge
+      // this whole path exists to prevent, and everything behind it would inherit it.
       release();
     }
   }
@@ -441,24 +454,33 @@ export class IsoTpConnection {
     // cable stayed half-dead (§34.26). A rejection is still reported the same way.
     const limit = this.timing.sendTimeoutMs;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let detach: () => void = () => undefined;
     try {
       const write = Promise.resolve(this.bus.send(frame));
-      if (!(limit > 0)) {
-        await write;
-        return;
-      }
-      await Promise.race([
-        write,
-        new Promise<never>((_, reject) => {
+      // A stall timer *and* close() both have to reach a write that is already in
+      // flight: without this, a teardown leaves the caller waiting for the stall timeout.
+      const aborted = new Promise<never>((_, reject) => {
+        const waiter = (reason: Error): void => reject(reason);
+        this.writeWaiters.push(waiter);
+        detach = () => {
+          const index = this.writeWaiters.indexOf(waiter);
+          if (index >= 0) this.writeWaiters.splice(index, 1);
+        };
+        if (limit > 0) {
           timer = setTimeout(() => reject(new TransportError(`ISO-TP transmit stalled: the adapter did not accept the frame within ${limit} ms`, { cause: 'N_As', txId: this.options.txId })), limit);
-        }),
-      ]);
+        }
+      });
+      await Promise.race([write, aborted]);
     } catch (error) {
       throw new TransportError(`ISO-TP transmit failed: ${messageOf(error)}`, { cause: messageOf(error) });
     } finally {
       clearTimeout(timer);
+      detach();
     }
   }
+
+  /** In-flight adapter writes; close() rejects them so the queue cannot outlive the connection. */
+  private readonly writeWaiters: Array<(reason: Error) => void> = [];
 
   private handleFrame(frame: CanFrame): void {
     this.stats.rxFrames++;
@@ -560,7 +582,14 @@ export class IsoTpConnection {
   private async sendFlowControl(status: number): Promise<void> {
     const body = new Uint8Array([FRAME_TYPE.FLOW_CONTROL | status, this.timing.blockSize & 0xff, encodeStMin(this.timing.stMinMs)]);
     this.stats.txFlowControlFrames++;
-    await this.writeFrame(body);
+    try {
+      await this.writeFrame(body);
+    } catch (error) {
+      // This runs from the *receive* path, where nobody awaits us — a rejection would be
+      // an unhandled one, i.e. a dead process over a log line. The sender of the First
+      // Frame is not lost: its own N_Bs expires and it retries the whole message.
+      this.log.warn('Flow Control could not be written', { status, error: messageOf(error) });
+    }
   }
 
   private deliver(payload: Uint8Array): void {

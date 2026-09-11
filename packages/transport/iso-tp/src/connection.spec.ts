@@ -507,6 +507,49 @@ test('a send the adapter never finishes is bounded', async () => {
   await assert.rejects(conn.request(fromHex('22 F1 90'), 5000), /did not accept the frame within 15 ms/);
 });
 
+test('close() aborts a write that is already in flight and the queue behind it', async () => {
+  // The stall guard alone is not enough for a teardown: without an abort channel the
+  // caller would sit and wait for the (here: five second) sendTimeoutMs after the
+  // connection is gone, and a request queued behind it would run on a dead adapter.
+  const wire = createWire();
+  class BlackholeBus extends VirtualBus {
+    override async send(): Promise<void> {
+      return new Promise<void>(() => undefined);
+    }
+  }
+  const bus = new BlackholeBus(wire);
+  const conn = new IsoTpConnection(bus, { txId: 0x7e0, rxId: 0x7e8, timing: { nBsMs: 5000, nCrMs: 5000, nAsMs: 5, sendTimeoutMs: 5000, stMinMs: 0, stMinTxMs: 0, blockSize: 0, wftMax: 8, maxRetries: 0 }, sleep: async () => undefined });
+  conn.open();
+  const inFlight = conn.request(fromHex('22 F1 90'), 5000);
+  const queued = conn.request(fromHex('3E 00'), 5000);
+  await tick();
+  const started = Date.now();
+  conn.close();
+  await assert.rejects(inFlight, /closed while a frame was being written/);
+  await assert.rejects(queued, /closed while this transaction was queued/);
+  assert.ok(Date.now() - started < 250, 'teardown released both immediately, not after the 5 s stall timeout');
+});
+
+test('an unanswerable Flow Control is logged, not raised out of the receive path', async () => {
+  // A Flow Control in reply to a peer's First Frame is written from handleFrame, where
+  // no caller awaits the promise: a rejection there is an unhandled rejection, i.e. the
+  // process dies over one lost frame instead of the peer retrying after its N_Bs.
+  const wire = createWire();
+  class BrokenSendBus extends VirtualBus {
+    override async send(): Promise<void> {
+      throw new Error('ENOBUFS: adapter write buffer full');
+    }
+  }
+  const bus = new BrokenSendBus(wire);
+  const conn = new IsoTpConnection(bus, { txId: 0x7e8, rxId: 0x7e0, timing: { nBsMs: 5, nCrMs: 5, nAsMs: 1, sendTimeoutMs: 5 }, sleep: async () => undefined });
+  conn.open();
+  bus.inject(0x7e0, fromHex('10 11 41 42 43 44 45 46')); // First Frame announcing 17 bytes
+  await tick();
+  assert.equal(conn.stats.txFlowControlFrames, 1, 'the Flow Control was attempted');
+  assert.equal(conn.stats.rxMultiFrameMessages, 0, 'and the reassembly was abandoned by timeout, not by an exception');
+  conn.close();
+});
+
 test('close() wakes a waiting receive() instead of leaving it hanging', async () => {
   const wire = createWire();
   const bus = new VirtualBus(wire);
