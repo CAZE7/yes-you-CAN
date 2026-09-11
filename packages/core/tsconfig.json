@@ -6,8 +6,7 @@
     "tsBuildInfoFile": "dist/.tsbuildinfo"
   },
   "include": [
-    "src/**/*.ts",
-    "test/**/*.ts"
+    "src/**/*.ts"
   ],
   "references": [
     {
@@ -28,5 +27,8 @@
     {
       "path": "../protocols/oem"
     }
+  ],
+  "exclude": [
+    "src/**/*.spec.ts"
   ]
 }

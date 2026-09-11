@@ -12,6 +12,7 @@
  */
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { dirname, extname, join, normalize } from 'node:path';
 import { createRequire } from 'node:module';
@@ -78,10 +79,19 @@ class HttpError extends Error {
 }
 
 // Compiled file lives at apps/web/dist/src/server.js, so the public directory is
-// two levels up. Overridable for packaged installs.
-const PUBLIC_DIR = process.env.VDP_PUBLIC_DIR
-  ? process.env.VDP_PUBLIC_DIR
-  : fileURLToPath(new URL('../../public/', import.meta.url));
+// two levels up. When the module runs from TypeScript sources (vitest), the
+// layout differs — resolve whichever candidate actually contains index.html.
+// Overridable for packaged installs.
+function resolvePublicDir(): string {
+  if (process.env.VDP_PUBLIC_DIR) return process.env.VDP_PUBLIC_DIR;
+  const candidates = [
+    fileURLToPath(new URL('../../public/', import.meta.url)), // apps/web/dist/src/server.js
+    fileURLToPath(new URL('../public/', import.meta.url)), // apps/web/src/server.ts
+  ];
+  return candidates.find((candidate) => existsSync(join(candidate, 'index.html'))) ?? (candidates[0] as string);
+}
+
+const PUBLIC_DIR = resolvePublicDir();
 
 /**
  * Directory served as `/lib/` — the compiled, unit-tested chart core

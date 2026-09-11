@@ -65,9 +65,6 @@
       "path": "tools/definition-importer"
     },
     {
-      "path": "tests"
-    },
-    {
       "path": "apps/web"
     }
   ]

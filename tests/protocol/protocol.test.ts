@@ -8,7 +8,7 @@
  */
 
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { test } from 'vitest';
 import { createLogger, fromHex, toHex } from '@vdp/shared';
 import { IsoTpConnection } from '@vdp/transport-iso-tp';
 import { createVirtualCanNetwork } from '@vdp/simulators';

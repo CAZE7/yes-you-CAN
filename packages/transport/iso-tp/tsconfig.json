@@ -1,6 +1,22 @@
 {
   "extends": "../../../tsconfig.base.json",
-  "compilerOptions": { "rootDir": ".", "outDir": "dist", "tsBuildInfoFile": "dist/.tsbuildinfo" },
-  "include": ["src/**/*.ts", "test/**/*.ts"],
-  "references": [{ "path": "../../shared" }, { "path": "../can" }]
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "dist",
+    "tsBuildInfoFile": "dist/.tsbuildinfo"
+  },
+  "include": [
+    "src/**/*.ts"
+  ],
+  "references": [
+    {
+      "path": "../../shared"
+    },
+    {
+      "path": "../can"
+    }
+  ],
+  "exclude": [
+    "src/**/*.spec.ts"
+  ]
 }
