@@ -137,7 +137,6 @@ export class UdsServer {
         await this.link.send(new Uint8Array([NEGATIVE_RESPONSE_SID, serviceId, NRC.REQUEST_CORRECTLY_RECEIVED_RESPONSE_PENDING]));
         await delay(this.options.pendingResponseDelayMs ?? 30);
       }
-      this.stats.positiveResponses++;
       this.log.raw('server tx', { ecu: this.name, payload: toHex(response) });
       await this.link.send(response);
     };
@@ -146,6 +145,7 @@ export class UdsServer {
       const response = this.dispatch(serviceId, payload);
       if (!response) return; // suppressed positive response
       if ((response[0] ?? 0) === NEGATIVE_RESPONSE_SID) this.stats.negativeResponses++;
+      else this.stats.positiveResponses++;
       await respond(response);
     } catch (error) {
       this.stats.negativeResponses++;

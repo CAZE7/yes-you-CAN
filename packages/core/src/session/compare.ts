@@ -242,10 +242,14 @@ function compareSignals(
     };
     const base = { signal, name, ...(unit ? { unit } : {}), ...(left ? { left } : {}), ...(right ? { right } : {}) };
 
-    if (!left || left.samples === 0) {
+    // Presence is decided by the *signal*, not by its numeric sample count:
+    // a signal that exists on both sides but carries no numbers is reported as
+    // stable-with-reason, never as "added" (the doc block above forbids
+    // inferring data the recordings do not contain).
+    if (!left) {
       return { ...base, delta, verdict: 'added' as const, reason: `nur in der rechten Aufnahme (${right?.samples ?? 0} Werte)` };
     }
-    if (!right || right.samples === 0) {
+    if (!right) {
       return { ...base, delta, verdict: 'removed' as const, reason: `nur in der linken Aufnahme (${left.samples} Werte)` };
     }
     const before = left.average;

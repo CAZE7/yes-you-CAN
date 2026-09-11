@@ -12,7 +12,7 @@ import { test } from 'vitest';
 import { CanableAdapter } from '@vdp/adapter-canable';
 import { createFrame } from '@vdp/transport-can';
 import { configureSerialPort, createHostAdapterCatalog, openSerialStream } from '@vdp/adapter-host';
-import { createDeviceSide, createPtyPair, hasSocat } from '../../packages/adapters/host/src/pty.js';
+import { createDeviceSide, createPtyPair, hasSocat } from '../helpers/pty.js';
 
 /* -------------------------------------------------------- serial device */
 

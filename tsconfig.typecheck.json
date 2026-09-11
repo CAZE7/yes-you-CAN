@@ -41,7 +41,7 @@
     "vitest.config.ts",
     "tools/test-reporters/**/*.ts",
     "packages/**/*.spec.ts",
-    "packages/adapters/host/src/pty.ts",
+    "tests/helpers/pty.ts",
     "tools/**/*.spec.ts",
     "tests/**/*.ts",
     "apps/web/test/**/*.spec.ts"
