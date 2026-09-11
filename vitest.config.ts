@@ -20,15 +20,23 @@ import { defineConfig } from 'vitest/config';
 import type { Plugin } from 'vite';
 import flakyReporter from './tools/test-reporters/flaky-reporter.ts';
 
-const root = import.meta.dirname;
+// Vite may execute this config from a bundled temp file, so import.meta paths
+// are unreliable. Everything below is rooted at the workspace (the scripts and
+// CI always run from the repository root).
+const root = process.cwd();
 
 /**
  * Resolve every workspace package's export map to its TypeScript sources so
  * tests run against `src/` directly — no build step, no stale dist.
  * `./dist/src/foo.js` → `<pkgRoot>/src/foo.ts`.
  */
-function workspaceAliases(): Record<string, string> {
-  const aliases: Record<string, string> = {};
+interface AliasEntry {
+  find: RegExp;
+  replacement: string;
+}
+
+function workspaceAliases(): AliasEntry[] {
+  const aliases: AliasEntry[] = [];
   const roots = [resolve(root, 'packages'), resolve(root, 'tools'), resolve(root, 'apps')];
   const manifests: string[] = [];
   for (const workspaceRoot of roots) {
@@ -55,10 +63,16 @@ function workspaceAliases(): Record<string, string> {
       if (!targetDefault.startsWith('./dist/')) continue;
       const srcPath = resolve(
         dirname(manifest),
-        targetDefault.replace(/^\.\/dist\//, './src/').replace(/\.js$/, '.ts'),
+        targetDefault.replace(/^\.\/dist\//, './').replace(/\.js$/, '.ts'),
       );
       if (!existsSync(srcPath)) continue;
-      aliases[subpath === '.' ? json.name : `${json.name}${subpath}`] = srcPath;
+      // Anchored regex: exact match only, so `@vdp/definitions` never
+      // swallows `@vdp/definitions/generic` (object-form aliases match by
+      // prefix and would break subpath exports).
+      const find = subpath === '.' ? new RegExp(`^${json.name.replace(/[\\/]/g, '\\$&')}$`) : null;
+      const subFind = subpath === '.' ? null : new RegExp(`^${json.name.replace(/[\\/]/g, '\\$&')}${subpath.replace(/^\./, '').replace(/[\\/.*+?^${}()|[\]\\]/g, '\\$&')}$`);
+      if (find) aliases.push({ find, replacement: srcPath });
+      if (subFind) aliases.push({ find: subFind, replacement: srcPath });
     }
   }
   return aliases;
@@ -99,6 +113,10 @@ const junitFile = process.env.VITEST_JUNIT_FILE;
 /** Shared per-project test options. */
 const baseTest = {
   environment: 'node' as const,
+  // Workspace packages must be transformed by Vite (sources, not dist).
+  // Without inlining they are externalized to native node resolution, which
+  // loads compiled `dist/` output and hides source coverage.
+  server: { deps: { inline: [/@vdp\//] } },
   // `retry` is allowed in CI only; the flaky reporter turns every retried pass
   // into a visible warning — retries are never silently swallowed.
   retry: isCi ? 2 : 0,
@@ -110,9 +128,22 @@ const baseTest = {
 /** Every non-hardware project, in pyramid order. */
 export const defaultProjects = ['unit', 'protocol', 'regression', 'replay', 'integration'] as const;
 
-export default defineConfig({
+/**
+ * Vite-level options must be repeated per project: inline projects do not
+ * inherit the root `resolve`/`plugins` sections. Without the alias, bare
+ * `@vdp/*` imports would silently resolve to compiled `dist/` output and
+ * coverage would be attributed to build artefacts instead of sources.
+ */
+const viteShared = {
   plugins: [jsExtensionToTs()],
   resolve: { alias: workspaceAliases() },
+};
+
+function project(options: { name: string; include: string[]; testTimeout?: number }) {
+  return { ...viteShared, test: { ...baseTest, ...options } };
+}
+
+export default defineConfig({
   test: {
     reporters: [
       'default',
@@ -122,52 +153,25 @@ export default defineConfig({
     ],
     outputFile: junitFile ? { junit: junitFile } : undefined,
     projects: [
-      {
-        test: {
-          ...baseTest,
-          name: 'unit',
-          include: ['packages/**/src/**/*.spec.ts', 'tools/**/src/**/*.spec.ts'],
-        },
-      },
-      {
-        test: {
-          ...baseTest,
-          name: 'protocol',
-          include: ['tests/protocol/**/*.test.ts'],
-        },
-      },
-      {
-        test: {
-          ...baseTest,
-          name: 'regression',
-          include: ['tests/regression/**/*.test.ts'],
-        },
-      },
-      {
-        test: {
-          ...baseTest,
-          name: 'replay',
-          include: ['tests/replay/**/*.test.ts'],
-        },
-      },
-      {
-        test: {
-          ...baseTest,
-          name: 'integration',
-          include: ['tests/integration/**/*.test.ts', 'apps/web/test/**/*.spec.ts'],
-          testTimeout: 30_000,
-        },
-      },
-      {
-        // Only the nightly CI job runs this (virtual CAN interface required);
-        // it is excluded from every default script.
-        test: {
-          ...baseTest,
-          name: 'hardware',
-          include: ['tests/hardware/**/*.test.ts'],
-          testTimeout: 60_000,
-        },
-      },
+      project({
+        name: 'unit',
+        include: ['packages/**/src/**/*.spec.ts', 'tools/**/src/**/*.spec.ts'],
+      }),
+      project({ name: 'protocol', include: ['tests/protocol/**/*.test.ts'] }),
+      project({ name: 'regression', include: ['tests/regression/**/*.test.ts'] }),
+      project({ name: 'replay', include: ['tests/replay/**/*.test.ts'] }),
+      project({
+        name: 'integration',
+        include: ['tests/integration/**/*.test.ts', 'apps/web/test/**/*.spec.ts'],
+        testTimeout: 30_000,
+      }),
+      // Only the nightly CI job runs this (virtual CAN interface required);
+      // it is excluded from every default script.
+      project({
+        name: 'hardware',
+        include: ['tests/hardware/**/*.test.ts'],
+        testTimeout: 60_000,
+      }),
     ],
     coverage: {
       provider: 'v8',
