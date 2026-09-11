@@ -162,8 +162,18 @@ canvas.chart { width: 100%; height: 190px; display: block; cursor: crosshair; to
 .chart-toggle[aria-pressed="false"] .dot { background: transparent; box-shadow: inset 0 0 0 1px var(--muted); }
 
 .graph-panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 0.9rem; margin-top: 0.9rem; }
-.graph-toolbar .field { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.8rem; color: var(--muted); }
-.graph-toolbar select { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 0.3rem 0.4rem; }
+.graph-toolbar .field, .adapter-picker .field { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.8rem; color: var(--muted); }
+.graph-toolbar select, .adapter-picker select, .adapter-picker input {
+  background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; padding: 0.3rem 0.4rem; font-size: 0.82rem;
+}
+.adapter-picker input[type="text"] { min-width: 14ch; }
+.adapter-picker input[type="number"] { width: 8ch; }
+.adapter-picker .field { flex-direction: column; align-items: flex-start; }
+.adapter-picker .row { align-items: flex-end; }
+.adapter-picker ul.hints li { border-bottom: none; padding: 0.1rem 0; color: var(--warn); }
+.adapter-picker ul.hints { margin: 0.2rem 0 0.6rem; }
+.ok-row td:nth-child(3) { color: var(--ok); }
 table.grid td.num, table.grid th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .swatch { display: inline-block; width: 0.55rem; height: 0.55rem; border-radius: 2px; margin-right: 0.35rem; vertical-align: middle; }
 tr.is-hidden td { opacity: 0.45; }
@@ -188,3 +198,25 @@ tr.is-hidden td { opacity: 0.45; }
 .finding p { margin: 0; font-size: 0.82rem; color: var(--muted); }
 
 .footer { padding: 1rem 1.25rem 2rem; text-align: center; }
+
+/* ------------------------------------------------------------------ DTC */
+
+.dtc-actions { display: flex; gap: 0.3rem; }
+.dtc-actions button { padding: 0.15rem 0.45rem; font-size: 0.75rem; }
+button.danger { border-color: rgba(249, 101, 79, 0.5); color: var(--err); }
+button.danger:not(:disabled):hover { background: rgba(249, 101, 79, 0.12); border-color: var(--err); }
+
+.danger-zone { border-color: rgba(249, 101, 79, 0.35); margin-top: 0.9rem; }
+.danger-zone h3 span { margin-left: 0.4rem; }
+
+.field.checkbox { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.82rem; }
+
+.freeze-field { border: 1px solid var(--border); border-radius: 6px; padding: 0.5rem 0.65rem; margin: 0.35rem 0; }
+.freeze-field h4 { margin: 0 0 0.25rem; font-size: 0.82rem; }
+.freeze-field .mono { color: var(--muted); font-size: 0.75rem; }
+.freeze-raw { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.78rem; word-break: break-all; }
+ul.plain.check-list li { padding: 0.15rem 0; border-bottom: none; font-size: 0.82rem; }
+ul.plain.check-list li.ok::before { content: '✔ '; color: var(--ok); }
+ul.plain.check-list li.fail::before { content: '✘ '; color: var(--err); }
+ul.plain.check-list li.warn::before { content: '! '; color: var(--warn); }
+ul.plain.check-list li.info::before { content: '· '; color: var(--muted); }

@@ -9,7 +9,7 @@
 
 import { createLogger, toHex, type Logger } from '@vdp/shared';
 import { NRC } from './nrc.js';
-import { DTC_REPORT, NEGATIVE_RESPONSE_SID, SESSION, SID, SUPPRESS_POSITIVE_RESPONSE, positiveResponseSid } from './services.js';
+import { DTC_GROUP_ALL, DTC_REPORT, NEGATIVE_RESPONSE_SID, RESET_TYPE, SESSION, SID, SUPPRESS_POSITIVE_RESPONSE, positiveResponseSid } from './services.js';
 import { encodeDtcToBytes } from './dtc.js';
 import { DEFAULT_UDS_TIMING, type UdsTiming } from './timing.js';
 
@@ -161,9 +161,9 @@ export class UdsServer {
       case SID.DIAGNOSTIC_SESSION_CONTROL:
         return this.handleSessionControl(payload);
       case SID.ECU_RESET:
-        return new Uint8Array([positiveResponseSid(SID.ECU_RESET), payload[1] ?? 0x01]);
+        return this.handleEcuReset(payload);
       case SID.CLEAR_DIAGNOSTIC_INFORMATION:
-        return this.handleClearDtc();
+        return this.handleClearDtc(payload);
       case SID.READ_DTC_INFORMATION:
         return this.handleReadDtc(payload);
       case SID.READ_DATA_BY_IDENTIFIER:
@@ -196,8 +196,49 @@ export class UdsServer {
     return new Uint8Array([positiveResponseSid(SID.DIAGNOSTIC_SESSION_CONTROL), requested, (p2 >> 8) & 0xff, p2 & 0xff, (p2Star >> 8) & 0xff, p2Star & 0xff]);
   }
 
-  private handleClearDtc(): Uint8Array {
-    this.dtcs = this.dtcs.map((dtc) => ({ ...dtc, status: dtc.status & ~0x0f }));
+  /**
+   * ECU reset (ISO 14229-1 §11.2).
+   *
+   * The reset type is validated before anything happens: a server that answers
+   * every reset request with a positive response would make a tester believe an
+   * invalid request did something. Type 0x00 is not assigned and must be
+   * rejected with subFunctionNotSupported.
+   */
+  private handleEcuReset(payload: Uint8Array): Uint8Array {
+    if (payload.length < 2) return negativeResponse(SID.ECU_RESET, NRC.INCORRECT_MESSAGE_LENGTH_OR_INVALID_FORMAT);
+    const resetType = (payload[1] ?? 0) & 0x7f;
+    if (resetType !== RESET_TYPE.HARD_RESET && resetType !== RESET_TYPE.KEY_OFF_ON_RESET && resetType !== RESET_TYPE.SOFT_RESET) {
+      return negativeResponse(SID.ECU_RESET, NRC.SUB_FUNCTION_NOT_SUPPORTED);
+    }
+    this.activeSession = SESSION.DEFAULT;
+    return new Uint8Array([positiveResponseSid(SID.ECU_RESET), resetType]);
+  }
+
+  /**
+   * Clear diagnostic information (ISO 14229-1 §11.3).
+   *
+   * The request always carries a three byte groupOfDTC; a shorter request is a
+   * format error and must not be interpreted as "clear everything". This matters
+   * beyond spec compliance: a probe with a truncated request would otherwise
+   * wipe the fault memory of every ECU it touches.
+   */
+  private handleClearDtc(payload: Uint8Array): Uint8Array {
+    if (payload.length < 4) return negativeResponse(SID.CLEAR_DIAGNOSTIC_INFORMATION, NRC.INCORRECT_MESSAGE_LENGTH_OR_INVALID_FORMAT);
+    const group = ((payload[1] ?? 0) << 16) | ((payload[2] ?? 0) << 8) | (payload[3] ?? 0);
+    if (group !== DTC_GROUP_ALL && group !== 0) {
+      // Grouped clearing is manufacturer specific; an unknown group is out of range.
+      const known = this.dtcs.some((dtc) => (((encodeDtcToBytes(dtc.code)[0] ?? 0) << 16) | ((encodeDtcToBytes(dtc.code)[1] ?? 0) << 8)) === group);
+      if (!known) return negativeResponse(SID.CLEAR_DIAGNOSTIC_INFORMATION, NRC.REQUEST_OUT_OF_RANGE);
+    }
+    // ISO 14229-1 §11.3: clearing resets the DTC status information. A fault that
+    // is still present sets testFailed (bit 0) and testFailedThisOperationCycle
+    // (bit 1) again immediately; everything else leaves the fault memory, which is
+    // what makes a cleared ECU distinguishable from an ECU that ignored the clear.
+    // (A production ECU may additionally raise the two "test not completed" bits;
+    // that is a readiness statement, not a stored fault.)
+    this.dtcs = this.dtcs
+      .map((dtc) => ({ ...dtc, status: (dtc.status & 0x01) !== 0 ? 0x03 : 0x00 }))
+      .filter((dtc) => dtc.status !== 0x00);
     this.log.info('DTCs cleared', { ecu: this.name, count: this.dtcs.length });
     return new Uint8Array([positiveResponseSid(SID.CLEAR_DIAGNOSTIC_INFORMATION)]);
   }

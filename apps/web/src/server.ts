@@ -16,18 +16,29 @@ import { readFile } from 'node:fs/promises';
 import { dirname, extname, join, normalize } from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
-import { createLogger, type Logger } from '@vdp/shared';
+import { AdapterUnsupportedError, SafetyViolationError, StorageError, createLogger, type Logger } from '@vdp/shared';
+import {
+  formatAdapterHelp,
+  parseAdapterArgv,
+  selectionFromPayload,
+  validateSelection,
+  type AdapterSelection,
+} from '@vdp/adapter-host';
 import { buildReport, renderHtml, renderPdf } from '@vdp/reports';
 import { DemoBackend } from './backend.js';
+import type { VehicleStateView } from './backend.js';
+import { SIMULATOR_ADAPTER_ID, createWebAdapterCatalog } from './adapters.js';
 
 export interface ServerOptions {
   port?: number;
   host?: string;
-  /** Start the simulated vehicle immediately (default for --demo). */
+  /** Open the selected transport right after listening (default for --demo). */
   demo?: boolean;
   liveIntervalMs?: number;
   /** Directory for persisted sessions; omit to disable persistence. */
   sessionDir?: string;
+  /** Adapter selected at startup; defaults to the simulator (AGENTS 29). */
+  selection?: AdapterSelection;
 }
 
 const MIME: Record<string, string> = {
@@ -103,8 +114,9 @@ export class WebServer {
     // assigned after field initializers run, so `this.options` is not ready yet.
     this.log = createLogger('web', { level: 'INFO' }).child('server');
     this.backend = new DemoBackend({
-      liveIntervalMs: this.options.liveIntervalMs,
+      ...(this.options.liveIntervalMs === undefined ? {} : { liveIntervalMs: this.options.liveIntervalMs }),
       ...(this.options.sessionDir ? { sessionDir: this.options.sessionDir } : {}),
+      ...(this.options.selection ? { selection: this.options.selection } : {}),
     });
     this.unsubscribe = this.backend.subscribe((event) => this.broadcast(event.type, event.payload));
   }
@@ -119,7 +131,7 @@ export class WebServer {
     }
     this.server = createServer((request, response) => {
       this.handle(request, response).catch((error) => {
-        const status = error instanceof HttpError ? error.statusCode : 500;
+        const status = statusFor(error);
         if (status >= 500) {
           this.log.error('request failed', { url: request.url, error: messageOf(error) });
         }
@@ -199,8 +211,52 @@ export class WebServer {
     if (path === '/api/history' && method === 'GET') return this.sendJson(response, 200, this.backend.history());
 
     if (path === '/api/start' && method === 'POST') return this.sendJson(response, 200, await this.backend.start());
+
+    // Adapter management (AGENTS 4, 29). Listing probes the host but never opens
+    // a bus, so it is safe while a vehicle is connected.
+    if (path === '/api/adapters' && method === 'GET') {
+      return this.sendJson(response, 200, {
+        selected: this.backend.adapterSelection,
+        mode: this.backend.currentMode,
+        adapters: await this.backend.listAdapters(),
+      });
+    }
+    if (path === '/api/adapter/select' && method === 'POST') {
+      const body = await this.readBody<Record<string, unknown>>(request);
+      const selection = selectionFromPayload(body);
+      const result = await this.backend.selectAdapter(selection);
+      return this.sendJson(response, 200, {
+        adapter: result.description,
+        reconnectRequired: result.reconnectRequired,
+        connected: this.backend.state().connected,
+      });
+    }
     if (path === '/api/identify' && method === 'POST') return this.sendJson(response, 200, { ecus: await this.backend.identify() });
     if (path === '/api/dtc/scan' && method === 'POST') return this.sendJson(response, 200, { dtcs: await this.backend.scanDtcs() });
+
+    // Fault details and the only write path so far (AGENTS 20, 25, 26).
+    if (path === '/api/dtc/snapshot' && method === 'POST') {
+      const body = await this.readBody<{ rxId?: string; code?: string; recordNumber?: number }>(request);
+      const rxId = parseCanId(body.rxId);
+      if (!body.code) throw new HttpError(400, 'a DTC code is required');
+      return this.sendJson(response, 200, {
+        snapshot: await this.backend.readFreezeFrame(rxId, body.code, body.recordNumber ?? 0xff),
+      });
+    }
+    if (path === '/api/dtc/clear/precheck' && method === 'POST') {
+      const body = await this.readBody<{ rxId?: string; vehicleState?: Record<string, unknown> }>(request);
+      const rxId = parseCanId(body.rxId);
+      return this.sendJson(response, 200, { precheck: await this.backend.precheckDtcClear(rxId, parseVehicleState(body.vehicleState)) });
+    }
+    if (path === '/api/dtc/clear' && method === 'POST') {
+      const body = await this.readBody<{ rxId?: string; confirmed?: boolean; vehicleState?: Record<string, unknown> }>(request);
+      const rxId = parseCanId(body.rxId);
+      const result = await this.backend.clearDtcs(rxId, {
+        confirmed: body.confirmed === true,
+        vehicleState: parseVehicleState(body.vehicleState),
+      });
+      return this.sendJson(response, 200, { result });
+    }
 
     if (path === '/api/live/start' && method === 'POST') {
       const body = await this.readBody<{ signalIds?: string[] }>(request);
@@ -337,26 +393,132 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+/** Parse a CAN identifier from the UI (`0x7E8`, `7e8` or `2024`). */
+function parseCanId(value: unknown): number {
+  if (typeof value === 'number' && Number.isInteger(value) && value >= 0) return value;
+  if (typeof value !== 'string' || value.trim().length === 0) throw new HttpError(400, 'an ECU response id (rxId) is required');
+  const text = value.trim().toLowerCase().replace(/^0x/, '');
+  const parsed = Number.parseInt(text, 16);
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 0x1fffffff) {
+    throw new HttpError(400, `"${value}" is not a CAN identifier`);
+  }
+  return parsed;
+}
+
+/**
+ * Read the operator's precondition assertions.
+ *
+ * Everything defaults to "not confirmed": a precondition that was not asserted is
+ * not met, so a UI bug can never silently turn into a write (AGENTS 26).
+ */
+function parseVehicleState(payload: Record<string, unknown> | undefined): VehicleStateView {
+  const record = payload ?? {};
+  const voltage = record['batteryVoltage'];
+  return {
+    stationary: record['stationary'] === true,
+    ignitionOn: record['ignitionOn'] === true,
+    parkingBrake: record['parkingBrake'] === true,
+    ...(typeof voltage === 'number' && Number.isFinite(voltage) ? { batteryVoltage: voltage } : {}),
+  };
+}
+
+/**
+ * Map a domain error to an HTTP status.
+ *
+ * A rejected adapter selection or a refused write is the caller's problem (4xx),
+ * not a server fault: reporting it as 500 would hide a fixable configuration
+ * mistake behind "internal error" and make the UI show the wrong advice.
+ */
+function statusFor(error: unknown): number {
+  if (error instanceof HttpError) return error.statusCode;
+  if (error instanceof AdapterUnsupportedError) return 400;
+  if (error instanceof SafetyViolationError) return 403;
+  if (error instanceof StorageError) return 404;
+  return 500;
+}
+
+/**
+ * Server CLI.
+ *
+ * Two kinds of flags: workbench settings (port, host, sessions, interval) and
+ * adapter settings (`--adapter`, `--device`, …). The adapter flags are parsed by
+ * the adapter layer itself, so the option names and their validation cannot
+ * drift apart from what the adapters actually accept.
+ */
 function parseArgs(argv: readonly string[]): ServerOptions {
   const options: ServerOptions = {};
   for (const arg of argv) {
     if (arg === '--demo') options.demo = true;
+    else if (arg === '--no-autostart') options.demo = false;
     else if (arg.startsWith('--port=')) options.port = Number.parseInt(arg.slice(7), 10);
     else if (arg.startsWith('--host=')) options.host = arg.slice(7);
     else if (arg.startsWith('--interval=')) options.liveIntervalMs = Number.parseInt(arg.slice(11), 10);
     else if (arg.startsWith('--sessions=')) options.sessionDir = arg.slice(11);
   }
+  const parsed = parseAdapterArgv(argv, SIMULATOR_ADAPTER_ID);
+  if (parsed.errors.length > 0) throw new HttpError(400, parsed.errors.join('; '));
+  options.selection = parsed.selection;
+  // Naming an adapter means "use it": auto-start only stays on for the
+  // simulator, which needs no hardware and no confirmation.
+  if (parsed.selection.id === SIMULATOR_ADAPTER_ID && options.demo === undefined) options.demo = true;
   return options;
+}
+
+/** Settings that were given but cannot be used, e.g. a typo in the adapter id. */
+function validateStartupSelection(options: ServerOptions): string[] {
+  const catalog = createWebAdapterCatalog();
+  const validation = validateSelection(catalog, options.selection ?? { id: SIMULATOR_ADAPTER_ID, config: {} });
+  return validation.ok ? [] : validation.errors;
 }
 
 const invokedDirectly = process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.argv[1];
 if (invokedDirectly) {
-  const options = parseArgs(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+  const log = createLogger('web', { level: 'INFO' });
+  const catalog = createWebAdapterCatalog();
+
+  if (argv.includes('--list-adapters')) {
+    const selection = parseAdapterArgv(argv, SIMULATOR_ADAPTER_ID).selection;
+    const described = await catalog.describeAll(selection.config);
+    process.stdout.write(`${formatAdapterHelp(catalog)}\n\nAvailability on this host:\n`);
+    for (const entry of described) {
+      process.stdout.write(`  ${entry.id.padEnd(10)} ${entry.probe.available ? 'ready  ' : 'unusable'} ${entry.probe.detail}\n`);
+      for (const hint of entry.probe.hints ?? []) process.stdout.write(`             → ${hint}\n`);
+    }
+    process.exit(0);
+  }
+
+  let options: ServerOptions;
+  try {
+    options = parseArgs(argv);
+  } catch (error) {
+    process.stderr.write(`${messageOf(error)}\n\n${formatAdapterHelp(catalog)}\n`);
+    process.exit(2);
+  }
+
+  const problems = validateStartupSelection(options);
+  if (problems.length > 0) {
+    process.stderr.write(`invalid adapter settings:\n${problems.map((problem) => `  - ${problem}`).join('\n')}\n\n${formatAdapterHelp(catalog)}\n`);
+    process.exit(2);
+  }
+
   // Sessions land in a local, gitignored directory unless told otherwise.
-  const server = new WebServer({ demo: true, sessionDir: 'sessions-local', ...options });
+  const server = new WebServer({ sessionDir: 'sessions-local', ...options });
   const { url } = await server.listen();
+  const selection = server.backend.adapterSelection;
   process.stdout.write(`yes-you-CAN workbench listening on ${url}\n`);
-  process.on('SIGINT', () => {
-    void server.close().then(() => process.exit(0));
-  });
+  process.stdout.write(`adapter: ${selection.id} (mode ${server.backend.currentMode})${selection.config.device ? ` · ${selection.config.device}` : ''}\n`);
+  if (server.backend.currentMode === 'simulator') {
+    process.stdout.write('kein Fahrzeug nötig — Hardware mit --list-adapters prüfen und mit --adapter=<id> --device=<pfad> verbinden\n');
+  }
+  let shuttingDown = false;
+  const shutdown = async (signal: string): Promise<void> => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    log.info('shutting down', { signal });
+    await server.close().catch((error: unknown) => log.warn('shutdown failed', { error: messageOf(error) }));
+    process.exit(0);
+  };
+  process.on('SIGINT', () => void shutdown('SIGINT'));
+  process.on('SIGTERM', () => void shutdown('SIGTERM'));
 }

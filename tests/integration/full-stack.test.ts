@@ -94,6 +94,87 @@ test('freeze frame data of an active DTC is available', async () => {
   assert.ok(snapshot.data.length > 0, 'simulator provides snapshot bytes for the active DTC');
 });
 
+test('a freeze frame is decoded through the definition package, byte by byte (AGENTS 13, 20)', async () => {
+  const frame = await engine.readDtcSnapshot(0x7e8, 'P0420');
+  assert.ok(frame, 'the engine exposes the snapshot of a code it just read');
+  assert.equal(frame.documented, true, `layout must be fully documented, notes: ${(frame as { notes?: string[] }).notes?.join('; ') ?? ''}`);
+  assert.deepEqual(
+    frame.fields.map((field) => field.name),
+    ['Engine speed', 'Calculated load', 'Coolant temperature', 'Vehicle speed'],
+  );
+  const rpm = frame.fields[0]?.values[0];
+  assert.equal(rpm?.unit, 'rpm');
+  // The simulator encodes the frozen operating point (3120 rpm → raw 12480 with
+  // the 0.25 rpm/bit scale of DID 0xF40C); a wrong record split or a skipped
+  // scaling would produce a different number here.
+  assert.equal(rpm?.value, 3120);
+  assert.equal(rpm?.rawValue, 12480);
+  assert.equal(frame.unassignedHex, '');
+
+  // An ECU that has no record for a known code returns null instead of
+  // fabricated bytes; a malformed code is rejected before it reaches the bus.
+  const withoutRecord = await engine.readDtcSnapshot(0x7e8, 'U0121');
+  assert.equal(withoutRecord, null);
+  await assert.rejects(() => engine.readDtcSnapshot(0x7e8, 'NOTACODE'), /Invalid DTC code/);
+});
+
+test('the engine tracks when a fault code was first and last seen (AGENTS 20)', async () => {
+  const first = await engine.scanDtcs();
+  const catalyst = first.flatMap((entry) => entry.dtcs).find((dtc) => dtc.code === 'P0420');
+  assert.ok(catalyst);
+  assert.ok(catalyst.firstSeen, 'a scan records the first sighting');
+  assert.ok(catalyst.lastSeen && catalyst.lastSeen >= catalyst.firstSeen, 'the last sighting never precedes the first one');
+
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  const second = await engine.scanDtcs();
+  const again = second.flatMap((entry) => entry.dtcs).find((dtc) => dtc.code === 'P0420');
+  assert.equal(again?.firstSeen, catalyst.firstSeen, 'the first sighting never moves');
+  assert.ok((again?.lastSeen ?? '') >= (catalyst.lastSeen ?? ''), 'the last sighting moves forward');
+  const related = again?.relatedSignals ?? [];
+  assert.ok(related.some((entry) => entry.id === 'engine.long_term_fuel_trim'), 'related signals come from the definition package');
+});
+
+test('clearing fault memory runs through the safety chain and is verified by re-reading (AGENTS 20, 25, 26)', async () => {
+  const handle = engine.handleFor(0x7e8);
+  assert.ok(handle);
+
+  const before = await engine.scanDtcs();
+  const codes = before.flatMap((entry) => entry.dtcs).map((dtc) => dtc.code);
+  assert.ok(codes.includes('P0420'));
+
+  // 1. Without confirmation nothing happens.
+  const refusal = engine.evaluateDtcClear(0x7e8, {
+    userConfirmed: false,
+    vehicleState: { stationary: true, ignitionOn: true, parkingBrake: true, batteryVoltage: 13.1 },
+  });
+  assert.equal(refusal.ok, false);
+  assert.ok(refusal.failed.some((entry) => /confirmation/i.test(entry)));
+
+  // 2. With confirmation the engine switches the session, writes, and verifies.
+  const result = await engine.clearDtcs(0x7e8, {
+    userConfirmed: true,
+    vehicleState: { stationary: true, ignitionOn: true, parkingBrake: true, batteryVoltage: 13.1 },
+  });
+  assert.equal(result.cleared, true);
+  assert.equal(result.permit.risk, 'medium');
+  assert.equal(result.ecuName, 'Engine Control Unit');
+  assert.ok(result.before.some((dtc) => dtc.code === 'P0420'), 'the before snapshot is part of the result (backup)');
+  // The simulator re-sets testFailed for a fault that is still present, so the
+  // active code survives with a reset status while the stored-only codes go.
+  assert.equal(result.after.every((dtc) => dtc.statusBits.testFailed), true);
+  assert.ok(result.comparison.removed.length > 0, 'stored codes that are not currently failing are removed');
+  assert.equal(result.comparison.unchanged.length, 0, 'no code keeps its old status bits');
+  assert.equal(result.verified, true);
+
+  // 3. The audit log knows about the write.
+  const audit = engine.safety.audit.map((entry) => entry.action);
+  assert.ok(audit.includes('permit-issued'));
+  assert.ok(audit.includes('write-success'));
+
+  // 4. The session switched out of the default session as part of the write.
+  assert.notEqual(handle.session.record.sessionType, 0x01);
+});
+
 test('live DIDs are read and decoded into physical values (AGENTS 14)', async () => {
   const decoded = await engine.snapshotSignals();
   const rpm = decoded.find((d) => d.signalId === 'engine.rpm');

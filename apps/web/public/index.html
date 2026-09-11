@@ -37,6 +37,33 @@
   <!-- Verbindung -->
   <section class="view active" id="view-connection">
     <h2>Verbindung</h2>
+    <div class="card adapter-picker">
+      <h3>Adapter auswählen <span class="muted small">AGENTS 4 · 29</span></h3>
+      <div class="row">
+        <label class="field">Adapter
+          <select id="adapter-select"></select>
+        </label>
+        <label class="field">Gerät / Interface
+          <input id="adapter-device" type="text" placeholder="/dev/ttyUSB0" autocomplete="off" spellcheck="false" />
+        </label>
+        <label class="field">Bitrate
+          <select id="adapter-bitrate"></select>
+        </label>
+        <label class="field">Baud
+          <input id="adapter-baud" type="number" min="1200" step="1" placeholder="38400" />
+        </label>
+        <label class="field">Aufzeichnung (Replay)
+          <input id="adapter-trace" type="text" placeholder="Session-ID oder Export-Datei" autocomplete="off" spellcheck="false" />
+        </label>
+        <button id="btn-adapter-apply" class="primary">Adapter übernehmen</button>
+      </div>
+      <p id="adapter-probe" class="hint"></p>
+      <ul id="adapter-hints" class="plain hints"></ul>
+      <table class="grid">
+        <thead><tr><th>Adapter</th><th>Art</th><th>Verfügbar</th><th>Details</th><th>Capabilities</th></tr></thead>
+        <tbody id="adapter-rows"></tbody>
+      </table>
+    </div>
     <div class="cards">
       <div class="card">
         <h3>Adapter</h3>
@@ -52,7 +79,7 @@
       </div>
     </div>
     <div class="row">
-      <button id="btn-start" class="primary">Verbinden (Simulator)</button>
+      <button id="btn-start" class="primary">Verbinden</button>
       <button id="btn-identify">Identifikation lesen</button>
       <button id="btn-scan">Fehlerspeicher lesen</button>
     </div>
@@ -79,9 +106,53 @@
       <span id="dtc-summary" class="muted"></span>
     </div>
     <table class="grid">
-      <thead><tr><th>Code</th><th>Beschreibung</th><th>ECU</th><th>Status</th><th>Schwere</th><th>Bestätigt</th><th>Pending</th><th>Hinweis (Definition)</th></tr></thead>
+      <thead><tr><th>Code</th><th>Beschreibung</th><th>ECU</th><th>Status</th><th>Schwere</th><th>Bestätigt</th><th>Pending</th><th>Hinweis (Definition)</th><th>Gesehen</th><th>Aktion</th></tr></thead>
       <tbody id="dtc-rows"></tbody>
     </table>
+
+    <!-- Freeze Frame (AGENTS 20): gelesen, nicht gerechnet — Rohbytes bleiben sichtbar -->
+    <div class="card" id="dtc-detail" hidden>
+      <h3>Freeze Frame <span class="muted small" id="dtc-detail-title"></span></h3>
+      <p class="hint">
+        Der Datensatz wird ausschließlich mit dem Layout aus dem Definition-Paket
+        dekodiert. Was das Paket nicht dokumentiert, bleibt als Rohbyte erhalten und
+        wird nicht interpretiert (AGENTS 13, 20, 24).
+      </p>
+      <div id="dtc-detail-body"></div>
+      <div class="row">
+        <button id="btn-dtc-detail-close">Schließen</button>
+      </div>
+    </div>
+
+    <!-- Löschen des Fehlerspeichers: der einzige Schreibzugriff (AGENTS 20, 25, 26) -->
+    <div class="card danger-zone" id="dtc-clear">
+      <h3>Fehlerspeicher löschen <span class="muted small">Schreibzugriff</span></h3>
+      <p class="hint">
+        Löschen ist ein Schreibzugriff auf das Steuergerät. Vorher wird der aktuelle
+        Fehlerspeicher als Sicherung in der Session abgelegt, danach wird das Ergebnis
+        durch erneutes Auslesen verifiziert. Ohne ausdrückliche Bestätigung und ohne
+        erfüllte Sicherheitsvorgaben findet kein Schreibzugriff statt (AGENTS 25, 26).
+      </p>
+      <div class="row">
+        <label class="field">ECU
+          <select id="clear-ecu"></select>
+        </label>
+        <label class="field checkbox"><input type="checkbox" id="clear-stationary" /> Fahrzeug steht</label>
+        <label class="field checkbox"><input type="checkbox" id="clear-ignition" /> Zündung ein</label>
+        <label class="field checkbox"><input type="checkbox" id="clear-parking" /> Feststellbremse angezogen</label>
+        <label class="field">Batteriespannung (V)
+          <input type="number" id="clear-voltage" step="0.1" min="0" max="30" placeholder="optional" />
+        </label>
+      </div>
+      <div class="row">
+        <button id="btn-clear-precheck">Vorbedingungen prüfen</button>
+        <label class="field checkbox"><input type="checkbox" id="clear-confirm" disabled />
+          Ich bestätige den Löschvorgang (Verlust der Fehlerhistorie)</label>
+        <button id="btn-clear-execute" class="danger" disabled>Löschen ausführen</button>
+      </div>
+      <ul class="plain small" id="clear-status"></ul>
+      <ul class="plain small" id="clear-result"></ul>
+    </div>
   </section>
 
   <!-- Live-Daten -->
