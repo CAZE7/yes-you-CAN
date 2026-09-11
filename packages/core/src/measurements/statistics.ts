@@ -44,8 +44,15 @@ export function summarizeSamples(
   if (values.length === 0) {
     return { ...base, samples: 0, min: null, max: null, average: null, delta: null, first: null, last: null };
   }
-  const min = Math.min(...values);
-  const max = Math.max(...values);
+  // No spread here on purpose: `Math.min(...values)` passes every sample as a call
+  // argument and exceeds the argument limit at roughly 100 000 samples, which is a
+  // few minutes of a 100 Hz signal — a long recording would then be unsummarisable.
+  let min = Infinity;
+  let max = -Infinity;
+  for (const value of values) {
+    if (value < min) min = value;
+    if (value > max) max = value;
+  }
   return {
     ...base,
     samples: values.length,

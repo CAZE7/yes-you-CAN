@@ -26,6 +26,28 @@ test('frame lines are parsed, including the optional timestamp suffix', () => {
   assert.equal(toHex(extended.payload), '50 03');
 });
 
+test('the type character, not the digit count, decides how long the id is', () => {
+  // `t` declares an 11-bit id: the digits after it belong to the DLC and the payload.
+  // Reading the line as "8 id digits first" turned a normal OBD response into an
+  // *extended* frame with an empty payload and the tail misread as a timestamp — a
+  // plausible-looking frame that simply contained nothing.
+  const frame = parseSlcanLine('t7E84410C0BB8', 'slcan0', 5000);
+  assert.ok(frame);
+  assert.equal(frame.extended, false);
+  assert.equal(frame.id, 0x7e8);
+  assert.equal(frame.dlc, 4);
+  assert.equal(toHex(frame.payload), '41 0C 0B B8');
+
+  // The other direction: a `T` line must not fall back to the 3-digit reading either.
+  assert.equal(parseSlcanLine('T7E837F2231', 'slcan0'), null, 'an extended frame needs all 8 id digits, not a standard id');
+
+  // And the timestamp suffix is still only ever the last three digits of the line.
+  const stamped = parseSlcanLine('t7E837F22311A2', 'slcan0', 5000);
+  assert.ok(stamped);
+  assert.equal(toHex(stamped.payload), '7F 22 31');
+  assert.equal(stamped.timestamp, 5000 - 0x1a2, 'the suffix is milliseconds already elapsed');
+});
+
 test('lines that are not frames are rejected', () => {
   assert.equal(parseSlcanLine('V1234', 'slcan0'), null);
   assert.equal(parseSlcanLine('OK', 'slcan0'), null);

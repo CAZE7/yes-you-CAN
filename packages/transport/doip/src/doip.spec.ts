@@ -10,6 +10,7 @@ import {
   decodeDiagnosticMessage,
   decodeHeader,
   decodeRoutingActivationResponse,
+  encodeRoutingActivationResponse,
   decodeVehicleIdentificationResponse,
   encodeDiagnosticMessage,
   encodeMessage,
@@ -40,7 +41,10 @@ class FakeDoipEndpoint implements DoipSocket {
     const header = decodeHeader(data);
     const payload = data.subarray(DOIP_HEADER_LENGTH);
     if (header.payloadType === PAYLOAD_TYPE.ROUTING_ACTIVATION_REQUEST) {
-      this.emit(encodeMessage(PAYLOAD_TYPE.ROUTING_ACTIVATION_RESPONSE, fromHex(`0E 00 10 00 00 00 00 00 ${this.activationCode.toString(16).padStart(2, '0')}`)));
+      // ISO 13400-2 layout: tester address, entity address, response code at byte 4,
+      // then four reserved bytes. Written out as wire bytes, not via our own encoder,
+      // so a wrong offset on one side cannot be certified by the other.
+      this.emit(encodeMessage(PAYLOAD_TYPE.ROUTING_ACTIVATION_RESPONSE, fromHex(`0E 00 10 00 ${this.activationCode.toString(16).padStart(2, '0')} 00 00 00 00`)));
       return;
     }
     if (header.payloadType === PAYLOAD_TYPE.DIAGNOSTIC_MESSAGE) {
@@ -93,13 +97,30 @@ test('routing activation request carries source address and activation type', ()
 });
 
 test('routing activation response is decoded with its response code name', () => {
-  const decoded = decodeRoutingActivationResponse(fromHex('0E 00 10 00 00 00 00 00 10'));
+  // Byte-level fixture from ISO 13400-2 Table 23 (payload type 0x0006):
+  //   0-1 tester logical address, 2-3 entity logical address, 4 response code,
+  //   5-8 reserved (ISO). A real DoIP entity may also stop after byte 4.
+  const decoded = decodeRoutingActivationResponse(fromHex('0E 00 10 00 10 00 00 00 00'));
   assert.equal(decoded.testerLogicalAddress, 0x0e00);
   assert.equal(decoded.entityLogicalAddress, 0x1000);
   assert.equal(decoded.code, 0x10);
   assert.equal(decoded.codeName, 'success');
   const refused = decodeRoutingActivationResponse(fromHex('0E 00 10 00 00 00 00 00 00'));
+  assert.equal(refused.code, 0x00);
   assert.equal(refused.codeName, 'unknownSourceAddress');
+  const short = decodeRoutingActivationResponse(fromHex('0E 00 10 00 03'));
+  assert.equal(short.codeName, 'sourceAddressMissingAuthentication', 'the reserved bytes are optional on the wire');
+  // Reading the code at the wrong offset used to accept a refusal as a success: byte 8
+  // of a denial is always zero, so this is the shape that silently "worked".
+  assert.equal(decodeRoutingActivationResponse(fromHex('0E 00 10 00 03 00 00 00 00')).code, 0x03);
+});
+
+test('the activation response is encoded the way the standard writes it', () => {
+  // Our own encoder is the mirror image — the simulated vehicle in the tests and the
+  // desktop mock ECU use it, so it has to agree with the fixture above byte for byte.
+  assert.equal(toHex(encodeRoutingActivationResponse(0x0e00, 0x1000, 0x10)), '0E 00 10 00 10 00 00 00 00');
+  assert.equal(encodeRoutingActivationResponse(0x0e00, 0x1000, 0x10).length, 9);
+  assert.equal(decodeRoutingActivationResponse(encodeRoutingActivationResponse(0x0e80, 0x0e00, 0x08)).code, 0x08);
 });
 
 test('diagnostic messages wrap and unwrap the UDS payload', () => {

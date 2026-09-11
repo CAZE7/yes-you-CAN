@@ -41,13 +41,7 @@ export class RequestResponseLink implements UdsLink {
   }
 
   async request(payload: Uint8Array, timeoutMs?: number): Promise<Uint8Array> {
-    const previous = this.lock;
-    let release!: () => void;
-    this.lock = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    await previous;
-    try {
+    return this.enqueue(async () => {
       const limit = timeoutMs ?? this.defaultTimeoutMs;
       this.stats.requests++;
       await this.transport.send(payload);
@@ -58,17 +52,36 @@ export class RequestResponseLink implements UdsLink {
       }
       this.stats.responses++;
       return response;
+    });
+  }
+
+  /** Functional requests and suppressed responses: sent, never answered — under the same lock. */
+  async sendOnly(payload: Uint8Array): Promise<void> {
+    await this.enqueue(() => this.transport.send(payload));
+  }
+
+  /**
+   * The final response of a service that announced NRC 0x78. It is still the same
+   * transaction, so the wait holds the lock: a TesterPresent released into that gap
+   * would be answered with the payload this caller is waiting for.
+   */
+  async receive(timeoutMs?: number): Promise<Uint8Array | null> {
+    return this.enqueue(() => this.transport.receive(timeoutMs));
+  }
+
+  /** One transaction at a time per link (AGENTS 15: UDS forbids parallel requests per session). */
+  private async enqueue<T>(task: () => Promise<T>): Promise<T> {
+    const previous = this.lock;
+    let release!: () => void;
+    this.lock = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await previous.catch(() => undefined);
+    try {
+      return await task();
     } finally {
       release();
     }
-  }
-
-  async sendOnly(payload: Uint8Array): Promise<void> {
-    await this.transport.send(payload);
-  }
-
-  async receive(timeoutMs?: number): Promise<Uint8Array | null> {
-    return this.transport.receive(timeoutMs);
   }
 }
 

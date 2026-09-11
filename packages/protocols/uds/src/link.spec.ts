@@ -58,6 +58,44 @@ describe('RequestResponseLink', () => {
     };
   }
 
+  test('sendOnly and the responsePending tail are serialised too (AGENTS 15)', async () => {
+    // This bridge is what every non-ISO-TP transport (DoIP, replay, gateway) plugs
+    // into, so the one-request-per-session rule has to live here as well: a functional
+    // send, or the deferred answer after NRC 0x78, must not cut into an open
+    // transaction — otherwise the answer is handed to the wrong caller.
+    const tick = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
+    const sent: Uint8Array[] = [];
+    const waiters: Array<(value: Uint8Array | null) => void> = [];
+    const transport = {
+      async send(data: Uint8Array): Promise<void> {
+        sent.push(data);
+      },
+      receive(): Promise<Uint8Array | null> {
+        return new Promise<Uint8Array | null>((resolve) => {
+          waiters.push(resolve);
+        });
+      },
+    };
+    const settle = (bytes: Uint8Array | null): void => {
+      waiters.shift()?.(bytes);
+    };
+    const link = new RequestResponseLink(transport);
+
+    const request = link.request(new Uint8Array([0x22, 0xf1, 0x90]));
+    await tick();
+    settle(new Uint8Array([0x7f, 0x22, 0x78]));
+    assert.deepEqual(Array.from(await request), [0x7f, 0x22, 0x78]);
+
+    const tail = link.receive();
+    const testerPresent = link.sendOnly(new Uint8Array([0x3e, 0x00]));
+    await tick();
+    assert.deepEqual(sent.map((frame) => Array.from(frame)), [[0x22, 0xf1, 0x90]], 'the TesterPresent waits behind the open transaction');
+    settle(new Uint8Array([0x62, 0xf1, 0x90, 0x11]));
+    assert.deepEqual(Array.from((await tail) ?? new Uint8Array()), [0x62, 0xf1, 0x90, 0x11], 'the deferred answer reaches its own waiter');
+    await testerPresent;
+    assert.deepEqual(sent.map((frame) => Array.from(frame)), [[0x22, 0xf1, 0x90], [0x3e, 0x00]], 'and it is sent afterwards, not in the gap');
+  });
+
   test('request sends, awaits and returns the response; stats track the exchange', async () => {
     const transport = fakeTransport({ response: new Uint8Array([0x50, 0x03]) });
     const link = new RequestResponseLink(transport, { defaultTimeoutMs: 1234 });
