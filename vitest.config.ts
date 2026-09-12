@@ -214,17 +214,40 @@ export default defineConfig({
         // to 65 while coverage is backfilled (was 95/90, causing 87 red thresholds).
         'packages/core/src/**': { lines: 85, branches: 65, perFile: true },
         'packages/protocols/**/src/**': { lines: 90, branches: 75, perFile: true },
-        // Adapter glue — hardware paths are mocked, lower but still gated.
-        // `adapters/host/src/catalog.ts` sits at 68/49 (measured 2026-09-12), so
-        // this profile cannot move up before it is backfilled (AGENTS 0.E).
-        'packages/adapters/**/src/**': { lines: 65, branches: 45, perFile: true },
+        // Adapter glue — hardware paths are injected, not mocked away.
+        // Raised 65/45 → 85/75 on 2026-09-12: `host/catalog.ts` was the reason
+        // the old gate existed (68.0/48.6, the thinnest file in the tree) and now
+        // measures 100/95.2, because probing, creation and cleanup are tested
+        // through an injected SocketCAN binding and a regular file standing in
+        // for a serial device. Weakest adapter file: elm327/protocol.ts 96.3/76.
+        // `serial.ts` and `socketcan/binding.ts` stay excluded (ADR 0016 §2).
+        'packages/adapters/**/src/**': { lines: 85, branches: 75, perFile: true },
         // Raised 75/50 → 85/70 on 2026-09-12: after the DoIP backfill the
         // weakest transport file is iso-tp/connection.ts at 92.9/75.3 and
         // doip/transport.ts went from 78.6/68.3 to 98.5/88.7 (ADR 0017).
         'packages/transport/**/src/**': { lines: 85, branches: 70, perFile: true },
         // Raised from 70/45 on 2026-09-11 after backfilling the crash-tolerance,
         // migration-persistence and list-resilience paths (ADR 0017: tests first).
-        'packages/storage/**/src/**': { lines: 90, branches: 55, perFile: true },
+        // Raised again 90/55 -> 95/80 on 2026-09-12 after the corrupt-archive and
+        // migration-order tests: zip.ts 100/83.9, migrations.ts 100/92.3,
+        // repository.ts 100/86.1. 80 is the honest ceiling for zip.ts — its
+        // remaining `?? 0` arms exist only because `noUncheckedIndexedAccess`
+        // cannot see that `offset + 4 <= archive.length` already proved the index.
+        'packages/storage/**/src/**': { lines: 95, branches: 80, perFile: true },
+        // New on 2026-09-12 after the foundation backfill: all five files in
+        // `packages/shared` measure 100 % lines / 100 % branches / 100 %
+        // statements, so the gate pins exactly that. Branches keep five points of
+        // room for defensive arms; lines do not, because every statement in the
+        // package every other package logs and parses through is executed by a
+        // test — and a new line here has to arrive with one.
+        'packages/shared/**/src/**': { lines: 100, branches: 95, perFile: true },
+        // New on 2026-09-12: the export path had no per-file gate at all, which
+        // is how a UTF-8/Latin-1 encoding bug survived in `pdf.ts`. Measured
+        // pdf.ts 100/88.9 and report.ts 100/79.5.
+        'packages/reports/**/src/**': { lines: 95, branches: 75, perFile: true },
+        // New on 2026-09-12: measured heuristic.ts 94.9/79.5, http.ts 100/87.7,
+        // service.ts 100/100 after the transport, timeout and gateway-junk tests.
+        'packages/ai/**/src/**': { lines: 90, branches: 75, perFile: true },
         // Raised 75/70 → 90/75 on 2026-09-12: `group.ts` was the reason the old
         // gate existed (77.0/77.6, one refactor away from red) and is now at
         // 99.1/91.3; the weakest chart file is viewport.ts at 92.5/77.1.
