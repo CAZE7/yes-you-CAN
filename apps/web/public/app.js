@@ -8,15 +8,23 @@
 
 import { GraphBoard } from "/graphs.js";
 
+/** Shared error message extraction — `catch` bindings are `unknown`. */
+const messageOf = (error) => (error instanceof Error ? error.message : String(error));
+
 const state = {
   connected: false,
   live: false,
+  /** @type {any[]} */
   samples: [],
+  /** @type {any[]} */
   trace: [],
-  selectedSignals: new Set(),
+  selectedSignals: /** @type {Set<string>} */ (new Set()),
+  /** @type {any[]} */
   actions: [],
+  /** @type {any[]} */
   dtcs: [],
-  clearPrecheck: null,
+  clearPrecheck: /** @type {any} */ (null),
+  ecusCache: /** @type {any[] | undefined} */ (undefined),
 };
 
 /**
@@ -35,7 +43,7 @@ const el = (tag, attrs = {}, children = []) => {
     else if (key.startsWith("on")) node.addEventListener(key.slice(2), value);
     else node.setAttribute(key, value);
   }
-  for (const child of [].concat(children)) {
+  for (const child of Array.isArray(children) ? children : [children]) {
     if (child == null) continue;
     node.append(typeof child === "string" ? document.createTextNode(child) : child);
   }
@@ -88,7 +96,8 @@ function logError(error) {
 
 /* ------------------------------------------------------------------ tabs */
 
-for (const tab of document.querySelectorAll(".tab")) {
+for (const rawTab of document.querySelectorAll(".tab")) {
+  const tab = /** @type {HTMLElement} */ (rawTab);
   tab.addEventListener("click", () => {
     document
       .querySelectorAll(".tab")
@@ -112,8 +121,7 @@ async function loadHistory() {
     board.setHistory(await api("/api/history"));
   } catch (error) {
     // No session yet — the graphs simply stay empty until the first samples arrive.
-    if (!/500|not started/.test(String(error.message)))
-      console.warn("history not available", error);
+    if (!/500|not started/.test(messageOf(error))) console.warn("history not available", error);
   }
 }
 
@@ -373,7 +381,7 @@ async function showFreezeFrame(dtc) {
     }));
   } catch (error) {
     body.replaceChildren(
-      el("p", { class: "out-of-range", text: `Freeze Frame nicht verfügbar: ${error.message}` }),
+      el("p", { class: "out-of-range", text: `Freeze Frame nicht verfügbar: ${messageOf(error)}` }),
     );
     return;
   }
@@ -642,26 +650,29 @@ $("#btn-dtc-detail-close").addEventListener("click", () => {
 
 /* ------------------------------------------------------------------- SSE */
 
+/** Payload of a named SSE event — `addEventListener` only types it as `Event`. */
+const payloadOf = (event) => JSON.parse(/** @type {MessageEvent} */ (event).data);
+
 function connectStream() {
   const source = new EventSource("/api/stream");
-  source.addEventListener("state", (event) => applyState(JSON.parse(event.data)));
+  source.addEventListener("state", (event) => applyState(payloadOf(event)));
   source.addEventListener("sample", (event) => {
-    const sample = JSON.parse(event.data);
+    const sample = payloadOf(event);
     state.samples.push(sample);
     if (state.samples.length > 4000) state.samples = state.samples.slice(-4000);
     renderLiveCards([sample]);
     board.pushSample(sample);
   });
-  source.addEventListener("trace", (event) => appendTrace(JSON.parse(event.data)));
-  source.addEventListener("marker", (event) => board.addMarker(JSON.parse(event.data)));
-  source.addEventListener("markers", (event) => board.setMarkers(JSON.parse(event.data)));
+  source.addEventListener("trace", (event) => appendTrace(payloadOf(event)));
+  source.addEventListener("marker", (event) => board.addMarker(payloadOf(event)));
+  source.addEventListener("markers", (event) => board.setMarkers(payloadOf(event)));
   source.addEventListener("dtc", () =>
     api("/api/state")
       .then((data) => renderDtcs(data.dtcs))
       .catch(logError),
   );
   source.addEventListener("ecu", (event) => {
-    const ecu = JSON.parse(event.data);
+    const ecu = payloadOf(event);
     const ecus = state.ecusCache ?? [];
     const index = ecus.findIndex((candidate) => candidate.rxId === ecu.rxId);
     if (index >= 0) ecus[index] = ecu;
@@ -669,9 +680,10 @@ function connectStream() {
     state.ecusCache = ecus;
     renderEcus(ecus);
   });
-  source.addEventListener("analysis", (event) => renderAnalysis(JSON.parse(event.data)));
+  source.addEventListener("analysis", (event) => renderAnalysis(payloadOf(event)));
   source.addEventListener("error", (event) => {
-    if (event.data) logError(new Error(JSON.parse(event.data).message ?? "SSE Fehler"));
+    const data = /** @type {MessageEvent} */ (event).data;
+    if (data) logError(new Error(JSON.parse(data).message ?? "SSE Fehler"));
   });
   return source;
 }
@@ -708,7 +720,11 @@ function renderAnalysis(result) {
  * The form therefore shows exactly which settings an adapter needs and why it is
  * (not) usable — no silent fallback to the simulator if a device is missing.
  */
-const adapterState = { selected: null, entries: [], describes: [] };
+const adapterState = {
+  selected: /** @type {any} */ (null),
+  entries: /** @type {any[]} */ ([]),
+  describes: /** @type {any[]} */ ([]),
+};
 
 function renderAdapters(payload) {
   adapterState.selected = payload.selected;

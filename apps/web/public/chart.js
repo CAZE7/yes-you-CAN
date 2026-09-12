@@ -50,6 +50,7 @@ export class SignalChart {
    * @param {import('/lib/index.js').ChartGroup} options.group shared state
    * @param {import('/lib/index.js').Series} options.series series to draw
    * @param {HTMLCanvasElement} options.canvas
+   * @param {string} [options.color] fallback line colour when the series carries none
    */
   constructor({ group, series, canvas, color = THEME.line }) {
     this.group = group;
@@ -57,6 +58,7 @@ export class SignalChart {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d");
     this.color = series.color ?? color;
+    /** @type {import('/lib/index.js').DecimationMode} */
     this.decimationMode = "minmax";
     this.plot = { left: PADDING.left, width: 1, top: PADDING.top, height: 1 };
     this.frame = 0;
@@ -177,6 +179,9 @@ export class SignalChart {
       canvas.height = pixelHeight;
     }
     const ctx = this.ctx;
+    // `getContext("2d")` is typed as nullable; without a context there is
+    // nothing to draw, and failing the paint must never break the board.
+    if (!ctx) return;
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
     ctx.clearRect(0, 0, width, height);
     ctx.font = "10px system-ui, -apple-system, sans-serif";

@@ -44,7 +44,8 @@ function el(tag, attrs = {}, children = []) {
     else if (key.startsWith("on")) node.addEventListener(key.slice(2), value);
     else node.setAttribute(key, value);
   }
-  for (const child of [].concat(children)) {
+  const list = Array.isArray(children) ? children : [children];
+  for (const child of list) {
     if (child == null) continue;
     node.append(typeof child === "string" ? document.createTextNode(child) : child);
   }
@@ -67,7 +68,7 @@ export class GraphBoard {
       follow: true,
       maxPointsPerSeries: 50_000,
     });
-    /** @type {Map<string, {chart: SignalChart, card: HTMLElement, stats: HTMLElement, value: HTMLElement}>} */
+    /** @type {Map<string, {chart: SignalChart, card: HTMLElement, stats: HTMLElement, value: HTMLElement, toggle: HTMLElement}>} */
     this.charts = new Map();
     this.signalMeta = new Map();
     this.unsubscribe = this.group.subscribe((reason) => this.onChange(reason));
@@ -109,7 +110,7 @@ export class GraphBoard {
     for (const sample of history.samples) {
       if (sample.numeric === null) continue;
       const entry = bySignal.get(sample.signal) ?? {
-        points: [],
+        points: /** @type {{t:number,value:number,outOfRange?:boolean}[]} */ ([]),
         name: sample.name,
         ...(sample.unit ? { unit: sample.unit } : {}),
       };
@@ -165,12 +166,14 @@ export class GraphBoard {
 
     const index = this.charts.size;
     const color = PALETTE[index % PALETTE.length] ?? PALETTE[0];
+    // `ensureSeries` fills metadata that a series auto-created by a live
+    // sample does not carry yet (name, unit, colour) — without overwriting
+    // values that were documented first (@vdp/charts, AGENTS 16).
     const series = this.group.ensureSeries(signal.id, {
       name: signal.name ?? signal.id,
       ...(signal.unit ? { unit: signal.unit } : {}),
       color,
     });
-    series.color ??= color;
 
     const canvas = el("canvas", { class: "chart" });
     const value = el("span", { class: "chart-value" });

@@ -23,11 +23,17 @@ export interface SeriesOptions {
 
 export class Series {
   readonly id: string;
-  readonly name: string;
-  readonly unit?: string;
-  readonly color?: string;
-  readonly min?: number;
-  readonly max?: number;
+  /**
+   * Metadata fields are filled at construction and may later be completed by
+   * `fillMissingMetadata` (live samples can arrive before the signal list,
+   * AGENTS 16). Values that are set always win — metadata is never
+   * overwritten, only gaps are filled.
+   */
+  name: string;
+  unit?: string;
+  color?: string;
+  min?: number;
+  max?: number;
   visible: boolean;
 
   private points: Point[] = [];
@@ -42,6 +48,21 @@ export class Series {
     if (options.max !== undefined) this.max = options.max;
     this.visible = options.visible ?? true;
     this.maxPoints = options.maxPoints ?? 200_000;
+  }
+
+  /**
+   * Fill metadata that arrived after creation. A series auto-created by a
+   * live sample carries only its id; when the signal list (or a chart) later
+   * provides name/unit/color/range, those gaps are filled — without ever
+   * overwriting a documented value. A `name` that still equals the id counts
+   * as "still the default" and may be replaced.
+   */
+  fillMissingMetadata(options: Partial<SeriesOptions>): void {
+    if (options.name !== undefined && this.name === this.id) this.name = options.name;
+    if (options.unit !== undefined && this.unit === undefined) this.unit = options.unit;
+    if (options.color !== undefined && this.color === undefined) this.color = options.color;
+    if (options.min !== undefined && this.min === undefined) this.min = options.min;
+    if (options.max !== undefined && this.max === undefined) this.max = options.max;
   }
 
   get length(): number {

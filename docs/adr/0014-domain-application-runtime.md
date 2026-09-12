@@ -58,9 +58,13 @@ Weitere Festlegungen:
 - **Kein zweites Entity-System parallel.** Solange die Engine die Zuständigkeit
   hat, definiert die Domain *Projektionen*, keine konkurrierenden Entities. Erst
   wenn die Engine zerlegt wird (Phase 4), werden daraus die führenden Entities.
-- **Die Engine bleibt als Escape-Hatch sichtbar** (`runtime.engine`), aber neue
-  Code-Pfade benutzen Services/Command-Bus. Die Web-App wird in einem eigenen
-  Schritt gegen die Runtime gehängt (Phase 10).
+- **Kein Escape-Hatch mehr (Stand 2026-09-12):** `runtime.engine` ist aus der
+  öffentlichen Runtime-Fläche entfernt; kein Code außerhalb von `@vdp/runtime`
+  erreicht die Engine noch. Sie ist ein internes Implementierungsdetail des
+  Kompositionsroots, bis Phase 4 auch die Klasse selbst auflöst. Die Web-App
+  hängt seit demselben Stand hinter der Runtime (Phase 5 erledigt) und ist
+  zusätzlich frei von `@vdp/core`-Importen (Persistenz/Export laufen über die
+  Storage-Naht, ADR 0018 trägt die Ablehnungs-Semantik).
 - **Ereignisse tragen Korrelations-Ids** (`sessionId`, `ecuId`, `actionId`), damit
   Observability später ohne Umbau einzieht.
 - **UDS-Service→Capability-Abbildung lebt in der Runtime**, nicht in der Domain:
@@ -73,8 +77,8 @@ Weitere Festlegungen:
 | 1 | Domain-Verträge (`@vdp/domain`) | ✅ erledigt |
 | 2 | Ports (Transport, DefinitionProvider, SessionStore, EventBus, Clock, IdGenerator) | ✅ erledigt |
 | 3 | Runtime (`@vdp/runtime`) + Command/Query-Verdrahtung | ✅ erledigt |
-| 4 | `DiagnosticEngine` in Services zerlegen (Implementierungen unter die Ports) | offen |
-| 5 | Web-App gegen Runtime/Command-Bus hängen | offen |
+| 4 | `DiagnosticEngine` in Services zerlegen (Implementierungen unter die Ports) | 🟡 Orchestrierung liegt in den Services, die Engine ist internes Runtime-Detail ohne Escape-Hatch; die Auflösung der Engine-Klasse in kleinere Kollaborateure steht aus |
+| 5 | Web-App gegen Runtime/Command-Bus hängen | ✅ erledigt (2026-09-12; `apps/web` ist zusätzlich `@vdp/core`-frei) |
 | 6 | Definitionen als Daten außerhalb des Codes (JSON/Loader hinter `DefinitionProvider`) | offen |
 | 7 | Deterministischer Simulator als `Virtual Vehicle` mit Szenarien | teilweise (Simulator vorhanden) |
 | 8 | Offline-first + Sync-Vertrag (`entityId`/`revision`/`updatedAt`/`deviceId`) | offen |

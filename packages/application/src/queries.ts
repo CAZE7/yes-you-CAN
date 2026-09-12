@@ -7,11 +7,19 @@
  */
 
 import type {
+  AnomalyInfo,
   DiagnosticCapability,
+  DtcClearPrecheckInfo,
   DtcInfo,
   EcuSummary,
+  MarkerInfo,
   MeasurementReading,
+  MeasurementStatus,
+  RecordingHistory,
   SessionSummary,
+  SignalInfo,
+  SignalStatisticsInfo,
+  VehicleStateReading,
   VehicleSummary,
 } from "@vdp/domain";
 import type { ActionDescriptor } from "./actions.js";
@@ -24,7 +32,14 @@ export const QueryKinds = {
   GetEcu: "ecu.get",
   GetEcuCapabilities: "ecu.capabilities",
   GetDtcList: "dtc.list",
+  GetDtcClearPrecheck: "dtc.clear-precheck",
   GetMeasurements: "measurement.list",
+  GetMeasurementStatus: "measurement.status",
+  GetStatistics: "measurement.statistics",
+  GetAnomalies: "measurement.anomalies",
+  GetSignalList: "signal.list",
+  GetMarkers: "marker.list",
+  GetRecordingHistory: "recording.get",
   GetAvailableActions: "actions.available",
 } as const;
 
@@ -105,4 +120,75 @@ export function getAvailableActions(ecuId?: string): GetAvailableActionsQuery {
   return ecuId === undefined
     ? { kind: QueryKinds.GetAvailableActions }
     : { kind: QueryKinds.GetAvailableActions, ecuId };
+}
+
+export interface GetDtcClearPrecheckQuery extends Query<DtcClearPrecheckInfo> {
+  readonly kind: typeof QueryKinds.GetDtcClearPrecheck;
+  /** ECU reference: session id, definition id or "0x…" address. */
+  readonly ecuId: string;
+  readonly vehicleState: VehicleStateReading;
+}
+
+/**
+ * What the safety chain still requires before a clear is permitted (AGENTS 26).
+ * Read-only: nothing is written and no permit is issued.
+ */
+export function getDtcClearPrecheck(
+  ecuId: string,
+  vehicleState: VehicleStateReading,
+): GetDtcClearPrecheckQuery {
+  return { kind: QueryKinds.GetDtcClearPrecheck, ecuId, vehicleState };
+}
+
+export interface GetSignalListQuery extends Query<readonly SignalInfo[]> {
+  readonly kind: typeof QueryKinds.GetSignalList;
+}
+
+/** Every signal the attached ECUs can deliver, per definition package. */
+export function getSignalList(): GetSignalListQuery {
+  return { kind: QueryKinds.GetSignalList };
+}
+
+export interface GetMarkersQuery extends Query<readonly MarkerInfo[]> {
+  readonly kind: typeof QueryKinds.GetMarkers;
+}
+
+export function getMarkers(): GetMarkersQuery {
+  return { kind: QueryKinds.GetMarkers };
+}
+
+export interface GetStatisticsQuery extends Query<readonly SignalStatisticsInfo[]> {
+  readonly kind: typeof QueryKinds.GetStatistics;
+}
+
+export function getStatistics(): GetStatisticsQuery {
+  return { kind: QueryKinds.GetStatistics };
+}
+
+export interface GetAnomaliesQuery extends Query<readonly AnomalyInfo[]> {
+  readonly kind: typeof QueryKinds.GetAnomalies;
+}
+
+export function getAnomalies(): GetAnomaliesQuery {
+  return { kind: QueryKinds.GetAnomalies };
+}
+
+export interface GetRecordingHistoryQuery extends Query<RecordingHistory> {
+  readonly kind: typeof QueryKinds.GetRecordingHistory;
+  /** Keep only the newest N samples; unlimited when omitted. */
+  readonly limit?: number;
+}
+
+export function getRecordingHistory(limit?: number): GetRecordingHistoryQuery {
+  return limit === undefined
+    ? { kind: QueryKinds.GetRecordingHistory }
+    : { kind: QueryKinds.GetRecordingHistory, limit };
+}
+
+export interface GetMeasurementStatusQuery extends Query<MeasurementStatus> {
+  readonly kind: typeof QueryKinds.GetMeasurementStatus;
+}
+
+export function getMeasurementStatus(): GetMeasurementStatusQuery {
+  return { kind: QueryKinds.GetMeasurementStatus };
 }

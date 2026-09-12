@@ -12,17 +12,26 @@ import type {
   DecodedSignal,
   EcuSession,
   EnrichedDtc,
+  FreezeFrame,
+  Marker,
   MeasurementSample,
+  SignalStatistics,
   VehicleIdentity,
   VehicleSession,
 } from "@vdp/core";
 import { describeVehicle } from "@vdp/core";
+import type { SignalDefinition } from "@vdp/definitions";
 import type {
+  AnomalyInfo,
   ClearDtcOutcome,
   DtcInfo,
   EcuSummary,
+  FreezeFrameInfo,
+  MarkerInfo,
   MeasurementReading,
   SessionSummary,
+  SignalInfo,
+  SignalStatisticsInfo,
   VehicleSummary,
 } from "@vdp/domain";
 import { capabilitiesFromServices } from "./capability-map.js";
@@ -38,6 +47,9 @@ export function toEcuSummary(record: EcuSession): EcuSummary {
     extended: record.extended,
     reachable: record.reachable,
     sessionType: record.sessionType,
+    p2Ms: record.timing.p2Ms,
+    dtcCount: record.dtcs?.length ?? 0,
+    supportedServices: [...record.supportedServices],
     capabilities: capabilitiesFromServices(record.supportedServices),
     identification: record.identification.map((entry) => ({ ...entry })),
     ...(record.lastError !== undefined ? { lastError: record.lastError } : {}),
@@ -87,13 +99,20 @@ export function toDtcInfo(dtc: EnrichedDtc): DtcInfo {
     ecuId: dtc.ecuId,
     ecuName: dtc.ecuName,
     status: dtc.status,
+    raw: dtc.raw,
+    failureType: dtc.failureType,
+    confirmed: dtc.statusBits.confirmedDtc,
+    pending: dtc.statusBits.pendingDtc,
+    testFailed: dtc.statusBits.testFailed,
+    hasFreezeFrame: (dtc.snapshot?.length ?? 0) > 0,
+    ...(dtc.firstSeenInThisScan === true ? { firstSeenInThisScan: true } : {}),
     ...(dtc.severity !== undefined ? { severity: dtc.severity } : {}),
     ...(dtc.description !== undefined ? { description: dtc.description } : {}),
     ...(dtc.hint !== undefined ? { hint: dtc.hint } : {}),
     ...(dtc.firstSeen !== undefined ? { firstSeen: dtc.firstSeen } : {}),
     ...(dtc.lastSeen !== undefined ? { lastSeen: dtc.lastSeen } : {}),
     ...(dtc.relatedSignals !== undefined && dtc.relatedSignals.length > 0
-      ? { relatedSignals: dtc.relatedSignals.map((signal) => signal.id) }
+      ? { relatedSignals: dtc.relatedSignals.map((signal) => ({ ...signal })) }
       : {}),
   };
 }
@@ -141,6 +160,13 @@ export function toClearDtcOutcome(
     beforeCount: result.before.length,
     afterCount: result.after.length,
     remainingCodes: result.after.map((dtc) => dtc.code),
+    beforeCodes: result.before.map((dtc) => dtc.code),
+    afterCodes: result.after.map((dtc) => dtc.code),
+    removedCodes: result.comparison.removed.map((dtc) => dtc.code),
+    // Codes whose status changed but which the ECU keeps: the fault condition
+    // is still present (same view the operator saw before the runtime move).
+    stillFailingCodes: result.comparison.changed.map((dtc) => dtc.code),
+    unchangedCodes: result.comparison.unchanged.map((dtc) => dtc.code),
     reasons: [...warnings],
     clearedAt: result.clearedAt,
     permitId: result.permit.id,
@@ -160,6 +186,83 @@ export function deniedClearOutcome(
     beforeCount: 0,
     afterCount: 0,
     remainingCodes: [],
+    beforeCodes: [],
+    afterCodes: [],
+    removedCodes: [],
+    stillFailingCodes: [],
+    unchangedCodes: [],
     reasons: [...reasons],
+  };
+}
+
+export function toMarkerInfo(marker: Marker): MarkerInfo {
+  return {
+    markerId: marker.id,
+    t: marker.t,
+    timestamp: marker.timestamp,
+    label: marker.label,
+    kind: marker.kind,
+    ...(marker.detail !== undefined ? { detail: marker.detail } : {}),
+  };
+}
+
+export function toFreezeFrameInfo(frame: FreezeFrame): FreezeFrameInfo {
+  return {
+    code: frame.dtcCode,
+    recordNumber: frame.recordNumber,
+    documented: frame.documented,
+    fields: frame.fields.map((field) => ({
+      did: field.did,
+      name: field.name,
+      rawHex: field.rawHex,
+      values: field.values.map((value) => ({
+        signalId: value.signalId,
+        name: value.name,
+        value: value.value,
+        rawHex: value.rawHex,
+        outOfRange: value.outOfRange,
+        ...(value.unit !== undefined ? { unit: value.unit } : {}),
+      })),
+    })),
+    unassignedHex: frame.unassignedHex,
+    notes: [...frame.notes],
+  };
+}
+
+export function toSignalStatisticsInfo(stats: SignalStatistics): SignalStatisticsInfo {
+  return {
+    signalId: stats.signal,
+    name: stats.name,
+    ...(stats.unit !== undefined ? { unit: stats.unit } : {}),
+    samples: stats.samples,
+    min: stats.min,
+    max: stats.max,
+    average: stats.average,
+    delta: stats.delta,
+    first: stats.first,
+    last: stats.last,
+    outOfRangeCount: stats.outOfRangeCount,
+  };
+}
+
+export function toAnomalyInfo(anomaly: {
+  signal: string;
+  reason: string;
+  value?: number;
+}): AnomalyInfo {
+  return {
+    signalId: anomaly.signal,
+    reason: anomaly.reason,
+    ...(anomaly.value !== undefined ? { value: anomaly.value } : {}),
+  };
+}
+
+/** Signal catalogue entry from a definition package (read model for pickers). */
+export function toSignalInfo(definition: SignalDefinition): SignalInfo {
+  return {
+    signalId: definition.id,
+    name: definition.name,
+    ...(definition.unit !== undefined ? { unit: definition.unit } : {}),
+    critical: definition.critical ?? false,
   };
 }

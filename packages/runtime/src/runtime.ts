@@ -14,9 +14,11 @@
  * const dtcs = await runtime.commands.dispatch(readDtcs());
  * ```
  *
- * The underlying `DiagnosticEngine` is still exposed as an escape hatch
- * while it is being decomposed (ADR 0014 Phase 4); new code should prefer
- * the services and the command bus.
+ * Below the services the runtime still composes the (monolithic) diagnostic
+ * engine of `@vdp/core`; it is an internal implementation detail now. Nothing
+ * outside this package reaches it — the public surface is services and the
+ * command bus (ADR 0014; the core-internal decomposition of the engine class
+ * itself is the remaining Phase 4 work).
  */
 
 import { ActionRegistry, CommandBus, createStandardActions } from "@vdp/application";
@@ -100,8 +102,6 @@ export interface DiagnosticRuntime {
    * basis for reports, replay and safety review (§10/§24).
    */
   readonly audit: EventAuditRecorder;
-  /** Escape hatch while the engine decomposition is in progress (ADR 0014). */
-  readonly engine: DiagnosticEngine;
   /** Disconnect (if connected) and release the runtime. Idempotent. */
   dispose(): Promise<void>;
 }
@@ -155,13 +155,21 @@ export function createDiagnosticRuntime(options: RuntimeOptions): DiagnosticRunt
     commands,
     events,
     audit,
-    engine,
     dispose: async () => {
       audit.dispose();
       // `endedAt` marks a session the engine already closed (vehicle.disconnect
       // or an earlier dispose); closing the bus twice is not safe.
       const openSession = engine.vehicleSession;
-      if (openSession && openSession.data.endedAt === undefined) await engine.disconnect();
+      if (openSession && openSession.data.endedAt === undefined) {
+        await engine.disconnect();
+        return;
+      }
+      // No open session — e.g. a failed connect that already opened the bus.
+      // A half-open transport must not survive the runtime: the next attempt
+      // would fail with "already open" instead of the real reason.
+      engine.stopLiveData();
+      const bus = options.bus;
+      if (bus?.isOpen()) await bus.close();
     },
   };
 }

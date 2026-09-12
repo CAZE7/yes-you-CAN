@@ -48,14 +48,24 @@ export {
 
 // Domain data contracts (§32 Phase 1)
 export type {
+  AnomalyInfo,
   ClearDtcOutcome,
   DiagnosticOperationResult,
+  DtcClearPrecheckInfo,
   DtcInfo,
   EcuSummary,
+  FreezeFrameFieldInfo,
+  FreezeFrameInfo,
+  FreezeFrameValueInfo,
   IdentificationEntry,
+  MarkerInfo,
   MeasurementReading,
+  MeasurementStatus,
   RawDidReading,
+  RecordingHistory,
   SessionSummary,
+  SignalInfo,
+  SignalStatisticsInfo,
   VehicleStateReading,
   VehicleSummary,
 } from "./model.js";

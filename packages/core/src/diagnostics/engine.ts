@@ -375,7 +375,14 @@ export class DiagnosticEngine {
           checkDigit: identity.vinAnalysis?.checkDigit,
         });
         return identity;
-      } catch {}
+      } catch (error) {
+        // Trying the next ECU is intentional — but the failure itself stays
+        // observable instead of disappearing (AGENTS 33, 34.25).
+        this.log.debug("VIN read failed, trying next ECU", {
+          ecu: handle.session.record.name,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
     return undefined;
   }

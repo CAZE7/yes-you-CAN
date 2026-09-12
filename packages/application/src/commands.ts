@@ -11,6 +11,8 @@ import type {
   ClearDtcOutcome,
   DtcInfo,
   EcuSummary,
+  FreezeFrameInfo,
+  MarkerInfo,
   MeasurementReading,
   RawDidReading,
   SessionSummary,
@@ -23,12 +25,15 @@ import type { Command } from "./command-bus.js";
 export const CommandKinds = {
   ConnectVehicle: "vehicle.connect",
   DisconnectVehicle: "vehicle.disconnect",
+  IdentifyEcus: "ecu.identify",
   ReadDtcs: "dtc.read",
+  ReadDtcFreezeFrame: "dtc.freeze-frame",
   ClearDtcs: "dtc.clear",
   ReadDid: "did.read",
   SnapshotSignals: "measurement.snapshot",
   StartMeasurements: "measurement.start",
   StopMeasurements: "measurement.stop",
+  AddMarker: "marker.add",
 } as const;
 
 export type CommandKind = (typeof CommandKinds)[keyof typeof CommandKinds];
@@ -61,6 +66,58 @@ export interface DisconnectVehicleCommand extends Command<void> {
 
 export function disconnectVehicle(): DisconnectVehicleCommand {
   return { kind: CommandKinds.DisconnectVehicle };
+}
+
+export interface IdentifyEcusCommand extends Command<readonly EcuSummary[]> {
+  readonly kind: typeof CommandKinds.IdentifyEcus;
+}
+
+/** Re-read identification DIDs from every attached ECU (read-only, AGENTS 12). */
+export function identifyEcus(): IdentifyEcusCommand {
+  return { kind: CommandKinds.IdentifyEcus };
+}
+
+export interface ReadDtcFreezeFrameCommand extends Command<FreezeFrameInfo> {
+  readonly kind: typeof CommandKinds.ReadDtcFreezeFrame;
+  /** ECU reference: session id, definition id or "0x…" address. */
+  readonly ecuId: string;
+  readonly code: string;
+  /** Snapshot record number; 0xff reads the ECU's default record. */
+  readonly recordNumber?: number;
+}
+
+export function readDtcFreezeFrame(
+  ecuId: string,
+  code: string,
+  recordNumber?: number,
+): ReadDtcFreezeFrameCommand {
+  return {
+    kind: CommandKinds.ReadDtcFreezeFrame,
+    ecuId,
+    code,
+    ...(recordNumber !== undefined ? { recordNumber } : {}),
+  };
+}
+
+export interface AddMarkerCommand extends Command<MarkerInfo> {
+  readonly kind: typeof CommandKinds.AddMarker;
+  readonly label: string;
+  /** Marker category; defaults to a user marker. `kind` names the command. */
+  readonly markerKind?: MarkerInfo["kind"];
+  readonly detail?: string;
+}
+
+export function addMarker(
+  label: string,
+  markerKind?: MarkerInfo["kind"],
+  detail?: string,
+): AddMarkerCommand {
+  return {
+    kind: CommandKinds.AddMarker,
+    label,
+    ...(markerKind !== undefined ? { markerKind } : {}),
+    ...(detail !== undefined ? { detail } : {}),
+  };
 }
 
 export interface ReadDtcsCommand extends Command<readonly DtcInfo[]> {

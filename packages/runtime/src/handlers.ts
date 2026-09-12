@@ -9,6 +9,7 @@
 
 import {
   type ActionRegistry,
+  type AddMarkerCommand,
   type ClearDtcsCommand,
   type CommandBus,
   CommandKinds,
@@ -16,12 +17,15 @@ import {
   type ConnectVehicleResult,
   type DiagnosticContext,
   type GetAvailableActionsQuery,
+  type GetDtcClearPrecheckQuery,
   type GetDtcListQuery,
   type GetEcuCapabilitiesQuery,
   type GetEcuQuery,
   type GetMeasurementsQuery,
+  type GetRecordingHistoryQuery,
   QueryKinds,
   type ReadDidCommand,
+  type ReadDtcFreezeFrameCommand,
   type ReadDtcsCommand,
   type SnapshotSignalsCommand,
   type StartMeasurementsCommand,
@@ -51,6 +55,15 @@ export function registerRuntimeHandlers(bus: CommandBus, services: RuntimeServic
     vehicle.connect((command as ConnectVehicleCommand).options),
   );
   bus.registerCommand<void>(CommandKinds.DisconnectVehicle, () => vehicle.disconnect());
+  bus.registerCommand(CommandKinds.IdentifyEcus, () => ecus.identifyAll());
+  bus.registerCommand(CommandKinds.ReadDtcFreezeFrame, (command) => {
+    const cmd = command as ReadDtcFreezeFrameCommand;
+    return dtc.freezeFrame(cmd.ecuId, cmd.code, cmd.recordNumber);
+  });
+  bus.registerCommand(CommandKinds.AddMarker, (command) => {
+    const cmd = command as AddMarkerCommand;
+    return measurements.addMarker(cmd.label, cmd.markerKind, cmd.detail);
+  });
   bus.registerCommand(CommandKinds.ReadDtcs, (command) => {
     const cmd = command as ReadDtcsCommand;
     return dtc.scan(cmd.ecuId, cmd.statusMask);
@@ -95,6 +108,18 @@ export function registerRuntimeHandlers(bus: CommandBus, services: RuntimeServic
     const all = dtc.lastScanResult;
     return ecuId === undefined ? all : all.filter((dtcInfo) => dtcInfo.ecuId === ecuId);
   });
+  bus.registerQuery(QueryKinds.GetDtcClearPrecheck, (query) => {
+    const cmd = query as GetDtcClearPrecheckQuery;
+    return dtc.precheckClear(cmd.ecuId, cmd.vehicleState);
+  });
+  bus.registerQuery(QueryKinds.GetSignalList, () => measurements.signals());
+  bus.registerQuery(QueryKinds.GetMarkers, () => measurements.markers());
+  bus.registerQuery(QueryKinds.GetStatistics, () => measurements.statistics());
+  bus.registerQuery(QueryKinds.GetAnomalies, () => measurements.anomalies());
+  bus.registerQuery(QueryKinds.GetRecordingHistory, (query) =>
+    measurements.history((query as GetRecordingHistoryQuery).limit),
+  );
+  bus.registerQuery(QueryKinds.GetMeasurementStatus, () => measurements.status());
   bus.registerQuery(QueryKinds.GetMeasurements, (query) =>
     measurements.samples((query as GetMeasurementsQuery).signalId),
   );
