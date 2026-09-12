@@ -420,3 +420,80 @@ test("zip listing stops gracefully on empty or truncated archives", () => {
   const archive = createZip([{ name: "a.txt", data: new TextEncoder().encode("x") }]);
   assert.deepEqual(listZipEntries(archive.subarray(0, 3)), [], "a truncated header is no crash");
 });
+
+test("migrations registered out of order are kept in version order", () => {
+  const registry = new MigrationRegistry([
+    { fromVersion: 1, toVersion: 2, description: "later step", up: (data) => data },
+    { fromVersion: 0, toVersion: 1, description: "earlier step", up: (data) => data },
+  ]);
+  // Registration sorts, so "latest" is the highest version rather than the last
+  // one that happened to be registered.
+  assert.equal(registry.latestVersion, 2);
+  // The walk is driven by the stored version, not by the array order: it runs
+  // the step that fits and stops at the version this build supports.
+  const { data, applied } = registry.migrate({ id: "x", schemaVersion: 0 });
+  assert.equal(data.schemaVersion, SESSION_SCHEMA_VERSION);
+  assert.deepEqual(applied, ["0→1: earlier step"]);
+});
+
+test("a registry without migrations reports the built-in schema version", () => {
+  assert.equal(new MigrationRegistry([]).latestVersion, SESSION_SCHEMA_VERSION);
+  assert.equal(
+    new MigrationRegistry().latestVersion,
+    SESSION_SCHEMA_VERSION,
+    "the default registry starts empty, so the built-in version is the latest",
+  );
+});
+
+test("a stored session without a schema version is treated as version 0", () => {
+  // Sessions written before versioning existed carry no `schemaVersion` at all;
+  // treating them as 0 is what keeps them readable (AGENTS 34.14).
+  const registry = new MigrationRegistry([
+    {
+      fromVersion: 0,
+      toVersion: 1,
+      description: "initial shape",
+      up: (data) => ({ ...data, ecus: data["ecus"] ?? [] }),
+    },
+  ]);
+  const { data, applied } = registry.migrate({ id: "unversioned", startedAt: "x" });
+  assert.equal(data.schemaVersion, SESSION_SCHEMA_VERSION);
+  assert.equal(applied.length, 1);
+  assert.deepEqual((data as { ecus: unknown }).ecus, []);
+
+  // A version that is not a number is the same case: no crash, treated as 0.
+  const textual = registry.migrate({ id: "x", schemaVersion: "1" });
+  assert.equal(textual.applied.length, 1, "a textual version must not be mistaken for a number");
+});
+
+test("zip listing survives a header cut mid-way and a corrupted size field", () => {
+  const archive = createZip([
+    { name: "session.json", data: new TextEncoder().encode("{}") },
+    { name: "measurements.ndjson", data: new TextEncoder().encode("line\n") },
+  ]);
+
+  // Ten bytes still carry the local header signature, but none of the fields
+  // behind it: every missing byte must read as zero instead of throwing or
+  // looping forever.
+  assert.deepEqual(
+    listZipEntries(archive.subarray(0, 10)),
+    [""],
+    "a header cut mid-way yields one unreadable name and stops",
+  );
+
+  // A wrong magic is not an archive at all — stop instead of scanning on.
+  assert.deepEqual(listZipEntries(new Uint8Array([0x50, 0x4b, 0x99, 0x99, 0, 0, 0, 0])), []);
+
+  // A corrupted compressed-size field must not send the reader into an endless
+  // loop: the offset jumps past the end and the scan stops after what it read.
+  const corrupt = archive.slice();
+  corrupt[18] = 0xff;
+  corrupt[19] = 0xff;
+  corrupt[20] = 0xff;
+  corrupt[21] = 0x7f;
+  assert.deepEqual(
+    listZipEntries(corrupt),
+    ["session.json"],
+    "one readable entry, then the offset leaves the archive",
+  );
+});

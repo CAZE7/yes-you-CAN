@@ -39,6 +39,16 @@ export class MigrationRegistry {
     this.migrations.sort((a, b) => a.fromVersion - b.fromVersion);
   }
 
+  /**
+   * The newest schema version this registry can produce.
+   *
+   * `migrate` looks its steps up by version (`find(fromVersion)`), so the
+   * registration order does not change which migrations run — the sort in
+   * `register` exists for this getter and for anybody reading the registry:
+   * "latest" must mean the highest version, not the last one registered.
+   * With no migration registered the built-in version is the answer, because
+   * that is the shape a fresh session already has.
+   */
   get latestVersion(): number {
     return this.migrations.length > 0
       ? (this.migrations.at(-1)?.toVersion ?? SESSION_SCHEMA_VERSION)
