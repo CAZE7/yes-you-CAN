@@ -265,8 +265,13 @@ export class SerialByteStream implements ByteStream {
     for (const listener of listeners) {
       try {
         listener(error);
-      } catch {
-        // an error listener that throws is not worth another error
+      } catch (listenerError) {
+        // An error listener that throws is not worth another error — but it is
+        // worth a structured debug line (AGENTS 34.25).
+        this.log.debug("serial error listener failed", {
+          device: this.device,
+          error: listenerError instanceof Error ? listenerError.message : String(listenerError),
+        });
       }
     }
     void this.close();

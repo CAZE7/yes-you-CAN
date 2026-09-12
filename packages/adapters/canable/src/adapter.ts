@@ -96,8 +96,14 @@ export class CanableAdapter implements CanBus {
     if (this.opened) {
       try {
         await this.command(SLCAN_COMMANDS.close);
-      } catch {
-        // closing a broken channel must not throw
+      } catch (error) {
+        // Closing a broken channel must not throw — the caller is on its way
+        // out. The reason still gets a structured debug line instead of
+        // disappearing (AGENTS 34.25).
+        this.log.debug("slcan close command failed", {
+          channel: this.channel,
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     }
     this.unsubscribeStream?.();

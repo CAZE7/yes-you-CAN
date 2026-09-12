@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { MemoryByteStream } from "@vdp/adapter-elm327";
-import { fromHex, toHex } from "@vdp/shared";
+import { MemorySink, createLogger, fromHex, toHex } from "@vdp/shared";
 import { createFrame } from "@vdp/transport-can";
 import { test } from "vitest";
 import {
@@ -150,4 +150,34 @@ test("close() sends the close command and stops delivery", async () => {
   await adapter.close();
   assert.equal(adapter.isOpen(), false);
   assert.ok(stream.written.at(-1) === "C\r");
+});
+
+test("closing a broken channel reports the reason instead of swallowing it", async () => {
+  // Symptom before the fix: `close()` caught the failing "C" command in an
+  // empty `catch {}` (AGENTS 34.25 forbids that). Closing must still succeed —
+  // the caller is on its way out — but the reason has to leave a trace.
+  const stream = new MemoryByteStream();
+  stream.open();
+  const sink = new MemorySink();
+  const adapter = new CanableAdapter({
+    stream,
+    commandTimeoutMs: 100,
+    logger: createLogger("can", { level: "DEBUG" }, [sink]),
+  });
+  await adapter.open();
+  // The device disappears before the close command reaches it.
+  stream.close();
+  await adapter.close();
+
+  assert.equal(adapter.isOpen(), false, "the adapter is closed either way");
+  const reported = sink.all().find((record) => record.message === "slcan close command failed");
+  assert.ok(
+    reported,
+    `expected a debug record, got ${sink
+      .all()
+      .map((r) => r.message)
+      .join("|")}`,
+  );
+  assert.equal(reported?.level, "DEBUG");
+  assert.match(String(reported?.fields?.error ?? ""), /slcan write failed/);
 });
