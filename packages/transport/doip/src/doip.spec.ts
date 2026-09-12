@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { UdsClient, createRequestResponseLink } from "@vdp/protocols-uds";
 import { ProtocolError, fromHex, toHex } from "@vdp/shared";
 import { test } from "vitest";
+import { settle, waitFor } from "../../../../tests/helpers/wait.js";
 import {
+  DEFAULT_DISCOVERY_WINDOW_MS,
   DOIP_HEADER_LENGTH,
   DoipDiscovery,
   type DoipSocket,
@@ -28,6 +30,10 @@ class FakeDoipEndpoint implements DoipSocket {
   /** UDS payload returned for the next diagnostic message. */
   responder: ((uds: Uint8Array) => Uint8Array) | null = null;
   activationCode = 0x10;
+  /** Set to false for an entity that never answers the routing activation. */
+  answersActivation = true;
+  /** When set, `send` rejects — used for the alive-check failure path. */
+  sendError: Error | null = null;
 
   constructor(options: { secure?: boolean } = {}) {
     this.secure = options.secure ?? false;
@@ -38,9 +44,11 @@ class FakeDoipEndpoint implements DoipSocket {
   }
   async send(data: Uint8Array): Promise<void> {
     this.received.push(data);
+    if (this.sendError) throw this.sendError;
     const header = decodeHeader(data);
     const payload = data.subarray(DOIP_HEADER_LENGTH);
     if (header.payloadType === PAYLOAD_TYPE.ROUTING_ACTIVATION_REQUEST) {
+      if (!this.answersActivation) return;
       // ISO 13400-2 layout: tester address, entity address, response code at byte 4,
       // then four reserved bytes. Written out as wire bytes, not via our own encoder,
       // so a wrong offset on one side cannot be certified by the other.
@@ -197,6 +205,7 @@ test("a refused routing activation surfaces with the code name", async () => {
   });
   await assert.rejects(transport.connect(), /routing activation refused: routingActivationDenied/);
   assert.equal(transport.getStatus().state, "error");
+  assert.equal(endpoint.isOpen(), false, "a refused activation must not leave a half-open socket");
 });
 
 test("UDS runs over DoIP without the client knowing the transport (AGENTS 5)", async () => {
@@ -264,7 +273,13 @@ test("alive check requests are answered with the tester address", async () => {
   await transport.connect();
   const before = endpoint.received.length;
   endpoint.emit(encodeMessage(PAYLOAD_TYPE.ALIVE_CHECK_REQUEST, new Uint8Array()));
-  await new Promise((resolve) => setTimeout(resolve, 5));
+  await waitFor(
+    () => endpoint.received.length,
+    (count) => count > before,
+    {
+      message: "the alive check response",
+    },
+  );
   assert.equal(endpoint.received.length, before + 1);
   const reply = endpoint.received.at(-1);
   assert.ok(reply);
@@ -309,4 +324,206 @@ test("discovery broadcasts the identification request and parses announcements",
   assert.equal(found.length, 1);
   assert.equal(found[0]?.vin, "1HGCM82633A004352");
   assert.equal(found[0]?.logicalAddress, 0x1000);
+});
+
+test("a missing routing activation response fails connect without a half-open socket", async () => {
+  // ISO 13400-2: no activation response within the timeout is a failure. The
+  // transport used to stay in "connecting" with its listener still subscribed,
+  // so getStatus() reported a state that could never become true again and the
+  // next connect() found an open socket.
+  const endpoint = new FakeDoipEndpoint();
+  endpoint.answersActivation = false;
+  const transport = new DoipTransport({
+    socket: endpoint,
+    targetAddress: 0x1000,
+    activationTimeoutMs: 20,
+  });
+  await assert.rejects(transport.connect(), /no routing activation response/);
+  const status = transport.getStatus();
+  assert.equal(status.state, "error");
+  assert.match(status.lastError ?? "", /no routing activation response/);
+  assert.equal(endpoint.isOpen(), false, "the socket is released, not left half-open");
+});
+
+test("a broken DoIP frame is reported and the transport keeps working", async () => {
+  const endpoint = new FakeDoipEndpoint();
+  const transport = new DoipTransport({
+    socket: endpoint,
+    targetAddress: 0x1000,
+    activationTimeoutMs: 500,
+  });
+  await transport.connect();
+  // Version/inverse pair does not XOR to 0xFF → decodeHeader throws
+  // (ISO 13400-2 §7.2 header layout).
+  endpoint.emit(fromHex("02 02 00 00 00 00 00 08"));
+  assert.match(transport.getStatus().lastError ?? "", /version check failed/);
+  // A framing error must not poison the stream: the next valid message works.
+  endpoint.emit(
+    encodeMessage(
+      PAYLOAD_TYPE.DIAGNOSTIC_MESSAGE,
+      encodeDiagnosticMessage(0x1000, 0x0e00, fromHex("62 F1 90 01")),
+    ),
+  );
+  assert.deepEqual(await transport.receive(50), fromHex("62 F1 90 01"));
+  assert.equal(transport.getStatus().state, "connected");
+});
+
+test("a message split across TCP segments is reassembled", async () => {
+  const endpoint = new FakeDoipEndpoint();
+  const transport = new DoipTransport({
+    socket: endpoint,
+    targetAddress: 0x1000,
+    activationTimeoutMs: 500,
+  });
+  await transport.connect();
+  const whole = encodeMessage(
+    PAYLOAD_TYPE.DIAGNOSTIC_MESSAGE,
+    encodeDiagnosticMessage(0x1000, 0x0e00, fromHex("62 F1 90 31 48 47")),
+  );
+  const rxBefore = transport.getStatus().rxCount ?? 0;
+  // TCP is a byte stream, not a message transport: split mid-header and
+  // mid-payload and expect the message to survive.
+  endpoint.emit(whole.subarray(0, 3));
+  assert.equal(await transport.receive(10), null, "an incomplete header yields nothing");
+  endpoint.emit(whole.subarray(3, 10));
+  assert.equal(await transport.receive(10), null, "an incomplete payload yields nothing");
+  endpoint.emit(whole.subarray(10));
+  assert.deepEqual(await transport.receive(50), fromHex("62 F1 90 31 48 47"));
+  assert.equal(
+    transport.getStatus().rxCount ?? 0,
+    rxBefore + 1,
+    "only the finished message counts",
+  );
+});
+
+test("receive() called before the answer arrives resolves with the payload", async () => {
+  const endpoint = new FakeDoipEndpoint();
+  const transport = new DoipTransport({
+    socket: endpoint,
+    targetAddress: 0x1000,
+    activationTimeoutMs: 500,
+  });
+  await transport.connect();
+  const pending = transport.receive(500);
+  endpoint.emit(
+    encodeMessage(
+      PAYLOAD_TYPE.DIAGNOSTIC_MESSAGE,
+      encodeDiagnosticMessage(0x1000, 0x0e00, fromHex("7E 00")),
+    ),
+  );
+  assert.deepEqual(await pending, fromHex("7E 00"), "the waiter is served, nothing is queued");
+});
+
+test("disconnect() settles a pending receive with null", async () => {
+  const endpoint = new FakeDoipEndpoint();
+  const transport = new DoipTransport({
+    socket: endpoint,
+    targetAddress: 0x1000,
+    activationTimeoutMs: 500,
+  });
+  await transport.connect();
+  const pending = transport.receive(5_000);
+  await transport.disconnect();
+  assert.equal(await pending, null, "no promise may outlive the connection");
+  assert.equal(transport.getStatus().state, "disconnected");
+});
+
+test("a diagnostic negative ack and a generic NACK become the reported error", async () => {
+  const endpoint = new FakeDoipEndpoint();
+  const transport = new DoipTransport({
+    socket: endpoint,
+    targetAddress: 0x1000,
+    activationTimeoutMs: 500,
+  });
+  await transport.connect();
+  // ISO 13400-2 §7.4.2: the ack carries source, target and the ack code.
+  endpoint.emit(
+    encodeMessage(PAYLOAD_TYPE.DIAGNOSTIC_MESSAGE_NEGATIVE_ACK, fromHex("10 00 0E 00 03")),
+  );
+  assert.match(transport.getStatus().lastError ?? "", /negative ack 0x3/);
+  endpoint.emit(encodeMessage(PAYLOAD_TYPE.GENERIC_NACK, fromHex("02")));
+  assert.match(transport.getStatus().lastError ?? "", /generic NACK 0x2/);
+  assert.equal(transport.getStatus().state, "connected", "a NACK is data, not a broken link");
+});
+
+test("an unknown payload type is ignored without disturbing the stream", async () => {
+  const endpoint = new FakeDoipEndpoint();
+  const transport = new DoipTransport({
+    socket: endpoint,
+    targetAddress: 0x1000,
+    activationTimeoutMs: 500,
+  });
+  await transport.connect();
+  endpoint.emit(encodeMessage(0x7fff, fromHex("01 02")));
+  endpoint.emit(
+    encodeMessage(
+      PAYLOAD_TYPE.DIAGNOSTIC_MESSAGE,
+      encodeDiagnosticMessage(0x1000, 0x0e00, fromHex("62 F1 90 02")),
+    ),
+  );
+  assert.deepEqual(await transport.receive(50), fromHex("62 F1 90 02"));
+});
+
+test("a failing alive-check response is logged instead of thrown", async () => {
+  const endpoint = new FakeDoipEndpoint();
+  const transport = new DoipTransport({
+    socket: endpoint,
+    targetAddress: 0x1000,
+    activationTimeoutMs: 500,
+  });
+  await transport.connect();
+  endpoint.sendError = new Error("EPIPE: the entity closed the socket");
+  endpoint.emit(encodeMessage(PAYLOAD_TYPE.ALIVE_CHECK_REQUEST, new Uint8Array()));
+  // The answer is fire-and-forget; an unhandled rejection would fail the run,
+  // so what remains to assert is that the transport is simply still usable.
+  await settle(5, "the fire-and-forget answer must reach its catch handler first");
+  assert.equal(transport.getStatus().state, "connected");
+});
+
+test("discovery parse rejects short datagrams, other payload types and broken payloads", () => {
+  const discovery = new DoipDiscovery({
+    socket: { async broadcast() {}, onData: () => () => {}, async close() {} },
+    sleep: async () => undefined,
+  });
+  assert.equal(discovery.parse(fromHex("02 FD")), null, "shorter than a DoIP header");
+  assert.equal(
+    discovery.parse(encodeMessage(PAYLOAD_TYPE.GENERIC_NACK, fromHex("00"))),
+    null,
+    "a datagram that is not an announcement",
+  );
+  // Announcement type, but a payload the decoder cannot read (needs 32 bytes).
+  assert.equal(
+    discovery.parse(encodeMessage(PAYLOAD_TYPE.VEHICLE_ANNOUNCEMENT_RESPONSE, fromHex("00 01"))),
+    null,
+    "an invalid announcement is reported and skipped, not guessed",
+  );
+});
+
+test("discovery listens for the default window and unsubscribes when the broadcast fails", async () => {
+  const waited: number[] = [];
+  let subscribed = 0;
+  const socket = {
+    async broadcast() {
+      throw new Error("ENETUNREACH: no route to the broadcast address");
+    },
+    onData(_listener: (chunk: Uint8Array) => void) {
+      subscribed += 1;
+      return () => {
+        subscribed -= 1;
+      };
+    },
+    async close() {},
+  };
+  const discovery = new DoipDiscovery({ socket, sleep: async (ms) => void waited.push(ms) });
+  await assert.rejects(discovery.discover(), /ENETUNREACH/);
+  assert.deepEqual(waited, [], "the broadcast failed before the listen window started");
+  assert.equal(subscribed, 0, "the listener is removed even on the failure path");
+
+  const okWaited: number[] = [];
+  const quiet = new DoipDiscovery({
+    socket: { async broadcast() {}, onData: () => () => {}, async close() {} },
+    sleep: async (ms) => void okWaited.push(ms),
+  });
+  assert.deepEqual(await quiet.discover(), []);
+  assert.deepEqual(okWaited, [DEFAULT_DISCOVERY_WINDOW_MS], "the default window is documented");
 });

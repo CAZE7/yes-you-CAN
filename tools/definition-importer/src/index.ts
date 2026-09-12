@@ -14,7 +14,7 @@ import {
   type SignalEncoding,
   validateDefinitionPackage,
 } from "@vdp/definitions";
-import { DefinitionError, type Logger, createLogger } from "@vdp/shared";
+import { DefinitionError, type Logger, createLogger, messageOf } from "@vdp/shared";
 
 export interface ImportOptions {
   oem: string;
@@ -301,8 +301,4 @@ function logger(options: ImportOptions): Logger {
   return (options.logger ?? createLogger("definition-importer", { level: "INFO" })).child(
     "definition-importer",
   );
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

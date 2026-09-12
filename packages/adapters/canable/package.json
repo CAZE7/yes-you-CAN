@@ -2,8 +2,17 @@
   "name": "@vdp/adapter-canable",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "description": "CANable/CANtact (slcan) adapter over a serial byte stream (AGENTS 4).",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CAZE7/yes-you-CAN.git",
+    "directory": "packages/adapters/canable"
+  },
+  "engines": {
+    "node": ">=22"
+  },
   "main": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",
   "exports": {

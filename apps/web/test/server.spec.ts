@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createLogger } from "@vdp/shared";
 import { test } from "vitest";
+import { waitFor } from "../../../tests/helpers/wait.js";
 import { WebServer } from "../src/server.js";
 
 const logger = createLogger("web", { level: "ERROR" });
@@ -31,6 +32,15 @@ async function json(
     body: type.includes("json") ? await response.json() : await response.text(),
     type,
   };
+}
+
+/** Wait until the recording holds at least `count` samples of `signal`. */
+async function waitForSamples(base: string, count = 1, signal = "engine.rpm"): Promise<void> {
+  await waitFor(
+    async () =>
+      ((await json(base, "/api/history")).body as { samples: Array<{ signal: string }> }).samples,
+    (samples) => samples.filter((sample) => sample.signal === signal).length >= count,
+  );
 }
 
 test("the index page and every front end asset are served", async () => {
@@ -108,7 +118,8 @@ test("live data produces decoded samples with statistics", async () => {
       body: JSON.stringify({ signalIds: ["engine.rpm"] }),
     });
     assert.equal((started.body as { live: boolean }).live, true);
-    await new Promise((resolve) => setTimeout(resolve, 400));
+    // Two rounds so min/max/delta statistics are computed over real data.
+    await waitForSamples(base, 2);
 
     const state = (await json(base, "/api/state")).body as {
       live: boolean;
@@ -160,7 +171,7 @@ test("exports produce CSV, JSON, HTML and a valid PDF", async () => {
       method: "POST",
       body: JSON.stringify({ signalIds: ["engine.rpm"] }),
     });
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await waitForSamples(base);
     await json(base, "/api/live/stop", { method: "POST" });
 
     const csv = await (await fetch(`${base}/api/export/measurements.csv`)).text();
@@ -237,7 +248,7 @@ test("sessions can be saved, listed and downloaded as a package", async () => {
       method: "POST",
       body: JSON.stringify({ signalIds: ["engine.rpm"] }),
     });
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await waitForSamples(base);
     await json(base, "/api/live/stop", { method: "POST" });
 
     const saved = await json(base, "/api/session/save", { method: "POST" });
@@ -277,7 +288,7 @@ test("the graph history carries numeric values and DTC markers (AGENTS 16, 20)",
       method: "POST",
       body: JSON.stringify({ signalIds: ["engine.rpm"] }),
     });
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await waitForSamples(base);
 
     const result = await json(base, "/api/history");
     assert.equal(result.status, 200);

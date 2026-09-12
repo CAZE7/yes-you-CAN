@@ -13,6 +13,7 @@ import { configureSerialPort, createHostAdapterCatalog, openSerialStream } from 
 import { createFrame } from "@vdp/transport-can";
 import { test } from "vitest";
 import { createDeviceSide, createPtyPair, hasSocat } from "../helpers/pty.js";
+import { waitFor } from "../helpers/wait.js";
 
 /* -------------------------------------------------------- serial device */
 
@@ -29,7 +30,7 @@ test.skipIf(!hasSocat())(
       await device.waitFor("ATZ");
 
       device.write("ELM327 v1.5\r");
-      await waitFor(() => chunks.join("").includes("ELM327 v1.5"));
+      await waitFor(() => chunks.join("").includes("ELM327 v1.5"), undefined, { timeoutMs: 3000 });
 
       assert.equal(stream.isOpen(), true);
       assert.match(stream.describe(), /serial/);
@@ -95,7 +96,7 @@ test.skipIf(!hasSocat())(
 
       // Frame from the ECU side → adapter listener.
       device.write("t7E83023E80\r");
-      await waitFor(() => frames.length > 0);
+      await waitFor(() => frames.length > 0, undefined, { timeoutMs: 3000 });
       assert.deepEqual(frames[0], { id: 0x7e8, direction: "rx", payload: "023e80" });
 
       // Frame from the tester side → wire.
@@ -132,11 +133,3 @@ test.skipIf(!hasSocat())("the catalog creates the adapter it advertised", async 
     pair.dispose();
   }
 });
-
-async function waitFor(predicate: () => boolean, timeoutMs = 3000): Promise<void> {
-  const started = Date.now();
-  while (!predicate()) {
-    if (Date.now() - started > timeoutMs) throw new Error("timed out waiting for condition");
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
-}

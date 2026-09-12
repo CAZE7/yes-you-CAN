@@ -31,6 +31,7 @@ import {
   SafetyViolationError,
   StorageError,
   createLogger,
+  messageOf,
 } from "@vdp/shared";
 import { SIMULATOR_ADAPTER_ID, createWebAdapterCatalog } from "./adapters.js";
 import { DemoBackend } from "./backend.js";
@@ -487,10 +488,6 @@ export class WebServer {
       throw new HttpError(400, "request body is not valid JSON");
     }
   }
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 /** Parse a CAN identifier from the UI (`0x7E8`, `7e8` or `2024`). */

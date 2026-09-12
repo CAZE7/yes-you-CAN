@@ -38,6 +38,12 @@ describe("command factories", () => {
       kind: "vehicle.connect",
       options: { windowMs: 120 },
     });
+    // The probe pause is part of the command payload, not a hidden engine
+    // default: callers bound the whole discovery duration (AGENTS 12).
+    assert.deepEqual(connectVehicle({ windowMs: 30, probeDelayMs: 0 }), {
+      kind: "vehicle.connect",
+      options: { windowMs: 30, probeDelayMs: 0 },
+    });
   });
 
   test("disconnectVehicle is a plain intent", () => {

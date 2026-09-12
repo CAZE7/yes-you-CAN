@@ -2,8 +2,17 @@
   "name": "@vdp/domain",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "description": "Domain contracts: entities, ports, capabilities, risk policy, domain events. No I/O, no protocols, no transports (target architecture ADR 0014).",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CAZE7/yes-you-CAN.git",
+    "directory": "packages/domain"
+  },
+  "engines": {
+    "node": ">=22"
+  },
   "main": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",
   "exports": {

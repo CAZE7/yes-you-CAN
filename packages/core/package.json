@@ -2,8 +2,17 @@
   "name": "@vdp/core",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "description": "Diagnostic core: sessions, ECU explorer, measurement engine, DTC system, logging, safety layer (AGENTS 9-21, 26).",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CAZE7/yes-you-CAN.git",
+    "directory": "packages/core"
+  },
+  "engines": {
+    "node": ">=22"
+  },
   "main": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",
   "exports": {

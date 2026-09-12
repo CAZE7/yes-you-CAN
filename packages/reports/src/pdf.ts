@@ -108,12 +108,13 @@ export class PdfDocument {
       objects[pageId] =
         `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${this.size.width} ${this.size.height}] /Resources << /Font << /F1 ${FONT_REGULAR_ID} 0 R /F2 ${FONT_BOLD_ID} 0 R >> >> /Contents ${contentId} 0 R >>`;
       const stream = renderContent(page);
-      // /Length must be the byte length of the stream, not the UTF-16 string length.
+      // /Length is the byte length of the stream in the encoding the reader
+      // uses (WinAnsi/Latin-1), not the UTF-16 string length and not UTF-8.
       objects[contentId] =
-        `<< /Length ${new TextEncoder().encode(stream).length} >>\nstream\n${stream}\nendstream`;
+        `<< /Length ${latin1Encoder.encode(stream).length} >>\nstream\n${stream}\nendstream`;
     });
 
-    const encoder = new TextEncoder();
+    const encoder = latin1Encoder;
     const chunks: Uint8Array[] = [];
     const offsets: number[] = [0];
     let offset = 0;
@@ -177,6 +178,30 @@ interface TextLikeEncoder {
   encode(input: string): Uint8Array;
 }
 
+/**
+ * Latin-1 encoder — what PDF strings actually are.
+ *
+ * The fonts below declare `/Encoding /WinAnsiEncoding`, so a reader turns one
+ * byte into one glyph. `TextEncoder` produces UTF-8, which puts two bytes where
+ * the reader expects one: measured 2026-09-12, a report line "Kühlmittel 90 °C"
+ * was written with `ü` as `c3 bc` and `°` as `c2 b0` (and the binary header
+ * comment as eight bytes instead of the four raw bytes the convention asks
+ * for), so every umlaut and every degree sign came out as mojibake in the
+ * exported PDF. `sanitize()` keeps all text inside Latin-1, which makes one
+ * byte per code unit exact — and keeps `/Length` and the xref offsets honest,
+ * because they count the same bytes that are written.
+ *
+ * Deliberately not `Buffer.from(text, "latin1")`: `@vdp/reports` is a portable
+ * layer and stays free of Node builtins (§28).
+ */
+const latin1Encoder: TextLikeEncoder = {
+  encode(input: string): Uint8Array {
+    const bytes = new Uint8Array(input.length);
+    for (let i = 0; i < input.length; i += 1) bytes[i] = input.charCodeAt(i) & 0xff;
+    return bytes;
+  },
+};
+
 function byteLength(text: string, encoder: TextLikeEncoder): number {
   return encoder.encode(text).length;
 }
@@ -192,9 +217,10 @@ export function sanitize(text: string): string {
 }
 
 function mapUnicode(code: number): string {
+  // Only reached for code points above Latin-1 (see `sanitize`): a character
+  // inside 0x00..0xff is already representable and never gets here, which is
+  // why the degree sign has no case of its own.
   switch (code) {
-    case 0x00b0:
-      return "\u00b0"; // degree sign is representable
     case 0x2192:
       return "->";
     case 0x2022:

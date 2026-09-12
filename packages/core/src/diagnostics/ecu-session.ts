@@ -24,7 +24,7 @@ import {
   type UdsLink,
   nrcName,
 } from "@vdp/protocols-uds";
-import { type Logger, UdsNegativeResponseError, createLogger, toHex } from "@vdp/shared";
+import { type Logger, UdsNegativeResponseError, createLogger, messageOf, toHex } from "@vdp/shared";
 import { type FreezeFrame, decodeFreezeFrame } from "../dtc/freeze-frame.js";
 import { type DecodedSignal, SignalDecoder } from "../measurements/decoder.js";
 import {
@@ -194,7 +194,7 @@ export class EcuDiagnosticSession {
         this.log.debug("identification DID not available", {
           ecu: this.record.name,
           did: `0x${entry.did.toString(16)}`,
-          error: error instanceof Error ? error.message : String(error),
+          error: messageOf(error),
         });
       }
     }
@@ -263,7 +263,7 @@ export class EcuDiagnosticSession {
           probes.push({
             service: serviceId,
             outcome: "unsupported",
-            detail: error instanceof Error ? error.message : String(error),
+            detail: messageOf(error),
           });
         }
       }
@@ -314,7 +314,7 @@ export class EcuDiagnosticSession {
         this.log.debug("signal DID read failed", {
           ecu: this.record.name,
           did: `0x${did.toString(16)}`,
-          error: error instanceof Error ? error.message : String(error),
+          error: messageOf(error),
         });
       }
     }
@@ -409,7 +409,7 @@ export class EcuDiagnosticSession {
           ecu: this.record.name,
           reason:
             "the ECU refuses the extended diagnostic session and this platform does not bypass security access (AGENTS 29)",
-          original: error instanceof Error ? error.message : String(error),
+          original: messageOf(error),
         },
       );
     }

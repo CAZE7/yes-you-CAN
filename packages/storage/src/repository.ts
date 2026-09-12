@@ -15,7 +15,7 @@ import { appendFile, mkdir, readFile, readdir, rm, stat, writeFile } from "node:
 import { join } from "node:path";
 import type { VehicleSessionData } from "@vdp/core";
 import type { MeasurementSample } from "@vdp/core";
-import { type Logger, StorageError, createLogger } from "@vdp/shared";
+import { type Logger, StorageError, createLogger, messageOf } from "@vdp/shared";
 import { MigrationRegistry } from "./migrations.js";
 import { createZip } from "./zip.js";
 
@@ -385,7 +385,7 @@ export function parseTraceLines(
         ...(typeof record["fd"] === "boolean" ? { fd: record["fd"] } : {}),
       });
     } catch (error) {
-      onError?.(error instanceof Error ? error.message : String(error), trimmed);
+      onError?.(messageOf(error), trimmed);
     }
   }
   return parsed;
@@ -423,7 +423,7 @@ export function parseSampleLines(
         outOfRange: record.outOfRange === true,
       });
     } catch (error) {
-      onError?.(error instanceof Error ? error.message : String(error), trimmed);
+      onError?.(messageOf(error), trimmed);
     }
   }
   return parsed;
@@ -456,8 +456,4 @@ export function assertSafeId(id: string): void {
 
 function encode(text: string): Uint8Array {
   return new TextEncoder().encode(text);
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

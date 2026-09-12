@@ -115,7 +115,7 @@ describe("runtime composition", () => {
       definitions: [genericPackage],
       logger: quietLogger,
     });
-    const result = await runtime.vehicle.connect({ windowMs: 30 });
+    const result = await runtime.vehicle.connect({ windowMs: 30, probeDelayMs: 0 });
     assert.equal(result.ecus.length, 0);
     assert.ok(result.session.sessionId.length > 0);
     assert.equal(result.session.ecuCount, 0);
@@ -133,7 +133,7 @@ describe("runtime composition", () => {
 
   test("saving without a store configured is a configuration error", async () => {
     const runtime = createDiagnosticRuntime({ bus: makeSilentBus(), logger: quietLogger });
-    await runtime.vehicle.connect({ windowMs: 30 });
+    await runtime.vehicle.connect({ windowMs: 30, probeDelayMs: 0 });
     await assert.rejects(runtime.session.save(), /no session store/);
     await runtime.dispose();
   });
@@ -168,7 +168,7 @@ describe("event wiring", () => {
       events,
       logger: quietLogger,
     });
-    await runtime.vehicle.connect({ windowMs: 30 });
+    await runtime.vehicle.connect({ windowMs: 30, probeDelayMs: 0 });
     const connected = events.ofType("vehicle-connected");
     assert.equal(connected.length, 1);
     assert.equal(connected[0]?.ecuCount, 0, "the silent bus answers no ECUs");
@@ -184,7 +184,7 @@ describe("event wiring", () => {
       clock,
     });
 
-    const result = await runtime.vehicle.connect({ windowMs: 30 });
+    const result = await runtime.vehicle.connect({ windowMs: 30, probeDelayMs: 0 });
     const sessionId = result.session.sessionId;
     clock.advance(500);
     await runtime.commands.dispatch(disconnectVehicle());
@@ -229,7 +229,7 @@ describe("runtime options", () => {
       isoTpDefaults: { padByte: 0xcc, padding: true },
       oemProtocols: [],
     });
-    const result = await runtime.vehicle.connect();
+    const result = await runtime.vehicle.connect({ windowMs: 30, probeDelayMs: 0 });
     assert.ok(result.session.sessionId.length > 0);
     clock.advance(1000);
     await runtime.commands.dispatch(disconnectVehicle());
@@ -244,7 +244,7 @@ describe("runtime options", () => {
       logger: quietLogger,
       sessionStore: store as never,
     });
-    await runtime.vehicle.connect({ windowMs: 30 });
+    await runtime.vehicle.connect({ windowMs: 30, probeDelayMs: 0 });
     const id = await runtime.session.save();
     assert.equal(await store.exists(id), true);
     await runtime.dispose();
@@ -282,7 +282,7 @@ describe("command bus wiring against an empty vehicle", () => {
 
   test("query variants answer on a session without ECUs", async () => {
     const runtime = connectedRuntime();
-    await runtime.vehicle.connect({ windowMs: 30 });
+    await runtime.vehicle.connect({ windowMs: 30, probeDelayMs: 0 });
     assert.deepEqual(await runtime.commands.query(getEcu("ecu_missing")), undefined);
     assert.deepEqual(await runtime.commands.query(getEcuCapabilities("ecu_missing")), []);
     assert.deepEqual(await runtime.commands.query(getDtcList("ecu_missing")), []);
@@ -309,7 +309,7 @@ describe("command bus wiring against an empty vehicle", () => {
       /no session/,
     );
 
-    await runtime.vehicle.connect();
+    await runtime.vehicle.connect({ windowMs: 30, probeDelayMs: 0 });
     await assert.rejects(
       runtime.commands.dispatch(clearDtcs("0x7e8", true, state, "def-2026")),
       /unknown ECU/,
@@ -322,7 +322,7 @@ describe("command bus wiring against an empty vehicle", () => {
 
   test("no-filter variants of snapshot, live start and action queries", async () => {
     const runtime = connectedRuntime();
-    await runtime.vehicle.connect({ windowMs: 30 });
+    await runtime.vehicle.connect({ windowMs: 30, probeDelayMs: 0 });
     // Zero ECUs on the silent bus — but the code paths all run.
     assert.deepEqual(await runtime.commands.dispatch(snapshotSignals()), []);
     await runtime.commands.dispatch(startMeasurements());
@@ -337,7 +337,7 @@ describe("command bus wiring against an empty vehicle", () => {
       bus: makeSilentBus(),
       definitions: [genericPackage],
     });
-    const result = await runtime.vehicle.connect({ windowMs: 30 });
+    const result = await runtime.vehicle.connect({ windowMs: 30, probeDelayMs: 0 });
     assert.ok(result.session.sessionId);
     await runtime.dispose();
   });
@@ -354,7 +354,7 @@ describe("the extended command/query vocabulary", () => {
 
   test("identify, markers, catalogue and statistics are wired end to end", async () => {
     const runtime = connectedRuntime();
-    await runtime.vehicle.connect({ windowMs: 30 });
+    await runtime.vehicle.connect({ windowMs: 30, probeDelayMs: 0 });
 
     // No ECUs on the silent bus — every handler still answers cleanly.
     assert.deepEqual(await runtime.commands.dispatch(identifyEcus()), []);
@@ -379,7 +379,7 @@ describe("the extended command/query vocabulary", () => {
 
   test("history honours the sample limit without touching the recording", async () => {
     const runtime = connectedRuntime();
-    await runtime.vehicle.connect({ windowMs: 30 });
+    await runtime.vehicle.connect({ windowMs: 30, probeDelayMs: 0 });
     await runtime.commands.dispatch(addMarker("eins"));
     await runtime.commands.dispatch(addMarker("zwei"));
     const limited = await runtime.commands.query(getRecordingHistory(1));
@@ -393,7 +393,7 @@ describe("the extended command/query vocabulary", () => {
       runtime.commands.dispatch(readDtcFreezeFrame("0x7e8", "P0420")),
       /no session/,
     );
-    await runtime.vehicle.connect({ windowMs: 30 });
+    await runtime.vehicle.connect({ windowMs: 30, probeDelayMs: 0 });
     await assert.rejects(
       runtime.commands.dispatch(readDtcFreezeFrame("0x7e8", "P0420")),
       /unknown ECU/,
@@ -425,7 +425,7 @@ describe("the extended command/query vocabulary", () => {
       definitions: [genericPackage],
       logger: quietLogger,
     });
-    await runtime.vehicle.connect({ windowMs: 30 });
+    await runtime.vehicle.connect({ windowMs: 30, probeDelayMs: 0 });
     assert.equal(bus.isOpen(), true);
     await runtime.dispose();
     assert.equal(bus.isOpen(), false);

@@ -45,7 +45,7 @@ import type {
 } from "@vdp/domain";
 import { policyForWriteOperation } from "@vdp/domain";
 import type { Logger } from "@vdp/shared";
-import { toHex } from "@vdp/shared";
+import { messageOf, toHex } from "@vdp/shared";
 import { capabilitiesFromServices } from "./capability-map.js";
 import {
   decodedToReading,
@@ -109,7 +109,7 @@ export class EcuService {
       try {
         await handle.session.readIdentification();
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = messageOf(error);
         // The failure stays visible on the ECU record instead of disappearing
         // into the log (AGENTS 34.25).
         handle.session.record.lastError = message;
@@ -188,7 +188,12 @@ export class VehicleService {
 
   async connect(options?: ConnectVehicleOptions): Promise<ConnectVehicleResult> {
     const { session } = await this.engine.connect(
-      options?.windowMs !== undefined ? { windowMs: options.windowMs } : {},
+      options === undefined
+        ? {}
+        : {
+            ...(options.windowMs !== undefined ? { windowMs: options.windowMs } : {}),
+            ...(options.probeDelayMs !== undefined ? { probeDelayMs: options.probeDelayMs } : {}),
+          },
     );
     const summaries = this.ecus.list();
     for (const ecu of summaries) {
@@ -407,7 +412,7 @@ export class DtcService {
       });
       return { ...outcome, actionId };
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = messageOf(error);
       this.events.publish("action-executed", {
         actionId,
         operation: "clear-dtc",

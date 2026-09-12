@@ -26,7 +26,7 @@ import {
   type UdsServerOptions,
   xorSeedKeyAlgorithm,
 } from "@vdp/protocols-uds";
-import { type Logger, createLogger, toHex } from "@vdp/shared";
+import { type Logger, createLogger, messageOf, toHex } from "@vdp/shared";
 import { IsoTpConnection } from "@vdp/transport-iso-tp";
 import {
   type VirtualCanBus,
@@ -283,7 +283,7 @@ export class VirtualVehicle {
       } catch (error) {
         this.log.debug("simulator encode failed", {
           signal: signal.id,
-          error: error instanceof Error ? error.message : String(error),
+          error: messageOf(error),
         });
       }
     }

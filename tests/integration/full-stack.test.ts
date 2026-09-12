@@ -11,6 +11,7 @@ import { genericPackage } from "@vdp/definitions";
 import { MemorySink, createLogger, fromHex, toHex } from "@vdp/shared";
 import { VirtualVehicle } from "@vdp/simulators";
 import { afterAll, beforeAll, test } from "vitest";
+import { tick, waitFor } from "../helpers/wait.js";
 
 /**
  * Full-stack integration test (AGENTS 29 MVP checklist).
@@ -45,7 +46,7 @@ test("adapter status is reported before and after connecting (AGENTS 29)", async
 });
 
 test("ECU discovery finds the ECUs defined by the package (AGENTS 12)", async () => {
-  const { ecus } = await engine.connect({ windowMs: 120 });
+  const { ecus } = await engine.connect({ windowMs: 120, probeDelayMs: 0 });
   const rxIds = ecus.map((e) => e.rxId).sort((a, b) => a - b);
   assert.ok(
     rxIds.includes(0x7e8),
@@ -150,13 +151,18 @@ test("the engine tracks when a fault code was first and last seen (AGENTS 20)", 
     "the last sighting never precedes the first one",
   );
 
-  await new Promise((resolve) => setTimeout(resolve, 5));
+  // Der Tracker stempelt jeden Scan mit `clock().toISOString()`, also muss die
+  // Uhr wirklich ueber der ersten Marke stehen - eine Bedingung, die meist nach
+  // einer Millisekunde eintritt statt nach festen 5 ms (ADR 0019).
+  await waitFor(() => Date.now() > Date.parse(catalyst.lastSeen ?? ""), undefined, {
+    message: "clock past the first sighting",
+  });
   const second = await engine.scanDtcs();
   const again = second.flatMap((entry) => entry.dtcs).find((dtc) => dtc.code === "P0420");
   assert.equal(again?.firstSeen, catalyst.firstSeen, "the first sighting never moves");
   assert.ok(
-    (again?.lastSeen ?? "") >= (catalyst.lastSeen ?? ""),
-    "the last sighting moves forward",
+    (again?.lastSeen ?? "") > (catalyst.lastSeen ?? ""),
+    "the last sighting moves forward: the second scan stamps a later time",
   );
   const related = again?.relatedSignals ?? [];
   assert.ok(
@@ -387,7 +393,7 @@ async function waitForLive(
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (!engine.isRunning) return engine.statistics;
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await tick(10);
   }
   return engine.statistics;
 }

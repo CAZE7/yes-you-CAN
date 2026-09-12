@@ -6,7 +6,14 @@
  * Nothing above this layer sees CAN frames; nothing here interprets UDS.
  */
 
-import { IsoTpError, type Logger, TransportError, concatBytes, createLogger } from "@vdp/shared";
+import {
+  IsoTpError,
+  type Logger,
+  TransportError,
+  concatBytes,
+  createLogger,
+  messageOf,
+} from "@vdp/shared";
 import { type CanBus, type CanFrame, createFrame } from "@vdp/transport-can";
 import {
   DEFAULT_TIMING,
@@ -710,10 +717,6 @@ function isRetryable(error: unknown): boolean {
     error instanceof IsoTpError &&
     (error.details["timeout"] === "N_Bs" || error.details["timeout"] === "N_Cr")
   );
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 function hex(id: number): string {

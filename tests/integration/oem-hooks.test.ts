@@ -48,7 +48,7 @@ async function withEngine(
     oemProtocols: options.oemProtocols ?? [],
   });
   try {
-    await engine.connect();
+    await engine.connect({ windowMs: 60, probeDelayMs: 0 });
     await run(engine, vehicle);
   } finally {
     await engine.disconnect();

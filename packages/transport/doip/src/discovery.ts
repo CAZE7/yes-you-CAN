@@ -5,7 +5,7 @@
  * The transport itself is injected so this stays testable without a network.
  */
 
-import { type Logger, createLogger } from "@vdp/shared";
+import { type Logger, createLogger, messageOf } from "@vdp/shared";
 import {
   PAYLOAD_TYPE,
   type VehicleIdentificationResponse,
@@ -26,20 +26,32 @@ export interface DiscoveryResult extends VehicleIdentificationResponse {
 
 export interface DiscoveryOptions {
   socket: DoipDatagramSocket;
+  /** How long announcements are collected (default {@link DEFAULT_DISCOVERY_WINDOW_MS}). */
   windowMs?: number;
   vin?: string;
   logger?: Logger;
+  /**
+   * Injectable wait. Announcements arrive from a UDP broadcast, so the default
+   * listen window is real time — tests replace it to stay deterministic
+   * (AGENTS 31), exactly like `EcuDiscovery` does for the CAN scan.
+   */
+  sleep?: (ms: number) => Promise<void>;
 }
+
+/** Default UDP listen window for vehicle announcements (ISO 13400-2 §9.3). */
+export const DEFAULT_DISCOVERY_WINDOW_MS = 1000;
 
 export class DoipDiscovery {
   private readonly log: Logger;
   private readonly windowMs: number;
+  private readonly sleep: (ms: number) => Promise<void>;
 
   constructor(private readonly options: DiscoveryOptions) {
     this.log = (options.logger ?? createLogger("connection", { level: "INFO" })).child(
       "connection",
     );
-    this.windowMs = options.windowMs ?? 1000;
+    this.windowMs = options.windowMs ?? DEFAULT_DISCOVERY_WINDOW_MS;
+    this.sleep = options.sleep ?? sleep;
   }
 
   /** Broadcast the identification request and collect every announcement. */
@@ -56,7 +68,7 @@ export class DoipDiscovery {
           encodeVehicleIdentificationRequest(this.options.vin),
         ),
       );
-      await sleep(this.windowMs);
+      await this.sleep(this.windowMs);
     } finally {
       unsubscribe();
     }
@@ -75,7 +87,7 @@ export class DoipDiscovery {
       return { ...decoded, address };
     } catch (error) {
       this.log.warn("invalid vehicle identification response", {
-        error: error instanceof Error ? error.message : String(error),
+        error: messageOf(error),
       });
       return null;
     }

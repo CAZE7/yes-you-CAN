@@ -23,7 +23,14 @@
 import { constants } from "node:fs";
 import { type FileHandle, open } from "node:fs/promises";
 import type { ByteStream } from "@vdp/adapter-elm327";
-import { AdapterUnsupportedError, type Logger, TransportError, createLogger } from "@vdp/shared";
+import {
+  AdapterUnsupportedError,
+  type Logger,
+  TransportError,
+  asError,
+  createLogger,
+  messageOf,
+} from "@vdp/shared";
 
 export interface SerialStreamOptions {
   /** Character device, e.g. `/dev/ttyUSB0` (Linux) or `COM3` (Windows). */
@@ -110,10 +117,9 @@ export class SerialByteStream implements ByteStream {
         await handle.write(buffer);
         this.bytesWritten += buffer.length;
       } catch (error) {
-        throw new TransportError(
-          `serial write to ${this.device} failed: ${error instanceof Error ? error.message : String(error)}`,
-          { device: this.device },
-        );
+        throw new TransportError(`serial write to ${this.device} failed: ${messageOf(error)}`, {
+          device: this.device,
+        });
       }
     });
     // Keep the chain alive after a rejection, otherwise one failed write would
@@ -201,7 +207,7 @@ export class SerialByteStream implements ByteStream {
   private startReadLoop(): void {
     if (this.readLoop || this.closed || !this.handle) return;
     this.readLoop = this.runReadLoop().catch((error: unknown) => {
-      this.fail(error instanceof Error ? error : new Error(String(error)));
+      this.fail(asError(error));
     });
   }
 
@@ -233,10 +239,10 @@ export class SerialByteStream implements ByteStream {
           continue;
         }
         this.fail(
-          new TransportError(
-            `serial read from ${this.device} failed: ${error instanceof Error ? error.message : String(error)}`,
-            { device: this.device, code: code ?? null },
-          ),
+          new TransportError(`serial read from ${this.device} failed: ${messageOf(error)}`, {
+            device: this.device,
+            code: code ?? null,
+          }),
         );
         return;
       }
@@ -252,7 +258,7 @@ export class SerialByteStream implements ByteStream {
       } catch (error) {
         this.log.warn("serial stream listener failed", {
           device: this.device,
-          error: error instanceof Error ? error.message : String(error),
+          error: messageOf(error),
         });
       }
     }
@@ -265,8 +271,13 @@ export class SerialByteStream implements ByteStream {
     for (const listener of listeners) {
       try {
         listener(error);
-      } catch {
-        // an error listener that throws is not worth another error
+      } catch (listenerError) {
+        // An error listener that throws is not worth another error — but it is
+        // worth a structured debug line (AGENTS 34.25).
+        this.log.debug("serial error listener failed", {
+          device: this.device,
+          error: messageOf(listenerError),
+        });
       }
     }
     void this.close();
@@ -293,7 +304,7 @@ export async function openSerialStream(options: SerialStreamOptions): Promise<Se
     return stream;
   } catch (error) {
     throw new AdapterUnsupportedError(
-      `cannot open serial device ${options.device}: ${error instanceof Error ? error.message : String(error)}`,
+      `cannot open serial device ${options.device}: ${messageOf(error)}`,
       { device: options.device, code: errorCode(error) ?? null },
     );
   }

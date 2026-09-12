@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { DefinitionError, UdsNegativeResponseError, fromHex, toHex } from "@vdp/shared";
 import { test } from "vitest";
+import { settle, waitFor } from "../../../../tests/helpers/wait.js";
 import {
   DID,
   SecurityAccessRefusedError,
@@ -338,11 +339,17 @@ test("TesterPresent scheduler keeps the session alive and can be stopped", async
   const { client } = createPair({ dids: BASE_DIDS });
   const before = client.stats.requests;
   client.startTesterPresent(5);
-  await new Promise((resolve) => setTimeout(resolve, 30));
+  await waitFor(
+    () => client.stats.requests,
+    (count) => count > before,
+    {
+      message: "a scheduled TesterPresent",
+    },
+  );
   client.stopTesterPresent();
   const during = client.stats.requests;
   assert.ok(during > before, "at least one TesterPresent must have been sent");
-  await new Promise((resolve) => setTimeout(resolve, 20));
+  await settle(20, "quiet period: after stop no further TesterPresent may be scheduled");
   assert.equal(client.stats.requests, during, "no further requests after stop");
 });
 

@@ -10,9 +10,10 @@
  * went.
  */
 
-import { type Logger, createLogger } from "@vdp/shared";
+import { type Logger, createLogger, messageOf } from "@vdp/shared";
 import {
   AnalysisError,
+  type AnalysisFinding,
   type AnalysisInput,
   type AnalysisProvider,
   type AnalysisResult,
@@ -95,7 +96,9 @@ export class HttpAnalysisProvider implements AnalysisProvider {
         });
       }
       const text = await response.text();
-      return normalise(JSON.parse(text) as Partial<AnalysisResult>, this.options.model);
+      // No cast: a gateway answer is external input (AGENTS 24) and `normalise`
+      // checks it field by field.
+      return normalise(JSON.parse(text), this.options.model);
     } catch (error) {
       if (error instanceof AnalysisError) throw error;
       throw new AnalysisError(`analysis request failed: ${messageOf(error)}`, {
@@ -113,23 +116,86 @@ export function redactVin(input: AnalysisInput): AnalysisInput {
   return { ...input, vehicle: { ...input.vehicle, vin: "[redacted]" } };
 }
 
-function normalise(result: Partial<AnalysisResult>, model: string | undefined): AnalysisResult {
+/** Severities a finding may carry; anything else is downgraded to `info`. */
+const SEVERITIES: readonly string[] = ["info", "minor", "major", "critical"];
+
+function isText(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function asArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+/** A string, number, array or null is not an answer — then: empty object. */
+function asRecord(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+/** A timestamp a printed report can actually show. */
+function isTimestamp(value: unknown): value is string {
+  return isText(value) && !Number.isNaN(Date.parse(value));
+}
+
+/**
+ * One finding with safe defaults: a gateway that forgets `detail` or invents a
+ * severity must break neither the report nor the view that renders it.
+ */
+function toFinding(raw: unknown, index: number): AnalysisFinding {
+  const record = asRecord(raw);
+  const relatedSignals = asArray(record.relatedSignals).filter(isText);
+  const relatedDtcs = asArray(record.relatedDtcs).filter(isText);
   return {
-    provider: result.provider ?? "http",
-    ...(model ? { model } : {}),
-    summary: result.summary ?? "",
-    findings: result.findings ?? [],
-    recommendations: result.recommendations ?? [],
-    confidence: clamp(result.confidence ?? 0.3),
-    source: "model",
-    generatedAt: result.generatedAt ?? new Date().toISOString(),
-    ...(result.warnings ? { warnings: result.warnings } : {}),
+    id: isText(record.id) ? record.id : `finding-${index}`,
+    severity: SEVERITIES.includes(String(record.severity))
+      ? (record.severity as AnalysisFinding["severity"])
+      : "info",
+    title: isText(record.title) ? record.title : "",
+    detail: isText(record.detail) ? record.detail : "",
+    ...(Array.isArray(record.relatedSignals) ? { relatedSignals } : {}),
+    ...(Array.isArray(record.relatedDtcs) ? { relatedDtcs } : {}),
   };
 }
 
-function clamp(value: number): number {
-  if (Number.isNaN(value)) return 0;
-  return Math.min(1, Math.max(0, value));
+/**
+ * Turns a gateway answer into an `AnalysisResult`.
+ *
+ * The answer used to arrive as a cast straight from `JSON.parse`, so something
+ * like `{"findings":"none"}` put a string where the service reads `.length` and
+ * the report renders a list. Every field is checked now; an unusable answer
+ * degrades to an empty result instead of poisoning the session.
+ */
+function normalise(answer: unknown, model: string | undefined): AnalysisResult {
+  const result = asRecord(answer);
+  return {
+    provider: isText(result.provider) ? result.provider : "http",
+    ...(model ? { model } : {}),
+    summary: isText(result.summary) ? result.summary : "",
+    findings: asArray(result.findings).map(toFinding),
+    recommendations: asArray(result.recommendations).filter(isText),
+    confidence: clamp(result.confidence ?? 0.3),
+    source: "model",
+    generatedAt: isTimestamp(result.generatedAt) ? result.generatedAt : new Date().toISOString(),
+    ...(Array.isArray(result.warnings)
+      ? { warnings: asArray(result.warnings).filter(isText) }
+      : {}),
+  };
+}
+
+/**
+ * Confidence into `[0, 1]`, taken as `unknown` because it comes from outside.
+ *
+ * `Number.isNaN` does not coerce, so `"confidence": "high"` used to come out as
+ * `NaN`: `Math.max(0, "high")` is `NaN`, `JSON.stringify` wrote `null`, and the
+ * view showed no confidence at all. Anything that is not a finite number now
+ * means "no confidence" — deterministic instead of quietly broken.
+ */
+function clamp(value: unknown): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.min(1, Math.max(0, parsed));
 }
 
 function safeHost(endpoint: string): string {
@@ -138,10 +204,6 @@ function safeHost(endpoint: string): string {
   } catch {
     return "invalid endpoint";
   }
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 function defaultHttpClient(): HttpClient {

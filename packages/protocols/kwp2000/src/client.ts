@@ -7,7 +7,7 @@
  */
 
 import { NRC, type UdsLink, nrcName } from "@vdp/protocols-uds";
-import { type Logger, ProtocolError, createLogger, toHex } from "@vdp/shared";
+import { type Logger, ProtocolError, createLogger, messageOf, toHex } from "@vdp/shared";
 import { UdsNegativeResponseError } from "@vdp/shared";
 import { KWP_LOCAL_ID, KWP_SID, kwpServiceName } from "./services.js";
 
@@ -194,5 +194,5 @@ function decodeAscii(data: Uint8Array): string {
 }
 
 function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  return messageOf(error);
 }

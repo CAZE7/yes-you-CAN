@@ -16,7 +16,7 @@ import type {
   FrameListener,
 } from "@vdp/transport-can";
 import { test } from "vitest";
-import { EcuDiscovery, deriveTxId } from "./discovery.js";
+import { DEFAULT_PROBE_DELAY_MS, EcuDiscovery, deriveTxId } from "./discovery.js";
 
 const INFO: AdapterInfo = { id: "stub", kind: "virtual", name: "Stub CAN", channels: ["vcan0"] };
 
@@ -106,4 +106,56 @@ test("the 11-bit and 29-bit conventions map both ways", () => {
     deriveTxId(0x700, false) >= 0 || Number.isSafeInteger(deriveTxId(0x700, false)),
     "an unexpected response id still yields a number",
   );
+});
+
+/** Collects every requested pause so a test can assert the timing without real time. */
+function recordingSleep(): { sleep: (ms: number) => Promise<void>; waited: number[] } {
+  const waited: number[] = [];
+  return { sleep: async (ms) => void waited.push(ms), waited };
+}
+
+const THREE_CANDIDATES = [
+  { txId: 0x7e0, rxId: 0x7e8 },
+  { txId: 0x7e1, rxId: 0x7e9 },
+  { txId: 0x7e2, rxId: 0x7ea },
+];
+
+test("the scan waits exactly windowMs plus one probe delay per candidate", async () => {
+  // Symptom before the fix: `windowMs` looked like the whole budget, but the
+  // inter-probe pause was hard-coded to 15 ms, so a caller asking for a 30 ms
+  // window on an 11-candidate package actually waited ~200 ms (measured
+  // 2026-09-12) and no option could shorten it.
+  const bus = new StubBus();
+  const { sleep, waited } = recordingSleep();
+  const discovery = new EcuDiscovery(bus, {
+    windowMs: 30,
+    probeDelayMs: 0,
+    candidates: THREE_CANDIDATES,
+    sleep,
+  });
+  await discovery.discover();
+  const total = waited.reduce((sum, ms) => sum + ms, 0);
+  assert.equal(total, 30, "with probeDelayMs 0 only the two listen phases remain");
+  assert.deepEqual(waited, [15, 0, 0, 0, 15], "half the window before and after the probe loop");
+});
+
+test("the probe delay defaults to 15 ms per candidate and is configurable", async () => {
+  const bus = new StubBus();
+  const defaults = recordingSleep();
+  await new EcuDiscovery(bus, {
+    windowMs: 10,
+    candidates: THREE_CANDIDATES,
+    sleep: defaults.sleep,
+  }).discover();
+  assert.equal(DEFAULT_PROBE_DELAY_MS, 15);
+  assert.deepEqual(defaults.waited, [5, 15, 15, 15, 5]);
+
+  const tuned = recordingSleep();
+  await new EcuDiscovery(bus, {
+    windowMs: 10,
+    probeDelayMs: 2,
+    candidates: THREE_CANDIDATES,
+    sleep: tuned.sleep,
+  }).discover();
+  assert.deepEqual(tuned.waited, [5, 2, 2, 2, 5], "the injected delay replaces the default");
 });

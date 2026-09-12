@@ -2,12 +2,24 @@
   "name": "@vdp/definitions",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "description": "Normalized diagnostic definition model + schema validation + starter packages (AGENTS 13, 23, 24).",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CAZE7/yes-you-CAN.git",
+    "directory": "packages/definitions"
+  },
+  "engines": {
+    "node": ">=22"
+  },
   "main": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",
   "exports": {
-    ".": { "types": "./dist/src/index.d.ts", "default": "./dist/src/index.js" },
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    },
     "./generic": {
       "types": "./dist/src/generic/generic-package.d.ts",
       "default": "./dist/src/generic/generic-package.js"
@@ -21,5 +33,7 @@
       "default": "./dist/src/mercedes/mercedes-package.js"
     }
   },
-  "dependencies": { "@vdp/shared": "0.1.0" }
+  "dependencies": {
+    "@vdp/shared": "0.1.0"
+  }
 }

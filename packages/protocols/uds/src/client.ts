@@ -13,6 +13,7 @@ import {
   UdsNegativeResponseError,
   UdsTimeoutError,
   createLogger,
+  messageOf,
   toHex,
 } from "@vdp/shared";
 import {
@@ -550,5 +551,5 @@ export function didToBytes(did: number): Uint8Array {
 }
 
 function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  return messageOf(error);
 }

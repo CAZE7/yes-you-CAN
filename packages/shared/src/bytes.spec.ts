@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 import {
   ascii,
+  bytesEqual,
   concatBytes,
   fromHex,
   readBitsBE,
@@ -152,4 +153,34 @@ test("property: readBitsBE extracts MSB-first bit windows", () => {
       },
     ),
   );
+});
+
+test("bytesEqual compares the length first and then every byte", () => {
+  assert.equal(bytesEqual(new Uint8Array([1, 2]), new Uint8Array([1, 2])), true);
+  assert.equal(
+    bytesEqual(new Uint8Array([1, 2]), new Uint8Array([1, 2, 3])),
+    false,
+    "different lengths are never equal",
+  );
+  assert.equal(
+    bytesEqual(new Uint8Array([1, 2]), new Uint8Array([1, 3])),
+    false,
+    "a single differing byte is enough",
+  );
+  assert.equal(bytesEqual(new Uint8Array([]), new Uint8Array([])), true, "two empty buffers match");
+});
+
+test("readers past the end of a buffer yield defined zero-padded values", () => {
+  // Truncated frames arrive from real buses. The readers answer with a defined
+  // value instead of NaN, so a decoder fails on the content and not on arithmetic.
+  assert.equal(u16be(new Uint8Array([0x12]), 0), 0x1200, "the missing low byte counts as zero");
+  assert.equal(u16be(new Uint8Array([]), 4), 0, "an offset beyond the buffer reads as zero");
+  assert.equal(u32be(new Uint8Array([0x12, 0x34]), 0), 0x12340000);
+  assert.equal(readUintBE(new Uint8Array([0xff]), 0, 3), 0xff0000);
+  assert.equal(
+    readBitsBE(new Uint8Array([0b1000_0000]), 0, 4),
+    0b1000,
+    "MSB-first within the byte",
+  );
+  assert.equal(readBitsBE(new Uint8Array([]), 0, 8), 0, "bits beyond the buffer read as zero");
 });

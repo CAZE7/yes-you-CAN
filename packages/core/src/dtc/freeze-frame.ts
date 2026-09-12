@@ -20,7 +20,7 @@ import type {
   SignalDefinition,
   SignalIndex,
 } from "@vdp/definitions";
-import { type Logger, toHex } from "@vdp/shared";
+import { type Logger, messageOf, toHex } from "@vdp/shared";
 import type { DecodedSignal } from "../measurements/decoder.js";
 import { SignalDecoder } from "../measurements/decoder.js";
 
@@ -138,9 +138,7 @@ export function decodeFreezeFrame(
         values.push(decoded);
       } catch (error) {
         // A single undecodable signal must not hide the rest of the record.
-        notes.push(
-          `signal ${signal.id} could not be decoded: ${error instanceof Error ? error.message : String(error)}`,
-        );
+        notes.push(`signal ${signal.id} could not be decoded: ${messageOf(error)}`);
       }
     }
 

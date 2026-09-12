@@ -21,6 +21,7 @@ import {
 } from "@vdp/protocols-uds";
 import { createLogger } from "@vdp/shared";
 import { test } from "vitest";
+import { tick } from "../helpers/wait.js";
 
 const logger = createLogger("transport-seam", { level: "ERROR" });
 
@@ -74,7 +75,7 @@ function createInMemoryEcu(server: ConstructorParameters<typeof UdsServer>[1]): 
         if (Date.now() >= deadline) return null;
         await new Promise<void>((resolve) => {
           wake = resolve;
-          setTimeout(resolve, Math.max(1, deadline - Date.now()));
+          void tick(Math.max(1, deadline - Date.now())).then(resolve);
         });
         wake = null;
       }

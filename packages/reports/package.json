@@ -2,10 +2,27 @@
   "name": "@vdp/reports",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "description": "Diagnostic reports as HTML and PDF (AGENTS 21). Self-contained PDF writer, no external dependency.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CAZE7/yes-you-CAN.git",
+    "directory": "packages/reports"
+  },
+  "engines": {
+    "node": ">=22"
+  },
   "main": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",
-  "exports": { ".": { "types": "./dist/src/index.d.ts", "default": "./dist/src/index.js" } },
-  "dependencies": { "@vdp/shared": "0.1.0", "@vdp/core": "0.1.0" }
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    }
+  },
+  "dependencies": {
+    "@vdp/shared": "0.1.0",
+    "@vdp/core": "0.1.0"
+  }
 }

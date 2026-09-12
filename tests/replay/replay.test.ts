@@ -48,7 +48,7 @@ async function recordSession(): Promise<Recording> {
     definitions: [genericPackage],
     logger,
   });
-  await engine.connect();
+  await engine.connect({ windowMs: 60, probeDelayMs: 0 });
   const identity = await engine.detectVehicleIdentity();
   const snapshot = await engine.snapshotSignals();
 
