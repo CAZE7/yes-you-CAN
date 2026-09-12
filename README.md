@@ -1,10 +1,9 @@
 # yes-you-CAN
 
 [![CI](https://github.com/CAZE7/yes-you-CAN/actions/workflows/ci.yml/badge.svg)](https://github.com/CAZE7/yes-you-CAN/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/CAZE7/yes-you-CAN/actions/workflows/codeql.yml/badge.svg)](https://github.com/CAZE7/yes-you-CAN/actions/workflows/codeql.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](./package.json)
-[![Tests](https://img.shields.io/badge/tests-958%20passed-brightgreen)](#tests)
+[![Tests](https://img.shields.io/badge/tests-991%20passed-brightgreen)](#tests)
 [![TypeScript](https://img.shields.io/badge/TypeScript-7%20%2F%20tsgo-blue)](./tsconfig.base.json)
 
 Fahrzeugdiagnose-Plattform: CAN und DoIP lesen, Steuergeräte identifizieren,
@@ -100,7 +99,7 @@ npm run typecheck     # Build + strikter noEmit-Pass über Tests, Konfiguration,
 npx biome check .     # Lint + Format (Biome 1.9): 2-space, 100-char, organizeImports
 npm test              # Build + Vitest: alle 6 Ebenen (unit, protocol, regression, replay, integration, architecture)
 npm run test:unit     # nur Unit-Specs — schnelle Feedback-Schleife
-npm run test:coverage # Suite + V8-Coverage (global 80/75 als Durchschnitt; per-file laut vitest.config.ts, ADR 0017)
+npm run test:coverage # Suite + V8-Coverage (global 90/80 als Durchschnitt; per-file laut vitest.config.ts, ADR 0020)
 npm run ci            # Build + Typecheck + Biome + Test — entspricht der CI
 ```
 
@@ -112,11 +111,21 @@ npx vitest run packages/storage/src/storage.spec.ts
 npx biome check --write .   # auto-fix
 ```
 
-Qualitätstore in der CI: ein Quality-Job (`lint` + `build` + `typecheck` +
-`npm audit` auf Node 22) vor der Test-Matrix auf Node 22 und 24 mit
-Coverage-Upload (`.github/workflows/ci.yml`); separat CodeQL
-(`codeql.yml`), Dependency-Review (`dependency-review.yml`) und der
-nächtliche Hardware-Smoke auf `vcan0` (`hardware.yml`). Details siehe
+Qualitätstore: `npm run ci` prüft lokal genau das, was die CI prüft —
+`build` + `typecheck` + `biome check` + die komplette Suite. Der Workflow
+`.github/workflows/ci.yml` läuft auf Node 22 und 24 (`npm ci` → `build` →
+`npm test`).
+
+**Stand 2026-09-12, bewusst offen (AGENTS 0.E, E10):** die gehärtete CI aus
+ADR 0016 §3 — Quality-Job (`lint` · `build` · `typecheck` · `npm audit`) vor der
+Test-Matrix, Coverage-Lauf mit Artefakt-Upload, `codeql.yml`,
+`dependency-review.yml` und der nächtliche `hardware.yml`-Smoke auf `vcan0` —
+ist fertig entwickelt, aber nicht im Repository: GitHub lehnt den Push von
+Workflow-Dateien ab, solange die GitHub-App-Installation keine
+`workflows`-Berechtigung hat (gemessen 2026-09-12:
+`refusing to allow a GitHub App to create or update workflow
+.github/workflows/ci.yml without 'workflows' permission`). Bis dahin gilt:
+`npm run ci` ist das Tor, nicht der Workflow. Details in
 [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Graphen
@@ -130,13 +139,16 @@ Zeitraum aus, Doppelklick zeigt die gesamte Aufnahme.
 
 ## Tests
 
-958 Tests, Vitest 5 mit Projektkonfiguration (ADR 0010, Schritt 1 — ersetzt
-ADR 0008). Unit-Specs liegen co-lokatiert neben dem Code (`src/*.spec.ts`);
-Property-Tests laufen mit fast-check, Coverage-Gates mit
-`npm run test:coverage` (global 80 % lines / 75 % branches als
-Projekt-Durchschnitt; per-file-Gates für
+991 Tests in ~24 s, Vitest 5 mit Projektkonfiguration (ADR 0010, Schritt 1 —
+ersetzt ADR 0008). Unit-Specs liegen co-lokatiert neben dem Code
+(`src/*.spec.ts`); Property-Tests laufen mit fast-check, Coverage-Gates mit
+`npm run test:coverage` (global 90 % lines / 80 % branches als
+Projekt-Durchschnitt, Ist 96,3/84,2; per-file-Gates für
 `core`/`protocols`/`adapters`/`transport`/`storage`/`charts`; Hardware-Module
-`serial`/`binding` ausgenommen — maßgeblich ist `vitest.config.ts`, ADR 0017).
+`serial`/`binding` ausgenommen — maßgeblich ist `vitest.config.ts`, ADR 0017
+und 0020). Test-Zeit ist ein Budget: Discovery läuft in Tests mit explizitem
+`windowMs`/`probeDelayMs`, und statt fester Sleeps wird auf Bedingungen
+gewartet (ADR 0019).
 Ebenen nach AGENTS 31:
 
 | Ebene | Ort |
