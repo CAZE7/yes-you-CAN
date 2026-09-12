@@ -33,6 +33,7 @@ import { createDiagnosticRuntime } from "@vdp/runtime";
 import { MemorySink, createLogger } from "@vdp/shared";
 import { VirtualVehicle } from "@vdp/simulators";
 import { afterAll, beforeAll, test } from "vitest";
+import { waitFor } from "../helpers/wait.js";
 
 /**
  * Runtime integration test (target architecture §33: "ideale Core-Nutzung").
@@ -255,7 +256,13 @@ test("measurement.snapshot decodes and records through the runtime", async () =>
 
 test("live measurements run and stop through commands", async () => {
   await runtime.commands.dispatch(startMeasurements(["engine.rpm"], 10));
-  await new Promise((resolve) => setTimeout(resolve, 120));
+  // Bedingung statt fester 120 ms: das Poll-Intervall ist 10 ms, warten muss
+  // der Test also auf die zweite Runde, nicht auf eine Zeitscheibe (ADR 0019).
+  await waitFor(
+    async () => (await runtime.commands.query(getMeasurements("engine.rpm"))).length,
+    (count) => count > 1,
+    { message: "several polled samples" },
+  );
   await runtime.commands.dispatch(stopMeasurements());
   const samples = await runtime.commands.query(getMeasurements("engine.rpm"));
   assert.ok(samples.length > 1, "polling must have produced several samples");
@@ -272,7 +279,13 @@ test("the sample stream observes recorded rounds without recording twice", async
     streamed.push(...round.readings.map((reading) => reading.t));
   });
   await runtime.commands.dispatch(startMeasurements(["engine.rpm"], 10));
-  await new Promise((resolve) => setTimeout(resolve, 120));
+  await waitFor(
+    () => streamed.length,
+    (count) => count > 1,
+    {
+      message: "several streamed rounds",
+    },
+  );
   await runtime.commands.dispatch(stopMeasurements());
   off();
 

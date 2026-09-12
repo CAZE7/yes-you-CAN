@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
+import { tick } from "../../../tests/helpers/wait.js";
 import { CommandBus, DuplicateHandlerError, NoHandlerError } from "./index.js";
 import { CommandKinds, connectVehicle, readDtcs } from "./index.js";
 import { QueryKinds, getEcuList, getSession } from "./index.js";
@@ -49,7 +50,8 @@ describe("command bus", () => {
   test("handler results are awaited", async () => {
     const bus = new CommandBus();
     bus.registerCommand<number>(CommandKinds.ReadDtcs, async () => {
-      await new Promise((resolve) => setTimeout(resolve, 1));
+      // Echt asynchron: auf einen Timer yielden, nicht auf eine Microtask.
+      await tick(1);
       return 42;
     });
     assert.equal(await bus.dispatch(readDtcs()), 42);

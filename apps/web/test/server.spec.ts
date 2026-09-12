@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createLogger } from "@vdp/shared";
 import { test } from "vitest";
+import { waitFor } from "../../../tests/helpers/wait.js";
 import { WebServer } from "../src/server.js";
 
 const logger = createLogger("web", { level: "ERROR" });
@@ -31,30 +32,6 @@ async function json(
     body: type.includes("json") ? await response.json() : await response.text(),
     type,
   };
-}
-
-/**
- * Wait for a condition instead of sleeping a fixed time.
- *
- * The four live-data tests used to sleep 300–400 ms for samples the 60 ms poll
- * loop normally delivers after ~70 ms: slow on an idle machine and a race on a
- * loaded CI runner — exactly the "explizite Waits statt Sleeps" fix AGENTS 0.E
- * (E9) asks for. Polling returns as soon as the condition holds and reports the
- * timeout instead of a confusing assertion on a half-filled recording.
- */
-async function waitFor<T>(
-  probe: () => Promise<T>,
-  satisfied: (value: T) => boolean,
-  timeoutMs = 5_000,
-): Promise<T> {
-  const deadline = Date.now() + timeoutMs;
-  let value = await probe();
-  while (!satisfied(value)) {
-    assert.ok(Date.now() < deadline, `condition not met within ${timeoutMs} ms`);
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    value = await probe();
-  }
-  return value;
 }
 
 /** Wait until the recording holds at least `count` samples of `signal`. */

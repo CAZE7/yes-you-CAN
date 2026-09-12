@@ -13,6 +13,7 @@ import { createVirtualCanNetwork } from "@vdp/simulators";
 import type { CanFrame } from "@vdp/transport-can";
 import { IsoTpConnection } from "@vdp/transport-iso-tp";
 import { test } from "vitest";
+import { tick, waitFor } from "../helpers/wait.js";
 
 const logger = createLogger("protocol", { level: "ERROR" });
 
@@ -78,7 +79,7 @@ function createPair(channel: string, overrides: Record<string, unknown> = {}): P
           throw new Error(`ECU side saw only ${received.length}/${count} frames`);
         await new Promise<void>((resolve) => {
           waiters.push(resolve);
-          setTimeout(resolve, 5);
+          void tick(5).then(resolve);
         });
       }
     },
@@ -249,9 +250,14 @@ test("unsolicited frames reach the listener instead of being dropped", async () 
   pair.connection.onUnsolicited((payload) => seen.push(payload));
   pair.emit(fromHex("03 7F 3E 11"));
 
-  const deadline = Date.now() + 500;
-  while (seen.length === 0 && Date.now() < deadline)
-    await new Promise((resolve) => setTimeout(resolve, 10));
+  await waitFor(
+    () => seen.length,
+    (count) => count > 0,
+    {
+      timeoutMs: 500,
+      message: "the unsolicited notification",
+    },
+  );
   assert.equal(seen.length, 1);
   assert.equal(toHex(seen[0] ?? new Uint8Array()), "7F 3E 11");
 });

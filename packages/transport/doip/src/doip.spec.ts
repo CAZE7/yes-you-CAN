@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { UdsClient, createRequestResponseLink } from "@vdp/protocols-uds";
 import { ProtocolError, fromHex, toHex } from "@vdp/shared";
 import { test } from "vitest";
+import { settle, waitFor } from "../../../../tests/helpers/wait.js";
 import {
   DEFAULT_DISCOVERY_WINDOW_MS,
   DOIP_HEADER_LENGTH,
@@ -272,7 +273,13 @@ test("alive check requests are answered with the tester address", async () => {
   await transport.connect();
   const before = endpoint.received.length;
   endpoint.emit(encodeMessage(PAYLOAD_TYPE.ALIVE_CHECK_REQUEST, new Uint8Array()));
-  await new Promise((resolve) => setTimeout(resolve, 5));
+  await waitFor(
+    () => endpoint.received.length,
+    (count) => count > before,
+    {
+      message: "the alive check response",
+    },
+  );
   assert.equal(endpoint.received.length, before + 1);
   const reply = endpoint.received.at(-1);
   assert.ok(reply);
@@ -469,7 +476,7 @@ test("a failing alive-check response is logged instead of thrown", async () => {
   endpoint.emit(encodeMessage(PAYLOAD_TYPE.ALIVE_CHECK_REQUEST, new Uint8Array()));
   // The answer is fire-and-forget; an unhandled rejection would fail the run,
   // so what remains to assert is that the transport is simply still usable.
-  await new Promise((resolve) => setTimeout(resolve, 5));
+  await settle(5, "the fire-and-forget answer must reach its catch handler first");
   assert.equal(transport.getStatus().state, "connected");
 });
 

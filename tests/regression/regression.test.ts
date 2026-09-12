@@ -17,6 +17,7 @@ import { VirtualVehicle, createVirtualCanNetwork } from "@vdp/simulators";
 import { ReplayTransport } from "@vdp/transport-can";
 import { IsoTpConnection } from "@vdp/transport-iso-tp";
 import { test } from "vitest";
+import { waitFor } from "../helpers/wait.js";
 
 const logger = createLogger("regression", { level: "ERROR" });
 
@@ -30,7 +31,7 @@ function createChannel(channel: string) {
   return { a, b };
 }
 
-test("REGRESSION: a first frame below 256 bytes was misread as the escape form", () => {
+test("REGRESSION: a first frame below 256 bytes was misread as the escape form", async () => {
   // Symptom: every multi-frame response shorter than 256 bytes decoded to a
   // nonsensical length, because the escape check looked only at the PCI nibble.
   // FF_DL is 12 bits; it is zero only in the escape form (ISO 15765-2 §9.5.2).
@@ -77,13 +78,15 @@ test("REGRESSION: a first frame below 256 bytes was misread as the escape form",
     direction: "tx",
   });
 
-  return new Promise<void>((resolve) => {
-    setTimeout(() => {
-      assert.equal(received.length, 1, "the 20 byte message must be delivered");
-      assert.equal(received[0]?.length, 20);
-      resolve();
-    }, 60);
-  });
+  await waitFor(
+    () => received.length,
+    (count) => count >= 1,
+    {
+      message: "the reassembled 20 byte message",
+    },
+  );
+  assert.equal(received.length, 1, "the 20 byte message must be delivered");
+  assert.equal(received[0]?.length, 20);
 });
 
 test("REGRESSION: flow control arriving before the waiter was registered was dropped", async () => {
@@ -131,7 +134,15 @@ test("REGRESSION: block size was advertised but never enforced on reception", as
   const sent: Uint8Array[] = [];
   b.subscribe((frame) => sent.push(frame.payload));
 
-  await new Promise((resolve) => setTimeout(resolve, 20));
+  // Der Request muss auf dem Bus liegen, bevor die Antwort injiziert wird -
+  // sonst beweist der Test nichts ueber die Reihenfolge (ADR 0019).
+  await waitFor(
+    () => sent.length,
+    (count) => count >= 1,
+    {
+      message: "the request frame on the bus",
+    },
+  );
   void b.send({
     timestamp: Date.now(),
     id: 0x7e8,
@@ -142,7 +153,15 @@ test("REGRESSION: block size was advertised but never enforced on reception", as
     channel: "reg-bs",
     direction: "tx",
   });
-  await new Promise((resolve) => setTimeout(resolve, 20));
+  // Auf das First Frame muss ein Flow Control gefolgt sein, bevor die
+  // Consecutive Frames kommen - genau das ist die Regression.
+  await waitFor(
+    () => sent.filter((payload) => (payload[0] ?? 0) >> 4 === 3).length,
+    (count) => count >= 1,
+    {
+      message: "the flow control for the first frame",
+    },
+  );
   void b.send({
     timestamp: Date.now(),
     id: 0x7e8,
@@ -163,7 +182,13 @@ test("REGRESSION: block size was advertised but never enforced on reception", as
     channel: "reg-bs",
     direction: "tx",
   });
-  await new Promise((resolve) => setTimeout(resolve, 30));
+  await waitFor(
+    () => sent.filter((payload) => (payload[0] ?? 0) >> 4 === 3).length,
+    (count) => count >= 2,
+    {
+      message: "a flow control per block",
+    },
+  );
 
   const flowControls = sent.filter((payload) => (payload[0] ?? 0) >> 4 === 3);
   assert.equal(
@@ -269,7 +294,11 @@ test("REGRESSION: the virtual bus labelled the sender’s own frames as rx", asy
     direction: "tx",
   });
 
-  await new Promise((resolve) => setTimeout(resolve, 20));
+  await waitFor(
+    () => seen.length,
+    (count) => count >= 1,
+    { message: "the echoed own frame" },
+  );
   assert.deepEqual(seen, ["tx"], "the sender must see its own frame as tx");
 });
 
@@ -365,7 +394,15 @@ test("REGRESSION: the workbench lost the ECU name in its state snapshot", async 
   });
   await engine.connect({ windowMs: 60, probeDelayMs: 0 });
   await engine.startLiveData({ signalIds: ["engine.rpm"], intervalMs: 40, maxRounds: 2 });
-  await new Promise((resolve) => setTimeout(resolve, 250));
+  // Zwei Runden a 40 ms sind die Bedingung; die alten festen 250 ms waren das
+  // Sechsfache dessen, was der Code unter Test tatsaechlich braucht.
+  await waitFor(
+    () => engine.recorder.export().samples.length,
+    (count) => count >= 2,
+    {
+      message: "both live data rounds",
+    },
+  );
 
   assert.equal(
     engine.findSignal("engine.rpm")?.name,

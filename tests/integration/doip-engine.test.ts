@@ -22,6 +22,7 @@ import {
   encodeMessage,
 } from "@vdp/transport-doip";
 import { test } from "vitest";
+import { settle } from "../helpers/wait.js";
 
 const logger = createLogger("doip-engine", { level: "ERROR" });
 const VIN = "1HGCM82633A004352";
@@ -192,6 +193,7 @@ test("a failing socket teardown is logged by the factory, never thrown", async (
   // disconnect() must resolve even though the socket close rejects (the factory
   // swallows and logs the teardown error).
   await engine.disconnect();
-  // Give the swallowed rejection a tick to run through the catch handler.
-  await new Promise((resolve) => setTimeout(resolve, 5));
+  // Give the swallowed rejection a moment to run through the catch handler:
+  // the absence of an unhandled rejection has no condition to poll for.
+  await settle(5, "the swallowed rejection must reach its catch handler");
 });

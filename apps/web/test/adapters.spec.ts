@@ -3,6 +3,7 @@ import { createLogger } from "@vdp/shared";
 import { VirtualVehicle } from "@vdp/simulators";
 import { MemorySessionRepository } from "@vdp/storage";
 import { test } from "vitest";
+import { waitFor } from "../../../tests/helpers/wait.js";
 import { createWebAdapterCatalog } from "../src/adapters.js";
 import { DemoBackend } from "../src/backend.js";
 import { WebServer } from "../src/server.js";
@@ -192,7 +193,7 @@ test("hardware mode runs the full diagnostic path over an injected bus", async (
     );
 
     await backend.startLive(undefined);
-    await waitFor(() => backend.state().statistics.length > 0, 5000);
+    await waitFor(() => backend.state().statistics.length > 0, undefined, { timeoutMs: 5000 });
     backend.stopLive();
     assert.ok(
       backend.state().statistics.length > 0,
@@ -276,11 +277,3 @@ test("the state reports which transport is selected", async () => {
   assert.equal(state.adapterProbe?.available, true);
   await backend.stop();
 });
-
-async function waitFor(predicate: () => boolean, timeoutMs = 3000): Promise<void> {
-  const started = Date.now();
-  while (!predicate()) {
-    if (Date.now() - started > timeoutMs) throw new Error("timed out waiting for condition");
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
-}
