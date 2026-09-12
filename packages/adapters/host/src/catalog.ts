@@ -29,8 +29,20 @@ import {
   type SocketCanBinding,
   tryLoadSocketCanBinding,
 } from "@vdp/adapter-socketcan";
-import { AdapterUnsupportedError, type Logger, TransportError, createLogger } from "@vdp/shared";
-import type { AdapterCapabilities, CanBus } from "@vdp/transport-can";
+import {
+  AdapterUnsupportedError,
+  type Logger,
+  TransportError,
+  createLogger,
+  messageOf,
+} from "@vdp/shared";
+import type {
+  AdapterCapabilities,
+  CanBus,
+  CanFilter,
+  CanFrame,
+  FrameListener,
+} from "@vdp/transport-can";
 import { type SerialByteStream, configureSerialPort, openSerialStream } from "./serial.js";
 
 /**
@@ -66,6 +78,21 @@ export interface AdapterProbe {
 
 export interface HostContext {
   logger?: Logger;
+  /**
+   * Where the optional SocketCAN binding comes from.
+   *
+   * The native module must not become a hard dependency of the platform, so the
+   * catalog asks the host for it instead of importing it. The default is
+   * `tryLoadSocketCanBinding()`; a test — or an application that ships its own
+   * binding — injects a loader, which is the only way to exercise interface
+   * listing and channel creation without a kernel CAN device.
+   */
+  loadSocketCanBinding?: () => Promise<SocketCanBinding>;
+}
+
+/** Binding loader of the SocketCAN entry: the host's loader wins. */
+function socketCanBindingOf(context: HostContext): Promise<SocketCanBinding> {
+  return context.loadSocketCanBinding ? context.loadSocketCanBinding() : tryLoadSocketCanBinding();
 }
 
 export interface AdapterEntry {
@@ -212,7 +239,7 @@ async function probeSafely(
   } catch (error) {
     return {
       available: false,
-      detail: `probe failed: ${error instanceof Error ? error.message : String(error)}`,
+      detail: `probe failed: ${messageOf(error)}`,
     };
   }
 }
@@ -262,7 +289,7 @@ async function probeSerialDevice(device: string): Promise<AdapterProbe> {
         : ['check the device permissions (group "dialout" on Linux)'];
     return {
       available: false,
-      detail: `${device} is not usable: ${error instanceof Error ? error.message : String(error)}`,
+      detail: `${device} is not usable: ${messageOf(error)}`,
       hints,
     };
   }
@@ -292,6 +319,41 @@ async function openConfiguredStream(
   });
 }
 
+/**
+ * A bus whose `close()` also releases the serial stream the catalog opened.
+ *
+ * The adapters receive their stream injected and deliberately do not own it, so
+ * without this wrapper nothing ever closes it: measured 2026-09-12 on Node 22,
+ * one file descriptor stayed open per `create()`/`close()` cycle (24 → 25 → 25),
+ * and because `SerialByteStream.runReadLoop` polls `while (!this.closed)`, an
+ * adapter that had been opened also left a poll loop running against a device
+ * the operator had already disconnected. Reconnecting is an ordinary operation,
+ * so both accumulate until the process hits its descriptor limit.
+ *
+ * Delegating instead of subclassing keeps the adapter contract untouched: the
+ * wrapper owns nothing but the lifecycle of the stream it was handed.
+ */
+function withOwnedStream(bus: CanBus, stream: SerialByteStream): CanBus {
+  return {
+    info: bus.info,
+    capabilities: bus.capabilities,
+    open: () => bus.open(),
+    isOpen: () => bus.isOpen(),
+    send: (frame: CanFrame) => bus.send(frame),
+    subscribe: (listener: FrameListener, filters?: readonly CanFilter[]) =>
+      bus.subscribe(listener, filters),
+    close: async () => {
+      try {
+        await bus.close();
+      } finally {
+        // The adapter has dropped its subscription; descriptor and read loop
+        // belong to the stream, which only the catalog holds a reference to.
+        await stream.close();
+      }
+    },
+  };
+}
+
 export const ELM327_BITRATES: readonly string[] = Object.keys(BITRATES);
 
 /** Adapters a plain Node/desktop host can drive without extra dependencies. */
@@ -317,11 +379,14 @@ export function createHostAdapterCatalog(): AdapterCatalog {
           { baudRate: ELM327_DEFAULT_BAUD, label: "ELM327" },
           context.logger,
         );
-        return new Elm327Adapter({
+        return withOwnedStream(
+          new Elm327Adapter({
+            stream,
+            ...(config.channel ? { channel: config.channel } : {}),
+            ...(context.logger ? { logger: context.logger } : {}),
+          }),
           stream,
-          ...(config.channel ? { channel: config.channel } : {}),
-          ...(context.logger ? { logger: context.logger } : {}),
-        });
+        );
       },
     },
     {
@@ -367,12 +432,15 @@ export function createHostAdapterCatalog(): AdapterCatalog {
           // below), so the adapter cannot acknowledge a single frame.
           await stream.write("L\r");
         }
-        return new CanableAdapter({
+        return withOwnedStream(
+          new CanableAdapter({
+            stream,
+            bitrate,
+            ...(config.channel ? { channel: config.channel } : {}),
+            ...(context.logger ? { logger: context.logger } : {}),
+          }),
           stream,
-          bitrate,
-          ...(config.channel ? { channel: config.channel } : {}),
-          ...(context.logger ? { logger: context.logger } : {}),
-        });
+        );
       },
     },
     {
@@ -388,14 +456,14 @@ export function createHostAdapterCatalog(): AdapterCatalog {
       probe: async (config, context) => {
         let binding: SocketCanBinding;
         try {
-          binding = await tryLoadSocketCanBinding();
+          binding = await socketCanBindingOf(context);
         } catch (error) {
           return {
             available: false,
             detail: "no SocketCAN binding installed",
             hints: [
               'install a SocketCAN binding (e.g. "npm i socketcan") or use a serial adapter',
-              error instanceof Error ? error.message : String(error),
+              messageOf(error),
             ],
           };
         }
@@ -422,7 +490,7 @@ export function createHostAdapterCatalog(): AdapterCatalog {
           throw new AdapterUnsupportedError(
             "a SocketCAN interface is required (e.g. --channel=can0)",
           );
-        const binding = await tryLoadSocketCanBinding();
+        const binding = await socketCanBindingOf(context);
         return new SocketCanAdapter({
           binding,
           iface: config.channel,
