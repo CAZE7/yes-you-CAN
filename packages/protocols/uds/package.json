@@ -2,10 +2,26 @@
   "name": "@vdp/protocols-uds",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "description": "UDS (ISO 14229-1 services, ISO 14229-2 session/timing) client + ECU-side server. Transport agnostic by design (AGENTS 5, 9).",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CAZE7/yes-you-CAN.git",
+    "directory": "packages/protocols/uds"
+  },
+  "engines": {
+    "node": ">=22"
+  },
   "main": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",
-  "exports": { ".": { "types": "./dist/src/index.d.ts", "default": "./dist/src/index.js" } },
-  "dependencies": { "@vdp/shared": "0.1.0" }
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    }
+  },
+  "dependencies": {
+    "@vdp/shared": "0.1.0"
+  }
 }

@@ -2,8 +2,17 @@
   "name": "@vdp/web",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "description": "Diagnostic workbench UI: Node HTTP + SSE server and a vanilla ESM front end (AGENTS 16).",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CAZE7/yes-you-CAN.git",
+    "directory": "apps/web"
+  },
+  "engines": {
+    "node": ">=22"
+  },
   "main": "./dist/src/server.js",
   "types": "./dist/src/server.d.ts",
   "bin": {

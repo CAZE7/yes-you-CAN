@@ -15,11 +15,9 @@
 
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join, relative } from "node:path";
 import { test } from "vitest";
-
-const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+import { discoverWorkspaceDirs, repoRoot as root } from "./workspace.js";
 
 interface PackageNode {
   name: string;
@@ -28,41 +26,10 @@ interface PackageNode {
   nodeBuiltins: Set<string>;
 }
 
-/** Directories that hold workspace packages (mirrors `workspaces` in the root manifest). */
-const WORKSPACE_ROOTS: ReadonlyArray<{ root: string; depth: number }> = [
-  { root: "packages", depth: 1 },
-  { root: "packages", depth: 2 },
-  { root: "tools", depth: 1 },
-  { root: "apps", depth: 1 },
-];
-
 function discoverPackages(): PackageNode[] {
   const found = new Map<string, PackageNode>();
-  const seenDirs = new Set<string>();
-  for (const { root: workspaceRoot, depth } of WORKSPACE_ROOTS) {
-    const base = join(root, workspaceRoot);
-    if (!existsSync(base)) continue;
-    const collect = (dir: string, level: number): void => {
-      if (existsSync(join(dir, "package.json"))) {
-        seenDirs.add(dir);
-        return;
-      }
-      if (level >= depth) return;
-      for (const entry of readdirSync(dir, { withFileTypes: true })) {
-        if (
-          !entry.isDirectory() ||
-          entry.name.startsWith(".") ||
-          entry.name === "node_modules" ||
-          entry.name === "dist"
-        )
-          continue;
-        collect(join(dir, entry.name), level + 1);
-      }
-    };
-    collect(base, 0);
-  }
 
-  for (const dir of seenDirs) {
+  for (const dir of discoverWorkspaceDirs()) {
     const manifest = JSON.parse(readFileSync(join(dir, "package.json"), "utf8")) as {
       name?: string;
     };

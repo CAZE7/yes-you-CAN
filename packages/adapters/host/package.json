@@ -2,13 +2,28 @@
   "name": "@vdp/adapter-host",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "description": "Host integration for CAN adapters: serial byte streams, device catalog and selection (AGENTS 4, 29).",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CAZE7/yes-you-CAN.git",
+    "directory": "packages/adapters/host"
+  },
+  "engines": {
+    "node": ">=22"
+  },
   "main": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",
   "exports": {
-    ".": { "types": "./dist/src/index.d.ts", "default": "./dist/src/index.js" },
-    "./serial": { "types": "./dist/src/serial.d.ts", "default": "./dist/src/serial.js" }
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    },
+    "./serial": {
+      "types": "./dist/src/serial.d.ts",
+      "default": "./dist/src/serial.js"
+    }
   },
   "dependencies": {
     "@vdp/shared": "0.1.0",
