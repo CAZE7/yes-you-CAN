@@ -3,7 +3,7 @@
 [![CI](https://github.com/CAZE7/yes-you-CAN/actions/workflows/ci.yml/badge.svg)](https://github.com/CAZE7/yes-you-CAN/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](./package.json)
-[![Tests](https://img.shields.io/badge/tests-991%20passed-brightgreen)](#tests)
+[![Tests](https://img.shields.io/badge/tests-1066%20passed-brightgreen)](#tests)
 [![TypeScript](https://img.shields.io/badge/TypeScript-7%20%2F%20tsgo-blue)](./tsconfig.base.json)
 
 Fahrzeugdiagnose-Plattform: CAN und DoIP lesen, Steuergeräte identifizieren,
@@ -139,14 +139,14 @@ Zeitraum aus, Doppelklick zeigt die gesamte Aufnahme.
 
 ## Tests
 
-991 Tests in ~24 s, Vitest 5 mit Projektkonfiguration (ADR 0010, Schritt 1 —
+1066 Tests in ~23 s, Vitest 5 mit Projektkonfiguration (ADR 0010, Schritt 1 —
 ersetzt ADR 0008). Unit-Specs liegen co-lokatiert neben dem Code
 (`src/*.spec.ts`); Property-Tests laufen mit fast-check, Coverage-Gates mit
 `npm run test:coverage` (global 90 % lines / 80 % branches als
-Projekt-Durchschnitt, Ist 96,3/84,2; per-file-Gates für
-`core`/`protocols`/`adapters`/`transport`/`storage`/`charts`; Hardware-Module
-`serial`/`binding` ausgenommen — maßgeblich ist `vitest.config.ts`, ADR 0017
-und 0020). Test-Zeit ist ein Budget: Discovery läuft in Tests mit explizitem
+Projekt-Durchschnitt, Ist 97,4 Zeilen / 87,8 Zweige; per-file-Gates für
+`shared`/`core`/`protocols`/`adapters`/`transport`/`storage`/`charts`/`reports`/`ai`;
+Hardware-Module `serial`/`binding` ausgenommen — maßgeblich ist
+`vitest.config.ts`, ADR 0017, 0020 und 0022). Test-Zeit ist ein Budget: Discovery läuft in Tests mit explizitem
 `windowMs`/`probeDelayMs`, und statt fester Sleeps wird auf Bedingungen
 gewartet (ADR 0019).
 Ebenen nach AGENTS 31:
