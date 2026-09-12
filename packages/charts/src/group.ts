@@ -39,7 +39,13 @@ export interface ChartGroupOptions {
   onListenerError?: (error: unknown, reason: ChartGroupChange) => void;
 }
 
-/** Default subscriber-error reporter: isolated, but never silent. */
+/**
+ * Default subscriber-error reporter: isolated, but never silent.
+ *
+ * The reason is extracted here instead of with `messageOf` from `@vdp/shared`:
+ * `@vdp/charts` is dependency-free by design (§29 allowlist, `"@vdp/charts": []`)
+ * and this single line is not worth becoming its first dependency.
+ */
 function reportSubscriberError(error: unknown, reason: ChartGroupChange): void {
   console.debug("[charts] subscriber failed", {
     reason,

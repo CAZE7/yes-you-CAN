@@ -19,6 +19,7 @@ import {
   TransportClosedError,
   TransportError,
   createLogger,
+  messageOf,
 } from "@vdp/shared";
 import type { ConnectionStatus, VehicleTransport } from "@vdp/transport-can";
 import {
@@ -253,7 +254,7 @@ export class DoipTransport implements VehicleTransport {
       try {
         header = decodeHeader(this.buffer);
       } catch (error) {
-        this.lastError = error instanceof Error ? error.message : String(error);
+        this.lastError = messageOf(error);
         this.log.error("DoIP framing error", { error: this.lastError });
         this.buffer = new Uint8Array();
         return;
@@ -344,10 +345,6 @@ function concat(a: Uint8Array, b: Uint8Array): Uint8Array {
   out.set(a, 0);
   out.set(b, a.length);
   return out;
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 export { DOIP_UDP_PORT, DOIP_TLS_PORT, encodeHeader, ProtocolError };

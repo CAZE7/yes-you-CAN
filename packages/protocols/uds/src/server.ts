@@ -7,7 +7,7 @@
  * Response Pending (NRC 0x78), session gating and negative responses.
  */
 
-import { type Logger, createLogger, toHex } from "@vdp/shared";
+import { type Logger, createLogger, messageOf, toHex } from "@vdp/shared";
 import { encodeDtcToBytes } from "./dtc.js";
 import { NRC } from "./nrc.js";
 import {
@@ -178,7 +178,7 @@ export class UdsServer {
       this.stats.negativeResponses++;
       this.log.error("server handler failed", {
         ecu: this.name,
-        error: error instanceof Error ? error.message : String(error),
+        error: messageOf(error),
       });
       // Reporting the failure must not fail on its own: the transport is what broke
       // here, and `start()` calls us as `void this.handle(payload)` — a rejection on
@@ -188,7 +188,7 @@ export class UdsServer {
       } catch (sendError) {
         this.log.warn("could not report the failure to the caller", {
           ecu: this.name,
-          error: sendError instanceof Error ? sendError.message : String(sendError),
+          error: messageOf(sendError),
         });
       }
     }

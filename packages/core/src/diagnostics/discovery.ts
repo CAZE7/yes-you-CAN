@@ -10,7 +10,7 @@
 
 import type { DefinitionPackage } from "@vdp/definitions";
 import { SID } from "@vdp/protocols-uds";
-import { type Logger, createLogger, toHex } from "@vdp/shared";
+import { type Logger, createLogger, messageOf, toHex } from "@vdp/shared";
 import type { CanBus, CanFrame } from "@vdp/transport-can";
 import { IsoTpConnection } from "@vdp/transport-iso-tp";
 
@@ -181,7 +181,7 @@ export class EcuDiscovery {
     } catch (error) {
       this.log.warn("functional probe could not be sent", {
         functionalId: `0x${functionalId.toString(16)}`,
-        error: error instanceof Error ? error.message : String(error),
+        error: messageOf(error),
       });
     }
   }
@@ -199,7 +199,7 @@ export class EcuDiscovery {
     } catch (error) {
       this.log.debug("single probe failed", {
         txId: `0x${txId.toString(16)}`,
-        error: error instanceof Error ? error.message : String(error),
+        error: messageOf(error),
       });
     }
   }

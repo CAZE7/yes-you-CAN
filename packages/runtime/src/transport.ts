@@ -12,7 +12,7 @@
 
 import type { EcuLinkFactory, OpenedEcuLink } from "@vdp/core";
 import { createRequestResponseLink } from "@vdp/protocols-uds";
-import { type Logger, createLogger } from "@vdp/shared";
+import { type Logger, createLogger, messageOf } from "@vdp/shared";
 import { type DoipSocket, DoipTransport } from "@vdp/transport-doip";
 
 export interface DoipEcuLinkFactoryOptions {
@@ -70,7 +70,7 @@ export class DoipEcuLinkFactory implements EcuLinkFactory {
         void transport.disconnect().catch((error) => {
           this.log.warn("DoIP disconnect failed", {
             target: `0x${targetAddress.toString(16)}`,
-            error: error instanceof Error ? error.message : String(error),
+            error: messageOf(error),
           });
         });
       },

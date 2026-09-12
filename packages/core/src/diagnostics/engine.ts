@@ -14,7 +14,7 @@ import {
   OemProtocolRegistry,
 } from "@vdp/protocols-oem";
 import { UdsClient, type UdsLink } from "@vdp/protocols-uds";
-import { type Logger, createId, createLogger, toHex } from "@vdp/shared";
+import { type Logger, createId, createLogger, messageOf, toHex } from "@vdp/shared";
 import type { CanBus, TransportInfo } from "@vdp/transport-can";
 import { IsoTpConnection, type IsoTpOptions } from "@vdp/transport-iso-tp";
 import {
@@ -215,7 +215,7 @@ export class DiagnosticEngine {
         });
         this.session.upsertEcu(handle.session.record);
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = messageOf(error);
         this.log.warn("ECU attach failed", { rxId: `0x${ecu.rxId.toString(16)}`, error: message });
         const fallbackIsoTp = this.createIsoTp(ecu.txId, ecu.rxId, ecu.extended);
         const failed = new EcuDiagnosticSession(
@@ -385,7 +385,7 @@ export class DiagnosticEngine {
         // observable instead of disappearing (AGENTS 33, 34.25).
         this.log.debug("VIN read failed, trying next ECU", {
           ecu: handle.session.record.name,
-          error: error instanceof Error ? error.message : String(error),
+          error: messageOf(error),
         });
       }
     }
@@ -538,7 +538,7 @@ export class DiagnosticEngine {
       } catch (error) {
         this.log.warn("DTC scan failed for ECU", {
           ecu: handle.session.record.name,
-          error: error instanceof Error ? error.message : String(error),
+          error: messageOf(error),
         });
       }
     }
@@ -593,7 +593,7 @@ export class DiagnosticEngine {
       .map((handle) => handle.reader);
     void engine.run(readers, plan).catch((error) => {
       this.log.error("live data engine crashed", {
-        error: error instanceof Error ? error.message : String(error),
+        error: messageOf(error),
       });
     });
     return engine;

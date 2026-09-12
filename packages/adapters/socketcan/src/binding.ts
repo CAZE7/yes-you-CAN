@@ -6,7 +6,7 @@
  * supplies an implementation (node-socketcan, a N-API addon, or a fake in tests).
  */
 
-import { AdapterUnsupportedError } from "@vdp/shared";
+import { AdapterUnsupportedError, messageOf } from "@vdp/shared";
 
 export interface SocketCanFrameData {
   id: number;
@@ -47,7 +47,7 @@ export async function tryLoadSocketCanBinding(moduleName = "socketcan"): Promise
     return candidate;
   } catch (error) {
     throw new AdapterUnsupportedError(
-      `SocketCAN adapter unavailable: ${error instanceof Error ? error.message : String(error)}. Install a SocketCAN binding (e.g. "socketcan") on Linux, or use a different adapter.`,
+      `SocketCAN adapter unavailable: ${messageOf(error)}. Install a SocketCAN binding (e.g. "socketcan") on Linux, or use a different adapter.`,
       { moduleName },
     );
   }

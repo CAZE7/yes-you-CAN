@@ -9,7 +9,7 @@
  * HTTP) therefore stay trivial: read a string, call this, get a package.
  */
 
-import { DefinitionError } from "@vdp/shared";
+import { DefinitionError, messageOf } from "@vdp/shared";
 import type { DefinitionPackage, EcuDefinition, Provenance, SignalDefinition } from "./schema.js";
 import { assertValidPackage } from "./validate.js";
 
@@ -225,10 +225,7 @@ export function parseDefinitionPackageJson(json: string): DefinitionPackage {
   try {
     parsed = JSON.parse(json);
   } catch (error) {
-    throw new DefinitionError(
-      `definition JSON is not parseable: ${error instanceof Error ? error.message : String(error)}`,
-      {},
-    );
+    throw new DefinitionError(`definition JSON is not parseable: ${messageOf(error)}`, {});
   }
   return parseDefinitionPackage(parsed);
 }

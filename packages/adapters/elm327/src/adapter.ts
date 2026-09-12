@@ -5,7 +5,13 @@
  * pure CAN frame adapter: no UDS, no ISO-TP, no OEM logic (AGENTS 6).
  */
 
-import { AdapterUnsupportedError, type Logger, TransportError, createLogger } from "@vdp/shared";
+import {
+  AdapterUnsupportedError,
+  type Logger,
+  TransportError,
+  asError,
+  createLogger,
+} from "@vdp/shared";
 import type {
   AdapterCapabilities,
   AdapterInfo,
@@ -185,7 +191,7 @@ export class Elm327Adapter implements CanBus {
       this.pending.push({ resolve, reject, timer });
       void this.options.stream.write(`${command}\r`).catch((error) => {
         clearTimeout(timer);
-        reject(error instanceof Error ? error : new Error(String(error)));
+        reject(asError(error));
       });
     });
   }

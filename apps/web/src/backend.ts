@@ -54,7 +54,13 @@ import type {
 } from "@vdp/domain";
 import type { DtcRecord } from "@vdp/protocols-uds";
 import { type DiagnosticRuntime, createDiagnosticRuntime } from "@vdp/runtime";
-import { AdapterUnsupportedError, type Logger, TransportError, createLogger } from "@vdp/shared";
+import {
+  AdapterUnsupportedError,
+  type Logger,
+  TransportError,
+  createLogger,
+  messageOf,
+} from "@vdp/shared";
 import { DEFAULT_VIN, VirtualVehicle } from "@vdp/simulators";
 import {
   FileSystemSessionRepository,
@@ -1241,10 +1247,6 @@ function describe(
     (part): part is string | number => Boolean(part),
   );
   return parts.length > 0 ? parts.join(" ") : "unknown vehicle";
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 /** Which transport source a selection implies (AGENTS 4, 29, 32). */

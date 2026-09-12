@@ -5,7 +5,7 @@
  * The transport itself is injected so this stays testable without a network.
  */
 
-import { type Logger, createLogger } from "@vdp/shared";
+import { type Logger, createLogger, messageOf } from "@vdp/shared";
 import {
   PAYLOAD_TYPE,
   type VehicleIdentificationResponse,
@@ -87,7 +87,7 @@ export class DoipDiscovery {
       return { ...decoded, address };
     } catch (error) {
       this.log.warn("invalid vehicle identification response", {
-        error: error instanceof Error ? error.message : String(error),
+        error: messageOf(error),
       });
       return null;
     }

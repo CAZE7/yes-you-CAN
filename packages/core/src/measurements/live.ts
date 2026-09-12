@@ -10,7 +10,7 @@
  */
 
 import type { SignalDefinition } from "@vdp/definitions";
-import { type Logger, createLogger, toHex } from "@vdp/shared";
+import { type Logger, asError, createLogger, messageOf, toHex } from "@vdp/shared";
 import type { DecodedSignal } from "./decoder.js";
 import type { MeasurementRecorder, MeasurementSample } from "./recorder.js";
 
@@ -124,7 +124,7 @@ export class LiveDataEngine {
       return await this.pollUntilStopped(readers, plan);
     } catch (error) {
       this.running = false;
-      const failure = error instanceof Error ? error : new Error(String(error));
+      const failure = asError(error);
       for (const listener of this.errorListeners) listener(failure);
       throw failure;
     }
@@ -198,7 +198,7 @@ export class LiveDataEngine {
           raw: toHex(payload),
         });
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = messageOf(error);
         result.errors.push({ did, message });
         this.stats.errors++;
         this.log.warn("poll failed", {

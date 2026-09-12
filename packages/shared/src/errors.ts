@@ -144,3 +144,41 @@ export class StorageError extends VdpError {
     super("E_STORAGE", message, details);
   }
 }
+
+/**
+ * The text of whatever a `catch` caught (AGENTS 34.25: no silent `catch {}` —
+ * the reason has to arrive somewhere readable).
+ *
+ * Seven byte-identical private copies of this lived in ai/http, ai/service,
+ * storage/repository, transport/doip, transport/iso-tp, web/backend and
+ * web/server, plus the same line inline in three dozen more places. One question
+ * — "what goes into the log when the thrown value is not an Error?" — had
+ * forty-odd answers, none of them tested. This is the one answer, with tests.
+ *
+ * Plain objects render as JSON: `String({ code: "UPSTREAM_500" })` says only
+ * "[object Object]", and a workshop log line has to carry the reason. Values
+ * that cannot be serialised (cycles, BigInt, symbols) fall back to `String` —
+ * an imprecise text beats a second failure inside the failure path.
+ */
+export function messageOf(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  try {
+    return JSON.stringify(error) ?? String(error);
+  } catch {
+    return String(error); // circular or BigInt — String() still names it
+  }
+}
+
+/**
+ * The caught value as an `Error` — for the places that rethrow it or hand it to
+ * a `fail()` seam instead of only writing it down.
+ *
+ * Replaces `error instanceof Error ? error : new Error(String(error))`: a real
+ * Error stays the very same object (stack, `cause` and its own fields survive),
+ * everything else is named through {@link messageOf} — an object therefore by
+ * its content instead of "[object Object]".
+ */
+export function asError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(messageOf(error));
+}

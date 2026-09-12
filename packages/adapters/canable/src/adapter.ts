@@ -4,7 +4,7 @@
  */
 
 import type { ByteStream } from "@vdp/adapter-elm327";
-import { type Logger, TransportError, createLogger } from "@vdp/shared";
+import { type Logger, TransportError, createLogger, messageOf } from "@vdp/shared";
 import type {
   AdapterCapabilities,
   AdapterInfo,
@@ -102,7 +102,7 @@ export class CanableAdapter implements CanBus {
         // disappearing (AGENTS 34.25).
         this.log.debug("slcan close command failed", {
           channel: this.channel,
-          error: error instanceof Error ? error.message : String(error),
+          error: messageOf(error),
         });
       }
     }
@@ -141,9 +141,7 @@ export class CanableAdapter implements CanBus {
 
   private async write(data: string): Promise<void> {
     await this.options.stream.write(data).catch((error) => {
-      throw new TransportError(
-        `slcan write failed: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      throw new TransportError(`slcan write failed: ${messageOf(error)}`);
     });
   }
 

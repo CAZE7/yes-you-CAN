@@ -20,7 +20,7 @@
 
 import type { DtcRecord } from "@vdp/protocols-uds";
 import { DTC_GROUP_ALL, SESSION } from "@vdp/protocols-uds";
-import { type Logger, createLogger, nowIso } from "@vdp/shared";
+import { type Logger, createLogger, messageOf, nowIso } from "@vdp/shared";
 import type { SafetyManager, VehicleState, WritePermit } from "../safety/safety-manager.js";
 import type { DtcComparison, DtcScanner, EnrichedDtc } from "./scanner.js";
 
@@ -195,7 +195,7 @@ export class DtcClearService {
         clearedAt: nowIso(),
       };
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = messageOf(error);
       this.options.safety.recordResult(permit, "failed", message);
       options.recordAction?.({
         kind: "clear-dtc",
@@ -229,7 +229,7 @@ export class DtcClearService {
       });
       return prepared.sessionType;
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = messageOf(error);
       options.recordAction?.({
         kind: "clear-dtc",
         ecuId: ecu.id,
