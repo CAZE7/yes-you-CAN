@@ -305,6 +305,31 @@ test("subscribers learn what changed", () => {
   assert.deepEqual(reasons, ["series", "cursor", "markers"]);
 });
 
+test("metadata that arrives late fills gaps without overwriting documented values", () => {
+  // Symptom (found by front end type checking): a live sample auto-creates a
+  // series that only carries its id; the colour/name assigned later by the
+  // chart setup was silently dropped, so the readout lost the series colour
+  // and the UI had to mutate a readonly field to work around it.
+  const group = new ChartGroup();
+  const byLiveSample = group.push("engine.rpm", [{ t: 0, value: 800 }]);
+  assert.equal(byLiveSample.name, "engine.rpm", "auto-created series fall back to the id");
+  assert.equal(byLiveSample.color, undefined);
+
+  const ensured = group.ensureSeries("engine.rpm", {
+    name: "Drehzahl",
+    unit: "rpm",
+    color: "#4f9cf9",
+  });
+  assert.equal(ensured, byLiveSample, "ensureSeries returns the very same series");
+  assert.equal(ensured.name, "Drehzahl", "a still-default name may be replaced");
+  assert.equal(ensured.unit, "rpm");
+  assert.equal(ensured.color, "#4f9cf9", "late colour lands on the existing series");
+
+  group.ensureSeries("engine.rpm", { name: "andere Quelle", color: "#000000" });
+  assert.equal(ensured.name, "Drehzahl", "documented values are never overwritten");
+  assert.equal(ensured.color, "#4f9cf9", "documented values are never overwritten");
+});
+
 /* ---------------------------------------------------------------------- scale */
 
 test("nice ticks stay inside the range and keep a readable count", () => {

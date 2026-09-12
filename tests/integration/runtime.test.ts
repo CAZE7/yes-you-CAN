@@ -1,17 +1,27 @@
 import assert from "node:assert/strict";
 import {
+  addMarker,
   clearDtcs,
   connectVehicle,
   disconnectVehicle,
+  getAnomalies,
   getAvailableActions,
+  getDtcClearPrecheck,
   getDtcList,
   getEcu,
   getEcuCapabilities,
   getEcuList,
+  getMarkers,
+  getMeasurementStatus,
   getMeasurements,
+  getRecordingHistory,
   getSession,
+  getSignalList,
+  getStatistics,
   getVehicle,
+  identifyEcus,
   readDid,
+  readDtcFreezeFrame,
   readDtcs,
   snapshotSignals,
   startMeasurements,
@@ -64,10 +74,11 @@ test("runtime.connect() discovers ECUs through the command bus", async () => {
   assert.ok(rxIds.includes(0x7e8));
 });
 
-test("connection publishes domain events with correlation ids", () => {
+test("connection publishes domain events with correlation ids", async () => {
   const connected = events.ofType("vehicle-connected");
   assert.equal(connected.length, 1);
-  assert.equal(connected[0]?.sessionId, runtime.engine.vehicleSession?.id);
+  const session = await runtime.commands.query(getSession());
+  assert.equal(connected[0]?.sessionId, session?.sessionId);
   assert.ok((connected[0]?.ecuCount ?? 0) >= 3);
   const discovered = events.ofType("ecu-discovered");
   assert.ok(discovered.length >= 3);
@@ -94,6 +105,18 @@ test("ECU summaries carry capability-driven data (§6)", async () => {
 
   const capabilities = await runtime.commands.query(getEcuCapabilities(engineEcu.ecuId));
   assert.deepEqual(capabilities, engineEcu.capabilities);
+});
+
+test("ecu.identify re-reads identification through the command bus", async () => {
+  const summaries = await runtime.commands.dispatch(identifyEcus());
+  assert.ok(summaries.length >= 3);
+  const engineEcu = summaries.find((ecu) => ecu.rxId === 0x7e8);
+  assert.ok(engineEcu);
+  assert.ok(engineEcu.identification.length >= 1, "identification DIDs are answered");
+  assert.ok(engineEcu.supportedServices.length >= 1, "probed services travel with the summary");
+  assert.ok(engineEcu.p2Ms > 0, "polling timing is part of the ECU read model");
+  // The address form stays valid as an ECU reference after the re-read.
+  assert.equal(runtime.ecus.get("0x7e8")?.ecuId, engineEcu.ecuId);
 });
 
 test("available actions derive from capabilities, not brand checks (§7)", async () => {
@@ -159,6 +182,49 @@ test("dtc.read targets a single ECU without losing the rest of the read model", 
   );
 });
 
+test("dtc.freeze-frame decodes the snapshot and keeps the raw bytes (§20)", async () => {
+  const dtcs = await runtime.commands.query(getDtcList());
+  const catalyst = dtcs.find((dtc) => dtc.code === "P0420");
+  assert.ok(catalyst);
+
+  const frame = await runtime.commands.dispatch(readDtcFreezeFrame(catalyst.ecuId, "P0420"));
+  assert.equal(frame.code, "P0420");
+  assert.ok(frame.fields.length > 0, "the documented layout splits the record into fields");
+  for (const field of frame.fields) {
+    assert.match(field.rawHex, /^[0-9A-F ]+$/, "every field keeps its raw bytes");
+    assert.ok(field.values.length > 0);
+  }
+  assert.equal(typeof frame.documented, "boolean");
+
+  // A code the ECU does not know rejects with a usable message.
+  await assert.rejects(
+    runtime.commands.dispatch(readDtcFreezeFrame(catalyst.ecuId, "P0999")),
+    /no freeze frame/,
+  );
+});
+
+test("dtc.clear-precheck reports missing preconditions without permitting (§26)", async () => {
+  const ecus = await runtime.commands.query(getEcuList());
+  const engineEcu = ecus.find((ecu) => ecu.rxId === 0x7e8);
+  assert.ok(engineEcu);
+
+  const unconfirmed = await runtime.commands.query(
+    getDtcClearPrecheck(engineEcu.ecuId, {
+      stationary: true,
+      ignitionOn: true,
+      parkingBrake: true,
+      batteryVoltage: 13.1,
+    }),
+  );
+  assert.equal(unconfirmed.ok, false, "without confirmation the precheck fails");
+  assert.ok(unconfirmed.failed.some((reason) => /confirmation/i.test(reason)));
+  assert.equal(unconfirmed.ecuId, engineEcu.ecuId);
+  assert.ok(
+    runtime.safety.audit.every((entry) => entry.action !== "permit-issued"),
+    "a precheck never issues a permit",
+  );
+});
+
 test("did.read returns raw bytes through the application API", async () => {
   const ecus = await runtime.commands.query(getEcuList());
   const engineEcu = ecus.find((ecu) => ecu.rxId === 0x7e8);
@@ -191,6 +257,62 @@ test("live measurements run and stop through commands", async () => {
   await runtime.commands.dispatch(stopMeasurements());
   const samples = await runtime.commands.query(getMeasurements("engine.rpm"));
   assert.ok(samples.length > 1, "polling must have produced several samples");
+  assert.deepEqual(await runtime.commands.query(getMeasurementStatus()), { live: false });
+});
+
+test("the sample stream observes recorded rounds without recording twice", async () => {
+  const before = (await runtime.commands.query(getMeasurements("engine.rpm"))).length;
+  const streamed: number[] = [];
+  // Registered before the start command: the service buffers listeners until
+  // the poll loop exists, so the capture is deterministic — every round of
+  // the run is observed.
+  const off = runtime.measurements.onSample((round) => {
+    streamed.push(...round.readings.map((reading) => reading.t));
+  });
+  await runtime.commands.dispatch(startMeasurements(["engine.rpm"], 10));
+  await new Promise((resolve) => setTimeout(resolve, 120));
+  await runtime.commands.dispatch(stopMeasurements());
+  off();
+
+  const samples = await runtime.commands.query(getMeasurements("engine.rpm"));
+  const recorded = samples.length - before;
+  assert.ok(streamed.length > 1, "the stream delivered rounds");
+  assert.equal(
+    streamed.length,
+    recorded,
+    "every streamed reading is exactly one recorded sample — no double recording",
+  );
+  assert.ok(
+    streamed.every((t) => t >= 0),
+    "streamed readings stay on the recording time axis",
+  );
+});
+
+test("markers, statistics, anomalies and the signal list are queries", async () => {
+  const marker = await runtime.commands.dispatch(addMarker("Testereignis", "user"));
+  assert.equal(marker.kind, "user");
+  const markers = await runtime.commands.query(getMarkers());
+  assert.ok(markers.some((entry) => entry.markerId === marker.markerId));
+
+  const statistics = await runtime.commands.query(getStatistics());
+  const rpm = statistics.find((stat) => stat.signalId === "engine.rpm");
+  assert.ok(rpm, "the polled signal has window statistics");
+  assert.ok((rpm.samples ?? 0) > 1);
+  assert.equal(rpm.name.length > 0, true);
+
+  assert.ok(Array.isArray(await runtime.commands.query(getAnomalies())));
+
+  const signals = await runtime.commands.query(getSignalList());
+  assert.ok(signals.some((signal) => signal.signalId === "engine.rpm"));
+  assert.ok(signals.every((signal) => typeof signal.critical === "boolean"));
+
+  const recording = await runtime.commands.query(getRecordingHistory());
+  assert.ok(recording.samples.length > 1);
+  assert.ok(recording.markers.some((entry) => entry.markerId === marker.markerId));
+  assert.ok(recording.startedAt > 0);
+  const capped = await runtime.commands.query(getRecordingHistory(10));
+  assert.ok(capped.samples.length <= 10);
+  assert.equal(capped.markers.length, recording.markers.length);
 });
 
 test("dtc.clear runs the safety chain and emits the audit events (§15)", async () => {

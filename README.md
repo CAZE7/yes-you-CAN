@@ -4,7 +4,7 @@
 [![CodeQL](https://github.com/CAZE7/yes-you-CAN/actions/workflows/codeql.yml/badge.svg)](https://github.com/CAZE7/yes-you-CAN/actions/workflows/codeql.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](./package.json)
-[![Tests](https://img.shields.io/badge/tests-951%20passed-brightgreen)](#tests)
+[![Tests](https://img.shields.io/badge/tests-958%20passed-brightgreen)](#tests)
 [![TypeScript](https://img.shields.io/badge/TypeScript-7%20%2F%20tsgo-blue)](./tsconfig.base.json)
 
 Fahrzeugdiagnose-Plattform: CAN und DoIP lesen, Steuergeräte identifizieren,
@@ -96,11 +96,11 @@ node apps/web/dist/src/server.js --port=8080 --sessions=./sessions-local
 ```bash
 npm ci                # exakt das Lockfile (Node >=22, engine-strict)
 npm run build         # tsc -b über alle Projekt-Referenzen (TypeScript 7 / tsgo)
-npm run typecheck     # Build + strikter noEmit-Pass über Tests, Konfiguration und Specs
+npm run typecheck     # Build + strikter noEmit-Pass über Tests, Konfiguration, Specs und Frontend-JS
 npx biome check .     # Lint + Format (Biome 1.9): 2-space, 100-char, organizeImports
-npm test              # Vitest: alle 5 Ebenen (unit, protocol, regression, replay, integration, architecture)
+npm test              # Build + Vitest: alle 6 Ebenen (unit, protocol, regression, replay, integration, architecture)
 npm run test:unit     # nur Unit-Specs — schnelle Feedback-Schleife
-npm run test:coverage # Suite + V8-Coverage (80% lines / 75% branches global; per-file für core/protocols)
+npm run test:coverage # Suite + V8-Coverage (global 80/75 als Durchschnitt; per-file laut vitest.config.ts, ADR 0017)
 npm run ci            # Build + Typecheck + Biome + Test — entspricht der CI
 ```
 
@@ -112,9 +112,12 @@ npx vitest run packages/storage/src/storage.spec.ts
 npx biome check --write .   # auto-fix
 ```
 
-Qualitätstore in der CI (`.github/workflows/ci.yml`): `lint` + `typecheck` + `build` auf
-Node 22, Tests auf 22 und 24, Coverage-Upload, `npm audit` und separat CodeQL +
-Dependency-Review. Details siehe [`CONTRIBUTING.md`](CONTRIBUTING.md).
+Qualitätstore in der CI: ein Quality-Job (`lint` + `build` + `typecheck` +
+`npm audit` auf Node 22) vor der Test-Matrix auf Node 22 und 24 mit
+Coverage-Upload (`.github/workflows/ci.yml`); separat CodeQL
+(`codeql.yml`), Dependency-Review (`dependency-review.yml`) und der
+nächtliche Hardware-Smoke auf `vcan0` (`hardware.yml`). Details siehe
+[`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Graphen
 
@@ -127,17 +130,19 @@ Zeitraum aus, Doppelklick zeigt die gesamte Aufnahme.
 
 ## Tests
 
-951 Tests, Vitest 5 mit Projektkonfiguration (ADR 0010, Schritt 1 — ersetzt
+958 Tests, Vitest 5 mit Projektkonfiguration (ADR 0010, Schritt 1 — ersetzt
 ADR 0008). Unit-Specs liegen co-lokatiert neben dem Code (`src/*.spec.ts`);
 Property-Tests laufen mit fast-check, Coverage-Gates mit
-`npm run test:coverage` (80% lines / 75% branches global, per-file für
-`core`/`protocols`/`adapters`/`transport`; Hardware-Module
-`serial`/`binding` ausgenommen). Ebenen nach AGENTS 31:
+`npm run test:coverage` (global 80 % lines / 75 % branches als
+Projekt-Durchschnitt; per-file-Gates für
+`core`/`protocols`/`adapters`/`transport`/`storage`/`charts`; Hardware-Module
+`serial`/`binding` ausgenommen — maßgeblich ist `vitest.config.ts`, ADR 0017).
+Ebenen nach AGENTS 31:
 
 | Ebene | Ort |
 |---|---|
-| Unit | `packages/*/src/*.spec.ts`, `tools/*/src/*.spec.ts`, `apps/*/test` |
-| Integration | `tests/integration` |
+| Unit | `packages/*/src/*.spec.ts`, `tools/*/src/*.spec.ts` |
+| Integration | `tests/integration`, `apps/web/test` |
 | Protokoll | `tests/protocol` |
 | Replay | `tests/replay` |
 | Regression | `tests/regression` |

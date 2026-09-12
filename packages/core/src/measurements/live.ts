@@ -12,7 +12,7 @@
 import type { SignalDefinition } from "@vdp/definitions";
 import { type Logger, createLogger, toHex } from "@vdp/shared";
 import type { DecodedSignal } from "./decoder.js";
-import type { MeasurementRecorder } from "./recorder.js";
+import type { MeasurementRecorder, MeasurementSample } from "./recorder.js";
 
 export interface EcuReader {
   readonly ecuId: string;
@@ -34,6 +34,12 @@ export interface PollRoundResult {
   round: number;
   at: number;
   signals: DecodedSignal[];
+  /**
+   * The samples the recorder stored for this round — same order as
+   * {@link signals}. Listeners stream these instead of recording a second
+   * time (AGENTS 16/34.25: exactly one sample per signal per round).
+   */
+  samples: MeasurementSample[];
   errors: Array<{ did: number; message: string }>;
 }
 
@@ -54,6 +60,7 @@ export class LiveDataEngine {
   private readonly stats: LiveDataStats = { rounds: 0, samples: 0, errors: 0, averageRoundMs: 0 };
   private roundDurations: number[] = [];
   private listeners: Array<(result: PollRoundResult) => void> = [];
+  private errorListeners: Array<(error: Error) => void> = [];
 
   constructor(
     private readonly decoder: (
@@ -73,6 +80,18 @@ export class LiveDataEngine {
     this.listeners.push(listener);
     return () => {
       this.listeners = this.listeners.filter((l) => l !== listener);
+    };
+  }
+
+  /**
+   * Subscribe to a crash of the poll loop. Per-DID failures are collected in
+   * the round's `errors`; this hook fires only when the loop itself breaks —
+   * the case a UI must not learn about from silence alone (AGENTS 34.25).
+   */
+  onError(listener: (error: Error) => void): () => void {
+    this.errorListeners.push(listener);
+    return () => {
+      this.errorListeners = this.errorListeners.filter((l) => l !== listener);
     };
   }
 
@@ -101,6 +120,20 @@ export class LiveDataEngine {
     this.stopRequested = false;
     this.log.info("live data started", { ecus: readers.length, intervalMs: this.intervalMs });
 
+    try {
+      return await this.pollUntilStopped(readers, plan);
+    } catch (error) {
+      this.running = false;
+      const failure = error instanceof Error ? error : new Error(String(error));
+      for (const listener of this.errorListeners) listener(failure);
+      throw failure;
+    }
+  }
+
+  private async pollUntilStopped(
+    readers: readonly EcuReader[],
+    plan: Map<string, readonly SignalDefinition[]>,
+  ): Promise<LiveDataStats> {
     let round = 0;
     const activeReaders = readers.filter((r) => (plan.get(r.ecuId)?.length ?? 0) > 0);
     while (!this.stopRequested && (this.maxRounds === undefined || round < this.maxRounds)) {
@@ -133,7 +166,14 @@ export class LiveDataEngine {
     round: number,
   ): Promise<PollRoundResult> {
     const at = this.clock();
-    const result: PollRoundResult = { ecuId: reader.ecuId, round, at, signals: [], errors: [] };
+    const result: PollRoundResult = {
+      ecuId: reader.ecuId,
+      round,
+      at,
+      signals: [],
+      samples: [],
+      errors: [],
+    };
     // Group by DID so one 0x22 request feeds all signals that share it.
     const dids = Array.from(new Set(signals.map((s) => s.did)));
     for (const did of dids) {
@@ -148,7 +188,7 @@ export class LiveDataEngine {
         for (const signal of signals.filter((s) => s.did === did)) {
           const decoded = this.decoder(signal, payload);
           if (!decoded) continue;
-          this.recorder.record(decoded, timestamp);
+          result.samples.push(this.recorder.record(decoded, timestamp));
           this.stats.samples++;
           result.signals.push(decoded);
         }

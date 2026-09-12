@@ -214,9 +214,15 @@ const ALLOWED_VDP_DEPS: Record<string, readonly string[]> = {
     "@vdp/transport-can",
   ],
   "@vdp/definition-importer": ["@vdp/shared", "@vdp/definitions"],
+  // The web app speaks to the vehicle exclusively through the diagnostic
+  // runtime (command/query bus) and is free of core imports: persistence and
+  // export formats (session logger, raw trace, session data) come through the
+  // storage seam until the implementations move down (roadmap steps 10–13).
   "@vdp/web": [
     "@vdp/shared",
-    "@vdp/core",
+    "@vdp/domain",
+    "@vdp/application",
+    "@vdp/runtime",
     "@vdp/definitions",
     "@vdp/protocols-uds",
     "@vdp/transport-can",

@@ -9,14 +9,16 @@ below are intentional (see `AGENTS.md` and `docs/adr/`).
 ```bash
 npm ci            # exact lockfile, Node >=22
 npm run build     # tsc -b over all project references
-npm run typecheck # + strict noEmit over specs and configs
+npm run typecheck # + strict noEmit over specs, configs and the frontend JS
 npx biome check . # lint + format (Biome 1.9)
-npm test          # 5 layers: unit · protocol · regression · replay · integration · architecture
+npm test          # build + 6 layers: unit · protocol · regression · replay · integration · architecture
 npm run demo      # workbench with simulator on http://localhost:8080
 ```
 
 Tests run directly on the TypeScript sources via Vitest workspace aliases
-(`vitest.config.ts`). No `dist` step is needed for `npm test`.
+(`vitest.config.ts`). `npm test` still runs `npm run build` first, because the
+workbench integration tests serve the compiled chart core from `/lib`
+(AGENTS 34.26).
 
 ## Workflow
 
@@ -67,8 +69,10 @@ must appear in the allowlist — a new package without an entry fails the suite.
 - No runtime dependencies (ADR 0002) except where ADR 0010 explicitly allows them.
   Infrastructure deps need maintenance proof, license check (MIT/Apache-2.0/BSD) and
   a locally regenerated `package-lock.json` in the same PR.
-- Frontend JS (`apps/web/public/*.js`) stays type-checked via `tsconfig.typecheck.json`
-  and shares chart maths through `@vdp/charts` — do not duplicate graph rules.
+- Frontend JS (`apps/web/public/*.js`) is type-checked (`checkJs` with the DOM
+  lib) by its own project `tsconfig.frontend.json`, which `npm run typecheck`
+  runs alongside the backend pass — and it shares chart maths through
+  `@vdp/charts`. Do not duplicate graph rules.
 
 ## Testing
 

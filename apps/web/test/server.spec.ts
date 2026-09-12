@@ -336,6 +336,41 @@ test("DTC descriptions come from the definition package, not from invention (AGE
   });
 });
 
+test("a refused clear is an answer with reasons, not a server error (ADR 0018)", async () => {
+  await withServer(async (base) => {
+    await json(base, "/api/start", { method: "POST" });
+    await json(base, "/api/dtc/scan", { method: "POST" });
+    const refused = await json(base, "/api/dtc/clear", {
+      method: "POST",
+      body: JSON.stringify({
+        rxId: "0x7E8",
+        confirmed: false,
+        vehicleState: { stationary: true, ignitionOn: true, parkingBrake: true },
+      }),
+      headers: { "content-type": "application/json" },
+    });
+    assert.equal(refused.status, 200, "the safety rejection is a result, not an HTTP failure");
+    const result = (refused.body as { result: { cleared: boolean; reasons?: string[] } }).result;
+    assert.equal(result.cleared, false);
+    assert.ok(
+      (result.reasons ?? []).some((reason) => /confirmation/i.test(reason)),
+      "the operator sees which precondition is missing",
+    );
+
+    const precheck = await json(base, "/api/dtc/clear/precheck", {
+      method: "POST",
+      body: JSON.stringify({
+        rxId: "0x7E8",
+        vehicleState: { stationary: true, ignitionOn: true, parkingBrake: true },
+      }),
+      headers: { "content-type": "application/json" },
+    });
+    assert.equal(precheck.status, 200);
+    const checks = (precheck.body as { precheck: { ok: boolean; failed: string[] } }).precheck;
+    assert.equal(checks.ok, false, "precheck and write evaluate the same chain (AGENTS 26)");
+  });
+});
+
 test("the tested chart core is served as a module and stays confined to /lib", async () => {
   await withServer(async (base) => {
     for (const path of ["/lib/index.js", "/lib/group.js", "/lib/series.js"]) {

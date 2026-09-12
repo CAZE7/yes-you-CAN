@@ -3,18 +3,28 @@ import { describe, test } from "vitest";
 import {
   CommandKinds,
   QueryKinds,
+  addMarker,
   clearDtcs,
   connectVehicle,
   disconnectVehicle,
+  getAnomalies,
   getAvailableActions,
+  getDtcClearPrecheck,
   getDtcList,
   getEcu,
   getEcuCapabilities,
   getEcuList,
+  getMarkers,
+  getMeasurementStatus,
   getMeasurements,
+  getRecordingHistory,
   getSession,
+  getSignalList,
+  getStatistics,
   getVehicle,
+  identifyEcus,
   readDid,
+  readDtcFreezeFrame,
   readDtcs,
   snapshotSignals,
   startMeasurements,
@@ -68,13 +78,35 @@ describe("command factories", () => {
       intervalMs: 50,
     });
     assert.deepEqual(stopMeasurements(), { kind: "measurement.stop" });
+    assert.deepEqual(identifyEcus(), { kind: "ecu.identify" });
+    assert.deepEqual(readDtcFreezeFrame("ecu_1", "P0420"), {
+      kind: "dtc.freeze-frame",
+      ecuId: "ecu_1",
+      code: "P0420",
+    });
+    assert.deepEqual(readDtcFreezeFrame("ecu_1", "P0420", 1), {
+      kind: "dtc.freeze-frame",
+      ecuId: "ecu_1",
+      code: "P0420",
+      recordNumber: 1,
+    });
+    assert.deepEqual(addMarker("notiert"), { kind: "marker.add", label: "notiert" });
+    assert.deepEqual(addMarker("notiert", "note", "Detail"), {
+      kind: "marker.add",
+      label: "notiert",
+      markerKind: "note",
+      detail: "Detail",
+    });
   });
 
   test("kinds stay the stable wire contract", () => {
     assert.deepEqual(Object.values(CommandKinds).sort(), [
       "did.read",
       "dtc.clear",
+      "dtc.freeze-frame",
       "dtc.read",
+      "ecu.identify",
+      "marker.add",
       "measurement.snapshot",
       "measurement.start",
       "measurement.stop",
@@ -100,17 +132,36 @@ describe("query factories", () => {
     });
     assert.deepEqual(getAvailableActions(), { kind: "actions.available" });
     assert.deepEqual(getAvailableActions("ecu_1"), { kind: "actions.available", ecuId: "ecu_1" });
+    assert.deepEqual(getDtcClearPrecheck("ecu_1", { stationary: true }), {
+      kind: "dtc.clear-precheck",
+      ecuId: "ecu_1",
+      vehicleState: { stationary: true },
+    });
+    assert.deepEqual(getSignalList(), { kind: "signal.list" });
+    assert.deepEqual(getMarkers(), { kind: "marker.list" });
+    assert.deepEqual(getStatistics(), { kind: "measurement.statistics" });
+    assert.deepEqual(getAnomalies(), { kind: "measurement.anomalies" });
+    assert.deepEqual(getRecordingHistory(), { kind: "recording.get" });
+    assert.deepEqual(getRecordingHistory(500), { kind: "recording.get", limit: 500 });
+    assert.deepEqual(getMeasurementStatus(), { kind: "measurement.status" });
   });
 
   test("kinds stay the stable wire contract", () => {
     assert.deepEqual(Object.values(QueryKinds).sort(), [
       "actions.available",
+      "dtc.clear-precheck",
       "dtc.list",
       "ecu.capabilities",
       "ecu.get",
       "ecu.list",
+      "marker.list",
+      "measurement.anomalies",
       "measurement.list",
+      "measurement.statistics",
+      "measurement.status",
+      "recording.get",
       "session.get",
+      "signal.list",
       "vehicle.get",
     ]);
   });

@@ -215,7 +215,9 @@ export default defineConfig({
         // Adapter/transport glue — hardware paths are mocked, lower but still gated.
         'packages/adapters/**/src/**': { lines: 65, branches: 45, perFile: true },
         'packages/transport/**/src/**': { lines: 75, branches: 50, perFile: true },
-        'packages/storage/**/src/**': { lines: 70, branches: 45, perFile: true },
+        // Raised from 70/45 on 2026-09-11 after backfilling the crash-tolerance,
+        // migration-persistence and list-resilience paths (ADR 0017: tests first).
+        'packages/storage/**/src/**': { lines: 90, branches: 55, perFile: true },
         'packages/charts/**/src/**': { lines: 75, branches: 70, perFile: true },
       },
     },

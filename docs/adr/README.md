@@ -21,4 +21,6 @@ er wird durch einen neuen ersetzt, der den alten als `superseded` markiert.
 | [0013](0013-transport-transaction-scope.md) | Transaktionssperre pro Verbindung, nicht pro Anfrage | accepted |
 | [0014](0014-domain-application-runtime.md) | Domain-, Application- und Runtime-Schicht: schrittweise Ablösung des Gott-Controllers | accepted |
 | [0015](0015-architecture-tests.md) | Architekturtests: der Abhängigkeitsgraph ist ein Test | accepted |
-| [0016](0016-industrial-hardening.md) | Industriestandard-Härtung: Lint, Coverage-Gates, CI-Matrix und Security-Scans | accepted |
+| [0016](0016-industrial-hardening.md) | Industriestandard-Härtung: Lint, Coverage-Gates, CI-Matrix und Security-Scans | accepted (§2 korrigiert durch 0017) |
+| [0017](0017-coverage-gates-recalibrated.md) | Coverage-Gates neu kalibriert: Ist-Zustand statt Aspirationswerte | accepted |
+| [0018](0018-write-rejections-as-data.md) | Abgelehnte Write-Operationen sind Antworten mit Gründen, keine HTTP-Fehler | accepted |

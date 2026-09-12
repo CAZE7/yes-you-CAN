@@ -32,25 +32,36 @@ import {
   HeuristicAnalysisProvider,
 } from "@vdp/ai";
 import {
-  type DecodedSignal,
-  DiagnosticEngine,
-  type EnrichedDtc,
-  type FreezeFrame,
-  type Marker,
-  type MeasurementSample,
-  type RawTraceEntry,
-  SessionLogger,
-  type SignalStatistics,
-  type VehicleSessionData,
-} from "@vdp/core";
+  addMarker,
+  clearDtcs,
+  connectVehicle,
+  getDtcClearPrecheck,
+  getMarkers,
+  identifyEcus,
+  readDtcFreezeFrame,
+  readDtcs,
+  startMeasurements,
+} from "@vdp/application";
 import { type DefinitionPackage, genericPackage } from "@vdp/definitions";
+import type {
+  DtcClearPrecheckInfo,
+  DtcInfo,
+  EcuSummary,
+  FreezeFrameInfo,
+  MarkerInfo,
+  MeasurementReading,
+} from "@vdp/domain";
 import type { DtcRecord } from "@vdp/protocols-uds";
+import { type DiagnosticRuntime, createDiagnosticRuntime } from "@vdp/runtime";
 import { AdapterUnsupportedError, type Logger, TransportError, createLogger } from "@vdp/shared";
 import { DEFAULT_VIN, VirtualVehicle } from "@vdp/simulators";
 import {
   FileSystemSessionRepository,
+  type RawTraceEntry,
+  SessionLogger,
   type SessionRepository,
   type StoredSessionSummary,
+  type VehicleSessionData,
 } from "@vdp/storage";
 import {
   type CanBus,
@@ -136,6 +147,12 @@ export interface DtcClearView {
   stillFailing: string[];
   /** Codes whose status did not change at all — the ECU ignored the clear. */
   unchanged: string[];
+  /**
+   * Why the safety chain refused (only present when {@link cleared} is false):
+   * a rejection is an answer with reasons, not an HTTP error (AGENTS 26,
+   * ADR 0018).
+   */
+  reasons?: string[];
 }
 
 export interface DtcClearPrecheck {
@@ -227,6 +244,25 @@ export interface HistoryView {
   markers: MarkerView[];
 }
 
+/**
+ * Window statistics of one recorded signal as the UI consumes them
+ * (AGENTS 16 "Min/Max/Durchschnitt/Delta"). Domain-shaped — the web app
+ * stays free of core imports (storage/persistence seam, roadmap steps 10–13).
+ */
+export interface SignalStatisticsView {
+  signal: string;
+  name: string;
+  unit?: string;
+  samples: number;
+  min: number | null;
+  max: number | null;
+  average: number | null;
+  delta: number | null;
+  first: number | null;
+  last: number | null;
+  outOfRangeCount: number;
+}
+
 export interface AppState {
   connected: boolean;
   /** Which transport source is selected (AGENTS 4, 29, 32). */
@@ -244,7 +280,7 @@ export interface AppState {
   ecus: EcuView[];
   dtcs: DtcView[];
   samples: SampleView[];
-  statistics: SignalStatistics[];
+  statistics: SignalStatisticsView[];
   trace: TraceView[];
   live: boolean;
   signals: Array<{ id: string; name: string; unit?: string; critical: boolean }>;
@@ -312,13 +348,20 @@ export class DemoBackend {
   readonly adapters: AdapterCatalog;
   private vehicle?: VirtualVehicle;
   private bus?: CanBus;
-  private engine?: DiagnosticEngine;
+  /**
+   * The headless diagnostic runtime (ADR 0014): the backend owns transport and
+   * presentation only — every vehicle operation goes through the command/query
+   * bus, never through the engine below it.
+   */
+  private runtime?: DiagnosticRuntime;
   private selection: AdapterSelection;
   private mode: BackendMode;
   private probe?: AdapterProbe;
   private readonly sessionLogger = new SessionLogger();
   private readonly listeners = new Set<(event: BackendEvent) => void>();
   private unsubscribeBus?: () => void;
+  private unsubscribeSamples?: () => void;
+  private unsubscribeEvents?: () => void;
   private ecus: EcuView[] = [];
   private dtcs: DtcView[] = [];
   private live = false;
@@ -420,13 +463,13 @@ export class DemoBackend {
 
   /** Persist the current session, its samples and its raw trace (AGENTS 10, 29). */
   async saveSession(): Promise<{ id: string; repository: boolean }> {
-    const engine = this.requireEngine();
-    const data = engine.vehicleSession?.data;
+    const runtime = this.requireRuntime();
+    const data = runtime.session.data();
     if (!data) throw new Error("no session to save — call start() first");
     if (!this.repository) return { id: data.id, repository: false };
 
     await this.repository.save(data);
-    const { samples } = engine.recorder.export();
+    const { samples } = runtime.measurements.rawExport();
     await this.repository.appendSamples(data.id, samples);
     const snapshot = this.sessionLogger.snapshot();
     await this.repository.appendLines(
@@ -507,10 +550,19 @@ export class DemoBackend {
         this.emit("trace", toTraceView(entry));
       });
 
-      this.engine = new DiagnosticEngine({ bus, definitions: this.definitions, logger: this.log });
-      const result = await this.engine.connect();
+      this.runtime = createDiagnosticRuntime({
+        bus,
+        definitions: this.definitions,
+        logger: this.log,
+      });
+      // Runtime failures that belong to the operator (a crashed poll loop)
+      // travel as domain events; the SSE stream forwards them (AGENTS 34.25).
+      this.unsubscribeEvents = this.runtime.events.subscribe("diagnostic-error", (payload) => {
+        this.emit("error", { message: payload.message });
+      });
+      const result = await this.runtime.commands.dispatch(connectVehicle());
       this.connected = true;
-      this.ecus = result.ecus.map((discovered) => this.toEcuView(discovered.rxId));
+      this.ecus = result.ecus.map((summary) => toEcuView(summary));
       this.sessionLogger.log("backend", "connected", {
         adapter: this.selection.id,
         ecus: result.ecus.length,
@@ -662,10 +714,14 @@ export class DemoBackend {
     this.stopLive();
     this.unsubscribeBus?.();
     this.unsubscribeBus = undefined;
-    await this.engine?.disconnect().catch((error: unknown) => {
-      this.log.warn("engine disconnect failed", { error: messageOf(error) });
+    this.unsubscribeEvents?.();
+    this.unsubscribeEvents = undefined;
+    // dispose() disconnects an open session and otherwise closes a bus a
+    // failed connect left open — no half-open transport survives (AGENTS 5).
+    await this.runtime?.dispose().catch((error: unknown) => {
+      this.log.warn("runtime dispose failed", { error: messageOf(error) });
     });
-    this.engine = undefined;
+    this.runtime = undefined;
     await this.vehicle?.stop().catch((error: unknown) => {
       this.log.warn("simulator stop failed", { error: messageOf(error) });
     });
@@ -678,59 +734,29 @@ export class DemoBackend {
 
   /** Read identification DIDs from every discovered ECU (read-only, AGENTS 34.11). */
   async identify(): Promise<EcuView[]> {
-    const engine = this.requireEngine();
-    for (const view of this.ecus) {
-      const handle = engine.handleFor(Number.parseInt(view.rxId, 16));
-      if (!handle) continue;
-      try {
-        await handle.session.readIdentification();
-        const record = this.session()?.ecus.find((ecu) => ecu.rxId === handle.discovered.rxId);
-        if (record) {
-          view.id = record.id;
-          view.name = record.name;
-          view.identification = record.identification.map((entry) => ({
-            label: entry.label,
-            value: entry.value,
-          }));
-          view.services = record.supportedServices.map(
-            (sid) => `0x${sid.toString(16).toUpperCase()}`,
-          );
-          view.sessionType = record.sessionType;
-          view.p2Ms = record.timing.p2Ms;
-          view.reachable = record.reachable;
-        }
-        this.emit("ecu", view);
-      } catch (error) {
-        view.lastError = messageOf(error);
-        this.log.warn("identification failed", { ecu: view.rxId, error: messageOf(error) });
-      }
-    }
+    const runtime = this.requireRuntime();
+    const summaries = await runtime.commands.dispatch(identifyEcus());
+    this.ecus = summaries.map((summary) => toEcuView(summary));
+    for (const view of this.ecus) this.emit("ecu", view);
     return this.ecus;
   }
 
   /** Read fault codes from all ECUs. */
   async scanDtcs(): Promise<DtcView[]> {
-    const engine = this.requireEngine();
-    const scanned = await engine.scanDtcs();
-    this.dtcs = [];
-    for (const entry of scanned) {
-      // The engine already enriched the codes with the definition package
-      // (description, severity, first/last seen, related signals); the backend
-      // only maps them to the view shape the UI consumes (AGENTS 13/20).
-      const rxId = formatCanId(entry.ecu.rxId);
-      for (const dtc of entry.dtcs) {
-        const view = toDtcView(dtc, entry.ecu.name, rxId);
-        this.dtcs.push(view);
-        this.emit("dtc", view);
-        // The DTC markers themselves are written by the diagnostic engine while
-        // scanning (one per code) — the backend only forwards the table row.
-      }
-    }
+    const runtime = this.requireRuntime();
+    const infos = await runtime.commands.dispatch(readDtcs());
+    // The runtime already enriched the codes with the definition package
+    // (description, severity, first/last seen, related signals); the backend
+    // only maps them to the view shape the UI consumes (AGENTS 13/20).
+    this.dtcs = infos.map((info) => this.toDtcView(info));
+    for (const view of this.dtcs) this.emit("dtc", view);
     this.sessionLogger.log("dtc", "scan complete", { count: this.dtcs.length });
     this.log.info("DTC scan complete", { count: this.dtcs.length });
-    // The engine wrote one marker per fault code; publish the complete list so
-    // open graphs show them immediately without waiting for a history reload.
-    this.emit("markers", toMarkerViews(engine.recorder.markers));
+    // The runtime wrote one marker per fault code while scanning; publish the
+    // complete list so open graphs show them without waiting for a history
+    // reload.
+    const markers = await runtime.commands.query(getMarkers());
+    this.emit("markers", markers.map(toMarkerView));
     return this.dtcs;
   }
 
@@ -741,14 +767,15 @@ export class DemoBackend {
    * definition documents is still evidence and must not be dropped.
    */
   async readFreezeFrame(rxId: number, code: string, recordNumber = 0xff): Promise<FreezeFrameView> {
-    const engine = this.requireEngine();
-    const frame = await engine.readDtcSnapshot(rxId, code, recordNumber);
-    if (!frame) throw new Error(`ECU 0x${rxId.toString(16)} has no freeze frame for ${code}`);
+    const runtime = this.requireRuntime();
+    const info = await runtime.commands.dispatch(
+      readDtcFreezeFrame(this.ecuRef(rxId), code, recordNumber),
+    );
     this.sessionLogger.log("dtc", `freeze frame ${code}`, {
-      ecu: `0x${rxId.toString(16)}`,
-      documented: frame.documented,
+      ecu: formatCanId(rxId),
+      documented: info.documented,
     });
-    return toFreezeFrameView(frame);
+    return toFreezeFrameView(info);
   }
 
   /**
@@ -757,23 +784,18 @@ export class DemoBackend {
    * missing preconditions instead of a refusal afterwards.
    */
   async precheckDtcClear(rxId: number, vehicleState: VehicleStateView): Promise<DtcClearPrecheck> {
-    const engine = this.requireEngine();
-    const handle = engine.handleFor(rxId);
-    if (!handle) throw new Error(`no ECU session for 0x${rxId.toString(16)}`);
-    const checks = engine.evaluateDtcClear(rxId, {
-      // `userConfirmed: false` is intentional: the precheck lists everything that
-      // still has to happen, including the confirmation itself.
-      userConfirmed: false,
-      vehicleState,
-    });
+    const runtime = this.requireRuntime();
+    // The runtime evaluates with `userConfirmed: false`: the precheck lists
+    // everything that still has to happen, including the confirmation itself.
+    const info: DtcClearPrecheckInfo = await runtime.commands.query(
+      getDtcClearPrecheck(this.ecuRef(rxId), vehicleState),
+    );
     return {
       rxId: formatCanId(rxId),
-      ecu: handle.session.record.name,
-      // `userConfirmed: false` is intentional: the precheck lists everything that
-      // still has to happen, including the confirmation itself.
-      ok: checks.ok,
-      failed: checks.failed,
-      warnings: checks.warnings,
+      ecu: info.ecuName,
+      ok: info.ok,
+      failed: [...info.failed],
+      warnings: [...info.warnings],
     };
   }
 
@@ -788,70 +810,58 @@ export class DemoBackend {
     rxId: number,
     request: { confirmed: boolean; vehicleState: VehicleStateView },
   ): Promise<DtcClearView> {
-    const engine = this.requireEngine();
-    const result = await engine.clearDtcs(rxId, {
-      userConfirmed: request.confirmed,
-      vehicleState: request.vehicleState,
-    });
+    const runtime = this.requireRuntime();
+    const outcome = await runtime.commands.dispatch(
+      clearDtcs(this.ecuRef(rxId), request.confirmed, request.vehicleState),
+    );
     // The table has to reflect the new state, not the pre-clear one.
     await this.scanDtcs();
-    this.emit(
-      "marker",
-      toMarkerViews(
-        [
-          engine.recorder.addMarker(
-            `Fehlerspeicher ${result.ecuName} gelöscht`,
-            "action",
-            result.verified ? "verifiziert" : "nicht bestätigt",
-          ),
-        ].filter((m): m is Marker => m !== null),
-      )[0],
+    const marker = await runtime.commands.dispatch(
+      addMarker(
+        `Fehlerspeicher ${outcome.ecuName} gelöscht`,
+        "action",
+        outcome.verified ? "verifiziert" : "nicht bestätigt",
+      ),
     );
+    this.emit("marker", toMarkerView(marker));
     this.log.info("fault memory cleared", {
-      ecu: result.ecuName,
-      removed: result.comparison.removed.length,
-      verified: result.verified,
+      ecu: outcome.ecuName,
+      removed: outcome.removedCodes.length,
+      verified: outcome.verified,
     });
     return {
-      ecu: result.ecuName,
-      cleared: result.cleared,
-      verified: result.verified,
-      before: result.before.map((dtc) => dtc.code),
-      after: result.after.map((dtc) => dtc.code),
-      removed: result.comparison.removed.map((dtc) => dtc.code),
-      stillFailing: result.comparison.changed.map((dtc) => dtc.code),
-      unchanged: result.comparison.unchanged.map((dtc) => dtc.code),
+      ecu: outcome.ecuName,
+      cleared: outcome.ok,
+      verified: outcome.verified,
+      before: [...outcome.beforeCodes],
+      after: [...outcome.afterCodes],
+      removed: [...outcome.removedCodes],
+      stillFailing: [...outcome.stillFailingCodes],
+      unchanged: [...outcome.unchangedCodes],
+      ...(outcome.ok ? {} : { reasons: [...outcome.reasons] }),
     };
   }
 
-  /** Start polling the selected signals. */
+  /**
+   * Start polling the selected signals.
+   *
+   * The runtime records every sample exactly once inside the poll loop; the
+   * backend subscribes to the recorded rounds and forwards them to the UI.
+   * (The old engine-level path recorded twice and started the loop twice —
+   * both are gone with the move behind the command bus, AGENTS 16/34.25.)
+   */
   async startLive(signalIds?: readonly string[]): Promise<void> {
-    const engine = this.requireEngine();
+    const runtime = this.requireRuntime();
     if (this.live) return;
     this.live = true;
-    const readers = this.liveReaders(engine);
-    const live = await engine.startLiveData({
-      signalIds,
-      intervalMs: this.options.liveIntervalMs ?? 250,
+    // Subscribe before the start command: the service buffers listeners until
+    // the poll loop exists, so no round of this run can be missed.
+    this.unsubscribeSamples = runtime.measurements.onSample((round) => {
+      for (const reading of round.readings) this.emit("sample", toSampleView(reading));
     });
-    live.onRound((round) => {
-      for (const decoded of round.signals) {
-        const sample = engine.recorder.record(decoded);
-        const view = toSampleView(sample, decoded.name);
-        this.emit("sample", view);
-      }
-      for (const error of round.errors) {
-        this.log.warn("live poll error", {
-          ecu: round.ecuId,
-          did: error.did,
-          message: error.message,
-        });
-      }
-    });
-    void live.run(readers, engine.buildPlan(signalIds)).catch((error) => {
-      this.log.error("live data run failed", { error: messageOf(error) });
-      this.emit("error", { message: messageOf(error) });
-    });
+    await runtime.commands.dispatch(
+      startMeasurements(signalIds, this.options.liveIntervalMs ?? 250),
+    );
     this.log.info("live data started", {
       signals: signalIds?.length ?? "all",
       intervalMs: this.options.liveIntervalMs ?? 250,
@@ -859,27 +869,21 @@ export class DemoBackend {
   }
 
   stopLive(): void {
-    this.engine?.stopLiveData();
+    this.unsubscribeSamples?.();
+    this.unsubscribeSamples = undefined;
+    this.runtime?.measurements.stop();
     this.live = false;
     this.log.info("live data stopped");
   }
 
-  private liveReaders(
-    engine: DiagnosticEngine,
-  ): Array<{ ecuId: string; readRaw(did: number): Promise<Uint8Array | null> }> {
-    const readers: Array<{ ecuId: string; readRaw(did: number): Promise<Uint8Array | null> }> = [];
-    for (const view of this.ecus) {
-      const handle = engine.handleFor(Number.parseInt(view.rxId, 16));
-      if (handle) readers.push(handle.reader);
-    }
-    return readers;
-  }
-
   /** Record a user marker into the measurement recording. */
   addMarker(label: string): void {
-    const marker = this.engine?.recorder.addMarker(label);
     this.sessionLogger.log("marker", label);
-    if (marker) this.emit("marker", toMarkerViews([marker])[0]);
+    if (!this.runtime) return;
+    void this.runtime.commands
+      .dispatch(addMarker(label))
+      .then((marker) => this.emit("marker", toMarkerView(marker)))
+      .catch((error: unknown) => this.log.warn("marker rejected", { error: messageOf(error) }));
   }
 
   /**
@@ -889,26 +893,23 @@ export class DemoBackend {
    * whole window to zoom, pan and select a time range (AGENTS 16).
    */
   history(limit = 50_000): HistoryView {
-    const engine = this.engine;
-    if (!engine) return { startedAt: Date.now(), live: this.live, samples: [], markers: [] };
-    const { samples, startedAt } = engine.recorder.export();
-    const capped = samples.slice(-limit);
+    const runtime = this.runtime;
+    if (!runtime) return { startedAt: Date.now(), live: this.live, samples: [], markers: [] };
+    const recording = runtime.measurements.history(limit);
     return {
-      startedAt,
+      startedAt: recording.startedAt,
       live: this.live,
-      samples: capped.map((sample) =>
-        toSampleView(sample, engine.findSignal(sample.signal)?.name ?? sample.signal),
-      ),
-      markers: toMarkerViews(engine.recorder.markers),
+      samples: recording.samples.map(toSampleView),
+      markers: recording.markers.map(toMarkerView),
     };
   }
 
   async analyze(): Promise<AnalysisResult> {
-    const engine = this.requireEngine();
+    const runtime = this.requireRuntime();
     const input: AnalysisInput = {
       mileageKm: this.session()?.mileageKm,
-      signals: engine.recorder.statisticsForAll().map((stat) => ({
-        signal: stat.signal,
+      signals: runtime.measurements.statistics().map((stat) => ({
+        signal: stat.signalId,
         name: stat.name,
         ...(stat.unit ? { unit: stat.unit } : {}),
         samples: stat.samples,
@@ -924,7 +925,11 @@ export class DemoBackend {
         severity: dtc.severity,
         ecu: dtc.ecu,
       })),
-      anomalies: engine.recorder.anomalies(),
+      anomalies: runtime.measurements.anomalies().map((anomaly) => ({
+        signal: anomaly.signalId,
+        reason: anomaly.reason,
+        ...(anomaly.value !== undefined ? { value: anomaly.value } : {}),
+      })),
       notes: (this.session()?.notes ?? []).map((note) => note.text),
     };
     const result = await this.analysisService.analyze({ input });
@@ -934,8 +939,8 @@ export class DemoBackend {
 
   /** Export the recording as CSV. */
   exportCsv(): string {
-    const engine = this.requireEngine();
-    const { samples, markers } = engine.recorder.export();
+    const runtime = this.requireRuntime();
+    const { samples, markers } = runtime.measurements.rawExport();
     return SessionLogger.toCsv(samples, markers);
   }
 
@@ -945,8 +950,8 @@ export class DemoBackend {
   }
 
   exportJson(): string {
-    const engine = this.requireEngine();
-    const { samples, markers } = engine.recorder.export();
+    const runtime = this.requireRuntime();
+    const { samples, markers } = runtime.measurements.rawExport();
     const snapshot = this.sessionLogger.snapshot();
     return SessionLogger.toJson({
       meta: {
@@ -969,7 +974,7 @@ export class DemoBackend {
   }
 
   state(): AppState {
-    const engine = this.engine;
+    const runtime = this.runtime;
     const session = this.session();
     const identity = session?.vehicle;
     const trace = this.sessionLogger.snapshot().trace.slice(-200);
@@ -999,12 +1004,39 @@ export class DemoBackend {
         : { kind: "none", channel: "-", mtu: 0 },
       ecus: this.ecus,
       dtcs: this.dtcs,
-      samples: this.recentSamples(engine),
-      statistics: engine ? engine.recorder.statisticsForAll() : [],
+      samples: this.recentSamples(),
+      statistics: runtime
+        ? runtime.measurements.statistics().map((stat) => ({
+            signal: stat.signalId,
+            name: stat.name,
+            ...(stat.unit !== undefined ? { unit: stat.unit } : {}),
+            samples: stat.samples,
+            min: stat.min,
+            max: stat.max,
+            average: stat.average,
+            delta: stat.delta,
+            first: stat.first,
+            last: stat.last,
+            outOfRangeCount: stat.outOfRangeCount,
+          }))
+        : [],
       trace: trace.map(toTraceView),
       live: this.live,
-      signals: this.signalList(engine),
-      anomalies: engine ? engine.recorder.anomalies() : [],
+      signals: runtime
+        ? runtime.measurements.signals().map((signal) => ({
+            id: signal.signalId,
+            name: signal.name,
+            ...(signal.unit ? { unit: signal.unit } : {}),
+            critical: signal.critical,
+          }))
+        : [],
+      anomalies: runtime
+        ? runtime.measurements.anomalies().map((anomaly) => ({
+            signal: anomaly.signalId,
+            reason: anomaly.reason,
+            ...(anomaly.value !== undefined ? { value: anomaly.value } : {}),
+          }))
+        : [],
       actions: (session?.actions ?? []).map((action) => ({
         timestamp: action.timestamp,
         kind: action.kind,
@@ -1015,35 +1047,12 @@ export class DemoBackend {
     };
   }
 
-  private recentSamples(engine: DiagnosticEngine | undefined): SampleView[] {
-    if (!engine) return [];
-    const { samples } = engine.recorder.export();
-    // A recorded sample carries only the signal id; the human readable name comes
-    // from the definition so the snapshot and the live stream agree.
-    return samples
-      .slice(-200)
-      .map((sample) =>
-        toSampleView(sample, engine.findSignal(sample.signal)?.name ?? sample.signal),
-      );
-  }
-
-  private signalList(engine: DiagnosticEngine | undefined): AppState["signals"] {
-    if (!engine) return [];
-    const seen = new Set<string>();
-    const list: AppState["signals"] = [];
-    for (const signals of engine.buildPlan().values()) {
-      for (const signal of signals) {
-        if (seen.has(signal.id)) continue;
-        seen.add(signal.id);
-        list.push({
-          id: signal.id,
-          name: signal.name,
-          ...(signal.unit ? { unit: signal.unit } : {}),
-          critical: signal.critical ?? false,
-        });
-      }
-    }
-    return list;
+  private recentSamples(): SampleView[] {
+    const runtime = this.runtime;
+    if (!runtime) return [];
+    // A recorded sample carries only the signal id; the runtime resolves the
+    // human readable name from the definition so snapshot and live stream agree.
+    return runtime.measurements.history(200).samples.map(toSampleView);
   }
 
   /**
@@ -1051,43 +1060,48 @@ export class DemoBackend {
    * VehicleSessionData (AGENTS 21) — the UI itself never needs it.
    */
   sessionData(): VehicleSessionData {
-    const session = this.engine?.vehicleSession?.data;
+    const session = this.runtime?.session.data();
     if (!session) throw new Error("backend not started — call start() first");
     return session;
   }
 
   private session() {
-    return this.engine?.vehicleSession?.data;
+    return this.runtime?.session.data();
   }
 
-  private toEcuView(rxId: number): EcuView {
-    const engine = this.engine;
-    const record = engine?.vehicleSession?.data.ecus.find((ecu) => ecu.rxId === rxId);
-    const discovered = engine?.handleFor(rxId)?.discovered;
+  /** DTC table row from the runtime read model (AGENTS 13/20). */
+  private toDtcView(info: DtcInfo): DtcView {
+    const ecu = this.ecus.find((view) => view.id === info.ecuId);
     return {
-      id: record?.id ?? `ecu_0x${rxId.toString(16)}`,
-      name: record?.name ?? `ECU 0x${rxId.toString(16)}`,
-      txId: `0x${(discovered?.txId ?? 0).toString(16).toUpperCase()}`,
-      rxId: `0x${rxId.toString(16).toUpperCase()}`,
-      extended: discovered?.extended ?? false,
-      reachable: record?.reachable ?? false,
-      identification: (record?.identification ?? []).map((entry) => ({
-        label: entry.label,
-        value: entry.value,
-      })),
-      services: (record?.supportedServices ?? []).map(
-        (sid) => `0x${sid.toString(16).toUpperCase()}`,
-      ),
-      sessionType: record?.sessionType ?? 0,
-      p2Ms: record?.timing.p2Ms ?? 0,
-      dtcCount: record?.dtcs?.length ?? 0,
-      ...(record?.lastError ? { lastError: record.lastError } : {}),
+      code: info.code,
+      raw: info.raw,
+      rxId: ecu?.rxId ?? info.ecuId,
+      // A code without a definition stays honest: the raw failure type is shown
+      // instead of an invented description (AGENTS 24).
+      description: info.description ?? `Fehlertyp 0x${info.failureType}`,
+      severity: info.severity ?? "info",
+      ...(info.hint ? { hint: info.hint } : {}),
+      ecu: info.ecuName,
+      status: `0x${info.status.toString(16).toUpperCase().padStart(2, "0")}`,
+      confirmed: info.confirmed,
+      pending: info.pending,
+      testFailed: info.testFailed,
+      ...(info.firstSeen ? { firstSeen: info.firstSeen } : {}),
+      ...(info.lastSeen ? { lastSeen: info.lastSeen } : {}),
+      ...(info.firstSeenInThisScan ? { isNew: true } : {}),
+      ...(info.relatedSignals ? { relatedSignals: [...info.relatedSignals] } : {}),
+      freezeFrame: info.hasFreezeFrame,
     };
   }
 
-  private requireEngine(): DiagnosticEngine {
-    if (!this.engine) throw new Error("backend not started — call start() first");
-    return this.engine;
+  /** ECU reference as the runtime understands it: session id or "0x…" address. */
+  private ecuRef(rxId: number): string {
+    return `0x${rxId.toString(16)}`;
+  }
+
+  private requireRuntime(): DiagnosticRuntime {
+    if (!this.runtime) throw new Error("backend not started — call start() first");
+    return this.runtime;
   }
 
   /** Close the transport and reset the session state; safe to call twice. */
@@ -1097,14 +1111,34 @@ export class DemoBackend {
   }
 }
 
-function toFreezeFrameView(frame: FreezeFrame): FreezeFrameView {
+function toEcuView(summary: EcuSummary): EcuView {
   return {
-    code: frame.dtcCode,
-    recordNumber: frame.recordNumber,
-    documented: frame.documented,
-    notes: frame.notes,
-    unassignedHex: frame.unassignedHex,
-    fields: frame.fields.map((field) => ({
+    id: summary.ecuId,
+    name: summary.name,
+    txId: formatCanId(summary.txId),
+    rxId: formatCanId(summary.rxId),
+    extended: summary.extended,
+    reachable: summary.reachable,
+    identification: summary.identification.map((entry) => ({
+      label: entry.label,
+      value: entry.value,
+    })),
+    services: summary.supportedServices.map((sid) => `0x${sid.toString(16).toUpperCase()}`),
+    sessionType: summary.sessionType,
+    p2Ms: summary.p2Ms,
+    dtcCount: summary.dtcCount,
+    ...(summary.lastError ? { lastError: summary.lastError } : {}),
+  };
+}
+
+function toFreezeFrameView(info: FreezeFrameInfo): FreezeFrameView {
+  return {
+    code: info.code,
+    recordNumber: info.recordNumber,
+    documented: info.documented,
+    notes: [...info.notes],
+    unassignedHex: info.unassignedHex,
+    fields: info.fields.map((field) => ({
       did: `0x${field.did.toString(16).toUpperCase()}`,
       name: field.name,
       rawHex: field.rawHex,
@@ -1120,31 +1154,31 @@ function toFreezeFrameView(frame: FreezeFrame): FreezeFrameView {
   };
 }
 
-function toSampleView(sample: MeasurementSample, name: string): SampleView {
+function toSampleView(reading: MeasurementReading): SampleView {
   return {
-    signal: sample.signal,
-    name,
-    value: formatValue(sample.value),
+    signal: reading.signalId,
+    name: reading.name ?? reading.signalId,
+    value: formatValue(reading.value),
     numeric:
-      typeof sample.value === "number" && Number.isFinite(sample.value) ? sample.value : null,
-    rawValue: sample.rawValue,
-    rawHex: sample.rawHex,
-    ...(sample.unit ? { unit: sample.unit } : {}),
-    outOfRange: sample.outOfRange,
-    t: sample.t,
-    timestamp: sample.timestamp,
+      typeof reading.value === "number" && Number.isFinite(reading.value) ? reading.value : null,
+    rawValue: reading.rawValue,
+    rawHex: reading.rawHex,
+    ...(reading.unit ? { unit: reading.unit } : {}),
+    outOfRange: reading.outOfRange,
+    t: reading.t,
+    timestamp: reading.timestamp,
   };
 }
 
-function toMarkerViews(markers: readonly Marker[]): MarkerView[] {
-  return markers.map((marker) => ({
-    id: marker.id,
+function toMarkerView(marker: MarkerInfo): MarkerView {
+  return {
+    id: marker.markerId,
     t: marker.t,
     timestamp: marker.timestamp,
     label: marker.label,
     kind: marker.kind,
     ...(marker.detail ? { detail: marker.detail } : {}),
-  }));
+  };
 }
 
 function toTraceView(entry: RawTraceEntry): TraceView {
@@ -1163,29 +1197,6 @@ function toTraceView(entry: RawTraceEntry): TraceView {
 /** CAN identifier as it is displayed and sent back by the UI (e.g. `0x7E8`). */
 function formatCanId(id: number): string {
   return `0x${id.toString(16).toUpperCase()}`;
-}
-
-function toDtcView(dtc: EnrichedDtc, ecuName: string, rxId: string): DtcView {
-  return {
-    code: dtc.code,
-    raw: dtc.raw,
-    rxId,
-    // A code without a definition stays honest: the raw failure type is shown
-    // instead of an invented description (AGENTS 24).
-    description: dtc.description ?? `Fehlertyp 0x${dtc.failureType}`,
-    severity: dtc.severity,
-    ...(dtc.hint ? { hint: dtc.hint } : {}),
-    ecu: ecuName,
-    status: `0x${dtc.status.toString(16).toUpperCase().padStart(2, "0")}`,
-    confirmed: dtc.statusBits.confirmedDtc,
-    pending: dtc.statusBits.pendingDtc,
-    testFailed: dtc.statusBits.testFailed,
-    ...(dtc.firstSeen ? { firstSeen: dtc.firstSeen } : {}),
-    ...(dtc.lastSeen ? { lastSeen: dtc.lastSeen } : {}),
-    ...(dtc.firstSeenInThisScan ? { isNew: true } : {}),
-    ...(dtc.relatedSignals ? { relatedSignals: dtc.relatedSignals } : {}),
-    freezeFrame: (dtc.snapshot?.length ?? 0) > 0,
-  };
 }
 
 function formatValue(value: number | string | boolean): string {
@@ -1225,5 +1236,3 @@ function hexToBytes(hex: string): Uint8Array {
     bytes[i] = Number.parseInt(compact.slice(i * 2, i * 2 + 2), 16);
   return bytes;
 }
-
-export type { DecodedSignal };

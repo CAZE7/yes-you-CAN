@@ -1,15 +1,25 @@
 import assert from "node:assert/strict";
 import { NoHandlerError } from "@vdp/application";
 import {
+  addMarker,
   clearDtcs,
   disconnectVehicle,
+  getAnomalies,
   getAvailableActions,
+  getDtcClearPrecheck,
   getDtcList,
   getEcu,
   getEcuCapabilities,
   getEcuList,
+  getMarkers,
+  getMeasurementStatus,
   getMeasurements,
+  getRecordingHistory,
   getSession,
+  getSignalList,
+  getStatistics,
+  identifyEcus,
+  readDtcFreezeFrame,
   readDtcs,
   snapshotSignals,
   startMeasurements,
@@ -330,5 +340,94 @@ describe("command bus wiring against an empty vehicle", () => {
     const result = await runtime.vehicle.connect({ windowMs: 30 });
     assert.ok(result.session.sessionId);
     await runtime.dispose();
+  });
+});
+
+describe("the extended command/query vocabulary", () => {
+  function connectedRuntime() {
+    return createDiagnosticRuntime({
+      bus: makeSilentBus(),
+      definitions: [genericPackage],
+      logger: quietLogger,
+    });
+  }
+
+  test("identify, markers, catalogue and statistics are wired end to end", async () => {
+    const runtime = connectedRuntime();
+    await runtime.vehicle.connect({ windowMs: 30 });
+
+    // No ECUs on the silent bus — every handler still answers cleanly.
+    assert.deepEqual(await runtime.commands.dispatch(identifyEcus()), []);
+    assert.deepEqual(await runtime.commands.query(getSignalList()), []);
+    assert.deepEqual(await runtime.commands.query(getStatistics()), []);
+    assert.deepEqual(await runtime.commands.query(getAnomalies()), []);
+    assert.deepEqual(await runtime.commands.query(getMeasurementStatus()), { live: false });
+
+    const marker = await runtime.commands.dispatch(addMarker("Notiz", "note", "Details"));
+    assert.equal(marker.label, "Notiz");
+    assert.equal(marker.kind, "note");
+    assert.equal(marker.detail, "Details");
+    assert.deepEqual(await runtime.commands.query(getMarkers()), [marker]);
+
+    const recording = await runtime.commands.query(getRecordingHistory());
+    assert.deepEqual(recording.samples, []);
+    assert.deepEqual(recording.markers, [marker]);
+    assert.ok(recording.startedAt > 0);
+
+    await runtime.dispose();
+  });
+
+  test("history honours the sample limit without touching the recording", async () => {
+    const runtime = connectedRuntime();
+    await runtime.vehicle.connect({ windowMs: 30 });
+    await runtime.commands.dispatch(addMarker("eins"));
+    await runtime.commands.dispatch(addMarker("zwei"));
+    const limited = await runtime.commands.query(getRecordingHistory(1));
+    assert.equal(limited.markers.length, 2, "the limit applies to samples, never markers");
+    await runtime.dispose();
+  });
+
+  test("freeze frame and clear precheck guard their preconditions", async () => {
+    const runtime = connectedRuntime();
+    await assert.rejects(
+      runtime.commands.dispatch(readDtcFreezeFrame("0x7e8", "P0420")),
+      /no session/,
+    );
+    await runtime.vehicle.connect({ windowMs: 30 });
+    await assert.rejects(
+      runtime.commands.dispatch(readDtcFreezeFrame("0x7e8", "P0420")),
+      /unknown ECU/,
+    );
+    await assert.rejects(
+      runtime.commands.query(getDtcClearPrecheck("0x7e8", { stationary: true })),
+      /unknown ECU/,
+    );
+    // Subscribing before any measurement starts is valid: the listener waits
+    // for the next live run instead of failing on the empty state.
+    const off = runtime.measurements.onSample(() => undefined);
+    off();
+    await runtime.dispose();
+  });
+
+  test("dispose closes the bus a failed connect left open", async () => {
+    const bus = makeSilentBus();
+    const runtime = createDiagnosticRuntime({ bus, logger: quietLogger });
+    await bus.open();
+    assert.equal(bus.isOpen(), true, "precondition: the bus is open");
+    await runtime.dispose();
+    assert.equal(bus.isOpen(), false, "dispose must not leave a half-open transport");
+  });
+
+  test("dispose on an open session disconnects and closes the bus", async () => {
+    const bus = makeSilentBus();
+    const runtime = createDiagnosticRuntime({
+      bus,
+      definitions: [genericPackage],
+      logger: quietLogger,
+    });
+    await runtime.vehicle.connect({ windowMs: 30 });
+    assert.equal(bus.isOpen(), true);
+    await runtime.dispose();
+    assert.equal(bus.isOpen(), false);
   });
 });

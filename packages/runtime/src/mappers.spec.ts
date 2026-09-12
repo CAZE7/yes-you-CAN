@@ -49,6 +49,9 @@ describe("toEcuSummary", () => {
     assert.equal(summary.txId, 0x7e0);
     assert.equal(summary.rxId, 0x7e8);
     assert.deepEqual(summary.identification, [{ label: "VIN", value: "WVWZZZ1KZAW000001" }]);
+    assert.equal(summary.p2Ms, 50);
+    assert.equal(summary.dtcCount, 0);
+    assert.deepEqual(summary.supportedServices, [0x10, 0x19, 0x22, 0x3e]);
     assert.ok(summary.capabilities.includes("read-dtc"));
     assert.ok(summary.capabilities.includes("read-did"));
     assert.ok(!summary.capabilities.includes("clear-dtc"), "0x14 was not probed positive");
@@ -215,7 +218,18 @@ describe("toDtcInfo", () => {
     assert.equal(info.severity, "major");
     assert.equal(info.description, "Catalyst efficiency below threshold");
     assert.equal(info.hint, "Check lambda probes");
-    assert.deepEqual(info.relatedSignals, ["engine.lambda"]);
+    assert.deepEqual(info.relatedSignals, [{ id: "engine.lambda", name: "Lambda" }]);
+  });
+
+  test("keeps the protocol truth next to the enrichment", () => {
+    const info = toDtcInfo(makeDtc({ snapshot: new Uint8Array([1, 2, 3]) }));
+    assert.equal(info.raw, "042000");
+    assert.equal(info.failureType, "00");
+    assert.equal(info.confirmed, true);
+    assert.equal(info.pending, false);
+    assert.equal(info.testFailed, true);
+    assert.equal(info.hasFreezeFrame, true);
+    assert.equal(toDtcInfo(makeDtc()).hasFreezeFrame, false);
   });
 
   test("omits enrichment the scanner could not provide", () => {

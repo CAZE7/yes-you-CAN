@@ -13,22 +13,33 @@ import type {
   DiagnosticEngine,
   EcuHandle,
   EcuSession,
+  LiveDataEngine,
+  Marker,
+  MeasurementSample,
   SafetyManager,
   VehicleSessionData,
   VehicleState,
   WriteRequestContext,
 } from "@vdp/core";
 import type {
+  AnomalyInfo,
   ClearDtcOutcome,
   DiagnosticCapability,
+  DtcClearPrecheckInfo,
   DtcInfo,
   EcuSummary,
   EventBus,
+  FreezeFrameInfo,
   IdGenerator,
+  MarkerInfo,
   MeasurementReading,
+  MeasurementStatus,
   RawDidReading,
+  RecordingHistory,
   SessionStore,
   SessionSummary,
+  SignalInfo,
+  SignalStatisticsInfo,
   VehicleStateReading,
   VehicleSummary,
 } from "@vdp/domain";
@@ -39,11 +50,16 @@ import { capabilitiesFromServices } from "./capability-map.js";
 import {
   decodedToReading,
   deniedClearOutcome,
+  toAnomalyInfo,
   toClearDtcOutcome,
   toDtcInfo,
   toEcuSummary,
+  toFreezeFrameInfo,
+  toMarkerInfo,
   toMeasurementReading,
   toSessionSummary,
+  toSignalInfo,
+  toSignalStatisticsInfo,
   toVehicleSummary,
 } from "./mappers.js";
 
@@ -80,6 +96,30 @@ export class EcuService {
   capabilities(ecuId: string): DiagnosticCapability[] {
     const record = this.resolveRecord(ecuId);
     return record ? capabilitiesFromServices(record.supportedServices) : [];
+  }
+
+  /**
+   * Re-read the identification DIDs of every attached ECU (AGENTS 12) and
+   * merge the answers into the session record. One unresponsive ECU must not
+   * hide the others, so failures are logged per ECU and the run continues
+   * (AGENTS 34.25 — logged, not swallowed).
+   */
+  async identifyAll(): Promise<EcuSummary[]> {
+    for (const handle of this.engine.ecuHandles) {
+      try {
+        await handle.session.readIdentification();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        // The failure stays visible on the ECU record instead of disappearing
+        // into the log (AGENTS 34.25).
+        handle.session.record.lastError = message;
+        this.log.warn("identification failed", {
+          ecu: handle.session.record.name,
+          error: message,
+        });
+      }
+    }
+    return this.list();
   }
 
   /** Read one DID raw — decoding is definition knowledge, not engine logic. */
@@ -250,6 +290,46 @@ export class DtcService {
   }
 
   /**
+   * Read one documented freeze frame of one fault code (AGENTS 20 "Snapshot").
+   *
+   * The decoded values travel together with their raw bytes: a record whose
+   * layout no definition documents stays visible as evidence. Throws when the
+   * ECU has no snapshot for the code — callers surface that as "not available".
+   */
+  async freezeFrame(ecuId: string, code: string, recordNumber = 0xff): Promise<FreezeFrameInfo> {
+    if (!this.engine.vehicleSession) throw new Error("no session — call vehicle.connect() first");
+    const handle = this.ecus.resolveHandle(ecuId);
+    if (!handle) throw unknownEcu(ecuId);
+    const frame = await this.engine.readDtcSnapshot(handle.discovered.rxId, code, recordNumber);
+    if (!frame) {
+      throw new Error(`ECU ${handle.session.record.name} has no freeze frame for ${code}`);
+    }
+    return toFreezeFrameInfo(frame);
+  }
+
+  /**
+   * What the safety chain still requires before a clear is permitted
+   * (AGENTS 26). Read-only: evaluates with `userConfirmed: false`, so the
+   * list contains everything that still has to happen — including the
+   * confirmation itself. Nothing is written and no permit is issued (§15).
+   */
+  precheckClear(ecuId: string, vehicleState: VehicleStateReading): DtcClearPrecheckInfo {
+    const handle = this.ecus.resolveHandle(ecuId);
+    if (!handle) throw unknownEcu(ecuId);
+    const checks = this.engine.evaluateDtcClear(handle.discovered.rxId, {
+      userConfirmed: false,
+      vehicleState,
+    });
+    return {
+      ecuId: handle.session.record.id,
+      ecuName: handle.session.record.name,
+      ok: checks.ok,
+      failed: [...checks.failed],
+      warnings: [...checks.warnings],
+    };
+  }
+
+  /**
    * Clear one ECU's fault memory — the full safety chain applies (AGENTS 26):
    * pre-check → permit → write → verification → audit events.
    */
@@ -346,13 +426,34 @@ export class DtcService {
   }
 }
 
+/** Readings of one recorded poll round — the payload of the sample stream. */
+export interface SampleRound {
+  readings: readonly MeasurementReading[];
+}
+
+export type SampleListener = (round: SampleRound) => void;
+
 /** Measurements: snapshots, live polling, recorded samples. */
 export class MeasurementService {
+  private liveEngine: LiveDataEngine | null = null;
+  /**
+   * Sample-stream listeners survive start/stop cycles and may be registered
+   * before the measurement starts — they attach to the next live engine, so a
+   * subscriber can never miss the first round by ordering alone.
+   */
+  private readonly sampleListeners = new Set<SampleListener>();
+  private readonly sampleDetaches = new Map<SampleListener, () => void>();
+
   constructor(
     private readonly engine: DiagnosticEngine,
     private readonly events: EventBus,
     private readonly log: Logger,
   ) {}
+
+  /** True while the engine polls ECUs for live data. */
+  get live(): boolean {
+    return this.liveEngine?.isRunning ?? false;
+  }
 
   /** Read every (or the selected) defined signal once and record the samples. */
   async snapshot(signalIds?: readonly string[]): Promise<MeasurementReading[]> {
@@ -383,15 +484,28 @@ export class MeasurementService {
     return readings;
   }
 
-  /** Start parallel live polling across all ECUs (AGENTS 15). */
+  /**
+   * Start parallel live polling across all ECUs (AGENTS 15).
+   *
+   * The engine's `startLiveData` already runs the poll loop internally — the
+   * service only keeps the reference for the live flag and the sample stream
+   * (AGENTS 34.25: a second `run()` would throw and was a double-start bug).
+   */
   async start(options: { signalIds?: readonly string[]; intervalMs?: number } = {}): Promise<void> {
     if (!this.engine.vehicleSession) throw new Error("no session — call vehicle.connect() first");
-    await this.engine.startLiveData(options);
+    this.liveEngine = await this.engine.startLiveData(options);
+    this.liveEngine.onError((error) => this.reportLiveFailure(error));
+    for (const listener of this.sampleListeners) this.attachSampleListener(listener);
     this.log.info("live measurements started", { intervalMs: options.intervalMs ?? 100 });
   }
 
   stop(): void {
     this.engine.stopLiveData();
+    this.liveEngine = null;
+    // The engine is gone; the subscriptions stay registered and reattach on
+    // the next start.
+    for (const detach of this.sampleDetaches.values()) detach();
+    this.sampleDetaches.clear();
   }
 
   /** Recorded samples, optionally restricted to one signal. */
@@ -401,6 +515,121 @@ export class MeasurementService {
     return ids.flatMap((id) =>
       recorder.samplesFor(id).map((sample) => toMeasurementReading(sample)),
     );
+  }
+
+  /** Event markers on the shared time axis (AGENTS 16). */
+  markers(): MarkerInfo[] {
+    return this.engine.recorder.markers.map(toMarkerInfo);
+  }
+
+  /** Record one event marker into the running measurement (AGENTS 16). */
+  addMarker(label: string, kind: MarkerInfo["kind"] = "user", detail?: string): MarkerInfo {
+    // The recorder stores the kind verbatim; "anomaly" is part of the domain
+    // vocabulary even though the core marker type predates it.
+    return toMarkerInfo(this.engine.recorder.addMarker(label, kind as Marker["kind"], detail));
+  }
+
+  /** Window statistics for every recorded signal (AGENTS 16, §16). */
+  statistics(): SignalStatisticsInfo[] {
+    return this.engine.recorder.statisticsForAll().map(toSignalStatisticsInfo);
+  }
+
+  /** Signals that left their declared range (AGENTS 14). */
+  anomalies(): AnomalyInfo[] {
+    return this.engine.recorder.anomalies().map(toAnomalyInfo);
+  }
+
+  /**
+   * The signal catalogue of the attached ECUs — deduplicated across ECUs, in
+   * definition order (read model for pickers and the signal list).
+   */
+  signals(): SignalInfo[] {
+    const seen = new Set<string>();
+    const list: SignalInfo[] = [];
+    for (const signals of this.engine.buildPlan().values()) {
+      for (const signal of signals) {
+        if (seen.has(signal.id)) continue;
+        seen.add(signal.id);
+        list.push(toSignalInfo(signal));
+      }
+    }
+    return list;
+  }
+
+  /**
+   * Export seam for raw persistence formats (CSV/JSON, AGENTS 17/18).
+   *
+   * Deliberately returns the core recording types: file formats serialize the
+   * stored bytes verbatim, and re-encoding them through domain readings would
+   * lose raw fidelity. Everything above this seam speaks domain contracts.
+   */
+  rawExport(): { startedAt: number; samples: MeasurementSample[]; markers: Marker[] } {
+    return this.engine.recorder.export();
+  }
+
+  /**
+   * The complete recording: samples plus markers and the recording start
+   * (AGENTS 16/17). `limit` trims the sample list to the newest N entries —
+   * the recording itself is never shortened by reading it.
+   */
+  history(limit?: number): RecordingHistory {
+    const { startedAt, samples, markers } = this.engine.recorder.export();
+    const capped = limit === undefined ? samples : samples.slice(-limit);
+    return {
+      startedAt,
+      samples: capped.map((sample) =>
+        toMeasurementReading(sample, this.engine.findSignal(sample.signal)?.name),
+      ),
+      markers: markers.map(toMarkerInfo),
+    };
+  }
+
+  status(): MeasurementStatus {
+    return { live: this.live };
+  }
+
+  /**
+   * Subscribe to every recorded poll round — the stream source for push
+   * consumers (SSE, WebSocket). The readings are the samples the recorder
+   * already stored for the round: exactly one per signal per round, no second
+   * recording (AGENTS 16/34.25).
+   *
+   * May be called before the measurement starts; the listener then receives
+   * the rounds of the next (and every later) live run until unsubscribed.
+   */
+  onSample(listener: SampleListener): () => void {
+    this.sampleListeners.add(listener);
+    this.attachSampleListener(listener);
+    return () => {
+      this.sampleListeners.delete(listener);
+      this.sampleDetaches.get(listener)?.();
+      this.sampleDetaches.delete(listener);
+    };
+  }
+
+  private attachSampleListener(listener: SampleListener): void {
+    const live = this.liveEngine;
+    if (!live || this.sampleDetaches.has(listener)) return;
+    this.sampleDetaches.set(
+      listener,
+      live.onRound((result) => {
+        const names = new Map(result.signals.map((signal) => [signal.signalId, signal.name]));
+        const readings = result.samples.map(
+          (sample): MeasurementReading => toMeasurementReading(sample, names.get(sample.signal)),
+        );
+        if (readings.length > 0) listener({ readings });
+      }),
+    );
+  }
+
+  /** A crashed poll loop must stay visible — as an event, not only a log line. */
+  private reportLiveFailure(error: Error): void {
+    const sessionId = this.engine.vehicleSession?.id;
+    this.events.publish("diagnostic-error", {
+      ...(sessionId !== undefined ? { sessionId } : {}),
+      phase: "measurement.live",
+      message: error.message,
+    });
   }
 }
 

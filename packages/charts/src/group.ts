@@ -95,9 +95,17 @@ export class ChartGroup {
     return series;
   }
 
-  /** Get-or-create, so live samples can arrive before the signal list does. */
+  /**
+   * Get-or-create, so live samples can arrive before the signal list does.
+   * Metadata given later (name, unit, colour, declared range) fills gaps in
+   * an existing series instead of being dropped — documented values always
+   * win (`Series.fillMissingMetadata`).
+   */
   ensureSeries(id: string, options: Partial<SeriesOptions> = {}): Series {
-    return this.seriesMap.get(id) ?? this.addSeries({ id, ...options });
+    const existing = this.seriesMap.get(id);
+    if (!existing) return this.addSeries({ id, ...options });
+    existing.fillMissingMetadata(options);
+    return existing;
   }
 
   /** Append live samples; moves the viewport when following. */

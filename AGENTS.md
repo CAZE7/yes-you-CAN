@@ -1,7 +1,11 @@
 # AGENTS.md — Vehicle Diagnostics Platform
 
-> **Version:** 1.3 · **Letzte Änderung:** 2026-09-11
+> **Version:** 1.7 · **Letzte Änderung:** 2026-09-12
 > **Changelog:**
+> - 1.7: **Nacharbeit zur Engine-Zerlegung — alle offenen Punkte geschlossen.** (1) Der Escape-Hatch `runtime.engine` ist aus der öffentlichen Runtime-Fläche entfernt; kein Code außerhalb von `@vdp/runtime` erreicht die Engine mehr (Restarbeit: Auflösung der Engine-Klasse in Kollaborateure, ADR 0014 Phase 4 — dort jetzt 🟡 geführt, Phase 5 auf ✅). (2) Live-Fehler sind wieder sichtbar: `LiveDataEngine.onError` meldet Loop-Crashes, der Measurement-Service publiziert `diagnostic-error`, das Backend leitet sie als SSE-`error` weiter (Regel 34.25; Unit-Test mit injizierter Uhr). (3) Sample-Streams dürfen vor dem Start abonnieren (Service puffert Listener bis zur nächsten Live-Engine) — der Stream-Integrationstest ist dadurch deterministisch. (4) Abgelehnte Fehlerspeicher-Löschungen tragen ihre Gründe bis in die HTTP-Antwort (`cleared:false` + `reasons`) und sind als Entscheidung in **ADR 0018** festgeschrieben (neuer Server-Test; Precheck und Write werten dieselbe Kette aus). (5) `apps/web` ist `@vdp/core`-frei: `SessionLogger`/Rohspur/Session-Daten laufen über die Storage-Naht, `AppState.statistics` bekam eine eigene View-Form. Suite: 971 Tests grün, Coverage-Gates grün, Biome/Typecheck grün. Verbleibend in 0.E: E4 (DoIP-Coverage), E9 (CI-Retries), E10 (Workflow-Dateien pushbar machen).
+> - 1.6: **Engine-Zerlegung (Migrations-Roadmap Schritte 8/9, Backlog E8)** — die `DiagnosticEngine` ist hinter dem Runtime-Vokabular verschwunden: neue Commands `ecu.identify`, `dtc.freeze-frame`, `marker.add` und neue Queries `dtc.clear-precheck`, `signal.list`, `marker.list`, `measurement.statistics`, `measurement.anomalies`, `recording.get`, `measurement.status`; `DemoBackend` dispatcht ausschließlich Commands/Queries und hält nur noch Transport, Rohspur und Präsentation. Die Architektur-Allowlist erlaubt `apps/web` jetzt `@vdp/runtime`/`@vdp/application`/`@vdp/domain`. Messbar behoben (Regel 34.21): der Live-Start rief `LiveDataEngine.run()` doppelt auf (SSE-Fehler bei jedem Start) und recordete jedes Sample doppelt (vorher 322 Samples/276 eindeutig, nachher 0 Duplikate); `dispose()` schließt den Bus auch nach einem fehlgeschlagenen Connect. Bewusste Angleichung: eine abgelehnte Fehlerspeicher-Löschung ist jetzt Ergebnis (`ok:false` + Gründe) statt HTTP-Fehler (AGENTS 26). +11 Tests, Suite: 969 Tests grün, Coverage-Gates grün, Biome/Typecheck grün. Verbleibend in 0.E: E4 (DoIP-Coverage), E9 (CI-Retries).
+> - 1.5: Backlog 0.E abgearbeitet (nur Verbesserungen, keine Features) und gemessen: CI-Härtung nach ADR 0016 real (`ci.yml` mit Quality-Job lint·build·typecheck·audit vor der Test-Matrix, Coverage-Upload auf Node 22, Timeouts; neu `codeql.yml`, `dependency-review.yml`, nächtlicher `hardware.yml`-vcan-Job). `npm test`/`test:coverage` bauen jetzt selbst vor (E2 behoben, Regel 34.26 angepasst). Neues Typecheck-Projekt `tsconfig.frontend.json` prüft `apps/web/public/*.js` mit `checkJs` + DOM-Lib; dafür 34 Typosoden im Frontend beseitigt (u. a. nullbarer Canvas-Kontext, `unknown`-Fehler, nie typisierte Arrays). `@vdp/charts`: `ensureSeries`/`Series.fillMissingMetadata` ergänzen verspätete Metadaten, statt sie zu verwerfen (+Regressionstest); das readonly-Mutations-Workaround im Frontend entfällt. Storage: 6 neue Tests für Crash-Toleranz, Migrations-Persistenz und Listen-Resilienz heben `repository.ts` von 70/46 auf 97/84 — storage-Gate auf 90/55 angehoben (ADR 0017). Leeres `catch {}` in der Engine durch Debug-Log ersetzt (Regel 34.25). Duplikat-Scripts `sim`/`web` entfernt. Suite: 958 Tests grün, Coverage-Gates grün, Biome/Typecheck grün. Verbleibend in 0.E: E4 (DoIP-Coverage), E8 (Engine-Zerlegung), E9 (CI-Retries).
+> - 1.4: Repo-Audit vom 2026-09-11 (Messung vor Behauptung, Regel 34.21): neuer Abschnitt **0.E „Offene Verbesserungen“** — priorisierter Backlog ausschließlich für Verbesserungen am Bestehenden, ohne neue Funktionen. Zusätzlich nach Regel 34.24 korrigiert: 0.A/0.B zeigen den *Ist*-Zustand von CI und Coverage-Gates statt des ADR-0016-Solls (Quality-Gates, CodeQL, Dependency-Review und Coverage-Upload fehlen noch im Repo); dokumentiert, dass `npm test` einen vorherigen `npm run build` voraussetzt (Backlog E2). Neue Regeln 34.25 (kein stilles Fehler-Schlucken) und 34.26 (Build vor Test).
 > - 1.3: Industriestandard-Härtung (ADR 0016): Biome Lint/Format, realistische Coverage-Gates (80/75 global, per-file für core/protocols), CI-Matrix mit Quality-Gates (lint·typecheck·audit) + Coverage-Upload, CodeQL + Dependency-Review, hardware-Platzhalter `tests/hardware/vcan.test.ts`, LICENSE/CONTRIBUTING/CODEOWNERS, `.nvmrc`/`.npmrc` (AGENTS 35 erweitert).
 > - 1.2: Von der Bau-Spezifikation zum Fortführungs-Leitfaden: Umsetzungsstand, Betrieb und Workflow für Coding Agents (Teil 0), Dependency-Policy (ADR 0010), Security-Baseline (ADR 0009), neue Regeln 34.19–34.24, erweiterte Definition of Done (35). Die Abschnittsnummern 0–36 bleiben unverändert — alle `AGENTS x.y`-Verweise im Code bleiben gültig.
 > - 1.1: Norm-Referenzen ergänzt (ISO 14229-2, ISO 15765-2, ISO 13400-1/2/3, ISO 3779), UDS-Timing-Parameter, DoIP-Discovery-Flow, Glossar, DoIP-Netzwerksicherheit.
@@ -15,7 +19,7 @@
 
 Dieser Teil steht bewusst vor der Spezifikation. Er sagt dir, *was schon existiert*, *wie du arbeitest* und *wo die harten Grenzen sind*. Die Abschnitte 0–36 dahinter bleiben die normative Produktspezifikation.
 
-## 0.A Umsetzungsstand (verifiziert gegen `arena/01a09119` 2026-09-11, Basis `51b8b19`)
+## 0.A Umsetzungsstand (verifiziert gegen `arena/01a091b8` 2026-09-11, Basis `f79a91e`)
 
 | Bereich | Stand | Bemerkung |
 |---|---|---|
@@ -34,8 +38,8 @@ Dieser Teil steht bewusst vor der Spezifikation. Er sagt dir, *was schon existie
 | KI-Schicht | 🚧 Provider-Abstraktion, lokaler Heuristik-Provider, HTTP-Gateway mit VIN-Redaktion | bewusst keine „große KI“ im MVP (Abschnitt 29) |
 | Web-Workbench (`apps/web`) | ✅ Node HTTP + SSE, Vanilla ESM, 9 Views | `public/*.js` via Biome formatiert, `/lib` liefert `@vdp/charts`; Security-Header + Body-Limit (ADR 0009) |
 | Simulator + Replay | ✅ | VirtualVehicle, VirtualCanNetwork, ReplayTransport mit strikter Abweichungsmelding |
-| Tests | ✅ 951 Tests auf 6 Ebenen (unit / protocol / regression / replay / integration / architecture) + 1 hardware smoke | Vitest 5 mit Projektkonfiguration (ADR 0010, Schritt 1); Unit-Specs co-lokatiert (`src/*.spec.ts`), Property-Tests (fast-check), Coverage-Gates `80/75` global / per-file für `core`/`protocols`/`adapters`/`transport`/`storage`/`charts` (ADR 0016) — grün; `hardware` (`tests/hardware/vcan.test.ts`) läuft nightly/manual |
-| CI/CD | ✅ GitHub Actions (Node 22 + 24, checkout/setup-node v7) + Dependabot (gruppiert) + CodeQL + Dependency-Review | ADR 0009 + ADR 0016: Quality-Gates `lint·typecheck·build·audit`, Matrix-Tests, Coverage-Upload; `hardware` als eigenes Projekt |
+| Tests | ✅ 971 Tests auf 6 Ebenen (unit / protocol / regression / replay / integration / architecture) + 1 hardware smoke | Vitest 5 mit Projektkonfiguration (ADR 0010, Schritt 1); Unit-Specs co-lokatiert (`src/*.spec.ts`), Property-Tests (fast-check), Coverage-Gates global 80/75 als Durchschnitt, per-file laut `vitest.config.ts` (storage seit 2026-09-11: 90/55, ADR 0017) — grün; `hardware` (`tests/hardware/vcan.test.ts`) läuft nächtlich (`hardware.yml`)/manual |
+| CI/CD | ✅ GitHub Actions (Node 22 + 24, `checkout@v4`/`setup-node@v4`) + Dependabot (gruppiert) + CodeQL + Dependency-Review | Quality-Job (`biome check`·`build`·`typecheck`·`npm audit`) vor der Test-Matrix, Coverage-Lauf + Upload auf Node 22, Timeouts, `workflow_dispatch`; `codeql.yml` (security-and-quality, wöchentlich), `dependency-review.yml` (moderate+, Lizenz-Allowlist), nächtlicher `hardware.yml`-vcan-Job — Workflows am 2026-09-11 angelegt (ADR 0016) |
 | HTTP-Security-Baseline | ✅ | localhost-Default, Security-Header, Body-Limit (ADR 0009) |
 | Coding Framework (Abschnitt 25) | ❌ bewusst nicht begonnen | erst nach stabilem Read-only-System |
 | DoIP-Engine-Integration, weitere Hersteller, Mobile/Desktop | ❌ | Phase 3+ |
@@ -49,11 +53,13 @@ Voraussetzung: Node.js ≥ 22 (siehe `engines` im Root-`package.json`, `.nvmrc`)
 ```bash
 npm ci                # installiert exakt das Lockfile — kein npm install im CI-Kontext
 npm run build         # tsc -b über alle Projekt-Referenzen (TypeScript 7 / tsgo)
-npm run typecheck     # Build + strikter noEmit-Pass über Tests, Konfiguration und Specs
+npm run typecheck     # Build + strikter noEmit-Pass über Tests, Konfiguration, Specs und Frontend-JS
 npx biome check .     # Lint + Format (Biome 1.9)
 npm test              # komplette Suite auf 6 Ebenen (unit / protocol / regression / replay / integration / architecture)
 npm run test:unit     # nur Unit-Specs — die schnelle Feedback-Schleife
-npm run test:coverage # Suite + V8-Coverage (80/75 global, per-file für core/protocols) — grün
+npm run test:coverage # Suite + V8-Coverage — global 80/75/80/80 als Projekt-Durchschnitt,
+                      # per-file-Gates für core/protocols/adapters/transport/storage/charts
+                      # (maßgeblich ist vitest.config.ts, s. 0.E E3) — grün
 npm run demo          # Workbench mit Simulator auf http://localhost:8080
 ```
 
@@ -66,9 +72,16 @@ npx vitest run packages/storage/src/storage.spec.ts
 
 Getestet wird **direkt der TypeScript-Quelltext**: Die Root-`vitest.config.ts`
 aliasst die Workspace-Exporte von `./dist/...` auf `./src/...` (ADR 0010,
-Schritt 1) — kein Build-Schritt nötig, kein stales `dist` möglich. Der
-`build`-Schritt bleibt trotzdem Pflicht in der CI, weil `tsc -b` die
-Declaration-Maps und die Abhängigkeitsrichtung prüft.
+Schritt 1) — für Unit-, Protokoll-, Replay- und Regressions-Tests ist kein
+Build nötig, kein stales `dist` möglich. **Ausnahme:** die Workbench-
+Integrationstests (`apps/web/test/server.spec.ts`) beziehen den Chart-Kern
+über `/lib` aus dem *kompilierten* `dist` von `@vdp/charts`; ohne Build
+antwortet `/lib/index.js` mit 404 (gemessen 2026-09-11). Deshalb führen
+`npm test` und `npm run test:coverage` den Build seit dem 2026-09-11 selbst
+aus (Regel 34.26); `tsc -b` prüft zusätzlich Declaration-Maps und die
+Abhängigkeitsrichtung. Das Frontend (`apps/web/public/*.js`) wird über das
+eigene Projekt `tsconfig.frontend.json` mit `checkJs` typgeprüft und läuft
+im Typecheck-Pass mit.
 
 ## 0.C Workflow (verbindlich)
 
@@ -86,6 +99,33 @@ Die Vollversion steht in Abschnitt 34 — diese Punkte brechen ein Review garant
 - **Niemals:** CAN-/UDS-Logik in der UI · OEM-Logik in der CAN-Schicht · monolithische Diagnoseklasse · Secrets im Code · ungeklärte Fremddaten aus Wettbewerbsprodukten · Umgehung von SFD/Security Access · Merge auf roter CI · Absenken der Security-Baseline aus ADR 0009.
 - **Immer:** Roh und dekodiert strikt getrennt (ADR 0004) · Read-only vor Write · jede Schreiboperation über den SafetyManager (Abschnitt 26) · jeder gefundene Fehler wird ein Regressionstest *mit Symptombeschreibung* · Provenance-Metadaten bei Daten (Abschnitt 24) · ISO-Nummer im Kommentar bei Norm-Details (Regel 34.18).
 - **Dependencies:** `transport/*`, `protocols/*`, `definitions` und `shared` bleiben dependency-frei (ADR 0002). Infrastruktur-Dependencies nur nach ADR 0010: Maintenance-Nachweis, Lizenz-Check (MIT/Apache-2.0/BSD), lokal regeneriertes Lockfile im selben PR.
+
+## 0.E Offene Verbesserungen — Backlog (Stand 2026-09-12)
+
+Dieser Backlog ist bewusst **auf Bestehendes beschränkt: keine neuen
+Funktionen**, jede Maßnahme verbessert Vorhandenes. Prioritäten: **P1** =
+Qualität/CI-kritisch, **P2** = Korrektheit/Konsistenz, **P3** =
+Hygiene/Refactoring. Jeder Eintrag nennt den Befund mit Messung (Regel
+34.21) und die konkrete Verbesserung. Ein abgearbeiteter Eintrag wird durch
+den PR entfernt, der ihn behebt — zusammen mit dem Nachziehen von
+0.A/README/CONTRIBUTING (Regel 34.24).
+
+**Am 2026-09-11 abgearbeitet (v1.5):** E1 (CI-Härtung real), E2 (`npm test`
+baut selbst), E3 (Coverage-Wahrheit + ADR 0017), E5 (6 Ebenen, echter
+Frontend-Typecheck), E6 (leeres `catch {}` weg), E7 (Script-Duplikate weg)
+und der Storage-Teil von E4 (Gates 70/45 → 90/55 nach Tests).
+
+**Am 2026-09-12 abgearbeitet (v1.6):** E8 (Engine-Zerlegung, Roadmap-Schritte
+8/9) — `apps/web` ist engine-frei, vollständiges Command-/Query-Vokabular,
+doppelter Live-Start und Doppel-Recording messbar behoben (0 Duplikate),
+`dispose()` schließt den Bus auch nach fehlgeschlagenem Connect; Details im
+Ergebnisabschnitt der Migrations-Roadmap. Offen bleiben:
+
+| Nr. | P | Befund (gemessen am 2026-09-11) | Verbesserung (Bestehendes verbessern, kein Feature) |
+|---|---|---|---|
+| E4 | P2 | `packages/transport/doip/src/transport.ts` bleibt mit 77,4 % lines (Gate 75) und 68,3 % branches (Gate 50) der dünnste sicherheitsnahe Kern; `iso-tp/connection.ts` liegt bei 89,8/75,3 ähnlich nah an seinen Gates. | Bestehende Pfade gezielt nachtesten (Fehler-/Timeout-Zweige, Transport-Verbindungsaufbau), erst danach die transport-Gates anheben (ADR 0017: Tests zuerst). Keine neue Logik. |
+| E10 | P1 | Die vier CI-Workflow-Dateien der Härtung (`ci.yml`-Quality-Job, `codeql.yml`, `dependency-review.yml`, nächtlicher `hardware.yml`) sind fertig entwickelt, aber nicht pushbar: Das GitHub-App-Token der Arbeitsumgebung hat keine `workflows`-Berechtigung, GitHub lehnt den Push der Dateien ab. Sie liegen nur in der Arbeitskopie. | Sobald die App-Installation die `workflows`-Berechtigung hat (GitHub → Settings → Applications → Arena → Repository Permissions → Workflows: Read & Write): die vier Dateien in einem Folge-PR pushen. Bis dahin beschreibt das v1.5-Changelog einen Stand, der erst mit diesem Folge-PR im Repo landet (bewusste, hier dokumentierte Ausnahme von Regel 34.24). |
+| E9 | P3 | `vitest.config.ts` erlaubt in der CI `retry: 2`; der Flaky-Reporter meldet jeden Retry als Warning, aber Retries kaschieren Instabilität (z. B. SSE-/Timing-abhängige Tests). Solange keine Flaky-Meldung aus der CI vorliegt, fehlt der Messbeleg für eine Änderung. | Flaky-Report der CI nach dem ersten Lauf der neuen Workflows auswerten; Ursachen deterministisch machen (Fake-Zeit, explizite Waits statt Sleeps) und `retry` schrittweise Richtung 0 senken. Ohne Flaky-Nachweis bleibt der Wert unangetastet (Regel 34.21). |
 
 ---
 
@@ -838,7 +878,7 @@ UI soll später Web/Desktop/Mobile unterstützen können. Business Logic nicht i
 
 ## 30. Phasen
 
-> **Stand 2026-09-11:** Phase 1 ist implementiert und durch 951 Tests auf sechs Ebenen abgesichert. Phase 2 läuft: OEM-Definition-Pakete existieren als gekennzeichnete Platzhalter, Reports und Session-Persistenz sind gebaut, das DTC-System (Freeze Frames, First/Last-Seen, Safety-gated Clear) ist fertig, die Graphen sind nach AGENTS 16 umgesetzt, die erste KI-Analyse ist ein lokaler Heuristik-Provider hinter der Provider-Abstraktion. Industriestandard-Härtung (ADR 0016) ist gemergt: Biome, Coverage-Gates grün, CI-Matrix mit Quality + Security, `LICENSE`/`CONTRIBUTING`/`CODEOWNERS`.
+> **Stand 2026-09-12:** Phase 1 ist implementiert und durch 971 Tests auf sechs Ebenen abgesichert. Die Engine-Zerlegung (Roadmap-Schritte 8/9) ist vollzogen: `apps/web` spricht ausschließlich über das Command-/Query-Vokabular der Runtime mit dem Fahrzeug, ist `@vdp/core`-frei, und kein Code außerhalb von `@vdp/runtime` erreicht die Engine mehr (Backlog E8 erledigt; Rest: Auflösung der Engine-Klasse selbst, ADR 0014 Phase 4). Phase 2 läuft: OEM-Definition-Pakete existieren als gekennzeichnete Platzhalter, Reports und Session-Persistenz sind gebaut, das DTC-System (Freeze Frames, First/Last-Seen, Safety-gated Clear) ist fertig, die Graphen sind nach AGENTS 16 umgesetzt, die erste KI-Analyse ist ein lokaler Heuristik-Provider hinter der Provider-Abstraktion. Industriestandard-Härtung (ADR 0016) ist gemergt: Biome, Coverage-Gates grün, CI-Matrix mit Quality + Security, `LICENSE`/`CONTRIBUTING`/`CODEOWNERS`.
 
 ### Phase 1
 ```text
@@ -968,6 +1008,8 @@ Der Coding Agent MUSS:
 22. Die Security-Baseline aus ADR 0009 nicht absenken: localhost-Default, Security-Header, Body-Limit, GET-only-Stream. Neue Endpunkte übernehmen die Baseline; Abweichungen brauchen einen eigenen ADR.
 23. Kleine, thematisch reine PRs mit ausgefülltem Template; die Commit-History bleibt lesbar und begründet.
 24. Bei Widerspruch zwischen dieser Datei (oder einem ADR) und dem Repository gilt das Repository — und die Differenz wird im selben PR dokumentiert, der den Stand ändert. Dokumentation, die vom Stand abweicht, ist ein Defekt.
+25. Kein stilles Fehler-Schlucken: leere `catch {}`-Blöcke sind unzulässig. Ein Fehler wird entweder behandelt oder mindestens strukturiert (Level `debug`) mit Grund geloggt (AGENTS 33). Bestehende Verstöße listet 0.E; wer eine solche Stelle berührt, beseitigt sie im selben PR.
+26. `npm test` und `npm run test:coverage` führen den Build selbst aus, weil die Workbench-Integrationstests den kompilierten Chart-Kern über `/lib` aus `dist` beziehen. Diesen Build-Anteil nicht umgehen oder als „überflüssig“ entfernen — ohne ihn antwortet `/lib/index.js` mit 404 (gemessen 2026-09-11). Ein Lauf gegen fehlendes `dist` ist nicht „grün“ und darf nicht als Beleg gemeldet werden (Regel 34.21).
 
 ## 35. Definition of Done
 

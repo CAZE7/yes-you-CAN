@@ -186,4 +186,33 @@ describe("LiveDataEngine", () => {
     const stats = await engine.run([active], new Map([["engine", [signal(0x0c)]]]));
     assert.equal(stats.averageRoundMs, 25);
   });
+
+  test("a crashed poll loop notifies error listeners and rejects", async () => {
+    // The clock throws from the second round on: round-internal failures are
+    // caught per DID, but a loop-level crash must surface (AGENTS 34.25).
+    let calls = 0;
+    const recorder = fakeRecorder();
+    const engine = new LiveDataEngine(decodeAll, recorder as unknown as MeasurementRecorder, {
+      intervalMs: 0,
+      logger,
+      clock: () => {
+        calls += 1;
+        if (calls >= 4) throw new Error("clock failure");
+        return calls;
+      },
+    });
+    const errors: Error[] = [];
+    const off = engine.onError((error) => errors.push(error));
+    const active = reader("engine", new Map([[0x0c, new Uint8Array([0x00, 0x64])]]));
+    await assert.rejects(
+      engine.run([active], new Map([["engine", [signal(0x0c)]]])),
+      /clock failure/,
+    );
+    off();
+    assert.equal(errors.length, 1, "the crash is reported exactly once");
+    const failure = errors[0];
+    assert.ok(failure);
+    assert.match(failure.message, /clock failure/);
+    assert.equal(engine.isRunning, false, "a crashed loop is not running");
+  });
 });

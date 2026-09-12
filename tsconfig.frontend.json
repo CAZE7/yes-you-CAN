@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "strict": true,
+    "noImplicitAny": false,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "paths": {
+      "/graphs.js": ["./apps/web/public/graphs.js"],
+      "/chart.js": ["./apps/web/public/chart.js"],
+      "/lib/index.js": ["./packages/charts/src/index.ts"]
+    }
+  },
+  "include": ["apps/web/public/**/*.js"]
+}
