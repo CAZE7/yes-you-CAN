@@ -117,7 +117,19 @@ export class DoipTransport implements VehicleTransport {
     this.state = "connecting";
     await this.options.socket.connect();
     this.unsubscribe = this.options.socket.onData((chunk) => this.onData(chunk));
-    await this.activateRouting();
+    try {
+      await this.activateRouting();
+    } catch (error) {
+      // A refused or missing routing activation must not leave a half-open
+      // transport behind — the socket would stay connected with a listener
+      // still subscribed, and the next connect() attempt would report a stale
+      // state instead of the real reason (same rule the workbench backend
+      // follows for a failed start, AGENTS 35 "Error Handling").
+      this.state = "error";
+      if (this.lastError === undefined) this.lastError = messageOf(error);
+      await this.releaseSocket();
+      throw error;
+    }
     this.state = "connected";
     this.log.info("DoIP routing activated", {
       tester: `0x${this.testerAddress.toString(16)}`,
@@ -127,15 +139,34 @@ export class DoipTransport implements VehicleTransport {
   }
 
   async disconnect(): Promise<void> {
+    await this.releaseSocket();
+    this.state = "disconnected";
+  }
+
+  /**
+   * Drop the listener, close the socket and settle every pending waiter with
+   * `null` — the callers see "no answer" instead of a promise that never
+   * resolves. A socket that refuses to close is logged, not rethrown: the
+   * transport is on its way out either way (AGENTS 34.25, no silent catch).
+   */
+  private async releaseSocket(): Promise<void> {
     this.unsubscribe?.();
     this.unsubscribe = null;
-    await this.options.socket.close();
-    this.state = "disconnected";
+    try {
+      await this.options.socket.close();
+    } catch (error) {
+      this.log.debug("DoIP socket close failed", { error: messageOf(error) });
+    }
     for (const waiter of this.waiters) {
       clearTimeout(waiter.timer);
       waiter.resolve(null);
     }
     this.waiters = [];
+    for (const waiter of this.routingWaiters) {
+      clearTimeout(waiter.timer);
+      waiter.resolve(null);
+    }
+    this.routingWaiters = [];
   }
 
   async send(data: Uint8Array): Promise<void> {

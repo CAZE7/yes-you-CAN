@@ -305,6 +305,144 @@ test("subscribers learn what changed", () => {
   assert.deepEqual(reasons, ["series", "cursor", "markers"]);
 });
 
+test("toggling visibility is idempotent and ignores unknown signals", () => {
+  const group = new ChartGroup();
+  group.ensureSeries("engine.rpm");
+  const reasons: string[] = [];
+  group.subscribe((reason) => reasons.push(reason));
+
+  group.setVisible("engine.rpm", true);
+  group.setVisible("no.such.signal", false);
+  assert.deepEqual(reasons, [], "a no-op must not make every chart redraw");
+
+  group.toggleVisible("engine.rpm");
+  assert.equal(group.series("engine.rpm")?.visible, false);
+  group.toggleVisible("engine.rpm");
+  assert.equal(group.series("engine.rpm")?.visible, true);
+  group.toggleVisible("no.such.signal");
+  assert.deepEqual(reasons, ["series", "series"], "only the two real changes notify");
+});
+
+test("follow can be switched back on and jumps to the newest sample", () => {
+  const group = new ChartGroup({ defaultSpanMs: 1000, follow: true });
+  group.push("engine.rpm", line(0, 5000, 100));
+  group.zoomBy(2);
+  assert.equal(group.follow, false);
+
+  const frozen = group.viewport.range;
+  group.setFollow(false);
+  assert.deepEqual(group.viewport.range, frozen, "setting the same value changes nothing");
+
+  group.setFollow(true);
+  assert.equal(group.follow, true);
+  assert.ok(group.viewport.to >= 5000, "re-enabling follow jumps to the newest sample");
+
+  const empty = new ChartGroup({ follow: false });
+  empty.setFollow(true);
+  assert.equal(empty.follow, true, "follow can be armed before any data exists");
+  assert.equal(empty.dataBounds(), null);
+});
+
+test("panning by pixels and by time moves the shared window and stops follow", () => {
+  const group = new ChartGroup({ defaultSpanMs: 1000, follow: true });
+  group.push("engine.rpm", line(0, 10_000, 100));
+  group.fitAll();
+  // Zoom in first: a fitted window sits on both bounds, so every pan would be
+  // clamped and the assertion would test the clamp instead of the pan.
+  group.zoomAt(4, 5000);
+  const before = group.viewport.range;
+  assert.ok(before.to - before.from < 10_000, "the window is narrower than the recording");
+
+  // Dragging right (positive pixel delta) moves the window back in time.
+  group.panByPixels(100, 800);
+  const panned = group.viewport.range;
+  assert.equal(group.follow, false, "a manual pan means the user wants to inspect");
+  assert.ok(panned.from < before.from, "the window moved back in time");
+  assert.equal(panned.to - panned.from, before.to - before.from, "panning keeps the span");
+
+  group.panByMs(500);
+  assert.equal(group.viewport.from, panned.from + 500);
+
+  group.showAround(5000);
+  const centred = group.viewport.range;
+  assert.ok(centred.from < 5000 && centred.to > 5000, "the marker sits inside the window");
+  group.showAround(2000, 400);
+  assert.deepEqual(group.viewport.range, { from: 1800, to: 2200 }, "an explicit span is honoured");
+});
+
+test("a repeated cursor and a degenerate selection are ignored", () => {
+  const group = new ChartGroup();
+  const reasons: string[] = [];
+  group.subscribe((reason) => reasons.push(reason));
+  group.setCursor(10);
+  group.setCursor(10);
+  group.setSelection({ from: 100, to: 100 });
+  assert.equal(group.selection, null, "a zero-width selection is not a selection");
+  group.setSelection({ from: 400, to: 100 });
+  assert.deepEqual(group.selection, { from: 100, to: 400 });
+  assert.deepEqual(reasons, ["cursor", "selection"]);
+});
+
+test("statistics of an unknown signal are empty instead of throwing", () => {
+  const group = new ChartGroup();
+  assert.deepEqual(group.stats("does.not.exist"), {
+    count: 0,
+    min: null,
+    max: null,
+    average: null,
+    delta: null,
+    first: null,
+    last: null,
+  });
+});
+
+test("addMarker keeps the list ordered and clear() drops data but keeps the setup", () => {
+  const group = new ChartGroup({ defaultSpanMs: 1000, follow: false });
+  group.ensureSeries("engine.rpm", { name: "Drehzahl", unit: "rpm" });
+  group.push("engine.rpm", line(0, 2000, 100));
+  group.addMarker({ id: "m2", t: 1500, label: "DTC P0420", kind: "dtc" });
+  group.addMarker({ id: "m1", t: 250, label: "Lastwechsel", kind: "user" });
+  assert.deepEqual(
+    group.markers.map((marker) => marker.id),
+    ["m1", "m2"],
+    "a marker added later but earlier in time sorts in front",
+  );
+
+  group.setCursor(500);
+  group.setSelection({ from: 100, to: 900 });
+  const reasons: string[] = [];
+  group.subscribe((reason) => reasons.push(reason));
+  group.clear();
+
+  assert.deepEqual(group.markers, []);
+  assert.equal(group.cursor, null);
+  assert.equal(group.selection, null);
+  assert.equal(group.series("engine.rpm")?.length, 0, "the samples are gone");
+  assert.equal(group.series("engine.rpm")?.name, "Drehzahl", "the metadata survives");
+  assert.equal(group.dataBounds(), null, "the recording bounds are reset");
+  assert.deepEqual(reasons, ["series"], "one change, one notification");
+});
+
+test("a throwing subscriber is isolated and reported, not swallowed (AGENTS 34.25)", () => {
+  // Symptom before the fix: the group caught subscriber errors in an empty
+  // `catch {}`. Isolation is correct — a broken renderer must not break the
+  // others — but the failure disappeared without a trace.
+  const reported: Array<{ reason: string; message: string }> = [];
+  const group = new ChartGroup({
+    onListenerError: (error, reason) =>
+      reported.push({ reason, message: error instanceof Error ? error.message : String(error) }),
+  });
+  const seen: string[] = [];
+  group.subscribe(() => {
+    throw new Error("renderer exploded");
+  });
+  group.subscribe((reason) => seen.push(reason));
+
+  group.ensureSeries("engine.rpm");
+  assert.deepEqual(seen, ["series"], "the healthy renderer still runs");
+  assert.deepEqual(reported, [{ reason: "series", message: "renderer exploded" }]);
+});
+
 test("metadata that arrives late fills gaps without overwriting documented values", () => {
   // Symptom (found by front end type checking): a live sample auto-creates a
   // series that only carries its id; the colour/name assigned later by the

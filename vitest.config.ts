@@ -200,25 +200,35 @@ export default defineConfig({
       // Standards: coverage must be produced even when the run fails.
       reportOnFailure: true,
       thresholds: {
-        // Global gate — tuned to current 91% lines / 80% branches with headroom
-        // for incremental improvement (ADR 0010). Enforced as project average,
-        // not per file, to avoid penalizing hardware-glue modules.
-        lines: 80,
-        branches: 75,
-        functions: 80,
-        statements: 80,
+        // Global gate, enforced as project average (not per file) so hardware
+        // glue modules do not distort it. Raised 80/75 → 90/80 on 2026-09-12
+        // after the DoIP and chart-core backfill measured 96.3% lines / 84.2%
+        // branches / 95.9% functions / 94.4% statements (ADR 0017: tests first,
+        // gates only move up).
+        lines: 90,
+        branches: 80,
+        functions: 90,
+        statements: 90,
         perFile: false,
         // Safety-adjacent cores: per-file gates stay high but branches relaxed
         // to 65 while coverage is backfilled (was 95/90, causing 87 red thresholds).
         'packages/core/src/**': { lines: 85, branches: 65, perFile: true },
         'packages/protocols/**/src/**': { lines: 90, branches: 75, perFile: true },
-        // Adapter/transport glue — hardware paths are mocked, lower but still gated.
+        // Adapter glue — hardware paths are mocked, lower but still gated.
+        // `adapters/host/src/catalog.ts` sits at 68/49 (measured 2026-09-12), so
+        // this profile cannot move up before it is backfilled (AGENTS 0.E).
         'packages/adapters/**/src/**': { lines: 65, branches: 45, perFile: true },
-        'packages/transport/**/src/**': { lines: 75, branches: 50, perFile: true },
+        // Raised 75/50 → 85/70 on 2026-09-12: after the DoIP backfill the
+        // weakest transport file is iso-tp/connection.ts at 92.9/75.3 and
+        // doip/transport.ts went from 78.6/68.3 to 98.5/88.7 (ADR 0017).
+        'packages/transport/**/src/**': { lines: 85, branches: 70, perFile: true },
         // Raised from 70/45 on 2026-09-11 after backfilling the crash-tolerance,
         // migration-persistence and list-resilience paths (ADR 0017: tests first).
         'packages/storage/**/src/**': { lines: 90, branches: 55, perFile: true },
-        'packages/charts/**/src/**': { lines: 75, branches: 70, perFile: true },
+        // Raised 75/70 → 90/75 on 2026-09-12: `group.ts` was the reason the old
+        // gate existed (77.0/77.6, one refactor away from red) and is now at
+        // 99.1/91.3; the weakest chart file is viewport.ts at 92.5/77.1.
+        'packages/charts/**/src/**': { lines: 90, branches: 75, perFile: true },
       },
     },
   },

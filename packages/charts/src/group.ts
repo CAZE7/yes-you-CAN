@@ -31,6 +31,20 @@ export interface ChartGroupOptions {
   paddingFraction?: number;
   /** Ring-buffer size per series. */
   maxPointsPerSeries?: number;
+  /**
+   * Called when a subscriber throws. One broken renderer must not break the
+   * others, but the failure may not disappear either (AGENTS 34.25) — the
+   * default reports it on the debug channel.
+   */
+  onListenerError?: (error: unknown, reason: ChartGroupChange) => void;
+}
+
+/** Default subscriber-error reporter: isolated, but never silent. */
+function reportSubscriberError(error: unknown, reason: ChartGroupChange): void {
+  console.debug("[charts] subscriber failed", {
+    reason,
+    error: error instanceof Error ? error.message : String(error),
+  });
 }
 
 export interface ReadoutRow {
@@ -58,6 +72,7 @@ export class ChartGroup {
   private selectionRange: TimeRange | null = null;
   private followEnabled: boolean;
   private readonly listeners = new Set<(reason: ChartGroupChange) => void>();
+  private readonly onListenerError: (error: unknown, reason: ChartGroupChange) => void;
   private readonly maxPoints: number;
 
   constructor(options: ChartGroupOptions = {}) {
@@ -71,6 +86,7 @@ export class ChartGroup {
     });
     this.followEnabled = options.follow ?? true;
     this.maxPoints = options.maxPointsPerSeries ?? 200_000;
+    this.onListenerError = options.onListenerError ?? reportSubscriberError;
   }
 
   // ------------------------------------------------------------------ series
@@ -336,8 +352,10 @@ export class ChartGroup {
     for (const listener of this.listeners) {
       try {
         listener(reason);
-      } catch {
-        // A broken renderer must not break the other renderers.
+      } catch (error) {
+        // A broken renderer must not break the other renderers — and must not
+        // fail silently either, so the error is reported (AGENTS 34.25).
+        this.onListenerError(error, reason);
       }
     }
   }
