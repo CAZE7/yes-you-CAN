@@ -345,11 +345,12 @@ const _MAX_TRACE = 800;
  *
  * `VirtualCanNetwork` dispatches in-process and without latency unless
  * `latencyMs` is configured, so the core default (1200 ms listen window plus
- * 15 ms per candidate) is dead time: measured 2026-09-12, a workbench start
- * against the simulator spent ~1.37 s in discovery before the first ECU was
- * visible, and every integration test paid it once per start. Replay and
- * hardware keep the core default — there the window is what makes late
- * responders visible at all (AGENTS 12).
+ * 15 ms per candidate) is dead time before the first ECU is visible. Measured
+ * 2026-09-12 on Node 22: `DemoBackend.start()` against the simulator took
+ * 1413.5 ms with the core default and 69.1 ms with this budget — same result
+ * (`connected: true`, 3 ECUs) — and every integration test used to pay the
+ * slow variant once per start. Replay and hardware keep the core default:
+ * there the window is what makes late responders visible at all (AGENTS 12).
  */
 const SIMULATOR_DISCOVERY: ConnectVehicleOptions = { windowMs: 40, probeDelayMs: 0 };
 
