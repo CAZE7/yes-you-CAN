@@ -57,7 +57,15 @@ AGENTS 0.E (E9) mit „explizite Waits statt Sleeps“ adressiert.
 
 - Gemessen nach der Umstellung (Node 22, 2026-09-12): **Gesamtlauf 71,69 s →
   23,83 s**, Replay 11,74 s → 1,41 s, Integration 36,67 s → 7,71 s,
-  Regression 3,97 s → 1,57 s. 991 Tests grün.
+  Regression 3,97 s → 1,57 s. 991 Tests grün. In der CI desselben PRs
+  fiel die Job-Laufzeit von 39 s auf 18 s.
+- Der Operator spült denselben Gewinn: ein Kaltstart der Workbench gegen den
+  Simulator (`DemoBackend.start()`, gemessen über den kompilierten Build)
+  dauerte **1413,5 ms** mit dem alten Default und **69,1 ms** mit dem
+  Simulator-Budget — Faktor 20,5 bei identischem Ergebnis (`connected: true`,
+  3 ECUs). Über HTTP nachgemessen: `POST /api/start` 83 ms, danach
+  `dtc/scan` (8 DTCs über 3 ECUs), `live/start` → 10 Samples/8 Marker nach
+  einer Sekunde, CSV- und PDF-Export jeweils HTTP 200.
 - Kürzere, deterministischere Läufe senken die Wahrscheinlichkeit, dass die CI
   Retries braucht; sie sind die Voraussetzung, um `retry: 2` in
   `vitest.config.ts` irgendwann zu senken (AGENTS 0.E, E9).
