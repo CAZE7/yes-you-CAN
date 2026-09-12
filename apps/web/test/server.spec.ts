@@ -33,6 +33,39 @@ async function json(
   };
 }
 
+/**
+ * Wait for a condition instead of sleeping a fixed time.
+ *
+ * The four live-data tests used to sleep 300–400 ms for samples the 60 ms poll
+ * loop normally delivers after ~70 ms: slow on an idle machine and a race on a
+ * loaded CI runner — exactly the "explizite Waits statt Sleeps" fix AGENTS 0.E
+ * (E9) asks for. Polling returns as soon as the condition holds and reports the
+ * timeout instead of a confusing assertion on a half-filled recording.
+ */
+async function waitFor<T>(
+  probe: () => Promise<T>,
+  satisfied: (value: T) => boolean,
+  timeoutMs = 5_000,
+): Promise<T> {
+  const deadline = Date.now() + timeoutMs;
+  let value = await probe();
+  while (!satisfied(value)) {
+    assert.ok(Date.now() < deadline, `condition not met within ${timeoutMs} ms`);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    value = await probe();
+  }
+  return value;
+}
+
+/** Wait until the recording holds at least `count` samples of `signal`. */
+async function waitForSamples(base: string, count = 1, signal = "engine.rpm"): Promise<void> {
+  await waitFor(
+    async () =>
+      ((await json(base, "/api/history")).body as { samples: Array<{ signal: string }> }).samples,
+    (samples) => samples.filter((sample) => sample.signal === signal).length >= count,
+  );
+}
+
 test("the index page and every front end asset are served", async () => {
   await withServer(async (base) => {
     for (const path of ["/", "/app.js", "/styles.css", "/chart.js", "/graphs.js"]) {
@@ -108,7 +141,8 @@ test("live data produces decoded samples with statistics", async () => {
       body: JSON.stringify({ signalIds: ["engine.rpm"] }),
     });
     assert.equal((started.body as { live: boolean }).live, true);
-    await new Promise((resolve) => setTimeout(resolve, 400));
+    // Two rounds so min/max/delta statistics are computed over real data.
+    await waitForSamples(base, 2);
 
     const state = (await json(base, "/api/state")).body as {
       live: boolean;
@@ -160,7 +194,7 @@ test("exports produce CSV, JSON, HTML and a valid PDF", async () => {
       method: "POST",
       body: JSON.stringify({ signalIds: ["engine.rpm"] }),
     });
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await waitForSamples(base);
     await json(base, "/api/live/stop", { method: "POST" });
 
     const csv = await (await fetch(`${base}/api/export/measurements.csv`)).text();
@@ -237,7 +271,7 @@ test("sessions can be saved, listed and downloaded as a package", async () => {
       method: "POST",
       body: JSON.stringify({ signalIds: ["engine.rpm"] }),
     });
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await waitForSamples(base);
     await json(base, "/api/live/stop", { method: "POST" });
 
     const saved = await json(base, "/api/session/save", { method: "POST" });
@@ -277,7 +311,7 @@ test("the graph history carries numeric values and DTC markers (AGENTS 16, 20)",
       method: "POST",
       body: JSON.stringify({ signalIds: ["engine.rpm"] }),
     });
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await waitForSamples(base);
 
     const result = await json(base, "/api/history");
     assert.equal(result.status, 200);

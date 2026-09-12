@@ -168,6 +168,8 @@ export class DiagnosticEngine {
     discoveryOptions: {
       windowMs?: number;
       candidates?: Array<{ txId: number; rxId: number; extended?: boolean }>;
+      /** Pause between single probes (see `DiscoveryOptions.probeDelayMs`). */
+      probeDelayMs?: number;
     } = {},
   ): Promise<ConnectResult> {
     const bus = this.requireBus("connect()");
@@ -194,6 +196,9 @@ export class DiagnosticEngine {
       logger: this.log,
       ...(discoveryOptions.windowMs !== undefined ? { windowMs: discoveryOptions.windowMs } : {}),
       ...(discoveryOptions.candidates ? { candidates: discoveryOptions.candidates } : {}),
+      ...(discoveryOptions.probeDelayMs !== undefined
+        ? { probeDelayMs: discoveryOptions.probeDelayMs }
+        : {}),
     });
     const discovered = await discovery.discover(this.definitions);
 

@@ -66,7 +66,9 @@ afterAll(async () => {
 });
 
 test("runtime.connect() discovers ECUs through the command bus", async () => {
-  const result = await runtime.commands.dispatch(connectVehicle({ windowMs: 120 }));
+  const result = await runtime.commands.dispatch(
+    connectVehicle({ windowMs: 120, probeDelayMs: 0 }),
+  );
   assert.ok(result.session.sessionId.length > 0);
   assert.ok(result.ecus.length >= 3, `expected at least 3 ECUs, got ${result.ecus.length}`);
   assert.ok(result.vehicle?.vin, "VIN must be detected through the runtime");

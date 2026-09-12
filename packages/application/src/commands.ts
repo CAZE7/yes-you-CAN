@@ -45,8 +45,17 @@ export interface ConnectVehicleResult {
 }
 
 export interface ConnectVehicleOptions {
-  /** Discovery window in ms; the engine default applies when omitted. */
+  /**
+   * Discovery listen window in ms; the engine default applies when omitted.
+   * Bounds the two listen phases only — the probe loop adds one
+   * {@link ConnectVehicleOptions.probeDelayMs} per candidate.
+   */
   windowMs?: number;
+  /**
+   * Pause between two single ECU probes in ms; the core default (15) applies
+   * when omitted. Tests and deterministic replays pass 0 (AGENTS 31).
+   */
+  probeDelayMs?: number;
 }
 
 export interface ConnectVehicleCommand extends Command<ConnectVehicleResult> {

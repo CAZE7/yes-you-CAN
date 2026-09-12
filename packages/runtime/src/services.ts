@@ -188,7 +188,12 @@ export class VehicleService {
 
   async connect(options?: ConnectVehicleOptions): Promise<ConnectVehicleResult> {
     const { session } = await this.engine.connect(
-      options?.windowMs !== undefined ? { windowMs: options.windowMs } : {},
+      options === undefined
+        ? {}
+        : {
+            ...(options.windowMs !== undefined ? { windowMs: options.windowMs } : {}),
+            ...(options.probeDelayMs !== undefined ? { probeDelayMs: options.probeDelayMs } : {}),
+          },
     );
     const summaries = this.ecus.list();
     for (const ecu of summaries) {

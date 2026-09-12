@@ -28,6 +28,16 @@ export interface DiscoveredEcu {
   frames: number;
 }
 
+/**
+ * Pause between two single probes (ms).
+ *
+ * Long enough that a real bus is not flooded and a slow ECU can still answer
+ * the functional broadcast, short enough that a definition package with a dozen
+ * candidates stays responsive. Was hard-coded until 2026-09-12; see
+ * {@link DiscoveryOptions.probeDelayMs}.
+ */
+export const DEFAULT_PROBE_DELAY_MS = 15;
+
 export interface DiscoveryOptions {
   functionalId?: number;
   /** How long to listen for answers. */
@@ -37,6 +47,17 @@ export interface DiscoveryOptions {
   /** Candidate identifiers to probe individually in addition to the functional request. */
   candidates?: Array<{ txId: number; rxId: number; extended?: boolean }>;
   extended?: boolean;
+  /**
+   * Pause between two single probes; defaults to {@link DEFAULT_PROBE_DELAY_MS}.
+   *
+   * The effective discovery duration is `windowMs + candidates × probeDelayMs`:
+   * `windowMs` bounds the two listen phases only, the probe loop adds one delay
+   * per candidate. Measured 2026-09-12 while the delay was hard-coded to 15 ms:
+   * `windowMs: 30` against the generic package (11 candidates) still took
+   * ~200 ms and callers had no way to shorten it. Tests inject 0 to stay
+   * deterministic (AGENTS 31); production keeps the default.
+   */
+  probeDelayMs?: number;
   logger?: Logger;
   sleep?: (ms: number) => Promise<void>;
 }
@@ -81,6 +102,7 @@ export class EcuDiscovery {
    */
   async discover(definitions?: readonly DefinitionPackage[]): Promise<DiscoveredEcu[]> {
     const windowMs = this.options.windowMs ?? 1200;
+    const probeDelayMs = this.options.probeDelayMs ?? DEFAULT_PROBE_DELAY_MS;
     const functionalId = this.options.functionalId ?? 0x7df;
     const extended = this.options.extended ?? false;
     const probeService = this.options.probeService ?? SID.TESTER_PRESENT;
@@ -106,18 +128,20 @@ export class EcuDiscovery {
     const unsubscribe = this.bus.subscribe((frame) => record(frame));
 
     try {
+      const candidates = this.options.candidates ?? collectCandidates(definitions);
       this.log.info("ECU discovery started", {
         functionalId: `0x${functionalId.toString(16)}`,
         windowMs,
+        probeDelayMs,
+        candidates: candidates.length,
       });
       await this.sendFunctionalProbe(functionalId, probeService, extended);
       await this.sleep(windowMs / 2);
 
-      const candidates = this.options.candidates ?? collectCandidates(definitions);
       for (const candidate of candidates) {
         if (this.bus.isOpen() === false) break;
         await this.probeSingle(candidate.txId, probeService, candidate.extended ?? extended);
-        await this.sleep(15);
+        await this.sleep(probeDelayMs);
       }
       await this.sleep(windowMs / 2);
     } finally {

@@ -32,6 +32,7 @@ import {
   HeuristicAnalysisProvider,
 } from "@vdp/ai";
 import {
+  type ConnectVehicleOptions,
   addMarker,
   clearDtcs,
   connectVehicle,
@@ -330,9 +331,27 @@ export interface BackendOptions {
   bus?: CanBus;
   /** Trace used by the replay adapter, as a file path or raw JSON text. */
   trace?: string;
+  /**
+   * Discovery timing for {@link DemoBackend.start}. When omitted the backend
+   * picks per mode — see {@link SIMULATOR_DISCOVERY}.
+   */
+  discovery?: ConnectVehicleOptions;
 }
 
 const _MAX_TRACE = 800;
+
+/**
+ * Discovery timing while the simulator is the transport.
+ *
+ * `VirtualCanNetwork` dispatches in-process and without latency unless
+ * `latencyMs` is configured, so the core default (1200 ms listen window plus
+ * 15 ms per candidate) is dead time: measured 2026-09-12, a workbench start
+ * against the simulator spent ~1.37 s in discovery before the first ECU was
+ * visible, and every integration test paid it once per start. Replay and
+ * hardware keep the core default — there the window is what makes late
+ * responders visible at all (AGENTS 12).
+ */
+const SIMULATOR_DISCOVERY: ConnectVehicleOptions = { windowMs: 40, probeDelayMs: 0 };
 
 /**
  * Where the CAN traffic comes from.
@@ -519,6 +538,15 @@ export class DemoBackend {
     }
   }
 
+  /**
+   * Discovery timing for this start: explicit option wins, otherwise the
+   * simulator gets a short window and every real transport keeps the default.
+   */
+  private discoveryTiming(): ConnectVehicleOptions {
+    if (this.options.discovery) return this.options.discovery;
+    return this.mode === "simulator" ? SIMULATOR_DISCOVERY : {};
+  }
+
   /** Open the selected transport and run ECU discovery. */
   async start(): Promise<AppState> {
     if (this.connected) return this.state();
@@ -560,7 +588,7 @@ export class DemoBackend {
       this.unsubscribeEvents = this.runtime.events.subscribe("diagnostic-error", (payload) => {
         this.emit("error", { message: payload.message });
       });
-      const result = await this.runtime.commands.dispatch(connectVehicle());
+      const result = await this.runtime.commands.dispatch(connectVehicle(this.discoveryTiming()));
       this.connected = true;
       this.ecus = result.ecus.map((summary) => toEcuView(summary));
       this.sessionLogger.log("backend", "connected", {

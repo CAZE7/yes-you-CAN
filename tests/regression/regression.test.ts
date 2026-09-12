@@ -363,7 +363,7 @@ test("REGRESSION: the workbench lost the ECU name in its state snapshot", async 
     definitions: [genericPackage],
     logger,
   });
-  await engine.connect();
+  await engine.connect({ windowMs: 60, probeDelayMs: 0 });
   await engine.startLiveData({ signalIds: ["engine.rpm"], intervalMs: 40, maxRounds: 2 });
   await new Promise((resolve) => setTimeout(resolve, 250));
 
@@ -395,7 +395,7 @@ test("REGRESSION: echoed transmissions were discovered as phantom ECUs", async (
     logger,
   });
   try {
-    const result = await engine.connect();
+    const result = await engine.connect({ windowMs: 60, probeDelayMs: 0 });
     const ids = result.ecus.map((ecu) => ecu.rxId).sort((a, b) => a - b);
 
     assert.deepEqual(
@@ -440,7 +440,7 @@ test("REGRESSION: service probing during connect wiped part of the fault memory"
     logger,
   });
   try {
-    await engine.connect({ windowMs: 60 });
+    await engine.connect({ windowMs: 60, probeDelayMs: 0 });
     const scanned = await engine.scanDtcs();
     const codes = scanned.flatMap((entry) => entry.dtcs.map((dtc) => `${dtc.code}:${dtc.status}`));
     assert.ok(
@@ -488,7 +488,7 @@ test("REGRESSION: a truncated clear request cleared instead of being rejected", 
     logger,
   });
   try {
-    await engine.connect({ windowMs: 60 });
+    await engine.connect({ windowMs: 60, probeDelayMs: 0 });
     const handle = engine.handleFor(0x7e8);
     assert.ok(handle, "engine ECU must be reachable");
 
@@ -538,7 +538,7 @@ test("REGRESSION: an invalid reset type was answered positively", async () => {
     logger,
   });
   try {
-    await engine.connect({ windowMs: 60 });
+    await engine.connect({ windowMs: 60, probeDelayMs: 0 });
     const handle = engine.handleFor(0x7e8);
     assert.ok(handle);
 

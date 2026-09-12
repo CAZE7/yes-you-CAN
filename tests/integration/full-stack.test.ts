@@ -45,7 +45,7 @@ test("adapter status is reported before and after connecting (AGENTS 29)", async
 });
 
 test("ECU discovery finds the ECUs defined by the package (AGENTS 12)", async () => {
-  const { ecus } = await engine.connect({ windowMs: 120 });
+  const { ecus } = await engine.connect({ windowMs: 120, probeDelayMs: 0 });
   const rxIds = ecus.map((e) => e.rxId).sort((a, b) => a - b);
   assert.ok(
     rxIds.includes(0x7e8),
