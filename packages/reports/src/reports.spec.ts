@@ -83,6 +83,85 @@ test("non-Latin-1 characters are mapped so byte offsets stay valid", () => {
   assert.equal(sanitize("°C"), "°C");
 });
 
+/** One char per byte, so string indices in these tests are byte offsets. */
+const asLatin1 = (bytes: Uint8Array) => Array.from(bytes, (b) => String.fromCharCode(b)).join("");
+
+const contains = (bytes: Uint8Array, sequence: number[]) => {
+  for (let i = 0; i <= bytes.length - sequence.length; i += 1) {
+    if (sequence.every((value, n) => bytes[i + n] === value)) return true;
+  }
+  return false;
+};
+
+test("report text is written as Latin-1, not UTF-8 (regression: mojibake)", () => {
+  const doc = new PdfDocument();
+  doc.text("Kühlmittel 90 °C", 40, 800);
+  const bytes = doc.toBytes();
+  // The fonts declare /WinAnsiEncoding, so one byte is one glyph. UTF-8 puts two
+  // bytes there and a reader shows "KÃ¼hlmittel 90 Â°C" — measured 2026-09-12.
+  assert.ok(contains(bytes, [0xfc]), "ü must be the single Latin-1 byte 0xFC");
+  assert.ok(contains(bytes, [0xb0]), "° must be the single Latin-1 byte 0xB0");
+  assert.ok(!contains(bytes, [0xc3, 0xbc]), "no UTF-8 sequence for ü");
+  assert.ok(!contains(bytes, [0xc2, 0xb0]), "no UTF-8 sequence for °");
+  // The binary header comment is four raw bytes above 127 by convention.
+  assert.deepEqual([...bytes.subarray(9, 15)], [0x25, 0xe2, 0xe3, 0xcf, 0xd3, 0x0a]);
+});
+
+test("stream lengths and xref offsets describe the bytes that are really there", () => {
+  const doc = new PdfDocument();
+  doc.text("Kühlmittel 90 °C · ≥ ≤ • €", 40, 800);
+  doc.addPage();
+  doc.text("zweite Seite", 40, 800);
+  const text = asLatin1(doc.toBytes());
+
+  const streams = [...text.matchAll(/\/Length (\d+) >>\nstream\n([\s\S]*?)\nendstream/g)];
+  assert.ok(streams.length >= 2, "expected one content stream per page");
+  for (const match of streams) {
+    const declared = match[1];
+    const body = match[2];
+    assert.ok(declared !== undefined && body !== undefined, "both capture groups must match");
+    assert.equal(
+      Number(declared),
+      body.length,
+      "/Length must equal the bytes between stream and endstream",
+    );
+  }
+  const startxref = Number(text.match(/startxref\n(\d+)/)?.[1] ?? "");
+  assert.equal(
+    text.slice(startxref, startxref + 4),
+    "xref",
+    "startxref must point at the xref table",
+  );
+  // Every in-use entry must point at the object it claims to describe.
+  const entries = [...text.matchAll(/^(\d{10}) 00000 n $/gm)].map((m) => Number(m[1]));
+  assert.ok(entries.length >= 4, "expected an xref entry per object");
+  entries.forEach((offset, index) => {
+    assert.ok(
+      text.startsWith(`${index + 1} 0 obj`, offset),
+      `xref entry ${index + 1} must point at object ${index + 1}, found ` +
+        `${JSON.stringify(text.slice(offset, offset + 12))}`,
+    );
+  });
+});
+
+test("sanitize maps the characters a diagnostic report really uses into Latin-1", () => {
+  assert.equal(sanitize("→"), "->");
+  assert.equal(sanitize("•"), "-");
+  assert.equal(sanitize("≥"), ">=");
+  assert.equal(sanitize("≤"), "<=");
+  assert.equal(sanitize("€"), "EUR");
+  assert.equal(sanitize("日本"), "??");
+  // Nothing above Latin-1 may survive: that is the whole point of sanitize.
+  for (const text of ["→", "•", "≥", "≤", "€", "日本", "90 °C", "Kühlmittel", "→ ≥ • € 日本"]) {
+    for (const char of sanitize(text)) {
+      assert.ok(
+        (char.codePointAt(0) ?? 0) <= 0xff,
+        `${JSON.stringify(text)} left a non-Latin-1 character`,
+      );
+    }
+  }
+});
+
 test("multi-page documents list every page in the page tree", () => {
   const pdf = new PdfDocument();
   pdf.text("page 1", 40, 800);
