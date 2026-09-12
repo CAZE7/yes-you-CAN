@@ -44,7 +44,7 @@
     "demo": "npm run build && node apps/web/dist/src/server.js --demo --sessions=./sessions-local"
   },
   "devDependencies": {
-    "@biomejs/biome": "^1.9.4",
+    "@biomejs/biome": "^2.5.12",
     "@types/node": "^26.5.0",
     "@vitest/coverage-v8": "5.0.0",
     "fast-check": "4.9.0",
