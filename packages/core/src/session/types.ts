@@ -1,20 +1,16 @@
 /**
- * Vehicle determination as a session record (AGENTS 11/11.1, ADR 0023 → ADR 0026).
+ * Determination record types of a session (AGENTS 11/11.1, ADR 0026).
  *
- * The resolver answers with a *ranking plus evidence*, never with a hard fact
- * (§11.1). A session therefore has to store the answer in a shape that keeps the
- * two properties that make it an answer at all: which car was picked, and how far
- * the evidence reached. This module owns the record form, which is written to disk,
- * read by the report builder and quoted by the analysis layer.
+ * A type-only module, like `measurements/types.ts`: nothing here produces runtime
+ * code, which is also why the resolver's richer `VehicleCandidate` from the
+ * definitions layer is not reused. A session record is written to disk, read by the
+ * report builder — which may import `@vdp/core` and nothing else — and quoted by the
+ * analysis layer, so the shape has to live where all three can reach it.
  *
- * The rule that keeps this honest: a determination states the *share of evaluated
- * criteria* and the contradictions; it never states certainty. `match` is absent
- * exactly when nothing had positive evidence, and then `reason` carries why (§11.1
- * rule 3: an empty result is a valid answer with a reason, never an empty mask).
- *
- * The richer `VehicleCandidate` of the definitions layer is deliberately not reused
- * here: `@vdp/reports` may import `@vdp/core` and nothing else, so the record a
- * session writes has to be shaped where both of its readers can reach it.
+ * The rule that keeps this honest: a determination states the share of *evaluated*
+ * criteria and the contradictions; it never states certainty. `match` is absent
+ * exactly when nothing had positive evidence, and then `reason` carries why — §11.1
+ * rule 3: an empty result is a valid answer with a reason, never an empty mask.
  */
 
 /** One criterion that spoke for or against the recorded candidate (§11.1 rule 2). */
@@ -60,9 +56,14 @@ export interface VehicleMatch {
 /**
  * One resolution attempt of one session.
  *
- * `resolvedAt` is when the resolver ran, not when the session started: a session
- * can resolve again after the operator supplies a part number, and the report has
- * to be able to say which of the two the record describes.
+ * `resolvedAt` is when the resolver ran, not when the session started: a session can
+ * resolve again after the operator supplies a part number, and the report has to be
+ * able to say which of the two the record describes.
+ *
+ * The record never rewrites the measured identity (`VehicleIdentity`): the identity
+ * holds what was *read* — VIN, DIDs, the ECUs that answered —, this holds what was
+ * *concluded*. A conclusion that appears among its own premises confirms itself; see
+ * the regression entry "a resolved vehicle confirmed itself in the next resolution".
  */
 export interface VehicleDetermination {
   resolvedAt: string;
@@ -75,27 +76,10 @@ export interface VehicleDetermination {
   /** Observations no registered definition could explain. */
   unexplained: readonly string[];
   /**
-   * Candidates ranked below the winner, reduced to what a reader can weigh: a
-   * stored session keeps that the answer was a ranking, not a single fact
-   * (§11.1 rule 1). The full candidate list is deliberately not persisted — it is
-   * recomputable, and a second copy of it would be a second source of truth.
+   * Candidates ranked below the winner, reduced to what a reader can weigh: a stored
+   * session keeps that the answer was a ranking, not a single fact (§11.1 rule 1).
+   * The full candidate list is deliberately not persisted — it is recomputable, and a
+   * second copy of it would be a second source of truth.
    */
   alternatives: ReadonlyArray<{ vehicleId: string; oem: string; score: number }>;
-}
-
-/** One line per match: what the car is and how far the evidence reached. */
-export function describeDetermination(determination: VehicleDetermination | undefined): string {
-  const match = determination?.match;
-  if (!match) return determination?.reason ?? "unknown vehicle";
-  const percent = Math.round(match.score * 100);
-  const name = `${match.brand} ${match.model}`.trim();
-  const powertrain = [...match.engineIds, ...match.gearboxIds].join("/");
-  const parts = [
-    name.length > 0 ? name : match.vehicleId,
-    match.vehicleId,
-    powertrain.length > 0 ? powertrain : undefined,
-    `${percent} % belegt`,
-    `Paket ${match.oem} ${match.packageVersion}`,
-  ];
-  return parts.filter((part): part is string => part !== undefined).join(" · ");
 }

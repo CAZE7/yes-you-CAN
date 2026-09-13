@@ -10,8 +10,8 @@ import type { DtcRecord } from "@vdp/protocols-uds";
 import { createId, nowIso } from "@vdp/shared";
 import type { AdapterInfo, TransportInfo } from "@vdp/transport-can";
 import type { EnrichedDtc } from "../dtc/scanner.js";
-import type { VehicleDetermination } from "../vehicle/determination.js";
 import type { VehicleIdentity } from "../vehicle/identity.js";
+import type { VehicleDetermination } from "./types.js";
 
 export const SESSION_SCHEMA_VERSION = 1;
 

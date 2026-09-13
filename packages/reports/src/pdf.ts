@@ -223,6 +223,19 @@ function mapUnicode(code: number): string {
   switch (code) {
     case 0x2192:
       return "->";
+    // The ellipsis and both dashes are in the data a report quotes — package texts
+    // write "45…55 km/h" and use an em dash as a separator, and the report itself
+    // prints "—" wherever a value is absent. Measured before these cases existed: a
+    // PDF line "45…55 km/h — Kühlung" came out as "45?55 km/h ? Kühlung", and every
+    // empty row of every exported report printed a question mark. Same class as the
+    // ü/° mojibake ADR 0021 fixed; the difference is that these four are unavoidable,
+    // because they are inside quoted source text rather than in a label.
+    case 0x2026:
+      return "...";
+    case 0x2014:
+    case 0x2013:
+    case 0x2212:
+      return "-";
     case 0x2022:
       return "-";
     case 0x2265:
