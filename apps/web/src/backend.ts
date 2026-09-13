@@ -84,6 +84,7 @@ import {
   createWebAdapterCatalog,
   isApplicationManaged,
 } from "./adapters.js";
+import { type DtcKnowledgeView, toDtcKnowledgeView } from "./dtc-knowledge-view.js";
 import { type VehicleResolutionView, toVehicleResolutionView } from "./vehicle-view.js";
 
 export interface EcuView {
@@ -203,6 +204,14 @@ export interface DtcView {
   freezeFrame?: boolean;
   /** Provenance of the description — never present invented knowledge (AGENTS 24). */
   provenance?: string;
+  /**
+   * What the resolved vehicle's variant knowledge adds to this code (AGENTS 20,
+   * 23): the scope that says where the wording came from, the documented failure
+   * patterns with their measurement checks, and what is missing or assumed.
+   * Absent when no vehicle is resolved or nothing is documented — the UI then
+   * shows the manufacturer-wide wording and says that it does.
+   */
+  knowledge?: DtcKnowledgeView;
 }
 
 export interface SampleView {
@@ -1169,6 +1178,7 @@ export class DemoBackend {
       ...(info.lastSeen ? { lastSeen: info.lastSeen } : {}),
       ...(info.firstSeenInThisScan ? { isNew: true } : {}),
       ...(info.relatedSignals ? { relatedSignals: [...info.relatedSignals] } : {}),
+      ...(info.knowledge ? { knowledge: toDtcKnowledgeView(info.knowledge) } : {}),
       freezeFrame: info.hasFreezeFrame,
     };
   }

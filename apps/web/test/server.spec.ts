@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { createLogger } from "@vdp/shared";
 import { test } from "vitest";
 import { waitFor } from "../../../tests/helpers/wait.js";
+import type { DtcView } from "../src/backend.js";
 import { WebServer } from "../src/server.js";
 import type { VehicleResolutionView } from "../src/vehicle-view.js";
 
@@ -382,13 +383,40 @@ test("DTC descriptions come from the definition package, not from invention (AGE
   await withServer(async (base) => {
     await json(base, "/api/start", { method: "POST" });
     const scanned = await json(base, "/api/dtc/scan", { method: "POST" });
-    const dtcs = (
-      scanned.body as { dtcs: Array<{ code: string; description?: string; hint?: string }> }
-    ).dtcs;
+    const dtcs = (scanned.body as { dtcs: DtcView[] }).dtcs;
     const catalyst = dtcs.find((dtc) => dtc.code === "P0420");
     assert.ok(catalyst, "the seeded catalyst code must be reported");
-    assert.match(catalyst.description ?? "", /Catalyst system efficiency below threshold/);
+    // The demo resolves the virtual vehicle on connect, so the wording is the one
+    // this variant documents — not the manufacturer-wide text (AGENTS 20, 23).
+    assert.match(catalyst.description ?? "", /Catalyst efficiency below threshold/);
     assert.ok((catalyst.hint ?? "").length > 20, "a documented code brings a next diagnostic step");
+    const knowledge = catalyst.knowledge;
+    assert.ok(knowledge, "the resolved variant documents this code");
+    assert.equal(knowledge.scope, "vehicle-engine");
+    assert.equal(knowledge.variant, true);
+    assert.equal(knowledge.scopeLabel, "Varianten-Wissen · Motor");
+    assert.equal(knowledge.scopeShort, "Motor");
+    assert.equal(knowledge.vehicleId, "virtual-vehicle");
+    assert.match(knowledge.conditions ?? "", /closed loop/);
+    assert.match(
+      knowledge.provenance ?? "",
+      /eigene Daten/,
+      "the source of the statement is named",
+    );
+    assert.deepEqual(
+      knowledge.patterns.map((pattern) => pattern.id),
+      ["catalyst-aged", "exhaust-leak-before-catalyst"],
+    );
+    const aged = knowledge.patterns[0];
+    assert.equal(aged?.likelihoodLabel, "häufig");
+    assert.ok(aged?.repair, "repair advice is labelled and travels with its pattern");
+    assert.ok(
+      aged?.checks.every(
+        (check) => check.measurable && check.window.length > 0 && check.name.length > 0,
+      ),
+      "every seeded check names a signal and a window a tool can evaluate",
+    );
+    assert.equal(aged?.checks[0]?.judgement, "automatisch prüfbar");
 
     // Codes that no definition describes are shown as such, never guessed.
     const undescribed = dtcs.find((dtc) => dtc.code === "C1234");
@@ -396,6 +424,18 @@ test("DTC descriptions come from the definition package, not from invention (AGE
       undescribed?.description ?? "",
       /Fehlertyp|Brake/,
       "an undocumented code keeps its raw failure type",
+    );
+
+    // A code the package describes but this variant does not stays labelled as
+    // package-wide wording instead of borrowing the variant's appearance (§24).
+    const wheelSpeed = dtcs.find((dtc) => dtc.code === "C0035");
+    assert.equal(wheelSpeed?.knowledge?.variant, false);
+    assert.equal(wheelSpeed?.knowledge?.scopeLabel, "nur paketweit beschrieben");
+    assert.ok(
+      wheelSpeed?.knowledge?.notes.some((note) =>
+        note.includes("no variant-specific knowledge documented"),
+      ),
+      wheelSpeed?.knowledge?.notes.join(" | "),
     );
   });
 });

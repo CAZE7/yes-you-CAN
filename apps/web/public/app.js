@@ -220,6 +220,16 @@ function renderDtcs(dtcs) {
     if (severityCell) severityCell.className = `sev-${dtc.severity}`;
     if (dtc.isNew) body.lastElementChild?.classList.add("is-new");
 
+    // A code this variant documents says so in the list already; one that is only
+    // described package-wide stays unmarked instead of looking equally specific.
+    const knowledge = dtc.knowledge;
+    if (knowledge?.variant) {
+      const descriptionCell = body.lastElementChild?.children[1];
+      descriptionCell?.append(
+        el("span", { class: "pill pill-online dtc-pill", text: knowledge.scopeShort }),
+      );
+    }
+
     // Actions per row: "Details" opens the decoded entry and its freeze frame,
     // "Löschen" fills the guarded write form below. The clear itself stays behind
     // the explicit confirmation, never behind a single click (AGENTS 20, 25/26).
@@ -460,6 +470,99 @@ function formatSeen(dtc) {
   return `${first.toLocaleTimeString("de-DE")}${same ? "" : ` → ${last.toLocaleTimeString("de-DE")}`}`;
 }
 
+/* ------------------------------- Wissen pro Fahrzeugvariante (AGENTS 20, 23) */
+
+/**
+ * Renders the variant knowledge the backend already translated
+ * (`dtc-knowledge-view.ts`): the labels, the numeric windows and the judgement of
+ * a check arrive as text, so this file adds no vocabulary of its own (AGENTS 5).
+ *
+ * Notes are rendered as warnings. They say what had to be assumed or what cannot
+ * be measured — hiding them would turn a hypothesis into a fact (§24).
+ */
+function knowledgeNodes(knowledge) {
+  if (!knowledge) return [];
+  const nodes = [
+    el("div", { class: "knowledge-head" }, [
+      el("h4", { text: "Wissen zu diesem Fahrzeug" }),
+      el("span", {
+        class: knowledge.variant ? "pill pill-online" : "pill pill-offline",
+        text: knowledge.scopeLabel,
+      }),
+    ]),
+  ];
+
+  const facts = el("ul", { class: "plain check-list" });
+  if (knowledge.conditions)
+    facts.append(el("li", { class: "info", text: `Setzt ein: ${knowledge.conditions}` }));
+  if (knowledge.vehicleId)
+    facts.append(el("li", { class: "info", text: `Fahrzeug-Definition: ${knowledge.vehicleId}` }));
+  if (knowledge.provenance)
+    facts.append(el("li", { class: "info", text: `Quelle: ${knowledge.provenance}` }));
+  for (const note of knowledge.notes ?? []) facts.append(el("li", { class: "warn", text: note }));
+  if (facts.childElementCount > 0) nodes.push(facts);
+
+  const patterns = knowledge.patterns ?? [];
+  if (patterns.length === 0)
+    nodes.push(
+      el("p", {
+        class: "muted small",
+        text: "Für diese Variante sind keine Ausfallmuster hinterlegt.",
+      }),
+    );
+  for (const pattern of patterns) nodes.push(knowledgePattern(pattern));
+  return nodes;
+}
+
+/** One documented failure pattern with the measurements that would confirm it. */
+function knowledgePattern(pattern) {
+  const children = [
+    el("h5", { class: "knowledge-pattern-name" }, [
+      document.createTextNode(pattern.name),
+      pattern.likelihoodLabel
+        ? el("span", { class: `pill pill-${pattern.likelihood}`, text: pattern.likelihoodLabel })
+        : null,
+    ]),
+  ];
+  if (pattern.explanation) children.push(el("p", { class: "small", text: pattern.explanation }));
+
+  const checks = pattern.checks ?? [];
+  if (checks.length === 0) {
+    children.push(
+      el("p", {
+        class: "muted small",
+        text: "Kein Messpunkt hinterlegt — dieses Muster lässt sich lesen, aber nicht prüfen.",
+      }),
+    );
+  } else {
+    children.push(
+      el("table", { class: "grid" }, [
+        el("thead", {}, [
+          el("tr", {}, [
+            el("th", { text: "Messpunkt" }),
+            el("th", { text: "Erwartung" }),
+            el("th", { text: "Fenster" }),
+            el("th", { text: "Bewertung" }),
+          ]),
+        ]),
+        el(
+          "tbody",
+          {},
+          checks.map((check) =>
+            row(
+              [check.name, check.expect, check.window || "kein Zahlenfenster", check.judgement],
+              check.measurable ? [2] : [2, 3],
+            ),
+          ),
+        ),
+      ]),
+    );
+  }
+  if (pattern.repair)
+    children.push(el("p", { class: "hint", text: `Reparaturhinweis: ${pattern.repair}` }));
+  return el("div", { class: "knowledge-pattern" }, children);
+}
+
 /**
  * Details of one fault code: definition data, session history and the freeze
  * frame. Everything shown here comes from the backend; the front end adds no
@@ -502,7 +605,7 @@ function showDtcDetails(dtc) {
       }),
     );
   }
-  panel.querySelector("#dtc-detail-body").prepend(extra);
+  panel.querySelector("#dtc-detail-body").prepend(extra, ...knowledgeNodes(dtc.knowledge));
   if (dtc.isNew)
     panel
       .querySelector("#dtc-detail-body")

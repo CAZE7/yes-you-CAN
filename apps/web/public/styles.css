@@ -83,6 +83,21 @@ body {
   color: var(--accent);
   border-color: rgba(79, 156, 249, 0.45);
 }
+/* Ordering hint of a failure pattern — deliberately quieter than a status pill. */
+.pill-common {
+  background: rgba(249, 200, 79, 0.14);
+  color: var(--warn);
+  border-color: rgba(249, 200, 79, 0.4);
+}
+.pill-possible {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--muted);
+}
+.pill-rare {
+  background: transparent;
+  color: var(--muted);
+  border-style: dashed;
+}
 
 .tabs {
   display: flex;
@@ -628,4 +643,44 @@ ul.plain.check-list li.info::before {
 }
 .score-fill-weak {
   background: var(--warn);
+}
+
+/* --------------------------------------- Wissen pro Variante (AGENTS 20, 23) */
+
+.dtc-pill {
+  margin-left: 0.45rem;
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+.knowledge-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-top: 0.9rem;
+}
+.knowledge-head h4 {
+  margin: 0;
+}
+.knowledge-pattern {
+  margin: 0.7rem 0;
+  padding: 0.65rem 0.75rem;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-left: 3px solid rgba(79, 156, 249, 0.5);
+  border-radius: 8px;
+}
+.knowledge-pattern-name {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin: 0 0 0.35rem;
+  font-size: 0.9rem;
+}
+.knowledge-pattern p {
+  margin: 0.3rem 0;
+}
+.knowledge-pattern table.grid {
+  margin-top: 0.4rem;
 }
