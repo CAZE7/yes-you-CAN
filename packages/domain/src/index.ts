@@ -106,13 +106,24 @@ export type {
 export type {
   DidDefinitionRef,
   DefinitionProvider,
+  EcuAddressFactRef,
   EcuAddressRef,
   EcuDefinitionRef,
   FindDidQuery,
   FindEcuQuery,
+  IdentificationFactRef,
+  ResolveVehicleQuery,
   SignalDefinitionRef,
+  VehicleCandidateRef,
   VehicleDefinitionRef,
+  VehicleEvidenceRef,
+  VehicleResolutionRef,
+  VinLookupRef,
 } from "./ports/definition-provider.js";
-export { NullDefinitionProvider, StaticDefinitionProvider } from "./ports/definition-provider.js";
+export {
+  NullDefinitionProvider,
+  StaticDefinitionProvider,
+  unresolvedVehicleResolution,
+} from "./ports/definition-provider.js";
 export type { SessionStore, StoredSessionInfo } from "./ports/session-store.js";
 export { InMemorySessionStore } from "./ports/session-store.js";

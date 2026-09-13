@@ -27,6 +27,7 @@ import {
   type ReadDidCommand,
   type ReadDtcFreezeFrameCommand,
   type ReadDtcsCommand,
+  type ResolveVehicleQuery,
   type SnapshotSignalsCommand,
   type StartMeasurementsCommand,
 } from "@vdp/application";
@@ -98,6 +99,9 @@ export function registerRuntimeHandlers(bus: CommandBus, services: RuntimeServic
   // Queries — read-only, served from the live state (read model today).
   bus.registerQuery(QueryKinds.GetSession, () => session.current());
   bus.registerQuery(QueryKinds.GetVehicle, () => vehicle.identity());
+  bus.registerQuery(QueryKinds.ResolveVehicle, (query) =>
+    vehicle.resolve((query as ResolveVehicleQuery).hints),
+  );
   bus.registerQuery(QueryKinds.GetEcuList, () => ecus.list());
   bus.registerQuery(QueryKinds.GetEcu, (query) => ecus.get((query as GetEcuQuery).ecuId));
   bus.registerQuery(QueryKinds.GetEcuCapabilities, (query) =>
