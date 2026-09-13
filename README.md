@@ -3,14 +3,15 @@
 [![CI](https://github.com/CAZE7/yes-you-CAN/actions/workflows/ci.yml/badge.svg)](https://github.com/CAZE7/yes-you-CAN/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](./package.json)
-[![Tests](https://img.shields.io/badge/tests-1223%20passed-brightgreen)](#tests)
+[![Tests](https://img.shields.io/badge/tests-1290%20passed-brightgreen)](#tests)
 [![TypeScript](https://img.shields.io/badge/TypeScript-7%20%2F%20tsgo-blue)](./tsconfig.base.json)
 
 Fahrzeugdiagnose-Plattform: CAN und DoIP lesen, Steuergeräte identifizieren, das
 Fahrzeug aus VIN, Identifikationswerten und beantworteten Adressen bestimmen —
 mit den Belegen je Kandidat statt einer Behauptung (ADR 0023) —, Fehlerspeicher
-auslesen, Live-Messwerte aufzeichnen und als Report exportieren, ohne
-Real-Fahrzeug testbar. Industriestandard-Toolchain: TypeScript 7/tsgo,
+auslesen und je Code das Wissen **der bestimmten Variante** zeigen (Ursachen,
+Messfenster, Reparaturhinweis — ADR 0024), Live-Messwerte aufzeichnen und als
+Report exportieren, ohne Real-Fahrzeug testbar. Industriestandard-Toolchain: TypeScript 7/tsgo,
 Vitest 5, Biome, tsc-Projekt-Referenzen, Architekturtests, strikte Security-Baseline
 (ADR 0009) und deterministische Simulator/Replay-Tests statt Hardware-Abhängigkeit.
 
@@ -62,6 +63,22 @@ resolution.best.conflicts; // was gegen den Kandidaten spricht — bleibt sichtb
 resolution.unresolved;     // true, wenn kein Paket ein Fahrzeug deklariert — mit Grund in notes
 ```
 
+Ist das Fahrzeug gebunden, trägt jeder gelesene Fehlercode das Wissen seiner
+Variante — geschichtet über die paketweite Beschreibung, mit Scope, Notes und
+Herkunft der angezeigten Aussage (AGENTS 20.1, ADR 0024):
+
+```ts
+const dtcs = await runtime.commands.dispatch(readDtcs());
+dtcs[0].knowledge?.scope;        // 'vehicle-engine' | 'vehicle-gearbox' | 'vehicle' | 'package'
+dtcs[0].knowledge?.patterns;     // [{ id, name, explanation, likelihood, repair, checks[] }]
+dtcs[0].knowledge?.patterns[0].checks; // [{ signalId, name, expect, min, max, windowMs, measurable }]
+dtcs[0].knowledge?.notes;        // was fehlt oder angenommen wurde — statt stiller Annahme
+```
+
+Ohne gebundenes Fahrzeug entsteht kein `knowledge`: die paketweite Beschreibung
+steht dann am Record — sie als Variantenwissen auszugeben wäre genau die
+Verwechslung, gegen die die Fahrzeugachse existiert.
+
 ## Pakete
 
 | Paket | Zweck |
@@ -75,9 +92,9 @@ resolution.unresolved;     // true, wenn kein Paket ein Fahrzeug deklariert — 
 | `@vdp/protocols-uds` | ISO 14229-1 Client **und** In-Prozess-Server |
 | `@vdp/protocols-kwp2000` | ISO 14230 für Alt-ECUs |
 | `@vdp/protocols-oem` | OEM-Erweiterungspunkte + Registry |
-| `@vdp/definitions` | versioniertes Schema (v2: Fahrzeuge, Motoren, Getriebe, VIN-Matching), Validator, Migration, WMI-Referenz (ISO 3780), Resolver mit Belegen, Pakete mit Provenance (ADR 0023) |
+| `@vdp/definitions` | versioniertes Schema (v3: Fahrzeuge, Motoren, Getriebe, VIN-Matching, **DTC-Wissen pro Variante**), Validator, Migration v1→v2→v3, WMI-Referenz (ISO 3780), Resolver mit Belegen, Wissensauflösung nach Spezifität, Pakete mit Provenance (ADR 0023, 0024) |
 | `@vdp/charts` | DOM-freie, getestete Graphen-Mathematik: Viewport, Cursor, Decimierung, Statistik (ADR 0011) |
-| `@vdp/core` | Engine, ECU-Explorer, DTC-System, Recorder, Logger, Safety |
+| `@vdp/core` | Engine, ECU-Explorer, DTC-System (variantenbewusst: `setVehicle` schichtet Wissen über die Paketbeschreibung), Recorder, Logger, Safety |
 | `@vdp/runtime` | `createDiagnosticRuntime`: Services, Command-Handler, Domänen-Events — headless (ADR 0014) |
 | `@vdp/adapters-*` | ELM327, CANable (slcan), SocketCAN, generisch |
 | `@vdp/storage` | Session-Repository, Migrationen, ZIP-Export |
@@ -97,7 +114,9 @@ npm run demo          # Workbench auf http://localhost:8080
 ```
 
 `npm run demo` startet den Simulator: drei Steuergeräte, gesetzte Fehlercodes,
-Live-Messwerte. Kein Adapter, kein Fahrzeug.
+Live-Messwerte. Die Demo bestimmt das Fahrzeug aus der VIN und zeigt zu P0420
+zwei Ausfallmuster mit fünf auswertbaren Messfenstern. Kein Adapter, kein
+Fahrzeug.
 
 Mit echtem Adapter:
 
@@ -154,7 +173,7 @@ Zeitraum aus, Doppelklick zeigt die gesamte Aufnahme.
 
 ## Tests
 
-1223 Tests in ~25 s, Vitest 5 mit Projektkonfiguration (ADR 0010, Schritt 1 —
+1290 Tests in ~25 s, Vitest 5 mit Projektkonfiguration (ADR 0010, Schritt 1 —
 ersetzt ADR 0008). Unit-Specs liegen co-lokatiert neben dem Code
 (`src/*.spec.ts`); Property-Tests laufen mit fast-check, Coverage-Gates mit
 `npm run test:coverage` (global 90 % lines / 80 % branches als
@@ -209,4 +228,8 @@ Die mitgelieferten VAG- und Mercedes-Pakete sind `example-placeholder` mit
 erfundenen Werten und werden vom Validator entsprechend gekennzeichnet
 (ADR 0003). Sie sind keine Fahrzeugwahrheit. `simulatorPackage` beschreibt das
 virtuelle Fahrzeug des Simulators und ist nur in Simulator-/Replay-Betrieb aktiv;
-gegen echte Hardware bleibt die OEM-neutrale Baseline stehen (ADR 0023).
+gegen echte Hardware bleibt die OEM-neutrale Baseline stehen (ADR 0023). Ihr
+Variantenwissen ist als `own` gekennzeichnet und aus öffentlichen
+SAE-J1979-Semantiken begründet; weil das Baseline-Paket keine Lambda-Sonden
+definiert, erfindet es auch keine — ein Prüfschritt referenziert nur Signale, die
+das Paket tatsächlich deklariert (ADR 0024).
