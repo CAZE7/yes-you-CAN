@@ -37,3 +37,4 @@ er wird durch einen neuen ersetzt, der den alten als `superseded` markiert.
 | [0029](0029-write-path-as-its-own-port.md) | Der Schreibpfad ist ein eigener Port, keine Methode am Lesepfad | accepted |
 | [0030](0030-missing-evidence-is-a-failure.md) | Fehlende Evidenz ist ein Fehlschlag, keine Warnung | accepted |
 | [0031](0031-diagnostic-ir.md) | Diagnostische Zwischenstufe: Beobachtungen mit Beleg | accepted |
+| [0032](0032-session-definitions-are-data.md) | Sitzungsdefinitionen sind Daten, die Zustandsmaschine ist ein Modul | accepted |

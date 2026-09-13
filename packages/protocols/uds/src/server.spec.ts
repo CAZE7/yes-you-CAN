@@ -13,6 +13,7 @@ import { type FixturePatch, dropUndefined } from "../../../../tests/helpers/fixt
 import { NRC } from "./nrc.js";
 import { UdsServer, type UdsServerLink } from "./server.js";
 import { DTC_REPORT, SESSION, SID, SUPPRESS_POSITIVE_RESPONSE } from "./services.js";
+import { defaultSessionDefinition } from "./session-state.js";
 
 const logger = createLogger("uds-server-test", { level: "ERROR" });
 
@@ -79,7 +80,9 @@ describe("session control + tester present", () => {
   });
 
   test("an unsupported session is a negative response, not a silent fallback", async () => {
-    const env = h({ sessions: [SESSION.DEFAULT] });
+    // An ECU that only defines the default session: the extended session is a
+    // sub-function it does not support (0x12), not a request to be ignored.
+    const env = h({ sessionDefinitions: [defaultSessionDefinition()] });
     await env.send([SID.DIAGNOSTIC_SESSION_CONTROL, SESSION.EXTENDED]);
     assert.deepEqual(Array.from(env.sent[0] ?? []), [0x7f, 0x10, NRC.SUB_FUNCTION_NOT_SUPPORTED]);
   });
@@ -131,25 +134,34 @@ describe("ecu reset", () => {
 });
 
 describe("clear diagnostic information", () => {
+  test("clearing in the default session is refused: it is a write", async () => {
+    const env = h();
+    await env.send([SID.CLEAR_DIAGNOSTIC_INFORMATION, 0xff, 0xff, 0xff]);
+    assert.equal(env.sent[0]?.[2], NRC.SERVICE_NOT_SUPPORTED_IN_ACTIVE_SESSION);
+    assert.equal(env.server.stats.negativeResponses, 1);
+  });
+
   test('a truncated clear request is never interpreted as "clear everything"', async () => {
     const env = h();
+    await env.send([SID.DIAGNOSTIC_SESSION_CONTROL, SESSION.EXTENDED]);
     await env.send([SID.CLEAR_DIAGNOSTIC_INFORMATION, 0xff, 0xff]);
-    assert.equal(env.sent[0]?.[0], 0x7f);
-    assert.equal(env.sent[0]?.[2], NRC.INCORRECT_MESSAGE_LENGTH_OR_INVALID_FORMAT);
-    assert.equal(env.server.stats.negativeResponses, 1);
+    assert.equal(env.sent[1]?.[0], 0x7f);
+    assert.equal(env.sent[1]?.[2], NRC.INCORRECT_MESSAGE_LENGTH_OR_INVALID_FORMAT);
+    assert.equal(env.server.stats.negativeResponses, 1, "the session switch is positive");
   });
 
   test("an unknown group is out of range; clearing resets statuses but keeps present faults", async () => {
     const env = h();
+    await env.send([SID.DIAGNOSTIC_SESSION_CONTROL, SESSION.EXTENDED]);
     await env.send([SID.CLEAR_DIAGNOSTIC_INFORMATION, 0x12, 0x34, 0x56]);
-    assert.equal(env.sent[0]?.[2], NRC.REQUEST_OUT_OF_RANGE);
+    assert.equal(env.sent[1]?.[2], NRC.REQUEST_OUT_OF_RANGE);
 
     await env.send([SID.CLEAR_DIAGNOSTIC_INFORMATION, 0xff, 0xff, 0xff]);
-    assert.equal(env.sent[1]?.[0], P + 0x14);
+    assert.equal(env.sent[2]?.[0], P + 0x14);
     // P0420 had testFailed (bit 0) set → comes back with 0x03; P0301 (0x01, no
     // testFailed) leaves the fault memory entirely.
     await env.send([SID.READ_DTC_INFORMATION, DTC_REPORT.REPORT_SUPPORTED_DTC]);
-    const body = env.sent[2] ?? new Uint8Array();
+    const body = env.sent[3] ?? new Uint8Array();
     assert.equal(body.length, 3 + 4, "only the still-present fault remains");
   });
 });
@@ -265,45 +277,65 @@ describe("read/write data by identifier", () => {
 
   test("a truncated write is a format error", async () => {
     const env = h();
+    await env.send([SID.DIAGNOSTIC_SESSION_CONTROL, SESSION.EXTENDED]);
     await env.send([SID.WRITE_DATA_BY_IDENTIFIER, 0x0c]);
-    assert.equal(env.sent[0]?.[2], NRC.INCORRECT_MESSAGE_LENGTH_OR_INVALID_FORMAT);
+    assert.equal(env.sent[1]?.[2], NRC.INCORRECT_MESSAGE_LENGTH_OR_INVALID_FORMAT);
   });
 });
 
 describe("security access", () => {
   test("odd levels return the seed, correct keys are accepted", async () => {
     const env = h();
+    await env.send([SID.DIAGNOSTIC_SESSION_CONTROL, SESSION.EXTENDED]);
     await env.send([SID.SECURITY_ACCESS, 0x01]);
-    assert.deepEqual(Array.from(env.sent[0] ?? []), [P + 0x27, 0x01, 0x11, 0x22]);
+    assert.deepEqual(Array.from(env.sent[1] ?? []), [P + 0x27, 0x01, 0x11, 0x22]);
     await env.send([SID.SECURITY_ACCESS, 0x02, 0x02]);
-    assert.equal((env.sent[1] ?? new Uint8Array())[0], P + 0x27);
+    assert.equal((env.sent[2] ?? new Uint8Array())[0], P + 0x27);
   });
 
   test("wrong keys escalate: invalid key → exceed attempts → time delay", async () => {
     const env = h();
-    await env.send([SID.SECURITY_ACCESS, 0x02, 0x99]);
-    assert.equal(env.sent[0]?.[2], NRC.INVALID_KEY);
+    await env.send([SID.DIAGNOSTIC_SESSION_CONTROL, SESSION.EXTENDED]);
     await env.send([SID.SECURITY_ACCESS, 0x02, 0x99]);
     assert.equal(env.sent[1]?.[2], NRC.INVALID_KEY);
     await env.send([SID.SECURITY_ACCESS, 0x02, 0x99]);
-    assert.equal(env.sent[2]?.[2], NRC.EXCEED_NUMBER_OF_ATTEMPTS);
+    assert.equal(env.sent[2]?.[2], NRC.INVALID_KEY);
+    await env.send([SID.SECURITY_ACCESS, 0x02, 0x99]);
+    assert.equal(env.sent[3]?.[2], NRC.EXCEED_NUMBER_OF_ATTEMPTS);
     await env.send([SID.SECURITY_ACCESS, 0x01]);
-    assert.equal(env.sent[3]?.[2], NRC.REQUIRED_TIME_DELAY_NOT_EXPIRED, "locked out");
+    assert.equal(env.sent[4]?.[2], NRC.REQUIRED_TIME_DELAY_NOT_EXPIRED, "locked out");
   });
 
-  test("without a securityAccess configuration the service is unsupported", async () => {
-    const env = h({ securityAccess: undefined });
-    await env.send([SID.SECURITY_ACCESS, 0x01]);
-    assert.equal(env.sent[0]?.[2], NRC.SERVICE_NOT_SUPPORTED);
+  test("without a securityAccess configuration the service is unsupported in every session", async () => {
+    // Built inline: the shared harness always registers an algorithm, and a
+    // security service that does not exist must be 0x11 — not 0x7F, which would
+    // claim the ECU has it but not here. (The previous version of this test read
+    // byte 2 of the *seed* 0x11… and passed for the wrong reason.)
+    const sent: Uint8Array[] = [];
+    const server = new UdsServer(
+      {
+        onMessage: () => () => undefined,
+        send: async (payload) => {
+          sent.push(payload);
+        },
+      },
+      { name: "bare-ecu", logger },
+    );
+    await server.handle(new Uint8Array([SID.SECURITY_ACCESS, 0x01]));
+    assert.equal(sent[0]?.[2], NRC.SERVICE_NOT_SUPPORTED);
+    await server.handle(new Uint8Array([SID.DIAGNOSTIC_SESSION_CONTROL, SESSION.EXTENDED]));
+    await server.handle(new Uint8Array([SID.SECURITY_ACCESS, 0x01]));
+    assert.equal(sent[2]?.[2], NRC.SERVICE_NOT_SUPPORTED, "still absent, not merely misplaced");
   });
 });
 
 describe("misc dispatch", () => {
   test("routine control runs the registered routine", async () => {
     const env = h();
+    await env.send([SID.DIAGNOSTIC_SESSION_CONTROL, SESSION.EXTENDED]);
     await env.send([SID.ROUTINE_CONTROL, 0x01, 0x02, 0x03, 0xaa, 0xbb]);
     assert.deepEqual(
-      Array.from(env.sent[0] ?? []),
+      Array.from(env.sent[1] ?? []),
       [P + 0x31, 0x01, 0x02, 0x03, 2],
       "routine result echoes id + data length",
     );
@@ -319,10 +351,11 @@ describe("misc dispatch", () => {
 
   test("a truncated routine request is a format error; unknown routines are out of range", async () => {
     const env = h();
+    await env.send([SID.DIAGNOSTIC_SESSION_CONTROL, SESSION.EXTENDED]);
     await env.send([SID.ROUTINE_CONTROL, 0x01, 0x02]);
-    assert.equal(env.sent[0]?.[2], NRC.INCORRECT_MESSAGE_LENGTH_OR_INVALID_FORMAT);
+    assert.equal(env.sent[1]?.[2], NRC.INCORRECT_MESSAGE_LENGTH_OR_INVALID_FORMAT);
     await env.send([SID.ROUTINE_CONTROL, 0x01, 0xaa, 0xbb]);
-    assert.equal(env.sent[1]?.[2], NRC.REQUEST_OUT_OF_RANGE);
+    assert.equal(env.sent[2]?.[2], NRC.REQUEST_OUT_OF_RANGE);
   });
 
   test("a throwing handler becomes GENERAL_REJECT, never a hang", async () => {
@@ -336,8 +369,9 @@ describe("misc dispatch", () => {
         },
       ],
     });
+    await env.send([SID.DIAGNOSTIC_SESSION_CONTROL, SESSION.EXTENDED]);
     await env.send([SID.ROUTINE_CONTROL, 0x01, 0x02, 0x03]);
-    assert.deepEqual(Array.from(env.sent[0] ?? []), [0x7f, 0x31, NRC.GENERAL_REJECT]);
+    assert.deepEqual(Array.from(env.sent[1] ?? []), [0x7f, 0x31, NRC.GENERAL_REJECT]);
   });
 });
 
