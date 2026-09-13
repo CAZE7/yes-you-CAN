@@ -603,6 +603,10 @@ ul.plain.check-list li.warn::before {
   content: "! ";
   color: var(--warn);
 }
+ul.plain.check-list li.unknown::before {
+  content: "? ";
+  color: var(--warn);
+}
 ul.plain.check-list li.info::before {
   content: "· ";
   color: var(--muted);

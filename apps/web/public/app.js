@@ -682,7 +682,14 @@ function renderClearEcuOptions(dtcs) {
  */
 function renderClearChecks(target, checks) {
   target.replaceChildren();
-  for (const entry of checks.failed) target.append(el("li", { class: "fail", text: entry }));
+  // A missing proof is not a violation: "die Spannung ist unbekannt" asks the
+  // operator to measure, "die Spannung ist zu niedrig" asks to charge. Both
+  // block the write (AGENTS 26, P0 #5), so they must not look the same.
+  const unproven = new Set(checks.unproven ?? []);
+  for (const entry of checks.failed) {
+    const cls = unproven.has(entry) ? "unknown" : "fail";
+    target.append(el("li", { class: cls, text: entry }));
+  }
   for (const entry of checks.warnings) target.append(el("li", { class: "warn", text: entry }));
   if (checks.failed.length === 0)
     target.append(el("li", { class: "info", text: "Alle geprüften Vorbedingungen sind erfüllt." }));

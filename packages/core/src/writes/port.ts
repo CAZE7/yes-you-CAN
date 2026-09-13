@@ -136,7 +136,10 @@ export interface WriteOperation<Input, Prepared, Value> {
 /** What a caller learns from a pre-check: nothing was written (§26). */
 export interface WritePrecheckResult {
   ok: boolean;
+  /** Blocking reasons: violated preconditions and unproven ones (AGENTS 26). */
   failed: readonly string[];
+  /** The subset of `failed` that is missing evidence, not a proven violation. */
+  unproven: readonly string[];
   warnings: readonly string[];
   transactionId: string;
 }
@@ -148,6 +151,12 @@ export interface WriteOperationResult<Value> {
   risk: RiskLevel;
   value?: Value;
   reasons: readonly string[];
+  /**
+   * The blocking reasons that were not proven *wrong* but never proven right
+   * (missing evidence). Present only when there is at least one, because an
+   * empty list would suggest the question was answered (AGENTS 26, P0 #5).
+   */
+  unproven?: readonly string[];
   warnings: readonly string[];
   /** Every stage with its reasons — the part a caller can reason about. */
   stages: readonly StageReport[];
@@ -237,6 +246,7 @@ export class WritePort {
     return {
       ok: checks.ok,
       failed: [...checks.failed],
+      unproven: [...checks.unproven],
       warnings,
       transactionId: transaction.id,
     };
@@ -285,7 +295,15 @@ export class WritePort {
       const described = operation.describe(transaction, input, prepared, sessionType);
       const checks = this.options.safety.evaluate(described.context, binding.vehicleState);
       const warnings = Array.from(new Set([...checks.warnings, ...(described.warnings ?? [])]));
-      if (!checks.ok) return { ok: false, reasons: [...checks.failed], warnings };
+      if (!checks.ok)
+        return {
+          ok: false,
+          reasons: [...checks.failed],
+          warnings,
+          // The caller gets the distinction through the result: which of these
+          // reasons is a missing proof rather than a violation? (P0 #5)
+          unproven: [...checks.unproven],
+        };
       try {
         const permit = this.options.safety.requestPermit(described.context, binding.vehicleState);
         transaction.confirm(permit, {
@@ -312,6 +330,7 @@ export class WritePort {
         false,
         confirmReport.reasons,
         confirmReport.warnings,
+        "unproven" in confirmReport ? (confirmReport.unproven as readonly string[]) : [],
       );
     }
 
@@ -450,6 +469,7 @@ export class WritePort {
     ok: boolean,
     reasons: readonly string[],
     warnings: readonly string[],
+    unproven: readonly string[] = [],
   ): WriteOperationResult<Value> {
     const snapshot = this.remember(transaction);
     return {
@@ -457,6 +477,7 @@ export class WritePort {
       kind: operation.kind,
       risk: operation.risk,
       reasons: [...reasons],
+      ...(unproven.length > 0 ? { unproven: [...unproven] } : {}),
       warnings: [...warnings],
       stages: snapshot.stages,
       transaction: snapshot,

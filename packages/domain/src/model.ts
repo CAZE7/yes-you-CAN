@@ -357,6 +357,13 @@ export interface DtcClearPrecheckInfo {
   ecuId: string;
   ecuName: string;
   ok: boolean;
+  /** Every blocking reason — violated preconditions and unproven ones (AGENTS 26). */
   failed: string[];
+  /**
+   * The subset of `failed` that is missing evidence rather than a violation
+   * ("battery voltage unknown" vs. "battery voltage too low"). The UI tells the
+   * operator what to measure instead of what is wrong (P0 #5).
+   */
+  unproven: string[];
   warnings: string[];
 }

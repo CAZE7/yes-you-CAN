@@ -226,6 +226,32 @@ test("dtc.clear-precheck reports missing preconditions without permitting (§26)
     runtime.safety.audit.every((entry) => entry.action !== "permit-issued"),
     "a precheck never issues a permit",
   );
+  assert.deepEqual(
+    unconfirmed.unproven,
+    [],
+    "a complete vehicle state leaves nothing unproven — only the confirmation is missing",
+  );
+
+  // Missing evidence is reported as such and blocks as well (P0 #5): the
+  // operator is asked to measure, not told the vehicle is broken.
+  const unknownState = await runtime.commands.query(
+    getDtcClearPrecheck(engineEcu.ecuId, { stationary: true }),
+  );
+  assert.equal(unknownState.ok, false);
+  assert.ok(unknownState.unproven.length >= 2, "unknown supply and brake are listed");
+  assert.ok(
+    unknownState.unproven.every((reason) => unknownState.failed.includes(reason)),
+    "every unproven reason is also a blocking reason",
+  );
+  assert.ok(
+    unknownState.unproven.some((reason) => /battery voltage unknown/.test(reason)),
+    "the wording says what is missing, not that the value is wrong",
+  );
+  assert.deepEqual(
+    unknownState.warnings.filter((warning) => /unknown/.test(warning)),
+    [],
+    "a missing proof is not downgraded to a warning",
+  );
 });
 
 test("did.read returns raw bytes through the application API", async () => {

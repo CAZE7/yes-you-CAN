@@ -35,3 +35,4 @@ er wird durch einen neuen ersetzt, der den alten als `superseded` markiert.
 | [0027](0027-frontend-typed-against-the-wire-contract.md) | Das Browser-Frontend wird gegen den Wire-Contract typgeprüft | accepted |
 | [0028](0028-architecture-rule-as-a-tool-with-one-source.md) | Die Architekturregel ist ein Werkzeug mit einer Quelle | accepted |
 | [0029](0029-write-path-as-its-own-port.md) | Der Schreibpfad ist ein eigener Port, keine Methode am Lesepfad | accepted |
+| [0030](0030-missing-evidence-is-a-failure.md) | Fehlende Evidenz ist ein Fehlschlag, keine Warnung | accepted |

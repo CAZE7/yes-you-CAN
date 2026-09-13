@@ -5,6 +5,14 @@
  * and conservative: preconditions must be *checked*, not assumed, and a failed
  * precondition aborts the operation instead of degrading it.
  *
+ * **Missing evidence is a failure, not a warning** (master backlog P0 #5). A
+ * precondition that cannot be proven — an unreported battery voltage, an ECU
+ * type nobody read, a network state nobody asked for — is *blocked*, and it is
+ * named as `unproven` so the caller can tell "the vehicle violates this" from
+ * "nobody looked". The default used to be the opposite: an unverifiable
+ * precondition was skipped (or warned about) and the write went ahead with an
+ * assumption. This module never assumes.
+ *
  * This module never performs the write itself — it produces a permit that the
  * caller (coding framework, AGENTS 25) has to present. That keeps the write path
  * auditable in one place.
@@ -61,7 +69,14 @@ export interface WriteRequestContext {
 
 export interface SafetyCheckResult {
   ok: boolean;
+  /** Every blocking reason — violated preconditions *and* unproven ones. */
   failed: string[];
+  /**
+   * The subset of `failed` that is not a proven violation but a missing proof.
+   * Kept separate so a UI can say "spannung unbekannt, bitte messen" instead of
+   * "spannung zu niedrig" (AGENTS 26, P0 #5).
+   */
+  unproven: string[];
   warnings: string[];
 }
 
@@ -106,62 +121,122 @@ export class SafetyManager {
     return this.auditLog;
   }
 
-  /** Evaluate preconditions without issuing a permit (UI pre-check). */
+  /**
+   * Evaluate preconditions without issuing a permit (UI pre-check).
+   *
+   * Three outcomes per precondition: proven (nothing to report), violated
+   * (`failed`) or unproven (`unproven`, which is *also* a failure). Only
+   * genuine cautions stay in `warnings` — an option that is allowed but not
+   * recommended.
+   */
   evaluate(context: WriteRequestContext, state: VehicleState): SafetyCheckResult {
     const failed: string[] = [];
+    const unproven: string[] = [];
     const warnings: string[] = [];
+    const needsBrake = context.risk !== "low";
 
-    if (!state.stationary) failed.push("vehicle is not stationary");
-    if (state.batteryVoltage !== undefined && state.batteryVoltage < this.minBatteryVoltage) {
+    /** No evidence: the precondition may hold, but nobody showed it. Blocks. */
+    const notProven = (reason: string): void => {
+      unproven.push(reason);
+      failed.push(reason);
+    };
+
+    if (state.stationary === undefined) {
+      notProven("vehicle state unknown — 'stationary' was never reported");
+    } else if (!state.stationary) {
+      failed.push("vehicle is not stationary");
+    }
+
+    if (state.batteryVoltage === undefined) {
+      notProven("battery voltage unknown — cannot prove the supply is stable");
+    } else if (state.batteryVoltage < this.minBatteryVoltage) {
       failed.push(
         `battery voltage ${state.batteryVoltage.toFixed(2)} V is below the required ${this.minBatteryVoltage.toFixed(2)} V`,
       );
     }
-    if (state.batteryVoltage === undefined)
-      warnings.push("battery voltage unknown — precondition not verifiable");
-    if (state.ignitionOn === false) failed.push("ignition is off");
-    if (context.risk !== "low" && !state.parkingBrake) failed.push("parking brake not engaged");
-    if (
-      context.expectedEcuType &&
-      context.actualEcuType &&
+
+    if (state.ignitionOn === undefined) {
+      notProven("ignition state unknown — cannot prove the ignition is on");
+    } else if (!state.ignitionOn) {
+      failed.push("ignition is off");
+    }
+
+    if (needsBrake) {
+      if (state.parkingBrake === undefined) {
+        notProven("parking brake state unknown — cannot prove the vehicle is held");
+      } else if (!state.parkingBrake) {
+        failed.push("parking brake not engaged");
+      }
+    }
+
+    if (context.expectedEcuType !== undefined && context.actualEcuType === undefined) {
+      notProven(
+        `ECU type was never read — cannot prove it matches the definition (expected ${context.expectedEcuType})`,
+      );
+    } else if (
+      context.expectedEcuType !== undefined &&
+      context.actualEcuType !== undefined &&
       context.expectedEcuType !== context.actualEcuType
     ) {
       failed.push(
         `ECU type mismatch: expected ${context.expectedEcuType}, found ${context.actualEcuType}`,
       );
     }
+
     if (
-      context.expectedSoftwareVariant &&
-      context.actualSoftwareVariant &&
+      context.expectedSoftwareVariant !== undefined &&
+      context.actualSoftwareVariant === undefined
+    ) {
+      notProven(
+        `software variant was never read — cannot prove it matches the definition (expected ${context.expectedSoftwareVariant})`,
+      );
+    } else if (
+      context.expectedSoftwareVariant !== undefined &&
+      context.actualSoftwareVariant !== undefined &&
       context.expectedSoftwareVariant !== context.actualSoftwareVariant
     ) {
       failed.push(
         `software variant mismatch: expected ${context.expectedSoftwareVariant}, found ${context.actualSoftwareVariant}`,
       );
     }
+
     if (!context.definitionVersion)
       failed.push("no definition version — cannot verify the write is defined for this ECU");
     if (!context.backupAvailable) failed.push("no backup available — rollback would be impossible");
     if (!context.userConfirmed) failed.push("user confirmation missing");
-    if (context.activeSessionType === 0x01)
+    if (context.activeSessionType === undefined) {
+      notProven("diagnostic session unknown — cannot prove the write runs in a writable session");
+    } else if (context.activeSessionType === 0x01) {
       failed.push("write attempted in the default diagnostic session");
+    }
     if (context.risk === "high")
       warnings.push("high risk operation — consider a workshop-grade power supply");
 
     if (context.network) {
-      if (context.network.tlsActive === false) failed.push("DoIP transport is not using TLS");
-      if (context.network.routingActivationOk === false)
+      // Once the network preconditions are in play (DoIP), an unasked question
+      // is as blocking as a wrong answer (AGENTS 8/26).
+      if (context.network.tlsActive === undefined) {
+        notProven("DoIP TLS state unknown — cannot prove the transport is encrypted");
+      } else if (!context.network.tlsActive) {
+        failed.push("DoIP transport is not using TLS");
+      }
+      if (context.network.routingActivationOk === undefined) {
+        notProven("DoIP routing activation state unknown — cannot prove the route is established");
+      } else if (!context.network.routingActivationOk) {
         failed.push("DoIP routing activation failed");
-      if (context.network.unauthorizedDevicesInSegment)
+      }
+      if (context.network.unauthorizedDevicesInSegment === true) {
         failed.push("unauthorized devices detected in the diagnostic network segment");
+      }
     }
 
-    const result: SafetyCheckResult = { ok: failed.length === 0, failed, warnings };
+    const result: SafetyCheckResult = { ok: failed.length === 0, failed, unproven, warnings };
     this.log.debug("safety evaluation", {
       ecu: context.ecuId,
       risk: context.risk,
       ok: result.ok,
       failed,
+      unproven,
       warnings,
     });
     return result;
@@ -174,7 +249,13 @@ export class SafetyManager {
   requestPermit(context: WriteRequestContext, state: VehicleState): WritePermit {
     const checks = this.evaluate(context, state);
     if (!checks.ok) {
-      this.recordAudit("permit-denied", context.ecuId, checks.failed.join("; "));
+      const detail = [
+        ...checks.failed,
+        ...(checks.unproven.length > 0
+          ? [`(${checks.unproven.length} of ${checks.failed.length} reasons are missing evidence)`]
+          : []),
+      ].join("; ");
+      this.recordAudit("permit-denied", context.ecuId, detail);
       throw new SafetyViolationError(`write to ${context.ecuName} refused`, checks.failed, {
         ecuId: context.ecuId,
         risk: context.risk,

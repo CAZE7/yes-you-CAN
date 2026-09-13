@@ -124,6 +124,11 @@ export interface DtcClearPrecheck {
   ecu: string;
   ok: boolean;
   failed: string[];
+  /**
+   * Reasons that are missing evidence rather than a violation — the operator
+   * has to measure something, not repair something (AGENTS 26, P0 #5).
+   */
+  unproven: string[];
   warnings: string[];
 }
 

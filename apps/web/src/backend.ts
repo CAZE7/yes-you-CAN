@@ -660,6 +660,7 @@ export class DemoBackend {
       ecu: info.ecuName,
       ok: info.ok,
       failed: [...info.failed],
+      unproven: [...info.unproven],
       warnings: [...info.warnings],
     };
   }

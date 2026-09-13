@@ -391,6 +391,7 @@ export class DtcService {
       ecuName: handle.session.record.name,
       ok: checks.ok,
       failed: [...checks.failed],
+      unproven: [...checks.unproven],
       warnings: [...checks.warnings],
     };
   }
