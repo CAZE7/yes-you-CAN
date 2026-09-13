@@ -29,17 +29,19 @@ import {
   type UdsServerOptions,
   createRequestResponseLink,
 } from "@vdp/protocols-uds";
-import { SafetyViolationError, createLogger, fromHex } from "@vdp/shared";
+import { createLogger, fromHex } from "@vdp/shared";
 import type { CanBus, CanFilter, CanFrame, FrameListener } from "@vdp/transport-can";
 import { describe, expect, test } from "vitest";
 import { tick, waitUntil } from "../../../../tests/helpers/wait.js";
-import { DtcClearService } from "../dtc/clear.js";
 import { DtcScanner } from "../dtc/scanner.js";
 import { SignalDecoder } from "../measurements/decoder.js";
 import { MeasurementRecorder } from "../measurements/recorder.js";
 import { SafetyManager } from "../safety/safety-manager.js";
 import type { EcuSession } from "../session/session.js";
 import { VehicleSession, createSession } from "../session/session.js";
+import { clearableEcuOf, runDtcClear } from "../writes/dtc-clear.js";
+import type { WriteBinding } from "../writes/port.js";
+import { createWritePort } from "../writes/standard-operations.js";
 import type { DiscoveredEcu } from "./discovery.js";
 import { DtcAccess } from "./dtc-access.js";
 import { EcuAttacher } from "./ecu-attacher.js";
@@ -225,20 +227,32 @@ function discovered(overrides: Partial<DiscoveredEcu> = {}): DiscoveredEcu {
 }
 
 function dtcAccess(h: Harness): DtcAccess {
-  const scanner = new DtcScanner({ definitions: h.definitions });
-  const clear = new DtcClearService({
-    safety: new SafetyManager({ logger }),
-    scanner,
-    logger,
-  });
   return new DtcAccess({
     registry: h.registry,
-    scanner,
-    clear,
+    scanner: new DtcScanner({ definitions: h.definitions }),
     oemProtocols: new OemProtocolRegistry([]),
     recorder: h.recorder,
     logger,
   });
+}
+
+/** The write side of the same vehicle: its own port, the same safety manager. */
+function writePort(h: Harness): ReturnType<typeof createWritePort> {
+  return createWritePort({
+    safety: new SafetyManager({ logger }),
+    scanner: new DtcScanner({ definitions: h.definitions }),
+    logger,
+  });
+}
+
+function writeBinding(ecuId: string, ecuName: string, sessionType: number): WriteBinding {
+  return {
+    ecuId,
+    ecuName,
+    sessionType,
+    definitionVersion: "1.0.0",
+    vehicleState: { stationary: true, ignitionOn: true, parkingBrake: true, batteryVoltage: 13.1 },
+  };
 }
 
 // --- EcuRegistry -------------------------------------------------------------
@@ -514,7 +528,7 @@ describe("DtcAccess — fault memory, enrichment and the write path", () => {
     assert.equal(session.data.dtcSnapshots.length, 1, "a full scan becomes the session snapshot");
   });
 
-  test("clear runs through the write contract and refuses without confirmation", async () => {
+  test("the read side cannot write: a handle crosses to the write port, which owns the permit", async () => {
     const ecu = createInMemoryEcu({ name: "engine", dtcs: [{ code: "P0420", status: 0x08 }] });
     const links = new EcuLinks(
       { linkFactory: { open: () => ({ link: ecu.link, close: () => undefined }) } },
@@ -522,37 +536,37 @@ describe("DtcAccess — fault memory, enrichment and the write path", () => {
     );
     const h = harness({ links });
     const handle = await h.attacher.attach(discovered());
-    const dtcs = dtcAccess(h);
+    const access = dtcAccess(h);
+    const writes = writePort(h);
 
-    await assert.rejects(
-      dtcs.clear(
-        handle,
-        { userConfirmed: false, vehicleState: { stationary: true } },
-        { session: null },
-      ),
-      (error: unknown) => {
-        assert.ok(
-          error instanceof SafetyViolationError,
-          "a refused precondition surfaces as a safety violation, not as a cleared result",
-        );
-        return true;
-      },
-    );
+    // Read and write are separate objects (master backlog P0 #3): the fault
+    // memory reader has no method that can change the vehicle.
+    assert.equal(Object.hasOwn(access, "clear"), false);
+    assert.equal(Object.hasOwn(access, "evaluate"), false);
+    assert.deepEqual(writes.kinds, ["clear-dtc"]);
 
-    const precheck = dtcs.evaluate(
-      handle,
-      { userConfirmed: true, vehicleState: { stationary: true } },
-      "1.2.3",
+    const target = clearableEcuOf(handle);
+    const binding = writeBinding(target.id, target.name, target.sessionType);
+
+    // Without confirmation the write port refuses before touching the ECU - and
+    // the refusal is data the caller can act on, not a thrown error (P0 #4).
+    const refused = await runDtcClear(writes, { target, userConfirmed: false }, binding);
+    assert.equal(refused.ok, false);
+    assert.ok(refused.reasons.some((reason) => /confirmation/i.test(reason)));
+    const confirm = refused.stages.find((stage) => stage.stage === "confirm");
+    assert.equal(confirm?.state, "failed");
+
+    // With the confirmation the same handle goes through the whole staged write:
+    // session switch, 0x14, re-read, permit and audit entry.
+    const result = await runDtcClear(writes, { target, userConfirmed: true }, binding);
+    assert.equal(result.ok, true);
+    assert.equal(result.value?.verified, true);
+    assert.equal(result.value?.permit.risk, "medium");
+    assert.deepEqual(
+      result.stages.map((stage) => stage.stage),
+      ["prepare", "confirm", "execute", "verify"],
     );
-    assert.equal(typeof precheck.ok, "boolean");
-    assert.ok(
-      precheck.warnings.some((warning) => /battery voltage unknown/.test(warning)),
-      "an unverifiable precondition is a warning, not a silent pass",
-    );
-    assert.ok(
-      !precheck.failed.some((failure) => /confirmation/i.test(failure)),
-      "the operator confirmed, so that precondition is met",
-    );
+    assert.ok(result.value?.transactionId, "the audit log can refer to the transaction");
   });
 });
 

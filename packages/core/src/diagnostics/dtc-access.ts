@@ -4,23 +4,18 @@
  * Reading a fault memory is not just `readDtcs`: the records are enriched with
  * definition knowledge, manufacturer hints are attached next to them, every code
  * becomes a marker on the time axis, and a full scan is snapshotted so the next
- * scan can say what is new. Clearing is the only write path so far and runs
- * through the safety layer.
+ * scan can say what is new.
  *
- * This is one responsibility — *fault memory in, results out* — and it lives
- * here so the engine stays a façade and the clear service (which owns the
- * preconditions) never has to be reached around.
+ * This is the **read** side of fault memory, and only the read side. Reading and
+ * clearing used to sit in one place, which is why the read path carried write
+ * methods (master backlog P0 #3). Clearing now lives under the write port
+ * (`../writes/dtc-clear.ts`), where its stages, its permit and its reasons are
+ * recorded; nothing in this file can change the vehicle.
  */
 
 import type { OemDtcInterpretation, OemProtocolRegistry } from "@vdp/protocols-oem";
 import type { Logger } from "@vdp/shared";
 import { messageOf } from "@vdp/shared";
-import type {
-  ClearDtcOptions,
-  ClearDtcResult,
-  ClearableEcu,
-  DtcClearService,
-} from "../dtc/clear.js";
 import type { FreezeFrame } from "../dtc/freeze-frame.js";
 import type { DtcScanner, EnrichedDtc } from "../dtc/scanner.js";
 import type { MeasurementRecorder } from "../measurements/recorder.js";
@@ -37,7 +32,6 @@ export interface ScannedEcu {
 export interface DtcAccessOptions {
   registry: EcuRegistry;
   scanner: DtcScanner;
-  clear: DtcClearService;
   oemProtocols: OemProtocolRegistry;
   recorder: MeasurementRecorder;
   logger: Logger;
@@ -46,7 +40,6 @@ export interface DtcAccessOptions {
 export class DtcAccess {
   private readonly registry: EcuRegistry;
   private readonly scanner: DtcScanner;
-  private readonly clearService: DtcClearService;
   private readonly oemProtocols: OemProtocolRegistry;
   private readonly recorder: MeasurementRecorder;
   private readonly log: Logger;
@@ -54,7 +47,6 @@ export class DtcAccess {
   constructor(options: DtcAccessOptions) {
     this.registry = options.registry;
     this.scanner = options.scanner;
-    this.clearService = options.clear;
     this.oemProtocols = options.oemProtocols;
     this.recorder = options.recorder;
     this.log = options.logger;
@@ -120,49 +112,6 @@ export class DtcAccess {
     return results;
   }
 
-  /**
-   * Pre-check a planned clear without writing anything (AGENTS 26).
-   * The UI uses it to show which precondition is missing before the operator
-   * confirms.
-   */
-  evaluate(
-    handle: EcuHandle,
-    options: Pick<ClearDtcOptions, "userConfirmed" | "vehicleState">,
-    definitionVersion?: string,
-  ): { ok: boolean; failed: string[]; warnings: string[] } {
-    return this.clearService.evaluate(this.clearable(handle), {
-      ...options,
-      ...(definitionVersion ? { definitionVersion } : {}),
-    });
-  }
-
-  /**
-   * Clear the fault memory of one ECU (AGENTS 20).
-   *
-   * Requires an explicit confirmation and a passing safety check; the previous
-   * state is stored as a session snapshot so the result can be compared and, if
-   * necessary, audited later (AGENTS 25/26).
-   */
-  async clear(
-    handle: EcuHandle,
-    options: ClearDtcOptions,
-    hooks: { session: VehicleSession | null; definitionVersion?: string },
-  ): Promise<ClearDtcResult> {
-    const session = hooks.session;
-    return this.clearService.clear(this.clearable(handle), {
-      ...options,
-      ...(hooks.definitionVersion !== undefined
-        ? { definitionVersion: hooks.definitionVersion }
-        : {}),
-      recordSnapshot: (records, label) => {
-        session?.addDtcSnapshot([...records], label);
-      },
-      recordAction: (action) => {
-        session?.recordAction(action);
-      },
-    });
-  }
-
   /** Freeze frame of one fault code, or `null` when the ECU has none. */
   async snapshot(
     handle: EcuHandle,
@@ -189,24 +138,5 @@ export class DtcAccess {
       const status = `0x${dtc.status.toString(16).toUpperCase().padStart(2, "0")}`;
       this.recorder.addMarker(dtc.code, "dtc", `${ecuName} · Status ${status}`);
     }
-  }
-
-  /**
-   * Adapt an ECU session to the write contract of the clear service.
-   *
-   * One place, so the pre-check and the actual clear can never drift apart — a
-   * pre-check that validates different conditions than the write is worse than
-   * no pre-check at all (AGENTS 26).
-   */
-  private clearable(handle: EcuHandle): ClearableEcu {
-    const { session } = handle;
-    return {
-      id: session.record.id,
-      name: session.record.name,
-      sessionType: session.record.sessionType,
-      readDtcs: (mask) => session.readDtcs(mask),
-      clearDiagnosticInformation: (group) => session.clearDiagnosticInformation(group),
-      prepareWrite: () => session.ensureWritableSession(),
-    };
   }
 }

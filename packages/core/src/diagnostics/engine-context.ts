@@ -16,11 +16,9 @@
 import type { DefinitionPackage } from "@vdp/definitions";
 import type { OemProtocolRegistry } from "@vdp/protocols-oem";
 import type { Logger } from "@vdp/shared";
-import { DtcClearService } from "../dtc/clear.js";
 import { DtcScanner } from "../dtc/scanner.js";
 import type { SignalDecoder } from "../measurements/decoder.js";
 import type { MeasurementRecorder } from "../measurements/recorder.js";
-import type { SafetyManager } from "../safety/safety-manager.js";
 import { DtcAccess } from "./dtc-access.js";
 import { EcuAttacher } from "./ecu-attacher.js";
 import { EcuLinks } from "./ecu-links.js";
@@ -35,15 +33,17 @@ export interface DiagnosticContextOptions {
   decoder: SignalDecoder;
   oemProtocols: OemProtocolRegistry;
   recorder: MeasurementRecorder;
-  safety: SafetyManager;
 }
 
 export class DiagnosticContext {
   /** Which handle belongs to which address — read by nearly every collaborator. */
   readonly registry = new EcuRegistry();
-  /** Fault-memory enrichment and the clear service's view of the world. */
+  /**
+   * Fault-memory enrichment. Read-only, and public because the write port needs
+   * the same enrichment and the same bound vehicle as the read path — a second
+   * scanner would be a second opinion about the car.
+   */
   readonly scanner: DtcScanner;
-  readonly clear: DtcClearService;
 
   private readonly definitions: readonly DefinitionPackage[];
   readonly links: EcuLinks;
@@ -56,11 +56,6 @@ export class DiagnosticContext {
     const { options, logger } = deps;
     this.definitions = options.definitions ?? [];
     this.scanner = new DtcScanner({ definitions: this.definitions });
-    this.clear = new DtcClearService({
-      safety: deps.safety,
-      scanner: this.scanner,
-      logger,
-    });
     this.links = new EcuLinks(
       {
         bus: options.bus,
@@ -88,7 +83,6 @@ export class DiagnosticContext {
     this.dtc = new DtcAccess({
       registry: this.registry,
       scanner: this.scanner,
-      clear: this.clear,
       oemProtocols: deps.oemProtocols,
       recorder: deps.recorder,
       logger,

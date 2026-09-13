@@ -33,6 +33,9 @@ export interface NetworkPreconditions {
   unauthorizedDevicesInSegment?: boolean;
 }
 
+/** Risk of a write operation — the vocabulary the safety chain reasons about. */
+export type RiskLevel = "low" | "medium" | "high";
+
 export interface WriteRequestContext {
   ecuId: string;
   ecuName: string;
@@ -46,7 +49,7 @@ export interface WriteRequestContext {
   previousValue?: string;
   newValue: string;
   /** Risk classification drives the confirmation requirements. */
-  risk: "low" | "medium" | "high";
+  risk: RiskLevel;
   /** Explicit user confirmation token from the UI (AGENTS 25). */
   userConfirmed: boolean;
   /** Backup must exist before a write is allowed (AGENTS 25/26). */
@@ -66,7 +69,7 @@ export interface WritePermit {
   id: string;
   issuedAt: string;
   ecuId: string;
-  risk: WriteRequestContext["risk"];
+  risk: RiskLevel;
   checks: SafetyCheckResult;
   /** Expires so a stale permit cannot be replayed much later. */
   expiresAt: string;

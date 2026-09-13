@@ -20,7 +20,7 @@ import type {
   VehicleIdentity,
   VehicleSession,
 } from "@vdp/core";
-import { describeVehicle } from "@vdp/core";
+import { type StageReport, describeVehicle } from "@vdp/core";
 import type { SignalDefinition } from "@vdp/definitions";
 import type {
   AnomalyInfo,
@@ -35,6 +35,7 @@ import type {
   SignalInfo,
   SignalStatisticsInfo,
   VehicleSummary,
+  WriteStageInfo,
 } from "@vdp/domain";
 import { capabilitiesFromServices } from "./capability-map.js";
 
@@ -186,6 +187,20 @@ export function decodedToReading(decoded: DecodedSignal, timestamp: string): Mea
     ...(decoded.unit !== undefined ? { unit: decoded.unit } : {}),
     ...(decoded.enumText !== undefined ? { enumText: decoded.enumText } : {}),
     outOfRange: decoded.outOfRange,
+  };
+}
+
+/**
+ * A write stage as domain data (AGENTS 26).
+ *
+ * The core reports stages with timestamps and details; the domain keeps the
+ * three things a caller reasons about — which stage, how it ended, and why.
+ */
+export function toWriteStageInfo(stage: StageReport): WriteStageInfo {
+  return {
+    stage: stage.stage,
+    state: stage.state,
+    reasons: [...stage.reasons],
   };
 }
 

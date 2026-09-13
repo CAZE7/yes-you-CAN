@@ -28,6 +28,7 @@ import {
   type EcuLinkFactory,
   type SafetyManager,
   type VehicleSessionData,
+  createWritePort,
 } from "@vdp/core";
 import type { DefinitionPackage } from "@vdp/definitions";
 import {
@@ -126,7 +127,16 @@ export function createDiagnosticRuntime(options: RuntimeOptions): DiagnosticRunt
   const engine = new DiagnosticEngine(engineOptions);
 
   const ecus = new EcuService(engine, events, log);
-  const dtc = new DtcService(engine, ecus, events, log, ids);
+  // The write path is its own port (master backlog P0 #3): reads never reach it,
+  // and every write goes through the staged flow with permit and audit (ADR 0028
+  // is the architecture rule; this is the composition of that rule).
+  const writes = createWritePort({
+    safety: engine.safety,
+    scanner: engine.scanner,
+    logger: log,
+    ...(engineOptions.clock !== undefined ? { clock: engineOptions.clock } : {}),
+  });
+  const dtc = new DtcService(engine, ecus, writes, events, log, ids);
   const definitions = new PackageDefinitionProvider(options.definitions ?? []);
   const vehicle = new VehicleService(engine, ecus, events, log, definitions);
   const measurements = new MeasurementService(engine, events, log);

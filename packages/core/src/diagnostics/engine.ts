@@ -27,9 +27,8 @@
 import type { DefinitionPackage, SignalDefinition } from "@vdp/definitions";
 import { type OemDtcInterpretation, OemProtocolRegistry } from "@vdp/protocols-oem";
 import { type Logger, createId, createLogger, toHex } from "@vdp/shared";
-import type { ClearDtcOptions, ClearDtcResult } from "../dtc/clear.js";
 import type { FreezeFrame } from "../dtc/freeze-frame.js";
-import type { DtcVehicleContext, EnrichedDtc } from "../dtc/scanner.js";
+import type { DtcScanner, DtcVehicleContext, EnrichedDtc } from "../dtc/scanner.js";
 import { type DecodedSignal, SignalDecoder } from "../measurements/decoder.js";
 import type { LiveDataEngine } from "../measurements/live.js";
 import { MeasurementRecorder } from "../measurements/recorder.js";
@@ -74,7 +73,6 @@ export class DiagnosticEngine {
       decoder: this.decoder,
       oemProtocols: this.oemProtocols,
       recorder: this.recorder,
-      safety: this.safety,
     });
   }
 
@@ -119,6 +117,14 @@ export class DiagnosticEngine {
     return this.definitions[0];
   }
 
+  /**
+   * Fault-memory enrichment of this session — read-only, and shared with the
+   * write port on purpose (the same bound vehicle, not a second opinion).
+   */
+  get scanner(): DtcScanner {
+    return this.context.scanner;
+  }
+
   // --- Vehicle binding (DtcScanner) ---------------------------------------
 
   /** Bind the resolved vehicle so scanned codes are enriched (AGENTS 11 → 20). */
@@ -136,7 +142,11 @@ export class DiagnosticEngine {
     return this.context.attacher.detectVehicleIdentity(this.session);
   }
 
-  // --- Fault memory (dtc-access.ts, dtc/clear.ts) --------------------------
+  // --- Fault memory, read-only (dtc-access.ts) -----------------------------
+  // Writing is *not* here: fault memory is cleared through the write port
+  // (`@vdp/core` → `writes/`), which owns the staged flow, the permit and the
+  // audit trail (master backlog P0 #3). A read path that can write is a read
+  // path nobody can hand to a viewer, a report or an AI without dread.
 
   /** Read DTCs from every reachable ECU (AGENTS 20 "Scan all ECUs"). */
   async scanDtcs(
@@ -163,32 +173,6 @@ export class DiagnosticEngine {
     recordNumber = 0xff,
   ): Promise<FreezeFrame | null> {
     return this.context.dtc.snapshot(this.context.registry.require(rxId), code, recordNumber);
-  }
-
-  /** Pre-check a planned clear without writing anything — drives the UI (AGENTS 26). */
-  evaluateDtcClear(
-    rxId: number,
-    options: Pick<ClearDtcOptions, "userConfirmed" | "vehicleState">,
-  ): { ok: boolean; failed: string[]; warnings: string[] } {
-    return this.context.dtc.evaluate(
-      this.context.registry.require(rxId),
-      options,
-      this.activePackage?.version,
-    );
-  }
-
-  /**
-   * Clear one ECU's fault memory (AGENTS 20). Needs explicit confirmation and a
-   * passing safety check; the previous state becomes a session snapshot, so the
-   * result stays comparable and auditable (AGENTS 25/26).
-   */
-  async clearDtcs(rxId: number, options: ClearDtcOptions): Promise<ClearDtcResult> {
-    // Named binding: the conditional spread below needs the narrowed value.
-    const definitionVersion = options.definitionVersion ?? this.activePackage?.version;
-    return this.context.dtc.clear(this.context.registry.require(rxId), options, {
-      session: this.session,
-      ...(definitionVersion !== undefined ? { definitionVersion } : {}),
-    });
   }
 
   // --- Measurements (measurement-access.ts) --------------------------------

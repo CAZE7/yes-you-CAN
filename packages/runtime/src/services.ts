@@ -23,8 +23,12 @@ import type {
   SafetyManager,
   VehicleSessionData,
   VehicleState,
+  WriteBinding,
+  WriteOperationResult,
+  WritePort,
   WriteRequestContext,
 } from "@vdp/core";
+import { clearableEcuOf, precheckDtcClear, runDtcClear } from "@vdp/core";
 import type {
   AnomalyInfo,
   ClearDtcOutcome,
@@ -67,6 +71,7 @@ import {
   toSignalInfo,
   toSignalStatisticsInfo,
   toVehicleSummary,
+  toWriteStageInfo,
 } from "./mappers.js";
 import { dtcVehicleContextOf, resolveVehicleQuery } from "./vehicle-resolution.js";
 
@@ -286,13 +291,22 @@ export class VehicleService {
   }
 }
 
-/** Fault memory: scan (all or one ECU), clear via the safety chain. */
+/**
+ * Fault memory: scan (all or one ECU) and clear.
+ *
+ * Clearing goes through the {@link WritePort} (master backlog P0 #3): this
+ * service decides *when* a write is offered and what the domain event trail
+ * says about it, while preconditions, permit, stages and audit stay where they
+ * belong — in the write path. The read methods here cannot write: the scan path
+ * hands out fault memory, not a way to erase it.
+ */
 export class DtcService {
   private lastScan: DtcInfo[] = [];
 
   constructor(
     private readonly engine: DiagnosticEngine,
     private readonly ecus: EcuService,
+    private readonly writes: WritePort,
     private readonly events: EventBus,
     private readonly log: Logger,
     private readonly ids: IdGenerator,
@@ -366,10 +380,12 @@ export class DtcService {
   precheckClear(ecuId: string, vehicleState: VehicleStateReading): DtcClearPrecheckInfo {
     const handle = this.ecus.resolveHandle(ecuId);
     if (!handle) throw unknownEcu(ecuId);
-    const checks = this.engine.evaluateDtcClear(handle.discovered.rxId, {
-      userConfirmed: false,
-      vehicleState,
-    });
+    const checks = precheckDtcClear(
+      this.writes,
+      { target: clearableEcuOf(handle), userConfirmed: false },
+      this.bindingOf(handle, vehicleState),
+      { userConfirmed: false },
+    );
     return {
       ecuId: handle.session.record.id,
       ecuName: handle.session.record.name,
@@ -380,8 +396,13 @@ export class DtcService {
   }
 
   /**
-   * Clear one ECU's fault memory — the full safety chain applies (AGENTS 26):
-   * pre-check → permit → write → verification → audit events.
+   * Clear one ECU's fault memory.
+   *
+   * The safety chain is not re-implemented here: the {@link WritePort} evaluates
+   * the preconditions, issues the permit, runs the stages and keeps the audit
+   * trail (AGENTS 25/26; master backlog P0 #3/#4). This method decides what the
+   * domain event trail says about it and maps the result to the domain shape —
+   * including the stages, so a refusal can be explained instead of asserted.
    */
   async clear(
     ecuId: string,
@@ -396,6 +417,7 @@ export class DtcService {
     const handle = this.ecus.resolveHandle(ecuId);
     if (!handle) throw unknownEcu(ecuId);
     const record = handle.session.record;
+    const definitionVersion = input.definitionVersion ?? this.engine.activePackage?.version;
 
     const actionId = this.ids.next("act");
     const policy = policyForWriteOperation("clear-dtc");
@@ -406,57 +428,32 @@ export class DtcService {
       ecuId: record.id,
     });
 
-    const precheck = this.engine.evaluateDtcClear(handle.discovered.rxId, {
-      userConfirmed: input.userConfirmed,
-      vehicleState: input.vehicleState,
-    });
-    if (!precheck.ok) {
-      this.events.publish("safety-approval-denied", {
-        actionId,
-        ecuId: record.id,
-        reasons: precheck.failed,
-      });
-      this.log.warn("DTC clear denied by safety pre-check", {
-        ecu: record.name,
-        failed: precheck.failed,
-      });
-      return deniedClearOutcome(record.id, record.name, precheck.failed);
-    }
-
+    let result: WriteOperationResult<ClearDtcResult>;
     try {
-      const definitionVersion = input.definitionVersion ?? this.engine.activePackage?.version;
-      const result: ClearDtcResult = await this.engine.clearDtcs(handle.discovered.rxId, {
-        userConfirmed: input.userConfirmed,
-        vehicleState: input.vehicleState,
-        ...(definitionVersion !== undefined ? { definitionVersion } : {}),
-      });
-      const outcome = toClearDtcOutcome(result, precheck.warnings);
-      this.events.publish("safety-approval-granted", {
-        actionId,
-        permitId: result.permit.id,
-        ecuId: record.id,
-      });
-      this.events.publish("dtcs-cleared", {
-        sessionId: session.id,
-        ecuId: record.id,
-        clearedCount: result.comparison.removed.length,
-        remainingCount: result.after.length,
-        verified: result.verified,
-      });
-      this.events.publish("action-executed", {
-        actionId,
-        operation: "clear-dtc",
-        ecuId: record.id,
-        ok: result.cleared,
-        ...(result.verified ? {} : { detail: "verification re-read found remaining codes" }),
-      });
-      this.log.info("DTC clear finished", {
-        ecu: record.name,
-        cleared: result.cleared,
-        verified: result.verified,
-      });
-      return { ...outcome, actionId };
+      result = await runDtcClear(
+        this.writes,
+        {
+          target: clearableEcuOf(handle),
+          userConfirmed: input.userConfirmed,
+          recordSnapshot: (records, label) => {
+            session.addDtcSnapshot([...records], label);
+          },
+          recordAction: (action) => {
+            session.recordAction(action);
+          },
+        },
+        {
+          ecuId: record.id,
+          ecuName: record.name,
+          sessionId: session.id,
+          sessionType: record.sessionType,
+          ...(definitionVersion !== undefined ? { definitionVersion } : {}),
+          vehicleState: input.vehicleState,
+        },
+      );
     } catch (error) {
+      // Unknown kind or a programming error in the port — a write that cannot
+      // even be attempted must still leave a trail (AGENTS 25).
       const message = messageOf(error);
       this.events.publish("action-executed", {
         actionId,
@@ -473,6 +470,74 @@ export class DtcService {
       });
       throw error;
     }
+
+    const cleared = result.value;
+    if (!result.ok || !cleared) {
+      this.events.publish("safety-approval-denied", {
+        actionId,
+        ecuId: record.id,
+        reasons: [...result.reasons],
+      });
+      this.log.warn("DTC clear not executed", { ecu: record.name, reasons: result.reasons });
+      this.events.publish("action-executed", {
+        actionId,
+        operation: "clear-dtc",
+        ecuId: record.id,
+        ok: false,
+        ...(result.reasons[0] !== undefined ? { detail: result.reasons[0] } : {}),
+      });
+      return {
+        ...deniedClearOutcome(record.id, record.name, result.reasons),
+        stages: result.stages.map(toWriteStageInfo),
+        transactionId: result.transaction.id,
+      };
+    }
+
+    const outcome = toClearDtcOutcome(cleared, [...result.warnings]);
+    this.events.publish("safety-approval-granted", {
+      actionId,
+      permitId: cleared.permit.id,
+      ecuId: record.id,
+    });
+    this.events.publish("dtcs-cleared", {
+      sessionId: session.id,
+      ecuId: record.id,
+      clearedCount: cleared.comparison.removed.length,
+      remainingCount: cleared.after.length,
+      verified: cleared.verified,
+    });
+    this.events.publish("action-executed", {
+      actionId,
+      operation: "clear-dtc",
+      ecuId: record.id,
+      ok: true,
+      ...(cleared.verified ? {} : { detail: "verification re-read found remaining codes" }),
+    });
+    this.log.info("DTC clear finished", {
+      ecu: record.name,
+      cleared: cleared.cleared,
+      verified: cleared.verified,
+    });
+    return {
+      ...outcome,
+      actionId,
+      stages: result.stages.map(toWriteStageInfo),
+      transactionId: result.transaction.id,
+    };
+  }
+
+  /** Binding a write runs under: the ECU record plus the session reference. */
+  private bindingOf(handle: EcuHandle, vehicleState: VehicleStateReading): WriteBinding {
+    const session = this.engine.vehicleSession;
+    const version = this.engine.activePackage?.version;
+    return {
+      ecuId: handle.session.record.id,
+      ecuName: handle.session.record.name,
+      ...(session ? { sessionId: session.id } : {}),
+      sessionType: handle.session.record.sessionType,
+      ...(version !== undefined ? { definitionVersion: version } : {}),
+      vehicleState,
+    };
   }
 }
 
