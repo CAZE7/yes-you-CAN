@@ -18,6 +18,10 @@
       "mayImport": ["@vdp/shared"],
       "why": "Domain contracts: shared primitives only — never protocols, transports or I/O."
     },
+    "@vdp/diagnostic-ir": {
+      "mayImport": ["@vdp/shared"],
+      "why": "The diagnostic IR: observations with provenance between raw protocol form and projections. It knows no protocol, no transport and no I/O — that is what makes it the stable middle (P0 #6)."
+    },
     "@vdp/application": {
       "mayImport": ["@vdp/domain"],
       "why": "Application layer: commands/queries/actions speak domain only."
@@ -75,6 +79,7 @@
     "@vdp/core": {
       "mayImport": [
         "@vdp/shared",
+        "@vdp/diagnostic-ir",
         "@vdp/definitions",
         "@vdp/protocols-uds",
         "@vdp/protocols-oem",
@@ -86,6 +91,7 @@
     "@vdp/runtime": {
       "mayImport": [
         "@vdp/shared",
+        "@vdp/diagnostic-ir",
         "@vdp/domain",
         "@vdp/application",
         "@vdp/core",

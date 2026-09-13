@@ -1,12 +1,24 @@
 /**
- * Measurement decoding (AGENTS 14).
+ * Measurement decoding (AGENTS 14) — raw bytes to the diagnostic IR, then a
+ * projection for callers that speak {@link DecodedSignal} (master backlog P0 #6).
  *
  * Raw bytes never reach the UI. Everything goes
- * raw response → decoder → signal → value + unit.
+ * raw response → IR observation (value with provenance, or a named gap) → value + unit.
  * Raw and decoded values are kept separate end to end (AGENTS 34.7).
+ *
+ * The IR step is what makes an *absent* signal distinguishable from a signal that
+ * could not be *observed*: `decode()` still answers `null` (its contract, and what
+ * `strict` throws for), while `observe()` answers a gap that carries the reason.
  */
 
 import type { SignalDefinition } from "@vdp/definitions";
+import {
+  type SignalGap,
+  type SignalObservation,
+  type SignalReading,
+  signalGap,
+  signalReading,
+} from "@vdp/diagnostic-ir";
 import {
   DecodeError,
   type Logger,
@@ -44,6 +56,16 @@ export interface DecodeOptions {
   strict?: boolean;
 }
 
+/** What the caller knows about the read that produced these bytes (P0 #6). */
+export interface ObservationContext {
+  /** ECU that was asked; defaults to the definition's ECU id. */
+  ecuId?: string;
+  /** When the bytes arrived; defaults to now. */
+  at?: string;
+  /** Definition package version the value is interpreted with. */
+  definitionVersion?: string;
+}
+
 export class SignalDecoder {
   private readonly log: Logger;
   private readonly strict: boolean;
@@ -54,10 +76,50 @@ export class SignalDecoder {
   }
 
   /**
+   * Decode one signal into the diagnostic IR: a reading with its provenance, or a
+   * gap that names what could not be read (P0 #6).
+   *
+   * This is the computation; {@link decode} is the projection for existing
+   * callers. Two entry points, one code path.
+   */
+  observe(
+    signal: SignalDefinition,
+    payload: Uint8Array,
+    context: ObservationContext = {},
+  ): SignalObservation {
+    const observation = this.decodeObservation(signal, payload);
+    if (observation.kind === "signal-gap") return observation;
+    return signalReading({
+      signalId: observation.signalId,
+      ...(observation.name !== undefined ? { name: observation.name } : {}),
+      ecuId: context.ecuId ?? observation.ecuId,
+      did: observation.did,
+      raw: observation.raw,
+      rawHex: observation.rawHex,
+      rawValue: observation.rawValue,
+      value: observation.value,
+      ...(observation.unit !== undefined ? { unit: observation.unit } : {}),
+      ...(observation.enumText !== undefined ? { enumText: observation.enumText } : {}),
+      outOfRange: observation.outOfRange,
+      at: context.at ?? new Date().toISOString(),
+      ...(context.definitionVersion !== undefined
+        ? { definitionVersion: context.definitionVersion }
+        : {}),
+    });
+  }
+
+  /**
    * Decode one signal out of a DID payload.
    * `payload` is the data part of the 0x62 response (DID header already removed).
    */
   decode(signal: SignalDefinition, payload: Uint8Array): DecodedSignal | null {
+    const observation = this.decodeObservation(signal, payload);
+    if (observation.kind === "signal-gap") return this.reject(observation);
+    return toDecodedSignal(observation);
+  }
+
+  /** The decoding itself — the one place the encodings are implemented. */
+  private decodeObservation(signal: SignalDefinition, payload: Uint8Array): SignalObservation {
     const start = signal.byteOffset;
     const end = start + signal.length;
     // The window has to lie inside the payload, ordered, at *both* ends.
@@ -68,7 +130,7 @@ export class SignalDecoder {
     // mix, AGENTS 24: no invented data). Validated packages cannot produce such a
     // window; live and imported definitions can.
     if (start < 0 || end < start || end > payload.length) {
-      return this.fail(
+      return this.gap(
         signal,
         `payload for DID 0x${signal.did.toString(16)} has ${payload.length} bytes but signal needs ${signal.length} at offset ${start}`,
       );
@@ -80,7 +142,7 @@ export class SignalDecoder {
       // declaration would silently produce a plausible-looking low value.
       const bitEnd = signal.bitOffset + signal.bitLength;
       if (signal.bitOffset < 0 || signal.bitLength < 1 || bitEnd > slice.length * 8) {
-        return this.fail(
+        return this.gap(
           signal,
           `bit window ${signal.bitOffset}..${bitEnd} does not fit the ${slice.length * 8} bit container of DID 0x${signal.did.toString(16)}`,
         );
@@ -106,7 +168,7 @@ export class SignalDecoder {
         let digits = "";
         for (const byte of slice) digits += byte.toString(16).padStart(2, "0");
         const raw = Number.parseInt(digits, 10);
-        if (!Number.isFinite(raw)) return this.fail(signal, `invalid BCD payload ${toHex(slice)}`);
+        if (!Number.isFinite(raw)) return this.gap(signal, `invalid BCD payload ${toHex(slice)}`);
         return this.finish(signal, slice, raw, raw);
       }
       case "float32": {
@@ -135,11 +197,11 @@ export class SignalDecoder {
         return this.finish(signal, slice, raw, raw);
       }
       default:
-        return this.fail(signal, `unsupported encoding "${signal.encoding}"`);
+        return this.gap(signal, `unsupported encoding "${signal.encoding}"`);
     }
   }
 
-  /** Decode every signal of a DID payload. */
+  /** Decode every signal of a DID payload as projections — gaps yield no entry. */
   decodeAll(signals: readonly SignalDefinition[], payload: Uint8Array): DecodedSignal[] {
     const results: DecodedSignal[] = [];
     for (const signal of signals) {
@@ -155,7 +217,7 @@ export class SignalDecoder {
     rawValue: number,
     physicalInput: number,
     options: { skipScaling?: boolean } = {},
-  ): DecodedSignal {
+  ): SignalReading {
     const scale = signal.scale ?? 1;
     const offset = signal.offsetValue ?? 0;
     const value = options.skipScaling ? rawValue : round(physicalInput * scale + offset, scale);
@@ -172,57 +234,92 @@ export class SignalDecoder {
         max: signal.max,
       });
     }
-    return {
+    return this.reading(signal, slice, rawValue, value, {
+      outOfRange,
+      ...(enumText ? { enumText } : {}),
+    });
+  }
+
+  private finishText(signal: SignalDefinition, slice: Uint8Array, text: string): SignalReading {
+    return this.reading(signal, slice, text, text, { outOfRange: false });
+  }
+
+  /** One place that builds an IR reading — every encoding path ends here. */
+  private reading(
+    signal: SignalDefinition,
+    slice: Uint8Array,
+    rawValue: SignalReading["rawValue"],
+    value: SignalReading["value"],
+    options: { outOfRange: boolean; enumText?: string },
+  ): SignalReading {
+    return signalReading({
       signalId: signal.id,
       name: signal.name,
+      ecuId: signal.ecu,
+      did: signal.did,
       raw: slice.slice(),
       rawHex: toHex(slice),
       rawValue,
       value,
-      ...(signal.unit ? { unit: signal.unit } : {}),
-      ...(enumText ? { enumText } : {}),
-      outOfRange,
-      did: signal.did,
-      ecu: signal.ecu,
-    };
+      ...(signal.unit !== undefined ? { unit: signal.unit } : {}),
+      ...(options.enumText !== undefined ? { enumText: options.enumText } : {}),
+      outOfRange: options.outOfRange,
+    });
   }
 
-  private finishText(signal: SignalDefinition, slice: Uint8Array, text: string): DecodedSignal {
-    return {
-      signalId: signal.id,
-      name: signal.name,
-      raw: slice.slice(),
-      rawHex: toHex(slice),
-      rawValue: text,
-      value: text,
-      outOfRange: false,
-      did: signal.did,
-      ecu: signal.ecu,
-    };
-  }
-
-  private finishBoolean(signal: SignalDefinition, slice: Uint8Array, raw: boolean): DecodedSignal {
+  private finishBoolean(signal: SignalDefinition, slice: Uint8Array, raw: boolean): SignalReading {
     const enumText = signal.enumMapping ? signal.enumMapping[raw ? 1 : 0] : undefined;
-    return {
-      signalId: signal.id,
-      name: signal.name,
-      raw: slice.slice(),
-      rawHex: toHex(slice),
-      rawValue: raw,
-      value: raw,
-      ...(enumText ? { enumText } : {}),
+    return this.reading(signal, slice, raw, raw, {
       outOfRange: false,
-      did: signal.did,
-      ecu: signal.ecu,
-    };
+      ...(enumText ? { enumText } : {}),
+    });
   }
 
-  private fail(signal: SignalDefinition, reason: string): null {
-    if (this.strict)
-      throw new DecodeError(`cannot decode ${signal.id}: ${reason}`, { signalId: signal.id });
+  /** A decode that could not happen: a named gap, logged as the error it is. */
+  private gap(signal: SignalDefinition, reason: string): SignalGap {
     this.log.error("decode failed", { signal: signal.id, reason });
+    return signalGap({
+      signalId: signal.id,
+      name: signal.name,
+      ecuId: signal.ecu,
+      did: signal.did,
+      reason,
+    });
+  }
+
+  /** Projection policy of `decode()`: throw in strict mode, otherwise no value. */
+  private reject(gap: SignalGap): null {
+    if (this.strict) {
+      throw new DecodeError(`cannot decode ${gap.signalId}: ${gap.reason}`, {
+        signalId: gap.signalId,
+      });
+    }
     return null;
   }
+}
+
+/**
+ * Project an IR reading onto the signal type this package has always returned.
+ *
+ * `DecodedSignal` predates the IR and is still the shape the snapshot path, the
+ * replay tooling and the export formats speak. The projection is lossless for
+ * those fields: the IR carries *more* (provenance, timestamp), not different
+ * values.
+ */
+export function toDecodedSignal(reading: SignalReading): DecodedSignal {
+  return {
+    signalId: reading.signalId,
+    name: reading.name ?? reading.signalId,
+    raw: reading.raw,
+    rawHex: reading.rawHex,
+    rawValue: reading.rawValue,
+    value: reading.value,
+    ...(reading.unit !== undefined ? { unit: reading.unit } : {}),
+    ...(reading.enumText !== undefined ? { enumText: reading.enumText } : {}),
+    outOfRange: reading.outOfRange,
+    did: reading.did,
+    ecu: reading.ecuId,
+  };
 }
 
 /** Round to the resolution implied by the scale so floats stay readable. */

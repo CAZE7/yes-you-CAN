@@ -8,25 +8,7 @@
   "include": ["src/**/*.ts"],
   "references": [
     {
-      "path": "../diagnostic-ir"
-    },
-    {
       "path": "../shared"
-    },
-    {
-      "path": "../transport/can"
-    },
-    {
-      "path": "../transport/iso-tp"
-    },
-    {
-      "path": "../protocols/uds"
-    },
-    {
-      "path": "../definitions"
-    },
-    {
-      "path": "../protocols/oem"
     }
   ],
   "exclude": ["src/**/*.spec.ts"]

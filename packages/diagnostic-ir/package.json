@@ -1,14 +1,14 @@
 {
-  "name": "@vdp/core",
+  "name": "@vdp/diagnostic-ir",
   "version": "0.1.0",
   "private": true,
   "license": "MIT",
   "type": "module",
-  "description": "Diagnostic core: sessions, ECU explorer, measurement engine, DTC system, logging, safety layer (AGENTS 9-21, 26).",
+  "description": "Diagnostic intermediate representation: observations with provenance (signal, DTC, ECU, session, window) between raw protocol form and domain projections (master backlog P0 #6).",
   "repository": {
     "type": "git",
     "url": "https://github.com/CAZE7/yes-you-CAN.git",
-    "directory": "packages/core"
+    "directory": "packages/diagnostic-ir"
   },
   "engines": {
     "node": ">=22"
@@ -22,12 +22,6 @@
     }
   },
   "dependencies": {
-    "@vdp/definitions": "0.1.0",
-    "@vdp/diagnostic-ir": "0.1.0",
-    "@vdp/protocols-oem": "0.1.0",
-    "@vdp/protocols-uds": "0.1.0",
-    "@vdp/shared": "0.1.0",
-    "@vdp/transport-can": "0.1.0",
-    "@vdp/transport-iso-tp": "0.1.0"
+    "@vdp/shared": "0.1.0"
   }
 }

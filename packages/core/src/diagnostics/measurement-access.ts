@@ -106,7 +106,10 @@ export class MeasurementAccess {
     if (!session) throw new Error("no session — call connect() first");
     const plan = this.buildPlan(options.signalIds);
     const engine = new LiveDataEngine(
-      (signal, payload) => this.decoder.decode(signal, payload),
+      // Live data goes through the IR (P0 #6): a signal that could not be read
+      // stays visible as a gap with its reason instead of turning into a round
+      // with fewer samples.
+      (signal, payload) => this.decoder.observe(signal, payload),
       this.recorder,
       {
         intervalMs: options.intervalMs ?? this.pollIntervalMs,

@@ -7,6 +7,7 @@
 
 import assert from "node:assert/strict";
 import type { SignalDefinition } from "@vdp/definitions";
+import { type SignalObservation, signalGap, signalReading } from "@vdp/diagnostic-ir";
 import { createLogger, toHex } from "@vdp/shared";
 import { describe, expect, test } from "vitest";
 import type { DecodedSignal } from "./decoder.js";
@@ -55,19 +56,35 @@ function reader(
   };
 }
 
-function decodeAll(signalDef: SignalDefinition, payload: Uint8Array): DecodedSignal | null {
+function decodeAll(signalDef: SignalDefinition, payload: Uint8Array): SignalObservation {
   const value = (payload[0] ?? 0) * 256 + (payload[1] ?? 0);
-  return {
+  return signalReading({
     signalId: signalDef.id,
     name: signalDef.name,
+    ecuId: signalDef.ecu,
+    did: signalDef.did,
     raw: payload,
     rawHex: toHex(payload),
     rawValue: value,
     value,
     outOfRange: false,
-    did: signalDef.did,
-    ecu: signalDef.ecu,
-  };
+  });
+}
+
+/** A decoder that answers one specific signal with a gap instead of a value. */
+function gappyDecoder(
+  broken: string,
+): (signal: SignalDefinition, payload: Uint8Array) => SignalObservation {
+  return (signalDef, payload) =>
+    signalDef.id === broken
+      ? signalGap({
+          signalId: signalDef.id,
+          name: signalDef.name,
+          ecuId: signalDef.ecu,
+          did: signalDef.did,
+          reason: "the payload did not match the declared layout",
+        })
+      : decodeAll(signalDef, payload);
 }
 
 describe("LiveDataEngine", () => {
@@ -117,6 +134,59 @@ describe("LiveDataEngine", () => {
     assert.equal(engine.statistics.errors, 2, "null payload + thrown read");
     assert.equal(engine.statistics.samples, 1);
     assert.ok(flaky.calls.includes(0x11));
+  });
+
+  test("a DID without data becomes a named gap for every signal it feeds", async () => {
+    const recorder = fakeRecorder();
+    const engine = new LiveDataEngine(decodeAll, recorder as unknown as MeasurementRecorder, {
+      maxRounds: 1,
+      intervalMs: 1,
+      logger,
+    });
+    const rounds: Array<{ gaps: SignalObservation[] }> = [];
+    engine.onRound((round) => rounds.push({ gaps: round.gaps }));
+
+    const empty = reader("engine", new Map([[0x0c, null]]));
+    const stats = await engine.run(
+      [empty],
+      new Map([["engine", [signal(0x0c, "engine.rpm"), signal(0x0c, "engine.rpm2")]]]),
+    );
+
+    assert.equal(stats.samples, 0);
+    assert.equal(stats.gaps, 2, "one gap per signal, not just one error per DID");
+    assert.equal(stats.errors, 1, "the DID-level error is still reported");
+    assert.deepEqual(
+      rounds[0]?.gaps.map((gap) => gap.signalId),
+      ["engine.rpm", "engine.rpm2"],
+    );
+    assert.match(
+      rounds[0]?.gaps[0]?.kind === "signal-gap" ? rounds[0].gaps[0].reason : "",
+      /no data returned for DID 0xC/,
+    );
+  });
+
+  test("a decoder that cannot use the payload yields a gap with the reason", async () => {
+    const recorder = fakeRecorder();
+    const engine = new LiveDataEngine(
+      gappyDecoder("engine.rpm"),
+      recorder as unknown as MeasurementRecorder,
+      { maxRounds: 1, intervalMs: 1, logger },
+    );
+    const rounds: Array<{ gaps: SignalObservation[] }> = [];
+    engine.onRound((round) => rounds.push({ gaps: round.gaps }));
+
+    const stats = await engine.run(
+      [reader("engine", new Map([[0x0c, new Uint8Array([0x01, 0x02])]]))],
+      new Map([["engine", [signal(0x0c, "engine.rpm"), signal(0x0c, "engine.rpm2")]]]),
+    );
+
+    assert.equal(stats.samples, 1, "the signal that could be decoded is recorded");
+    assert.equal(stats.gaps, 1);
+    assert.equal(rounds[0]?.gaps[0]?.kind, "signal-gap");
+    assert.equal(
+      rounds[0]?.gaps[0]?.kind === "signal-gap" ? rounds[0].gaps[0].reason : "",
+      "the payload did not match the declared layout",
+    );
   });
 
   test("ECUs with an empty plan are skipped entirely", async () => {

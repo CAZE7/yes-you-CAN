@@ -8,6 +8,9 @@
       "path": "packages/domain"
     },
     {
+      "path": "packages/diagnostic-ir"
+    },
+    {
       "path": "packages/application"
     },
     {
