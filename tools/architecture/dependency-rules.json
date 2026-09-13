@@ -1,0 +1,189 @@
+{
+  "schemaVersion": 1,
+  "description": "The one source of the architecture/dependency rule (AGENTS 28, master backlog P0 #2). Read by tools/architecture/check-dependencies.mjs (the tool that fails a build) and by tests/architecture/dependencies.test.ts (the suite that keeps the tool honest). Nothing else may restate these edges — a second copy is a second rule.",
+  "packages": {
+    "@vdp/shared": {
+      "mayImport": [],
+      "why": "Foundation: no dependencies at all."
+    },
+    "@vdp/charts": {
+      "mayImport": [],
+      "why": "DOM-free chart core; knows its own types and nothing else."
+    },
+    "@vdp/protocols-oem": {
+      "mayImport": [],
+      "why": "Manufacturer hook types and registry; fills gaps, depends on nothing."
+    },
+    "@vdp/domain": {
+      "mayImport": ["@vdp/shared"],
+      "why": "Domain contracts: shared primitives only — never protocols, transports or I/O."
+    },
+    "@vdp/application": {
+      "mayImport": ["@vdp/domain"],
+      "why": "Application layer: commands/queries/actions speak domain only."
+    },
+    "@vdp/definitions": {
+      "mayImport": ["@vdp/shared"],
+      "why": "Definitions are data + validation; no diagnostic logic."
+    },
+    "@vdp/transport-can": {
+      "mayImport": ["@vdp/shared"],
+      "why": "Frame layer; nothing below it."
+    },
+    "@vdp/transport-iso-tp": {
+      "mayImport": ["@vdp/shared", "@vdp/transport-can"],
+      "why": "Segmentation sits on frames."
+    },
+    "@vdp/transport-doip": {
+      "mayImport": ["@vdp/shared", "@vdp/transport-can"],
+      "why": "DoIP presents itself as a CAN-like link; it never pulls in the protocol layer."
+    },
+    "@vdp/protocols-uds": {
+      "mayImport": ["@vdp/shared"],
+      "why": "Speaks through a link interface, never through a bus or adapter."
+    },
+    "@vdp/protocols-kwp2000": {
+      "mayImport": ["@vdp/shared", "@vdp/protocols-uds"],
+      "why": "Legacy ECUs share the UDS primitives."
+    },
+    "@vdp/adapter-generic-can": {
+      "mayImport": ["@vdp/shared", "@vdp/transport-can"],
+      "why": "Adapter implements the bus contract; hardware specifics stay here."
+    },
+    "@vdp/adapter-elm327": {
+      "mayImport": ["@vdp/shared", "@vdp/transport-can"],
+      "why": "Serial ELM327 protocol and stream belong to the adapter."
+    },
+    "@vdp/adapter-canable": {
+      "mayImport": ["@vdp/shared", "@vdp/transport-can", "@vdp/adapter-elm327"],
+      "why": "CANable reuses the ELM327 stream/protocol."
+    },
+    "@vdp/adapter-socketcan": {
+      "mayImport": ["@vdp/shared", "@vdp/transport-can"],
+      "why": "Native SocketCAN binding."
+    },
+    "@vdp/adapter-host": {
+      "mayImport": [
+        "@vdp/shared",
+        "@vdp/transport-can",
+        "@vdp/adapter-canable",
+        "@vdp/adapter-elm327",
+        "@vdp/adapter-socketcan"
+      ],
+      "why": "Host bindings (tty, bindings loader) and the side-effect-free probe catalog."
+    },
+    "@vdp/core": {
+      "mayImport": [
+        "@vdp/shared",
+        "@vdp/definitions",
+        "@vdp/protocols-uds",
+        "@vdp/protocols-oem",
+        "@vdp/transport-can",
+        "@vdp/transport-iso-tp"
+      ],
+      "why": "The diagnostic core: protocols + transports + definitions (still the widest package below runtime)."
+    },
+    "@vdp/runtime": {
+      "mayImport": [
+        "@vdp/shared",
+        "@vdp/domain",
+        "@vdp/application",
+        "@vdp/core",
+        "@vdp/definitions",
+        "@vdp/protocols-uds",
+        "@vdp/transport-can",
+        "@vdp/transport-doip"
+      ],
+      "why": "Composition root: wires the transport seam, so it may reach the concrete transports while domain/application stay free of them."
+    },
+    "@vdp/storage": {
+      "mayImport": ["@vdp/shared", "@vdp/core"],
+      "why": "Persistence and export formats below the runtime."
+    },
+    "@vdp/reports": {
+      "mayImport": ["@vdp/core"],
+      "why": "Report rendering prints what the core produced."
+    },
+    "@vdp/ai": {
+      "mayImport": ["@vdp/shared"],
+      "why": "Provider abstraction stays orthogonal to diagnostics."
+    },
+    "@vdp/simulators": {
+      "mayImport": [
+        "@vdp/shared",
+        "@vdp/core",
+        "@vdp/definitions",
+        "@vdp/protocols-uds",
+        "@vdp/transport-can",
+        "@vdp/transport-iso-tp"
+      ],
+      "why": "Virtual vehicle answers like a real ECU stack."
+    },
+    "@vdp/trace-analyzer": {
+      "mayImport": ["@vdp/shared", "@vdp/definitions", "@vdp/protocols-uds", "@vdp/transport-can"],
+      "why": "Offline trace tooling decodes with the protocol layer, without the core."
+    },
+    "@vdp/definition-importer": {
+      "mayImport": ["@vdp/shared", "@vdp/definitions"],
+      "why": "Imports definition data; validation is the definitions package."
+    },
+    "@vdp/web": {
+      "mayImport": [
+        "@vdp/shared",
+        "@vdp/domain",
+        "@vdp/application",
+        "@vdp/runtime",
+        "@vdp/definitions",
+        "@vdp/protocols-uds",
+        "@vdp/transport-can",
+        "@vdp/storage",
+        "@vdp/reports",
+        "@vdp/ai",
+        "@vdp/simulators",
+        "@vdp/adapter-host"
+      ],
+      "why": "The workbench speaks to the vehicle exclusively through the runtime (command/query bus)."
+    }
+  },
+  "rules": {
+    "nodeBuiltins": {
+      "allowedIn": ["@vdp/adapter-host", "@vdp/storage", "@vdp/web"],
+      "why": "Portable layers (domain, application, protocols, transports, core, runtime) must stay free of node:fs and sockets; file system and host bindings belong to storage, host adapters and apps."
+    },
+    "ui": {
+      "package": "@vdp/web",
+      "why": "No package imports the UI — the app depends on the layers, never the other way round."
+    },
+    "layerRules": [
+      {
+        "from": "@vdp/protocols",
+        "forbidden": ["@vdp/adapter"],
+        "why": "Protocols speak through a link, never through an adapter."
+      },
+      {
+        "from": "@vdp/transport",
+        "forbidden": ["@vdp/protocols"],
+        "why": "Transports are the frame layer; protocols sit above them."
+      },
+      {
+        "from": "@vdp/adapter",
+        "forbidden": ["@vdp/protocols", "@vdp/core"],
+        "why": "Hardware specifics stay below protocols and the core."
+      }
+    ],
+    "portableLayers": [
+      {
+        "packages": ["@vdp/domain", "@vdp/application"],
+        "forbidden": [
+          "@vdp/protocols",
+          "@vdp/transport",
+          "@vdp/adapter",
+          "@vdp/core",
+          "@vdp/runtime",
+          "@vdp/storage"
+        ],
+        "why": "Domain and application stay protocol-, transport- and I/O-free (AGENTS 1, 3)."
+      }
+    ]
+  }
+}

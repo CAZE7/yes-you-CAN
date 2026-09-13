@@ -40,8 +40,9 @@
     "check": "biome check .",
     "check:fix": "biome check --write .",
     "audit": "npm audit --audit-level=moderate",
-    "ci": "npm run build && npm run typecheck && npm run check && npm test",
-    "demo": "npm run build && node apps/web/dist/src/server.js --demo --sessions=./sessions-local"
+    "ci": "npm run build && npm run typecheck && npm run check && npm run check:deps && npm test",
+    "demo": "npm run build && node apps/web/dist/src/server.js --demo --sessions=./sessions-local",
+    "check:deps": "node tools/architecture/check-dependencies.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
