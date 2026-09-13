@@ -159,7 +159,40 @@ test("a scanned fault carries the knowledge of the resolved variant", async () =
     "the transmission code answers for the automatic gearbox",
   );
 
-  const undocumented = byCode.get("C0035");
+  // The chassis code is variant knowledge without an engine or gearbox axis.
+  const chassis = byCode.get("C0035");
+  assert.equal(chassis?.knowledge?.scope, "vehicle");
+  assert.deepEqual(
+    chassis?.knowledge?.patterns.map((pattern) => pattern.id),
+    ["implausible-speed-on-straight-run", "intermittent-wheel-harness"],
+  );
+  const straightRun = chassis?.knowledge?.patterns[0];
+  assert.ok(
+    straightRun?.checks.every((check) => check.measurable && check.windowMs === 5000),
+    "the three-way comparison is evaluable over the same five seconds",
+  );
+  const harness = chassis?.knowledge?.patterns[1];
+  assert.equal(
+    harness?.checks[0]?.measurable,
+    false,
+    "a dropout watch keeps its window and gets no invented bound",
+  );
+  assert.equal(harness?.checks[0]?.windowMs, 30000);
+
+  // P0700 names no fault of its own, and the knowledge says that instead of
+  // inventing causes: one pattern carries no check at all.
+  const milRequest = byCode.get("P0700");
+  assert.equal(milRequest?.knowledge?.scope, "vehicle-gearbox");
+  assert.deepEqual(
+    milRequest?.knowledge?.patterns.map((pattern) => pattern.id),
+    ["underlying-code-in-module", "request-outlived-the-fault", "module-self-test"],
+  );
+  assert.deepEqual(milRequest?.knowledge?.patterns[2]?.checks, []);
+
+  // A network code means the same for every engine and gearbox, so no variant
+  // entry exists for it — and the answer says so instead of dressing the
+  // package-wide wording up as variant knowledge (§24).
+  const undocumented = byCode.get("U0121");
   assert.equal(undocumented?.knowledge?.scope, "package");
   assert.ok(
     undocumented?.knowledge?.notes.some((note) =>
@@ -169,7 +202,7 @@ test("a scanned fault carries the knowledge of the resolved variant", async () =
   );
   assert.match(
     undocumented?.description ?? "",
-    /Left front wheel speed sensor circuit/,
+    /Lost communication with anti-lock brake system/,
     "the manufacturer-wide wording stays, and says that it is",
   );
 });

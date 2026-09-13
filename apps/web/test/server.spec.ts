@@ -426,16 +426,47 @@ test("DTC descriptions come from the definition package, not from invention (AGE
       "an undocumented code keeps its raw failure type",
     );
 
-    // A code the package describes but this variant does not stays labelled as
-    // package-wide wording instead of borrowing the variant's appearance (§24).
+    // Variant knowledge without an engine or gearbox axis: the chassis code.
     const wheelSpeed = dtcs.find((dtc) => dtc.code === "C0035");
-    assert.equal(wheelSpeed?.knowledge?.variant, false);
-    assert.equal(wheelSpeed?.knowledge?.scopeLabel, "nur paketweit beschrieben");
+    assert.equal(wheelSpeed?.knowledge?.variant, true);
+    assert.equal(wheelSpeed?.knowledge?.scopeLabel, "Varianten-Wissen · Fahrzeug");
+    assert.equal(wheelSpeed?.knowledge?.scopeShort, "Fahrzeug");
+    const straightRun = wheelSpeed?.knowledge?.patterns[0];
+    assert.equal(straightRun?.likelihoodLabel, "häufig");
+    assert.deepEqual(
+      straightRun?.checks.map((check) => check.window),
+      ["45 … 55 · 5 s messen", "45 … 55 · 5 s messen", "45 … 55 · 5 s messen"],
+      "the corner, the opposite corner and the OBD speed are measured over one window",
+    );
+    assert.ok(straightRun?.checks.every((check) => check.judgement === "automatisch prüfbar"));
+    // A watch that has a window but no bound says so instead of showing a range
+    // nobody documented (§24).
+    const harnessPattern = wheelSpeed?.knowledge?.patterns[1];
+    assert.equal(harnessPattern?.checks[0]?.measurable, false);
+    assert.equal(harnessPattern?.checks[0]?.judgement, "nur manuell beurteilbar");
+    assert.equal(harnessPattern?.checks[0]?.window, "30 s messen");
+
+    // A pattern no signal in this package can decide carries no check at all.
+    const milRequest = dtcs.find((dtc) => dtc.code === "P0700");
+    assert.equal(milRequest?.knowledge?.scopeLabel, "Varianten-Wissen · Getriebe");
+    assert.deepEqual(milRequest?.knowledge?.patterns[2]?.checks, []);
     assert.ok(
-      wheelSpeed?.knowledge?.notes.some((note) =>
+      milRequest?.knowledge?.patterns[2]?.repair,
+      "the repair advice is the step, because nothing here is measurable",
+    );
+
+    // A code the package describes but this variant deliberately does not stays
+    // labelled as package-wide wording instead of borrowing the variant's
+    // appearance (§24) — a network code means the same for every variant.
+    const network = dtcs.find((dtc) => dtc.code === "U0121");
+    assert.equal(network?.knowledge?.variant, false);
+    assert.equal(network?.knowledge?.scopeLabel, "nur paketweit beschrieben");
+    assert.equal(network?.knowledge?.scopeShort, "paketweit");
+    assert.ok(
+      network?.knowledge?.notes.some((note) =>
         note.includes("no variant-specific knowledge documented"),
       ),
-      wheelSpeed?.knowledge?.notes.join(" | "),
+      network?.knowledge?.notes.join(" | "),
     );
   });
 });
