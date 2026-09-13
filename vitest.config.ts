@@ -248,6 +248,16 @@ export default defineConfig({
         // New on 2026-09-12: measured heuristic.ts 94.9/79.5, http.ts 100/87.7,
         // service.ts 100/100 after the transport, timeout and gateway-junk tests.
         'packages/ai/**/src/**': { lines: 90, branches: 75, perFile: true },
+        // New on 2026-09-12 with the vehicle-definition layer (ADR 0023): the
+        // resolver decides which car a workshop is looking at, so its criteria,
+        // its weights and its evidence strings are all tested per file. Measured
+        // resolve.ts 100 lines / 92.8 % branches, evidence.ts, vehicles.ts,
+        // schema.ts and every built-in package 100/100, validate.ts 96.1/89.8,
+        // json.ts 99.1/92.8. `migrate.ts` is the ceiling at 87.5/87.5: its last
+        // throw fires only when a schema version is added to
+        // SUPPORTED_SCHEMA_VERSIONS without a migration step, so no input can
+        // reach it — that is the point of the line, and it says so in a comment.
+        'packages/definitions/**/src/**': { lines: 85, branches: 80, perFile: true },
         // Raised 75/70 → 90/75 on 2026-09-12: `group.ts` was the reason the old
         // gate existed (77.0/77.6, one refactor away from red) and is now at
         // 99.1/91.3; the weakest chart file is viewport.ts at 92.5/77.1.

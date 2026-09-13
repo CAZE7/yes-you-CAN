@@ -12,7 +12,7 @@
 import type { DefinitionPackage } from "../schema.js";
 
 export const genericPackage: DefinitionPackage = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   oem: "generic",
   name: "Generic UDS / OBD-II baseline",
   version: "1.0.0",
