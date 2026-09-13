@@ -11,7 +11,7 @@
  */
 
 import type { Logger } from "@vdp/shared";
-import { createLogger, toHex } from "@vdp/shared";
+import { TransportError, createLogger, toHex } from "@vdp/shared";
 import type { FrameListener } from "./bus.js";
 import { type CanFilter, type CanFrame, frameMatchesFilters } from "./frame.js";
 import type { AdapterCapabilities, AdapterInfo } from "./transport.js";
@@ -152,7 +152,9 @@ export class ReplayTransport {
 
   /** Answer a sent frame from the recording. */
   async send(frame: CanFrame): Promise<void> {
-    if (!this.opened) throw new Error("replay transport is not open");
+    if (!this.opened) {
+      throw new TransportError("replay transport is not open", { adapterId: this.info.id });
+    }
     this.stats.sends++;
 
     const exchange = this.takeExchange(frame);

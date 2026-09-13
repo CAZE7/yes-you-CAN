@@ -38,8 +38,11 @@ interface Pair {
  */
 function createPair(channel: string, overrides: Record<string, unknown> = {}): Pair {
   const network = createVirtualCanNetwork({ channel });
-  const testerBus = network.createBus("tester");
-  const ecuBus = network.createBus("ecu");
+  // The buses state what they can carry: a pair that sends FD frames needs buses
+  // that advertise CAN-FD, otherwise the simulator (like a real adapter) refuses.
+  const canFd = overrides.fd === true;
+  const testerBus = network.createBus("tester", { canFd });
+  const ecuBus = network.createBus("ecu", { canFd });
   const received: CanFrame[] = [];
   const waiters: Array<() => void> = [];
 
