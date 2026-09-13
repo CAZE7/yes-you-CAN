@@ -41,9 +41,10 @@ import {
   identifyEcus,
   readDtcFreezeFrame,
   readDtcs,
+  resolveVehicle,
   startMeasurements,
 } from "@vdp/application";
-import { type DefinitionPackage, genericPackage } from "@vdp/definitions";
+import { type DefinitionPackage, genericPackage, simulatorPackage } from "@vdp/definitions";
 import type {
   DtcClearPrecheckInfo,
   DtcInfo,
@@ -51,6 +52,7 @@ import type {
   FreezeFrameInfo,
   MarkerInfo,
   MeasurementReading,
+  VehicleResolutionRef,
 } from "@vdp/domain";
 import type { DtcRecord } from "@vdp/protocols-uds";
 import { type DiagnosticRuntime, createDiagnosticRuntime } from "@vdp/runtime";
@@ -82,6 +84,7 @@ import {
   createWebAdapterCatalog,
   isApplicationManaged,
 } from "./adapters.js";
+import { type VehicleResolutionView, toVehicleResolutionView } from "./vehicle-view.js";
 
 export interface EcuView {
   id: string;
@@ -277,6 +280,11 @@ export interface AppState {
   sessionId: string;
   vin?: string;
   vehicle: string;
+  /**
+   * Last vehicle resolution (AGENTS 11) — the hypotheses with their evidence.
+   * Absent until something was resolved; never a guess about the identity.
+   */
+  vehicleResolution?: VehicleResolutionView;
   mileageKm?: number;
   adapter: { id: string; name: string; kind: string; channels: string[] };
   /** Adapter the user selected, including its settings, so the UI can show them. */
@@ -308,7 +316,16 @@ export interface AppState {
  */
 export interface BackendEvent {
   /** 'marker' adds one event, 'markers' replaces the whole list (after a scan). */
-  type: "sample" | "trace" | "dtc" | "ecu" | "analysis" | "error" | "marker" | "markers";
+  type:
+    | "sample"
+    | "trace"
+    | "dtc"
+    | "ecu"
+    | "analysis"
+    | "error"
+    | "marker"
+    | "markers"
+    | "vehicle";
   payload: unknown;
 }
 
@@ -393,7 +410,8 @@ export class DemoBackend {
   private live = false;
   private connected = false;
   private readonly vin: string;
-  private readonly definitions: readonly DefinitionPackage[];
+  private definitions: readonly DefinitionPackage[];
+  private resolution?: VehicleResolutionView;
   private readonly repository?: SessionRepository;
   /**
    * Turns raw protocol codes into described fault entries. Descriptions come
@@ -404,7 +422,6 @@ export class DemoBackend {
   constructor(private readonly options: BackendOptions = {}) {
     this.log = (options.logger ?? createLogger("web", { level: "INFO" })).child("backend");
     this.vin = options.vin ?? DEFAULT_VIN;
-    this.definitions = options.definitions ?? [genericPackage];
     this.analysisService = new AnalysisService({
       providers: [new HeuristicAnalysisProvider()],
       logger: this.log,
@@ -412,6 +429,7 @@ export class DemoBackend {
     this.adapters = options.adapters ?? createWebAdapterCatalog();
     this.selection = options.selection ?? { id: SIMULATOR_ADAPTER_ID, config: {} };
     this.mode = modeForSelection(this.selection, this.adapters);
+    this.definitions = options.definitions ?? defaultDefinitionsFor(this.mode);
     // Persistence is opt-in so tests and ephemeral runs stay side-effect free.
     if (options.repository) this.repository = options.repository;
     else if (options.sessionDir)
@@ -475,6 +493,9 @@ export class DemoBackend {
     if (wasConnected) await this.stop();
     this.selection = selection;
     this.mode = modeForSelection(selection, this.adapters);
+    // Which definitions describe the bus changes with the source: the simulated
+    // car answers with simulated identification values, a real one does not.
+    this.definitions = this.options.definitions ?? defaultDefinitionsFor(this.mode);
     const description = await this.adapters.describe(selection.id, selection.config, {
       logger: this.log,
     });
@@ -656,7 +677,7 @@ export class DemoBackend {
     return new VirtualVehicle({
       vin: this.vin,
       // The simulator takes a single package; the first one is the baseline.
-      definitions: this.definitions[0] ?? genericPackage,
+      definitions: this.definitions[0] ?? simulatorPackage,
       logger: this.log,
       dynamic: true,
       // Echo our own frames back so the raw trace records requests *and*
@@ -765,6 +786,7 @@ export class DemoBackend {
     this.connected = false;
     this.ecus = [];
     this.dtcs = [];
+    this.resolution = undefined;
   }
 
   /** Read identification DIDs from every discovered ECU (read-only, AGENTS 34.11). */
@@ -774,6 +796,27 @@ export class DemoBackend {
     this.ecus = summaries.map((summary) => toEcuView(summary));
     for (const view of this.ecus) this.emit("ecu", view);
     return this.ecus;
+  }
+
+  /**
+   * Which vehicle is connected (AGENTS 11).
+   *
+   * Read-only by construction: the runtime query weighs the VIN, the
+   * identification values and the addresses that answered against the installed
+   * definitions and returns ranked hypotheses. Nothing is written to the bus and
+   * nothing is asserted — an empty answer is a legitimate result.
+   */
+  async resolveVehicle(): Promise<VehicleResolutionView> {
+    const runtime = this.requireRuntime();
+    const resolution: VehicleResolutionRef = await runtime.commands.query(resolveVehicle());
+    this.resolution = toVehicleResolutionView(resolution);
+    this.emit("vehicle", this.resolution);
+    this.log.info("vehicle resolution", {
+      candidates: this.resolution.candidates.length,
+      best: this.resolution.best?.vehicleId,
+      score: this.resolution.best?.scorePercent,
+    });
+    return this.resolution;
   }
 
   /** Read fault codes from all ECUs. */
@@ -1019,6 +1062,7 @@ export class DemoBackend {
       sessionId: session?.id ?? "not-started",
       ...(identity?.vin ? { vin: identity.vin } : {}),
       vehicle: describe(identity),
+      ...(this.resolution ? { vehicleResolution: this.resolution } : {}),
       ...(session?.mileageKm !== undefined ? { mileageKm: session.mileageKm } : {}),
       adapter: session
         ? {
@@ -1250,6 +1294,19 @@ function describe(
 }
 
 /** Which transport source a selection implies (AGENTS 4, 29, 32). */
+/**
+ * Which definition packages the demo runs on.
+ *
+ * A simulated or replayed session gets `simulatorPackage`: genericPackage's ECUs,
+ * signals and fault codes plus the vehicle definition that makes the virtual car
+ * resolvable at all. A real adapter keeps the OEM-neutral baseline — describing a
+ * customer's car with the simulator's identification values would be exactly the
+ * kind of invented vehicle truth AGENTS 24 forbids.
+ */
+function defaultDefinitionsFor(mode: BackendMode): readonly DefinitionPackage[] {
+  return mode === "hardware" ? [genericPackage] : [simulatorPackage];
+}
+
 function modeForSelection(selection: AdapterSelection, catalog: AdapterCatalog): BackendMode {
   if (selection.id === SIMULATOR_ADAPTER_ID) return "simulator";
   if (selection.id === REPLAY_ADAPTER_ID) return "replay";

@@ -10,8 +10,14 @@
 
 import assert from "node:assert/strict";
 import { DiagnosticEngine } from "@vdp/core";
-import { DefinitionRegistry, genericPackage } from "@vdp/definitions";
-import { DefinitionError, fromHex, toHex } from "@vdp/shared";
+import {
+  DefinitionRegistry,
+  SIMULATOR_VIN,
+  VehicleResolver,
+  genericPackage,
+  simulatorPackage,
+} from "@vdp/definitions";
+import { DefinitionError, ascii, fromHex, toHex } from "@vdp/shared";
 import { createLogger } from "@vdp/shared";
 import { VirtualVehicle, createVirtualCanNetwork } from "@vdp/simulators";
 import { ReplayTransport } from "@vdp/transport-can";
@@ -586,4 +592,74 @@ test("REGRESSION: an invalid reset type was answered positively", async () => {
     await engine.disconnect();
     await vehicle.stop();
   }
+});
+
+test("REGRESSION: every ASCII signal of the virtual vehicle answered with the VIN", async () => {
+  // Symptom: the spare part number read from the simulated engine (DID 0xF187)
+  // came back as "1HGCM82633A00435" — the VIN, cut to the signal's 16 bytes — and
+  // so did the software id (0xF181) and the serial number (0xF18C). No definition
+  // package can honestly declare a part number that equals the VIN, so a vehicle
+  // resolution built on those values contradicted itself (ADR 0023).
+  // Fix: only DID 0xF190 (ISO 14229-1 vehicleIdentificationNumber) carries the
+  // VIN; every other ASCII signal answers "<ECU ID>-<DID>" — the same form the
+  // identification-DID path already used, so both paths describe one car.
+  const vehicle = new VirtualVehicle({ definitions: genericPackage, logger });
+  await vehicle.start();
+  const engine = new DiagnosticEngine({
+    bus: vehicle.testerBus,
+    definitions: [genericPackage],
+    logger,
+  });
+  try {
+    await engine.connect({ windowMs: 60, probeDelayMs: 0 });
+    const handle = engine.handleFor(0x7e8);
+    assert.ok(handle);
+
+    const vin = await handle.session.client.readDid(0xf190);
+    const partNumber = await handle.session.client.readDid(0xf187);
+    const software = await handle.session.client.readDid(0xf181);
+    assert.ok(vin && partNumber && software, "the engine answers all three DIDs");
+
+    assert.equal(ascii(vin), "1HGCM82633A004352", "the VIN stays the VIN");
+    assert.equal(ascii(partNumber), "ENGINE-f187", "a part number is its own value");
+    assert.equal(ascii(software), "ENGINE-f181", "a software id is its own value");
+  } finally {
+    await engine.disconnect();
+    await vehicle.stop();
+  }
+});
+
+test("REGRESSION: an identification value nobody declared counted as a contradiction", () => {
+  // Symptom: the simulated engine also reports a serial number under DID 0xF18C.
+  // The vehicle definition declares part numbers and software ids, no serial
+  // numbers — and the first version of the resolver scored the *correct* car down,
+  // because "matches no declared token" was treated as "contradicts the vehicle".
+  // A value whose DID is not documented as a part number, a software or a hardware
+  // version cannot speak against the car: it supports on a match and is neutral
+  // otherwise (AGENTS 11.1 rule 5, ADR 0023).
+  const resolver = new VehicleResolver([simulatorPackage]);
+
+  const withSerial = resolver.resolve({
+    vin: SIMULATOR_VIN,
+    identifications: [
+      { oem: "simulator", ecu: "engine", did: 0xf187, value: "ENGINE-f187" },
+      { oem: "simulator", ecu: "engine", did: 0xf18c, value: "SN-2026-09-12" },
+    ],
+  });
+  assert.equal(withSerial.best?.vehicleId, "virtual-vehicle");
+  assert.deepEqual(
+    withSerial.best?.conflicts.map((entry) => entry.kind),
+    [],
+    "a serial number the definition does not describe is not a contradiction",
+  );
+
+  const withWrongPartNumber = resolver.resolve({
+    vin: SIMULATOR_VIN,
+    identifications: [{ oem: "simulator", ecu: "engine", did: 0xf187, value: "03C906000AA" }],
+  });
+  assert.deepEqual(
+    withWrongPartNumber.best?.conflicts.map((entry) => entry.kind),
+    ["part-number"],
+    "the rule distinguishes: a documented DID that disagrees still contradicts",
+  );
 });

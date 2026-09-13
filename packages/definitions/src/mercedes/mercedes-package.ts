@@ -10,7 +10,7 @@
 import type { DefinitionPackage } from "../schema.js";
 
 export const mercedesExamplePackage: DefinitionPackage = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   oem: "mercedes",
   name: "Mercedes example (placeholder data)",
   version: "0.1.0",

@@ -14,7 +14,7 @@
 import type { DefinitionPackage } from "../schema.js";
 
 export const vagExamplePackage: DefinitionPackage = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   oem: "vag",
   name: "VAG example (placeholder data)",
   version: "0.1.0",
@@ -48,6 +48,65 @@ export const vagExamplePackage: DefinitionPackage = {
           severity: "minor",
         },
       ],
+    },
+  ],
+  /**
+   * The vehicle axis (schema version 2, AGENTS 11): one invented variant that
+   * shows how a package narrows its ECUs to a car.
+   *
+   * What is *not* invented here, and why: the WMI list is public reference data
+   * (ISO 3780, see `reference/wmi.ts`) and the model-year characters are the
+   * standard 49 CFR 565 assignment for 2013–2020 — both are the kind of data a
+   * resolver may legitimately know. Everything vehicle-specific (part numbers,
+   * software versions, engine and gearbox codes) is invented and marked as such,
+   * because that is OEM knowledge this repository has no rights to (AGENTS 24).
+   */
+  vehicles: [
+    {
+      id: "vag-example-variant",
+      brand: "Example brand",
+      model: "Example variant (invented)",
+      platform: "EXAMPLE-PLATFORM",
+      generation: "1",
+      bodyStyles: ["hatchback"],
+      modelYears: { from: 2013, to: 2020 },
+      vinMatch: {
+        wmi: ["WVW", "WV1"],
+        // The filler pattern European VINs of this era commonly carry in 4–8.
+        vdsPattern: "ZZZ..",
+        modelYearChars: ["D", "E", "F", "G", "H", "J", "K", "L"],
+        plantChars: ["W", "Z"],
+      },
+      engines: [
+        {
+          id: "example-1-4-tsi",
+          name: "Example 1.4 petrol turbo (invented)",
+          fuel: "petrol",
+          displacementCc: 1395,
+          powerKw: 110,
+          codes: ["EXA", "EXB"],
+        },
+      ],
+      gearboxes: [
+        {
+          id: "example-dsg7",
+          name: "Example 7-speed dual clutch (invented)",
+          type: "dual-clutch",
+          gears: 7,
+          codes: ["EXG"],
+        },
+      ],
+      ecus: [
+        {
+          ecu: "engine",
+          partNumbers: ["EXAMPLE-000-000-AB"],
+          softwareVersions: ["EXSW0001"],
+          engine: "example-1-4-tsi",
+          gearbox: "example-dsg7",
+        },
+      ],
+      description:
+        "Demonstrates the vehicle axis only. Does not describe a real car: replace every invented value with sourced data before use (AGENTS 24).",
     },
   ],
   signals: [

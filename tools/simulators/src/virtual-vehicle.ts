@@ -291,11 +291,26 @@ export class VirtualVehicle {
   }
 
   /**
+   * Value of an ASCII signal.
+   *
+   * Only the vehicle identification DID (ISO 14229-1 0xF190) carries the VIN.
+   * Every other ASCII signal is an identification value of its own ECU — a part
+   * number, a software id, a serial number — and answers in the same
+   * `<ECU ID>-<DID>` form the identification-DID path uses, so a definition
+   * package sees one consistent simulated car instead of the VIN echoed back from
+   * a part-number signal.
+   */
+  private asciiValue(ecuId: string, signal: SignalDefinition): string {
+    if (signal.did === 0xf190) return this.vin;
+    return `${ecuId.toUpperCase()}-${signal.did.toString(16)}`;
+  }
+
+  /**
    * Simple physical model so graphs show realistic movement.
    * Deterministic per seed, so recordings are reproducible (AGENTS 31/32).
    */
   private signalValue(ecuId: string, signal: SignalDefinition): number | string | boolean {
-    if (signal.encoding === "ascii") return this.vin;
+    if (signal.encoding === "ascii") return this.asciiValue(ecuId, signal);
     if (signal.encoding === "bool") return true;
 
     const elapsedS = (Date.now() - this.startedAt) / 1000;

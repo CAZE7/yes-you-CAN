@@ -7,6 +7,7 @@
  */
 
 import {
+  CURRENT_SCHEMA_VERSION,
   type DefinitionPackage,
   type EcuDefinition,
   type Provenance,
@@ -243,7 +244,7 @@ function finish(
     log.warn("definition import skipped lines", { count: skipped.length, first: skipped[0] });
   }
   const pkg: DefinitionPackage = {
-    schemaVersion: 1,
+    schemaVersion: CURRENT_SCHEMA_VERSION,
     oem: options.oem,
     name: options.name,
     version: options.version ?? "0.1.0",

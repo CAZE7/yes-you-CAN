@@ -8,25 +8,38 @@
  * SQLite or a cloud API without the runtime changing.
  */
 
-import { type DefinitionPackage, type EcuDefinition, indexPackage } from "@vdp/definitions";
+import {
+  type DefinitionPackage,
+  type EcuDefinition,
+  type VehicleCandidate,
+  type VehicleResolution,
+  VehicleResolver,
+  indexPackage,
+} from "@vdp/definitions";
 import type {
   DefinitionProvider,
   DidDefinitionRef,
   EcuDefinitionRef,
   FindDidQuery,
   FindEcuQuery,
+  ResolveVehicleQuery,
   SignalDefinitionRef,
+  VehicleCandidateRef,
   VehicleDefinitionRef,
+  VehicleEvidenceRef,
+  VehicleResolutionRef,
 } from "@vdp/domain";
 
 export class PackageDefinitionProvider implements DefinitionProvider {
   readonly source: string;
+  private readonly resolver: VehicleResolver;
 
   constructor(
     private readonly packages: readonly DefinitionPackage[],
     source = "builtin-packages",
   ) {
     this.source = source;
+    this.resolver = new VehicleResolver(packages);
   }
 
   listPackages(): VehicleDefinitionRef[] {
@@ -34,6 +47,7 @@ export class PackageDefinitionProvider implements DefinitionProvider {
       oem: pkg.oem,
       name: pkg.name,
       version: pkg.version,
+      vehicles: (pkg.vehicles ?? []).length,
     }));
   }
 
@@ -94,6 +108,26 @@ export class PackageDefinitionProvider implements DefinitionProvider {
     return undefined;
   }
 
+  /**
+   * Resolve the connected vehicle from VIN, identification values and discovery
+   * (AGENTS 11). The ranking and the evidence are computed by the definitions
+   * layer; this method only narrows the result to the domain's view, so the
+   * domain stays free of definition types (ADR 0014).
+   */
+  resolveVehicle(query: ResolveVehicleQuery): VehicleResolutionRef {
+    const resolution = this.resolver.resolve({
+      ...(query.vin !== undefined ? { vin: query.vin } : {}),
+      ...(query.identifications !== undefined
+        ? { identifications: query.identifications.map((fact) => ({ ...fact })) }
+        : {}),
+      ...(query.discoveredAddresses !== undefined
+        ? { discoveredAddresses: query.discoveredAddresses.map((address) => ({ ...address })) }
+        : {}),
+      ...(query.declared !== undefined ? { declared: { ...query.declared } } : {}),
+    });
+    return toResolutionRef(resolution);
+  }
+
   private toEcuRef(pkg: DefinitionPackage, ecu: EcuDefinition): EcuDefinitionRef {
     return {
       id: ecu.id,
@@ -110,4 +144,56 @@ export class PackageDefinitionProvider implements DefinitionProvider {
         : {}),
     };
   }
+}
+
+function toEvidenceRef(evidence: VehicleCandidate["evidence"][number]): VehicleEvidenceRef {
+  return {
+    kind: evidence.kind,
+    observed: evidence.observed,
+    expected: evidence.expected,
+    weight: evidence.weight,
+    reason: evidence.reason,
+  };
+}
+
+function toCandidateRef(candidate: VehicleCandidate): VehicleCandidateRef {
+  return {
+    oem: candidate.oem,
+    packageVersion: candidate.packageVersion,
+    vehicleId: candidate.vehicleId,
+    brand: candidate.brand,
+    model: candidate.model,
+    platform: candidate.platform,
+    provenanceType: candidate.provenance.sourceType,
+    engineIds: [...candidate.engineIds],
+    gearboxIds: [...candidate.gearboxIds],
+    score: candidate.score,
+    trust: candidate.trust,
+    evidence: candidate.evidence.map(toEvidenceRef),
+    conflicts: candidate.conflicts.map(toEvidenceRef),
+    expectedEcus: candidate.coverage.expected,
+    matchedEcus: candidate.coverage.matched,
+    missingEcus: [...candidate.coverage.missing],
+  };
+}
+
+/**
+ * Narrow a definition-layer resolution to the domain view.
+ *
+ * `best` is the first candidate by construction, so it is taken from the mapped
+ * list instead of being mapped twice — a client comparing `best` with
+ * `candidates[0]` must see the same object, not two equal ones.
+ */
+function toResolutionRef(resolution: VehicleResolution): VehicleResolutionRef {
+  const candidates = resolution.candidates.map(toCandidateRef);
+  const best = resolution.best === undefined ? undefined : candidates[0];
+  const ref: VehicleResolutionRef = {
+    candidates,
+    unresolved: resolution.unresolved,
+    notes: [...resolution.notes],
+    unexplained: [...resolution.unexplained],
+  };
+  if (best !== undefined) ref.best = best;
+  if (resolution.vinLookup !== undefined) ref.vinLookup = { ...resolution.vinLookup };
+  return ref;
 }

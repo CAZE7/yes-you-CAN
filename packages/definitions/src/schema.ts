@@ -131,6 +131,115 @@ export interface EcuDefinition {
   description?: string;
 }
 
+/**
+ * One powertrain option of a vehicle definition.
+ *
+ * The engine is the pivot between "which car is this" and "which ECUs and which
+ * DIDs does it have": a 1.5 TSI and a 2.0 TDI of the same platform run different
+ * software on differently addressed engine control units. `codes` are the
+ * manufacturer's own engine codes (the ones stamped into the engine and printed
+ * on the data sticker), matched against what an ECU reports in its identification
+ * DIDs.
+ */
+export interface EngineDefinition {
+  /** Stable identifier inside the package, e.g. "1-5-tsi-110kw". */
+  id: string;
+  /** Human readable designation, e.g. "1.5 TSI 110 kW (EA211 evo)". */
+  name: string;
+  fuel?: "petrol" | "diesel" | "electric" | "hybrid" | "plugin-hybrid" | "cng" | "lpg";
+  displacementCc?: number;
+  powerKw?: number;
+  torqueNm?: number;
+  /** Manufacturer engine codes, e.g. ["CU", "CUC", "DADA"] — identification evidence. */
+  codes?: string[];
+  /** Emission standard as documented, e.g. "euro6d-isc-fcm". */
+  emissionStandard?: string;
+  description?: string;
+}
+
+/** One gearbox option of a vehicle definition — same role as {@link EngineDefinition}. */
+export interface GearboxDefinition {
+  id: string;
+  name: string;
+  type?: "manual" | "automatic" | "dual-clutch" | "cvt" | "single-speed";
+  gears?: number;
+  /** Manufacturer gearbox codes, matched against identification DIDs. */
+  codes?: string[];
+  description?: string;
+}
+
+/**
+ * VIN based selection rules (ISO 3779 / ISO 3780 positions).
+ *
+ * Every field is optional: a definition that only knows the WMI is still useful,
+ * and a criterion that is not declared produces *no* evidence in either
+ * direction — the resolver never punishes a vehicle for data nobody documented.
+ * This module only compares positions; check-digit arithmetic and VIN validation
+ * stay in `@vdp/core` (ADR 0002: `definitions` imports nothing but `shared`).
+ */
+export interface VinMatcher {
+  /** World Manufacturer Identifier — positions 1–3, e.g. ["WVW", "WV1"]. */
+  wmi?: string[];
+  /** Vehicle Descriptor Section — positions 4–8, `.` matches any single character. */
+  vdsPattern?: string;
+  /** Accepted model-year characters at position 10 (ISO 3779 / 49 CFR 565). */
+  modelYearChars?: string[];
+  /** Accepted plant characters at position 11. */
+  plantChars?: string[];
+}
+
+/**
+ * An ECU as it occurs on *this* vehicle, plus the identification values that
+ * prove it. This is the link between the vehicle axis and the diagnostic axis:
+ * the same `EcuDefinition` (protocol, addresses, DIDs) can serve many vehicles,
+ * while the part number / software version read from it selects the variant.
+ */
+export interface VehicleEcuRef {
+  /** {@link EcuDefinition} id inside the same package. */
+  ecu: string;
+  /** Part numbers reported by the identification DIDs (e.g. F187) for this vehicle. */
+  partNumbers?: string[];
+  softwareVersions?: string[];
+  hardwareVersions?: string[];
+  /** Engine id this ECU belongs to, when the ECU is powertrain specific. */
+  engine?: string;
+  /** Gearbox id this ECU belongs to, when the ECU is powertrain specific. */
+  gearbox?: string;
+  /** Optional equipment (ACC, trailer recognition, …) — absence is not a conflict. */
+  optional?: boolean;
+}
+
+/**
+ * One vehicle a definition package can describe (AGENTS 11, 13).
+ *
+ * The chain the product needs is `VIN → vehicle → platform → engine/gearbox →
+ * ECUs → software → DIDs/DTCs`; before schema version 2 the model could not
+ * express anything above "OEM", so a package was one flat bundle per manufacturer
+ * and every ECU/DTC list applied to every car of that brand. A `VehicleDefinition`
+ * is the missing axis: it narrows the package's ECUs to the ones this car really
+ * has and carries the identification values that prove the narrowing.
+ */
+export interface VehicleDefinition {
+  /** Stable identifier inside the package, e.g. "golf-vii-mqb". */
+  id: string;
+  brand: string;
+  model: string;
+  /** Platform code shared across models, e.g. "MQB", "MB-FGAW". */
+  platform?: string;
+  generation?: string;
+  bodyStyles?: string[];
+  /** Model years this definition covers, inclusive. */
+  modelYears?: { from: number; to?: number };
+  vinMatch?: VinMatcher;
+  engines?: EngineDefinition[];
+  gearboxes?: GearboxDefinition[];
+  /** ECUs of this package that belong to this vehicle; empty means "all ECUs". */
+  ecus?: VehicleEcuRef[];
+  /** Refines the package provenance for this entry (AGENTS 24: per-data source). */
+  provenance?: Provenance;
+  description?: string;
+}
+
 /** Provenance is mandatory — no undocumented data sources (AGENTS 24). */
 export interface Provenance {
   sourceType:
@@ -148,7 +257,13 @@ export interface Provenance {
 }
 
 export interface DefinitionPackage {
-  /** Bumped when the model itself changes (see migration support in storage). */
+  /**
+   * Model version of the package. Version 1 carried ECUs and signals only;
+   * version 2 adds the vehicle axis ({@link VehicleDefinition}). Both stay
+   * readable — see {@link SUPPORTED_SCHEMA_VERSIONS} and `upgradePackage` in
+   * `migrate.ts` — because recorded sessions reference the version they used
+   * (AGENTS 13).
+   */
   schemaVersion: number;
   /** Manufacturer key: "generic", "vag", "mercedes", … */
   oem: string;
@@ -158,9 +273,38 @@ export interface DefinitionPackage {
   provenance: Provenance;
   ecus: EcuDefinition[];
   signals: SignalDefinition[];
+  /**
+   * Vehicles this package describes. Absent or empty on schema version 1 data
+   * and on OEM-wide packages: the ECUs and signals then apply to every vehicle
+   * of the OEM, which is exactly what a generic OBD package means.
+   */
+  vehicles?: VehicleDefinition[];
 }
 
-export const CURRENT_SCHEMA_VERSION = 1;
+export const CURRENT_SCHEMA_VERSION = 2;
+
+/**
+ * Registry key of a package: manufacturer and version.
+ *
+ * Lives next to the shape it identifies, because both the registry and the
+ * vehicle resolver need it and a definition package is never edited in place —
+ * `oem@version` is therefore a stable reference a recorded session can keep
+ * (AGENTS 13).
+ */
+export function keyOf(pkg: DefinitionPackage): string {
+  return `${pkg.oem}@${pkg.version}`;
+}
+
+/**
+ * Schema versions this build can read.
+ *
+ * Reading stays behind writing on purpose: a session recorded with an older
+ * definition package must still be interpretable after the model moved on
+ * (AGENTS 13 "Definition Packages müssen semantisch versioniert werden, damit
+ * Sessions nachvollziehbar bleiben"). Anything below the oldest supported
+ * version has to be migrated explicitly, not silently accepted.
+ */
+export const SUPPORTED_SCHEMA_VERSIONS: readonly number[] = [1, 2];
 
 export interface SignalIndex {
   byId: Map<string, SignalDefinition>;
@@ -230,4 +374,42 @@ export function indexEcus(pkg: DefinitionPackage): Map<string, EcuDefinition> {
   for (const ecu of pkg.ecus) index.set(ecu.id, ecu);
   ecuIndexCache.set(pkg, { ecus: pkg.ecus.length, index });
   return index;
+}
+
+const vehicleIndexCache = new WeakMap<
+  DefinitionPackage,
+  { vehicles: number; index: Map<string, VehicleDefinition> }
+>();
+
+/**
+ * Vehicle definitions of a package by id.
+ *
+ * Same reasoning as {@link indexEcus}: a resolution, a session attach and every
+ * report line would otherwise re-scan `pkg.vehicles` (AGENTS 11/13).
+ */
+export function indexVehicles(pkg: DefinitionPackage): Map<string, VehicleDefinition> {
+  const vehicles = pkg.vehicles ?? [];
+  const cached = vehicleIndexCache.get(pkg);
+  if (cached && cached.vehicles === vehicles.length) return cached.index;
+  const index = new Map<string, VehicleDefinition>();
+  for (const vehicle of vehicles) index.set(vehicle.id, vehicle);
+  vehicleIndexCache.set(pkg, { vehicles: vehicles.length, index });
+  return index;
+}
+
+/**
+ * The ECUs of a package that belong to one vehicle.
+ *
+ * A vehicle with no `ecus` list means "the whole package" — that is what a
+ * generic OBD package declares, and narrowing must never invent exclusions.
+ */
+export function ecusOfVehicle(pkg: DefinitionPackage, vehicle: VehicleDefinition): EcuDefinition[] {
+  const all = indexEcus(pkg);
+  if (!vehicle.ecus || vehicle.ecus.length === 0) return pkg.ecus;
+  const result: EcuDefinition[] = [];
+  for (const ref of vehicle.ecus) {
+    const ecu = all.get(ref.ecu);
+    if (ecu) result.push(ecu);
+  }
+  return result;
 }

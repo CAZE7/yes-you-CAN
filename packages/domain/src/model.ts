@@ -14,6 +14,8 @@ import type { RiskLevel } from "./risk.js";
 export interface IdentificationEntry {
   label: string;
   value: string;
+  /** DID the value came from, when the reader recorded it (§11, §12). */
+  did?: number;
 }
 
 /** Vehicle identity as far as it is known (§11 of AGENTS.md). */

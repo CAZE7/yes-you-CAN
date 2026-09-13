@@ -3,6 +3,7 @@ import { DefinitionError } from "@vdp/shared";
 import { test } from "vitest";
 import { genericPackage } from "./generic/generic-package.js";
 import { parseDefinitionPackage, parseDefinitionPackageJson } from "./json.js";
+import { CURRENT_SCHEMA_VERSION } from "./schema.js";
 import { validateDefinitionPackage } from "./validate.js";
 
 test("a built-in package round-trips through JSON", () => {
@@ -231,6 +232,265 @@ test("omitted ecus/signals arrays are reported as structural errors", () => {
       const errors = (error as DefinitionError & { details: { errors: string[] } }).details.errors;
       assert.ok(errors.some((e) => e.includes("ecus")));
       assert.ok(errors.some((e) => e.includes("signals")));
+      return true;
+    },
+  );
+});
+
+/** The generic package with one vehicle definition, as a JSON source would carry it. */
+function vehicleSource(): Record<string, unknown> {
+  return {
+    schemaVersion: CURRENT_SCHEMA_VERSION,
+    oem: "json-fixture",
+    name: "JSON vehicle fixture",
+    version: "1.0.0",
+    provenance: { sourceType: "own", source: "test" },
+    ecus: genericPackage.ecus,
+    signals: [],
+    vehicles: [
+      {
+        id: "car",
+        brand: "Fixture",
+        model: "One",
+        platform: "P",
+        generation: "1",
+        bodyStyles: ["hatchback"],
+        modelYears: { from: 2015, to: 2020 },
+        vinMatch: { wmi: ["WVW"], vdsPattern: "ZZZ..", modelYearChars: ["F"], plantChars: ["W"] },
+        engines: [
+          {
+            id: "e1",
+            name: "Engine one",
+            fuel: "petrol",
+            displacementCc: 1395,
+            powerKw: 110,
+            torqueNm: 250,
+            emissionStandard: "euro6d",
+            codes: ["EX"],
+            description: "fixture",
+          },
+        ],
+        gearboxes: [
+          { id: "g1", name: "Gearbox one", type: "dual-clutch", gears: 7, codes: ["EXG"] },
+        ],
+        ecus: [
+          {
+            ecu: genericPackage.ecus[0]!.id,
+            partNumbers: ["PN"],
+            softwareVersions: ["SW"],
+            hardwareVersions: ["HW"],
+            engine: "e1",
+            gearbox: "g1",
+            optional: false,
+          },
+        ],
+        provenance: { sourceType: "licensed", source: "OEM documentation", license: "contract" },
+        description: "fixture vehicle",
+      },
+    ],
+  };
+}
+
+test("a vehicle definition survives the JSON round trip with every field", () => {
+  const source = vehicleSource();
+  const parsed = parseDefinitionPackage(JSON.parse(JSON.stringify(source)));
+  const vehicle = parsed.vehicles?.[0];
+  assert.ok(vehicle);
+  assert.equal(vehicle.id, "car");
+  assert.equal(vehicle.platform, "P");
+  assert.equal(vehicle.generation, "1");
+  assert.deepEqual(vehicle.bodyStyles, ["hatchback"]);
+  assert.deepEqual(vehicle.modelYears, { from: 2015, to: 2020 });
+  assert.deepEqual(vehicle.vinMatch, {
+    wmi: ["WVW"],
+    vdsPattern: "ZZZ..",
+    modelYearChars: ["F"],
+    plantChars: ["W"],
+  });
+  assert.equal(vehicle.engines?.[0]?.fuel, "petrol");
+  assert.equal(vehicle.engines?.[0]?.displacementCc, 1395);
+  assert.equal(vehicle.engines?.[0]?.emissionStandard, "euro6d");
+  assert.equal(vehicle.gearboxes?.[0]?.type, "dual-clutch");
+  assert.equal(vehicle.gearboxes?.[0]?.gears, 7);
+  assert.deepEqual(vehicle.ecus?.[0]?.softwareVersions, ["SW"]);
+  assert.equal(vehicle.ecus?.[0]?.optional, false);
+  assert.equal(vehicle.provenance?.license, "contract");
+  assert.equal(validateDefinitionPackage(parsed).valid, true);
+});
+
+test("a package stringifies and parses back to the same vehicles", () => {
+  const parsed = parseDefinitionPackage(vehicleSource());
+  const round = parseDefinitionPackageJson(JSON.stringify(parsed));
+  assert.deepEqual(round.vehicles, parsed.vehicles);
+});
+
+test("a version 1 source is validated as version 1 and returned upgraded", () => {
+  const source = vehicleSource();
+  source.schemaVersion = 1;
+  delete source.vehicles;
+  const parsed = parseDefinitionPackage(source);
+  assert.equal(parsed.schemaVersion, CURRENT_SCHEMA_VERSION);
+  assert.deepEqual(parsed.vehicles, []);
+  assert.equal(validateDefinitionPackage(parsed).valid, true);
+});
+
+test("an unsupported schema version is rejected by the parser", () => {
+  const source = vehicleSource();
+  source.schemaVersion = CURRENT_SCHEMA_VERSION + 1;
+  assert.throws(
+    () => parseDefinitionPackage(source),
+    (error: unknown) => {
+      assert.ok(error instanceof DefinitionError);
+      assert.match(error.message, /schemaVersion 3 is not supported/);
+      return true;
+    },
+  );
+});
+
+test("structural problems in vehicles are collected, not silently dropped", () => {
+  const cases: Array<[string, unknown, string]> = [
+    ["vehicles", "not-an-array", "vehicles: must be an array"],
+    ["vehicles", [null], "vehicles[0]: must be an object"],
+    ["vehicles", [{ id: "car", model: "One" }], "vehicles[0].brand: must be a string"],
+    ["vehicles", [{ id: "car", brand: "B", model: 7 }], "vehicles[0].model: must be a string"],
+    [
+      "vehicles",
+      [{ id: "car", brand: "B", model: "M", bodyStyles: "hatch" }],
+      "vehicles[0].bodyStyles: must be an array of strings",
+    ],
+    [
+      "vehicles",
+      [{ id: "car", brand: "B", model: "M", bodyStyles: [1] }],
+      "vehicles[0].bodyStyles[0]: must be a string",
+    ],
+    [
+      "vehicles",
+      [{ id: "car", brand: "B", model: "M", modelYears: 2015 }],
+      "vehicles[0].modelYears: must be an object",
+    ],
+    [
+      "vehicles",
+      [{ id: "car", brand: "B", model: "M", modelYears: { from: "2015" } }],
+      "vehicles[0].modelYears.from: must be a number",
+    ],
+    [
+      "vehicles",
+      [{ id: "car", brand: "B", model: "M", vinMatch: "WVW" }],
+      "vehicles[0].vinMatch: must be an object",
+    ],
+    [
+      "vehicles",
+      [{ id: "car", brand: "B", model: "M", vinMatch: { wmi: "WVW" } }],
+      "vehicles[0].vinMatch.wmi: must be an array of strings",
+    ],
+    [
+      "vehicles",
+      [{ id: "car", brand: "B", model: "M", vinMatch: { vdsPattern: 5 } }],
+      "vehicles[0].vinMatch.vdsPattern: must be a string",
+    ],
+    [
+      "vehicles",
+      [{ id: "car", brand: "B", model: "M", engines: "one" }],
+      "vehicles[0].engines: must be an array",
+    ],
+    [
+      "vehicles",
+      [{ id: "car", brand: "B", model: "M", engines: [{}] }],
+      "vehicles[0].engines[0].id: must be a string",
+    ],
+    [
+      "vehicles",
+      [{ id: "car", brand: "B", model: "M", engines: [{ id: "e", name: "n", fuel: "steam" }] }],
+      "vehicles[0].engines[0].fuel: must be one of",
+    ],
+    [
+      "vehicles",
+      [{ id: "car", brand: "B", model: "M", gearboxes: "one" }],
+      "vehicles[0].gearboxes: must be an array",
+    ],
+    [
+      "vehicles",
+      [{ id: "car", brand: "B", model: "M", gearboxes: [{ id: "g", name: "n", type: "flux" }] }],
+      "vehicles[0].gearboxes[0].type: must be one of",
+    ],
+    [
+      "vehicles",
+      [{ id: "car", brand: "B", model: "M", ecus: "one" }],
+      "vehicles[0].ecus: must be an array",
+    ],
+    [
+      "vehicles",
+      [{ id: "car", brand: "B", model: "M", ecus: [{ partNumbers: ["PN"] }] }],
+      "vehicles[0].ecus[0].ecu: must be a string",
+    ],
+    [
+      "vehicles",
+      [{ id: "car", brand: "B", model: "M", provenance: { sourceType: "unknown", source: "s" } }],
+      "vehicles[0].provenance.sourceType: must be one of",
+    ],
+    [
+      "vehicles",
+      [{ id: "car", brand: "B", model: "M", provenance: "own" }],
+      "vehicles[0].provenance: must be an object",
+    ],
+    [
+      "vehicles",
+      [{ id: "car", brand: "B", model: "M", gearboxes: ["manual"] }],
+      "vehicles[0].gearboxes[0]: must be an object",
+    ],
+    [
+      "vehicles",
+      [{ id: "car", brand: "B", model: "M", ecus: ["engine"] }],
+      "vehicles[0].ecus[0]: must be an object",
+    ],
+  ];
+
+  for (const [, value, expected] of cases) {
+    const source = vehicleSource();
+    source.vehicles = value;
+    assert.throws(
+      () => parseDefinitionPackage(source),
+      (error: unknown) => {
+        assert.ok(error instanceof DefinitionError, `expected a DefinitionError for ${expected}`);
+        assert.ok(error.message.includes(expected), `expected "${expected}" in:\n${error.message}`);
+        return true;
+      },
+      `case: ${expected}`,
+    );
+  }
+});
+
+test("an invalid vehicle that parses structurally is still rejected semantically", () => {
+  const source = vehicleSource();
+  source.vehicles = [{ id: "car", brand: "Fixture", model: "One", vinMatch: { wmi: ["IOQ"] } }];
+  assert.throws(
+    () => parseDefinitionPackage(source),
+    (error: unknown) => {
+      assert.ok(error instanceof DefinitionError);
+      assert.match(error.message, /is not a valid package|WMI "IOQ"/);
+      return true;
+    },
+  );
+});
+
+test("an ECU address that is not an object is named, not defaulted silently", () => {
+  const source = vehicleSource();
+  source.ecus = [
+    { id: "engine", name: "Engine", protocol: "uds", address: "0x7e0/0x7e8" },
+    { id: "abs", name: "ABS", protocol: "uds" },
+  ];
+  assert.throws(
+    () => parseDefinitionPackage(source),
+    (error: unknown) => {
+      assert.ok(error instanceof DefinitionError);
+      assert.ok(
+        error.message.includes("ecus[0].address: must be an object with txId/rxId"),
+        `expected the address problem to be named in:\n${error.message}`,
+      );
+      assert.ok(
+        error.message.includes("ecus[1].address"),
+        `a missing address must be reported too:\n${error.message}`,
+      );
       return true;
     },
   );

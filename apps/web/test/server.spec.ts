@@ -6,6 +6,7 @@ import { createLogger } from "@vdp/shared";
 import { test } from "vitest";
 import { waitFor } from "../../../tests/helpers/wait.js";
 import { WebServer } from "../src/server.js";
+import type { VehicleResolutionView } from "../src/vehicle-view.js";
 
 const logger = createLogger("web", { level: "ERROR" });
 
@@ -45,7 +46,7 @@ async function waitForSamples(base: string, count = 1, signal = "engine.rpm"): P
 
 test("the index page and every front end asset are served", async () => {
   await withServer(async (base) => {
-    for (const path of ["/", "/app.js", "/styles.css", "/chart.js", "/graphs.js"]) {
+    for (const path of ["/", "/app.js", "/styles.css", "/chart.js", "/graphs.js", "/vehicle.js"]) {
       const response = await fetch(`${base}${path}`);
       assert.equal(response.status, 200, `${path} should be served`);
       assert.ok((await response.text()).length > 100, `${path} looks empty`);
@@ -94,6 +95,58 @@ test("start connects to the simulated vehicle and discovers ECUs", async () => {
       ),
     );
     void server;
+  });
+});
+
+test("the connected vehicle is resolved from what was read (AGENTS 11)", async () => {
+  await withServer(async (base) => {
+    await json(base, "/api/start", { method: "POST" });
+    await json(base, "/api/identify", { method: "POST" });
+
+    const resolved = await json(base, "/api/vehicle/resolve", { method: "POST" });
+    assert.equal(resolved.status, 200);
+    const view = (resolved.body as { resolution: VehicleResolutionView }).resolution;
+    assert.equal(view.unresolved, false);
+    assert.equal(view.headline, "Virtual Simulator vehicle (SIM-1) — 100 % belegt");
+
+    const best = view.best;
+    assert.ok(best);
+    assert.equal(best.scorePercent, 100);
+    assert.deepEqual(best.conflicts, []);
+    assert.equal(best.placeholder, false, "the simulator package is own data, not a placeholder");
+    assert.deepEqual(
+      best.engineIds,
+      ["sim-petrol"],
+      "the engine code read from the ECU narrows it",
+    );
+    assert.deepEqual(best.gearboxIds, ["sim-automatic"]);
+    assert.equal(best.coverageLabel, "3 von 3 Steuergeräten der Definition gefunden");
+    assert.equal(view.vinLookup?.manufacturer, "Honda of America Mfg.");
+
+    const kinds = best.evidence.map((item) => item.kind);
+    for (const kind of ["vin-wmi", "part-number", "software-version", "ecu-coverage"])
+      assert.ok(kinds.includes(kind), `${kind} must be part of the evidence`);
+    assert.equal(
+      best.evidence.find((item) => item.kind === "part-number")?.label,
+      "Teilenummer",
+      "criteria reach the operator in German, not as resolver keys",
+    );
+
+    // The state carries the last resolution, so a reloaded page shows it again
+    // instead of asking the operator to press the button a second time.
+    const state = await json(base, "/api/state");
+    assert.equal(
+      (state.body as { vehicleResolution?: VehicleResolutionView }).vehicleResolution?.headline,
+      view.headline,
+    );
+  });
+});
+
+test("resolving a vehicle is a POST-only read", async () => {
+  await withServer(async (base) => {
+    const get = await json(base, "/api/vehicle/resolve");
+    assert.equal(get.status, 405);
+    assert.match((get.body as { error: string }).error, /POST only/);
   });
 });
 

@@ -61,6 +61,7 @@ export {
   getSignalList,
   getStatistics,
   getVehicle,
+  resolveVehicle,
 } from "./queries.js";
 export type {
   GetAnomaliesQuery,
@@ -79,6 +80,8 @@ export type {
   GetStatisticsQuery,
   GetVehicleQuery,
   QueryKind,
+  ResolveVehicleHints,
+  ResolveVehicleQuery,
 } from "./queries.js";
 
 // Capability-driven actions (§7)
