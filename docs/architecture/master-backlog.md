@@ -92,7 +92,7 @@ Suche fand sich **kein** Beleg im Baum — dieselbe Beweislast wie überall sons
 | 24 | Semgrep mit eigenen Automotive-Regeln | ⏳ | Eigene Regeln nur für echte Hausregeln (kein UDS in der UI, kein Write ohne Safety, keine OEM-Logik in CAN) — sonst eine dritte Regelwelt |
 | 25 | Gitleaks | ⏳ | Vor dem ersten echten Fahrzeugdatensatz (#10) verpflichtend, nicht danach |
 | 26 | OSV Scanner | ⏳ | `npm audit` existiert als Skript, läuft aber nicht in der CI (E10/E17); OSV wäre der belastbarere Ersatz |
-| 27 | strengere TypeScript-/Biome-Regeln | 🟡 **Biome erledigt (ADR 0026)**: 5 Regeln `warn`→`error`, 3 Regeln `off`→`error`, jede weitere `off`-Entscheidung mit Messung auf dem Rekord. Offen und gemessen: `exactOptionalPropertyTypes` (88 Fehler, 0.E E18) und Frontend-`noImplicitAny` (110 Fehler, E19) | E18 zuerst: die Roh→dekodiert-Grenze ist die Stelle, an der „fehlt“ und „undefined“ verwechselt werden können — und genau dort entstehen stille Diagnosefehler |
+| 27 | strengere TypeScript-/Biome-Regeln | ✅ **erledigt am 2026-09-14.** Biome: 5 Regeln `warn`→`error`, 3 Regeln `off`→`error`, jede weitere `off`-Entscheidung mit Messung auf dem Rekord (ADR 0026). TypeScript: `exactOptionalPropertyTypes` global an (E18, 88 Fehler migriert) und Frontend-`noImplicitAny` an (E19, 221 Fehler migriert, ADR 0027) — `RELAXED_FLAGS` ist leer, und der Guardrail-Test fordert beide Flags positiv, statt nur Abschaltungen zu verbieten | fertig; neue Abschwächungen brauchen wieder einen Eintrag mit Messung |
 | 28 | strukturierte TraceId / CommandId / SessionId | 🟡 `packages/shared/src/ids.ts`, Events tragen die Ids (Roadmap-Schritt 11 ⏳) | Ids durch Trace und Logs ziehen und im Bericht sichtbar machen |
 | 29 | Performance Gates | — | Erst mit #10 (echte Datenmengen) sinnvoll; eine erfundene Schwelle ist eine Zahl, die niemanden schützt |
 | 30 | Memory-/Lifecycle-Leak Tests | — | `dispose()`-Pfade sind vorhanden; ein Gate, das echte Langläufe beobachtet, fehlt |
@@ -142,5 +142,6 @@ Suche fand sich **kein** Beleg im Baum — dieselbe Beweislast wie überall sons
   Orchestrator.
 - Damit erzwingt die CI Biome und beide `--noEmit`-Pässe, ohne dass ein
   Workflow geändert werden muss (E10 bleibt für die Workflow-Härtung offen).
-- Gemessen: 1307 Tests in 91 Dateien grün in 22,6 s; Coverage global
-  96,48 / 89,65 / 97,52 / 97,86; Zusatzkosten der Gates ≈ 2 s.
+- Gemessen: 1308 Tests in 91 Dateien grün in 22,9 s; Coverage global
+  96,48 / 89,65 / 97,52 / 97,86; Zusatzkosten der Gates ≈ 2 s (das
+  Frontend-Projekt prüft seit ADR 0027 acht Dateien mit `noImplicitAny`).

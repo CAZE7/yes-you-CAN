@@ -6,31 +6,26 @@
  * data came from. This module contains no resolution logic of its own — it must
  * not decide what a score means, only show it (AGENTS 5, 24).
  *
- * Like `graphs.js` it is a plain ES module with its own DOM helper: the front end
- * ships without a bundler, so every module stays self-contained.
+ * Like `graphs.js` it is a plain ES module; the DOM helpers come from `dom.js`,
+ * because the front end ships without a bundler and three copies of the same
+ * four helpers were three places to drift apart.
  */
 
-const $ = (selector) => document.querySelector(selector);
+import { $, el } from "/dom.js";
 
-const el = (tag, attrs = {}, children = []) => {
-  const node = document.createElement(tag);
-  for (const [key, value] of Object.entries(attrs)) {
-    if (key === "class") node.className = value;
-    else if (key === "text") node.textContent = value;
-    else if (key.startsWith("on")) node.addEventListener(key.slice(2), value);
-    else node.setAttribute(key, value);
-  }
-  for (const child of Array.isArray(children) ? children : [children]) {
-    if (child == null) continue;
-    node.append(typeof child === "string" ? document.createTextNode(child) : child);
-  }
-  return node;
-};
+/** @typedef {import("../src/views.js").VehicleCandidateView} VehicleCandidateView */
+/** @typedef {import("../src/views.js").VehicleEvidenceView} VehicleEvidenceView */
+/** @typedef {import("../src/views.js").VehicleResolutionView} VehicleResolutionView */
 
 /**
  * Render a vehicle resolution into `#vehicle-resolution`.
  *
- * @param {any} view the `VehicleResolutionView` the backend sent
+ * The panel is optional (the module is reusable on pages without it), so the
+ * hosts are looked up leniently and the function returns when they are absent.
+ *
+ * @param {VehicleResolutionView | null | undefined} view the resolution the
+ *   backend sent; `null`/`undefined` is not rendered as "nothing matched"
+ * @returns {void}
  */
 export function renderVehicleResolution(view) {
   const host = $("#vehicle-resolution");
@@ -59,7 +54,11 @@ export function renderVehicleResolution(view) {
     );
 }
 
-/** One line for the VIN reference table — including "not in it". */
+/**
+ * One line for the VIN reference table — including "not in it".
+ *
+ * @param {NonNullable<VehicleResolutionView["vinLookup"]>} lookup
+ */
 function describeVinLookup(lookup) {
   const maker = lookup.manufacturer ?? "unbekannter Hersteller";
   const country = lookup.country ? ` (${lookup.country})` : "";
@@ -71,7 +70,13 @@ function describeVinLookup(lookup) {
  * One candidate: what it is, how much of the checked evidence speaks for it, and
  * the criteria behind that number.
  */
+/**
+ * @param {VehicleCandidateView} candidate
+ * @param {boolean} best true for the top-ranked candidate
+ * @returns {HTMLElement}
+ */
 function renderCandidate(candidate, best) {
+  /** @type {string[]} */
   const powertrain = [];
   if (candidate.engineIds.length > 0) powertrain.push(`Motor: ${candidate.engineIds.join(", ")}`);
   if (candidate.gearboxIds.length > 0)
@@ -126,9 +131,19 @@ function renderCandidate(candidate, best) {
   ]);
 }
 
-/** Every criterion that was weighed — supporting and contradicting alike. */
+/**
+ * Every criterion that was weighed — supporting and contradicting alike.
+ *
+ * @param {VehicleCandidateView} candidate
+ * @returns {HTMLElement}
+ */
 function evidenceTable(candidate) {
   const body = el("tbody");
+  /**
+   * @param {VehicleEvidenceView[]} items
+   * @param {string} verdict
+   * @param {string} cls
+   */
   const add = (items, verdict, cls) => {
     for (const item of items)
       body.append(

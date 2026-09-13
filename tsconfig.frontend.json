@@ -8,14 +8,16 @@
     "checkJs": true,
     "noEmit": true,
     "strict": true,
-    "noImplicitAny": false,
+    "noImplicitAny": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "paths": {
       "/graphs.js": ["./apps/web/public/graphs.js"],
       "/vehicle.js": ["./apps/web/public/vehicle.js"],
       "/chart.js": ["./apps/web/public/chart.js"],
-      "/lib/index.js": ["./packages/charts/src/index.ts"]
+      "/lib/index.js": ["./packages/charts/src/index.ts"],
+      "/dom.js": ["./apps/web/public/dom.js"],
+      "/api.js": ["./apps/web/public/api.js"]
     }
   },
   "include": ["apps/web/public/**/*.js"]

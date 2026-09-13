@@ -312,18 +312,15 @@ const REQUIRED_STRICT_FLAGS = [
 /**
  * Flags that are deliberately *not* strict, with the measurement that keeps them
  * open. Turning them on is a task, not a config line (AGENTS 0.E E18/E19).
+ *
+ * Empty since 2026-09-14: E18 turned `exactOptionalPropertyTypes` on for the whole
+ * workspace (88 errors migrated), E19 turned the frontend's `noImplicitAny` on
+ * (221 errors in `apps/web/public/*.js` migrated), and both are now required
+ * instead of recorded. The list and its three assertions stay: the next
+ * relaxation has to name a file, a flag and a measurement, and a stale entry
+ * still fails the test.
  */
-const RELAXED_FLAGS: ReadonlyArray<{ file: string; flag: string; reason: string }> = [
-  {
-    file: "tsconfig.frontend.json",
-    flag: "noImplicitAny",
-    reason:
-      "Measured 2026-09-14: 110 errors in 4 files (104 × TS7006 implicit parameter types) in " +
-      "`apps/web/public/*.js`, which is checked JavaScript without JSDoc annotations. The " +
-      "frontend is a rendering layer over typed view projections (roadmap step 9), so the gate " +
-      "that matters — no `any` in production — is already an error in the TypeScript tree.",
-  },
-];
+const RELAXED_FLAGS: ReadonlyArray<{ file: string; flag: string; reason: string }> = [];
 
 const ALL_TS_CONFIGS = (): string[] => {
   const configs = [
@@ -406,6 +403,63 @@ test("the workspace inherits strict TypeScript, and every relaxation is on the r
     [],
     "RELAXED_FLAGS names a flag that is no longer off — delete the entry and say so in the ADR:\n" +
       stale.join("\n"),
+  );
+});
+
+/**
+ * The browser project is the only automated check the front end has: it cannot be
+ * unit-tested (a canvas needs a browser), so its safety net is the type-check of
+ * `apps/web/public/*.js` against the wire contract in `apps/web/src/views.ts`.
+ * Three things make that net real, and all three are asserted here.
+ */
+test("the browser project checks the front end against the wire contract", () => {
+  const frontend = readJson(join(root, "tsconfig.frontend.json")) as {
+    compilerOptions?: {
+      checkJs?: boolean;
+      noImplicitAny?: boolean;
+      paths?: Record<string, string[]>;
+    };
+    include?: string[];
+  };
+  assert.equal(
+    frontend.compilerOptions?.checkJs,
+    true,
+    "the frontend project must keep checking JavaScript — otherwise the file list is decorative",
+  );
+  assert.equal(
+    frontend.compilerOptions?.noImplicitAny,
+    true,
+    "E19 closed the last relaxation of the workspace: an unannotated parameter in the front end is an error",
+  );
+
+  // Every absolute import the front end uses needs a path mapping, or TypeScript
+  // silently types the import as `any` and the check above stops meaning anything.
+  const specifiers = new Set<string>();
+  for (const file of readdirSync(join(root, "apps/web/public"))) {
+    if (!file.endsWith(".js")) continue;
+    const source = readFileSync(join(root, "apps/web/public", file), "utf8");
+    for (const match of source.matchAll(/from "(\/[^"]+)"/g)) specifiers.add(match[1] ?? "");
+  }
+  const paths = frontend.compilerOptions?.paths ?? {};
+  const unmapped = [...specifiers].filter((specifier) => !(specifier in paths)).sort();
+  assert.deepEqual(
+    unmapped,
+    [],
+    "an absolute import without a `paths` mapping is typed as `any` — add it to " +
+      "tsconfig.frontend.json (the browser resolves these at runtime, TypeScript does not):\n" +
+      unmapped.join("\n"),
+  );
+
+  // The contract module is what the mapping above points the views at; it stays
+  // node-free, or the browser project would have to type the Node backend.
+  const contract = readFileSync(join(root, "apps/web/src/views.ts"), "utf8");
+  assert.ok(
+    !/from "node:/.test(contract),
+    "apps/web/src/views.ts must stay node-free — it is the shared wire contract, checked by the browser project",
+  );
+  assert.ok(
+    !/from "\.\/backend\.js"/.test(contract),
+    "views.ts must not import the backend module: the front end would then typecheck `node:fs`",
   );
 });
 

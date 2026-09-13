@@ -32,3 +32,4 @@ er wird durch einen neuen ersetzt, der den alten als `superseded` markiert.
 | [0024](0024-dtc-knowledge-per-variant.md) | DTC-Wissen pro Variante: Schema v3, Auflösung nach Spezifität, Ehrlichkeit als Datenmodell | accepted |
 | [0025](0025-knowledge-quality-gates.md) | Was Wissen tragen muss: Provenance-Gates je Quellentyp, Checks ohne Stellvertreter-Signal, bewusste Lücken | accepted |
 | [0026](0026-guardrails-that-bite.md) | Guardrails, die beißen: Fehler statt Warnungen, Entscheidungen auf dem Rekord, Gates im Testlauf | accepted |
+| [0027](0027-frontend-typed-against-the-wire-contract.md) | Das Browser-Frontend wird gegen den Wire-Contract typgeprüft | accepted |
