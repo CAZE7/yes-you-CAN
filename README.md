@@ -3,7 +3,7 @@
 [![CI](https://github.com/CAZE7/yes-you-CAN/actions/workflows/ci.yml/badge.svg)](https://github.com/CAZE7/yes-you-CAN/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](./package.json)
-[![Tests](https://img.shields.io/badge/tests-1290%20passed-brightgreen)](#tests)
+[![Tests](https://img.shields.io/badge/tests-1300%20passed-brightgreen)](#tests)
 [![TypeScript](https://img.shields.io/badge/TypeScript-7%20%2F%20tsgo-blue)](./tsconfig.base.json)
 
 Fahrzeugdiagnose-Plattform: CAN und DoIP lesen, Steuergeräte identifizieren, das
@@ -173,7 +173,7 @@ Zeitraum aus, Doppelklick zeigt die gesamte Aufnahme.
 
 ## Tests
 
-1290 Tests in ~25 s, Vitest 5 mit Projektkonfiguration (ADR 0010, Schritt 1 —
+1300 Tests in ~25 s, Vitest 5 mit Projektkonfiguration (ADR 0010, Schritt 1 —
 ersetzt ADR 0008). Unit-Specs liegen co-lokatiert neben dem Code
 (`src/*.spec.ts`); Property-Tests laufen mit fast-check, Coverage-Gates mit
 `npm run test:coverage` (global 90 % lines / 80 % branches als
@@ -232,4 +232,8 @@ gegen echte Hardware bleibt die OEM-neutrale Baseline stehen (ADR 0023). Ihr
 Variantenwissen ist als `own` gekennzeichnet und aus öffentlichen
 SAE-J1979-Semantiken begründet; weil das Baseline-Paket keine Lambda-Sonden
 definiert, erfindet es auch keine — ein Prüfschritt referenziert nur Signale, die
-das Paket tatsächlich deklariert (ADR 0024).
+das Paket tatsächlich deklariert, und beobachtet den Fehler, zu dem er gehört
+(ADR 0024, 0025). Nicht jeder Code bekommt Variantenwissen: `U0121`
+(Kommunikation mit dem ABS-Modul verloren) bedeutet für jeden Motor und jedes
+Getriebe dasselbe, bleibt also paketweit — und die Antwort sagt das, statt
+allgemeinen Text als Variantenwissen auszugeben.

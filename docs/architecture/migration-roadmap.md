@@ -50,8 +50,8 @@ Rote Linien (werden in `tests/architecture` erzwungen):
 | 12. Offline-first + Sync-Vertrag | `entityId`/`revision`/`updatedAt`/`deviceId` auf Entities | ⏳ | `@vdp/domain`, `@vdp/storage` |
 | 13. Deterministischer Simulator als Virtual Vehicle | Gateway + mehrere ECUs mit Zuständen, Szenarien als Tests | teilweise | `tools/simulators` |
 | 14. Fahrzeugschicht: Schema v2 + Resolver | Fahrzeuge, Plattformen, Motoren/Getriebe und VIN-Matching als Daten; Bestimmung des verbundenen Fahrzeugs aus VIN, Identifikationswerten und beantworteten Adressen — Kandidaten mit Belegen und Widersprüchen | ✅ Query `vehicle.resolve` über Port `DefinitionProvider.resolveVehicle` bis ins Workbench-Panel; WMI-Referenz (ISO 3780) mit eigener Provenance; Simulator-Paket macht die Demo auflösbar; per-file-Gate `definitions` 85/80 (ADR 0023) | `packages/definitions`, `packages/domain`, `packages/application`, `packages/runtime`, `apps/web` |
-| 15. DTC-Wissen pro Fahrzeugvariante | Fehlertexte, Ursachen, Messwerte-Sollbereich und Prüfschritte je Fahrzeug/Motor statt je Paket | ✅ Schema v3: `vehicles[].dtcKnowledge[]` mit `patterns[]` (Ursachen, `likelihood`, Reparaturhinweis) und `checks[]` (Messpunkt, Erwartung, `min`/`max`/`windowMs`); `findDtcKnowledge` löst nach Spezifität (Motor 16 · Getriebe 8 · ECU 4 · angenommen 2/1) und sammelt breitere Muster statt sie zu verdrängen; `DtcScanner.setVehicle` schichtet Variantenwissen über die paketweite Beschreibung, `connect()` bindet das aufgelöste Fahrzeug sofort; Scope/Notes/`measurable`/Provenance machen sichtbar, woraus eine Aussage besteht (ADR 0024). Simulator-Variante trägt echtes Wissen zu P0420/P0300/P0171/P0715 | `packages/definitions`, `packages/core`, `packages/domain`, `packages/runtime`, `apps/web` |
-| 16. Geführte Diagnose | Prüfabläufe als Daten (Symptom → Hypothesen → Messschritt → Auswertung), Verbraucher von Schritt 15 | ⏳ steht auf Schritt 15: `patterns[]` sind die Hypothesen, `checks[]` die Messschritte mit auswertbarem Fenster, Pattern-IDs sind je Fahrzeug eindeutig und damit adressierbar; offen ist die Ablaufsteuerung (messen → Fenster bewerten → Ergebnis je Muster) und was „nicht prüfbar" für einen Ablauf bedeutet | `packages/definitions`, `packages/runtime`, `apps/web` |
+| 15. DTC-Wissen pro Fahrzeugvariante | Fehlertexte, Ursachen, Messwerte-Sollbereich und Prüfschritte je Fahrzeug/Motor statt je Paket | ✅ Schema v3: `vehicles[].dtcKnowledge[]` mit `patterns[]` (Ursachen, `likelihood`, Reparaturhinweis) und `checks[]` (Messpunkt, Erwartung, `min`/`max`/`windowMs`); `findDtcKnowledge` löst nach Spezifität (Motor 16 · Getriebe 8 · ECU 4 · angenommen 2/1) und sammelt breitere Muster statt sie zu verdrängen; `DtcScanner.setVehicle` schichtet Variantenwissen über die paketweite Beschreibung, `connect()` bindet das aufgelöste Fahrzeug sofort; Scope/Notes/`measurable`/Provenance machen sichtbar, woraus eine Aussage besteht (ADR 0024). Simulator-Variante trägt echtes Wissen zu P0420/P0300/P0171/P0700/P0715/C0035, `U0121` bewusst ohne (ein Kommunikationscode bedeutet für jede Variante dasselbe); Gates für Einträge und Quellen (kein Stellvertreter-Signal, Fenster als Messbedingung, Provenance je Quellentyp, ADR 0025) | `packages/definitions`, `packages/core`, `packages/domain`, `packages/runtime`, `apps/web` |
+| 16. Geführte Diagnose | Prüfabläufe als Daten (Symptom → Hypothesen → Messschritt → Auswertung), Verbraucher von Schritt 15 | ⏳ steht auf Schritt 15: `patterns[]` sind die Hypothesen, `checks[]` die Messschritte mit auswertbarem Fenster, Pattern-IDs sind je Fahrzeug eindeutig und damit adressierbar; offen ist die Ablaufsteuerung (messen → Fenster bewerten → Ergebnis je Muster), was „nicht prüfbar" für einen Ablauf bedeutet, und wie eine Beziehung zwischen zwei Messpunkten ausgedrückt wird — heute stehen für „linke gegen rechte Radgeschwindigkeit" zwei Checks mit demselben Fenster nebeneinander und die Beziehung im `expect`-Text (ADR 0025) | `packages/definitions`, `packages/runtime`, `apps/web` |
 
 ## Ergebnis der Engine-Zerlegung (Schritt 8/9, 2026-09-12)
 
@@ -181,9 +181,29 @@ braucht `vehicles[]` als Anker, und der steht jetzt.
   damit kein Vokabular mehr: Muster als Karten, Messpunkte als Tabelle (Messpunkt ·
   Erwartung · Fenster · Bewertung), Reparaturhinweise als solche gelabelt, Notes
   als Warnungen.
-- **Messung.** Suite 1223 → **1290 Tests** in 90 Dateien (25,47 s), Coverage
-  global 96,47 Statements / 89,64 Zweige / 97,85 Zeilen, `packages/definitions`
-  99,07 Zeilen / 94,08 Zweige, `knowledge.ts` 100 Zeilen / 96,98 Zweige,
+- **Was ein Eintrag tragen muss (ADR 0025).** Provenance wird je Quellentyp
+  geprüft: `licensed` ohne `license` ist ein Fehler, ohne `version`/`retrievedAt`
+  eine Warnung; `standard` ohne Ausgabe warnt; `community` — vorher die einzige
+  Kategorie ohne Regel — warnt über ungeklärte Rechte; ein `retrievedAt`, das kein
+  ISO-8601-Datum ist, ist ein Fehler. Auf dem Dateipfad verschwindet kein
+  Provenance-Feld mehr still: `coerceProvenance` kopierte `notes` nicht, ein
+  geladenes lizenziertes Paket verlor also den Satz, der seine Lizenz einschränkt
+  (Regressionseintrag, Biss belegt). Und in den Daten selbst: kein
+  Stellvertreter-Signal mehr — P0715 „intermittierend" prüfte 30 s die
+  Öltemperatur und nannte es einen Dropout-Wächter, obwohl das Paket kein
+  Eingangsdrehzahlsignal definiert; jetzt sagt das Muster, was es nicht messen
+  kann, und prüft nur die Bedingung. Beide Fehler waren unsichtbar für den
+  Compiler: optionale Felder und ein Window ohne Bedeutung sind typkorrekt.
+- **Wissen 4 → 6 Codes.** Neu P0700 (drei Muster, das dritte ohne Check, weil kein
+  Signal dieses Pakets einen Selbsttest entscheidet; das Gangfenster 3…4 liest die
+  `enumMapping` des Pakets) und C0035 (drei auswertbare Fenster 45…55 km/h über 5 s
+  — linke Ecke, rechte Ecke, OBD-Geschwindigkeit aus einem anderen Steuergerät —
+  plus ein 30-s-Wächter ohne Grenze, also „nur manuell beurteilbar"). `U0121`
+  bleibt bewusst ohne Eintrag; ein Test zählt beschriebene gegen dokumentierte
+  Codes, damit die Lücke benannt bleibt.
+- **Messung.** Suite 1223 → **1300 Tests** in 90 Dateien (25,17 s), Coverage
+  global 96,48 Statements / 89,67 Zweige / 97,86 Zeilen, `packages/definitions`
+  99,08 Zeilen / 94,15 Zweige, `knowledge.ts` 100 Zeilen / 96,98 Zweige,
   `scanner.ts` 100 / 87,8. Ende-zu-Ende belegt: der Integrationstest scannt nach
   dem Connect und sieht `scope: "vehicle-engine"`, zwei Muster und `notes: []`;
   der Server-Test sieht dieselbe Antwort über HTTP inkl. der deutschen Labels.
