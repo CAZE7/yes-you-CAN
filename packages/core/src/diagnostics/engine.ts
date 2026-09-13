@@ -24,7 +24,12 @@ import {
   DtcClearService,
 } from "../dtc/clear.js";
 import type { FreezeFrame } from "../dtc/freeze-frame.js";
-import { DtcScanner, type EnrichedDtc } from "../dtc/scanner.js";
+import {
+  type DtcDefinitionRef,
+  DtcScanner,
+  type DtcVehicleContext,
+  type EnrichedDtc,
+} from "../dtc/scanner.js";
 import { type DecodedSignal, SignalDecoder } from "../measurements/decoder.js";
 import { type EcuReader, LiveDataEngine } from "../measurements/live.js";
 import { MeasurementRecorder } from "../measurements/recorder.js";
@@ -145,6 +150,32 @@ export class DiagnosticEngine {
 
   get vehicleSession(): VehicleSession | null {
     return this.session;
+  }
+
+  /**
+   * Bind the resolved vehicle to the DTC system (AGENTS 11 → AGENTS 20).
+   *
+   * The runtime resolves the car through the definition port; the engine only
+   * learns the result here. From then on every scanned code is enriched with the
+   * knowledge that variant documents — and says so when it does not.
+   */
+  setVehicleContext(context: DtcVehicleContext | undefined): void {
+    this.dtcScanner.setVehicle(context);
+  }
+
+  /** The vehicle the DTC system currently enriches for, when one is bound. */
+  get vehicleContext(): DtcVehicleContext | undefined {
+    return this.dtcScanner.vehicleContext;
+  }
+
+  /** The definition ECU a handle belongs to, split from its "<oem>:<id>" form. */
+  private definitionRefOf(handle: EcuHandle): DtcDefinitionRef | undefined {
+    const value = handle.discovered.definitionEcuId;
+    if (!value) return undefined;
+    const separator = value.indexOf(":");
+    return separator < 0
+      ? { ecu: value }
+      : { oem: value.slice(0, separator), ecu: value.slice(separator + 1) };
   }
 
   get ecuHandles(): readonly EcuHandle[] {
@@ -488,6 +519,7 @@ export class DiagnosticEngine {
       await handle.session.readDtcs(statusMask),
       handle.session.record.name,
       handle.session.record.id,
+      this.definitionRefOf(handle),
     );
     this.markDtcs(handle.session.record.name, dtcs);
     return { ecu: handle.session.record, dtcs };
@@ -522,6 +554,7 @@ export class DiagnosticEngine {
           await handle.session.readDtcs(statusMask),
           handle.session.record.name,
           handle.session.record.id,
+          this.definitionRefOf(handle),
         );
         // Manufacturer hints are attached next to the codes, never merged into
         // them: a hint is interpretation, the code is the measured fact.
@@ -637,6 +670,9 @@ export class DiagnosticEngine {
 
   async disconnect(): Promise<void> {
     this.stopLiveData();
+    // The next connection may be another car: knowledge must not survive the
+    // session it was resolved for (AGENTS 11).
+    this.dtcScanner.setVehicle(undefined);
     for (const handle of this.handles.values()) {
       handle.session.client.stopTesterPresent();
       handle.session.closeLink();
