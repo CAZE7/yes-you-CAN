@@ -32,9 +32,16 @@ export function needsUpgrade(pkg: DefinitionPackage): boolean {
  * `WeakMap` index caches and a no-op upgrade cannot accidentally detach a
  * package from the object a session recorded.
  *
- * Version 1 → 2 adds the vehicle axis. A version 1 package has no vehicles to
- * carry over, so the upgrade only widens the shape: `vehicles` becomes an empty
- * list, which every reader already treats as "OEM-wide, no narrowing".
+ * Steps run in order, one per version, because a version 1 package has to pass
+ * through version 2 to reach the current one:
+ *
+ * - **1 → 2** adds the vehicle axis. A version 1 package has no vehicles to carry
+ *   over, so the step only widens the shape: `vehicles` becomes an empty list,
+ *   which every reader already treats as "OEM-wide, no narrowing".
+ * - **2 → 3** adds fault knowledge per variant (`dtcKnowledge` on a vehicle).
+ *   Again nothing is carried over — a version 2 package has no variant knowledge,
+ *   and readers treat its absence as "only the package-wide fault descriptions
+ *   exist" instead of dressing a generic text up as variant knowledge (§24).
  */
 export function upgradePackage(pkg: DefinitionPackage): DefinitionPackage {
   if (pkg.schemaVersion === CURRENT_SCHEMA_VERSION) return pkg;
@@ -45,13 +52,20 @@ export function upgradePackage(pkg: DefinitionPackage): DefinitionPackage {
       { package: pkg.name, schemaVersion: pkg.schemaVersion },
     );
   }
-  if (pkg.schemaVersion === 1) {
-    return { ...pkg, schemaVersion: 2, vehicles: pkg.vehicles ?? [] };
+  let upgraded = pkg;
+  if (upgraded.schemaVersion === 1) {
+    upgraded = { ...upgraded, schemaVersion: 2, vehicles: upgraded.vehicles ?? [] };
   }
-  // Every supported older version has an explicit step above; reaching this line
-  // means a version was added to SUPPORTED_SCHEMA_VERSIONS without a migration.
-  throw new DefinitionError(
-    `no migration defined for schema version ${pkg.schemaVersion} → ${CURRENT_SCHEMA_VERSION}`,
-    { package: pkg.name, schemaVersion: pkg.schemaVersion },
-  );
+  if (upgraded.schemaVersion === 2) {
+    upgraded = { ...upgraded, schemaVersion: 3 };
+  }
+  if (upgraded.schemaVersion !== CURRENT_SCHEMA_VERSION) {
+    // Every supported older version has an explicit step above; reaching this line
+    // means a version was added to SUPPORTED_SCHEMA_VERSIONS without a migration.
+    throw new DefinitionError(
+      `no migration defined for schema version ${pkg.schemaVersion} → ${CURRENT_SCHEMA_VERSION}`,
+      { package: pkg.name, schemaVersion: pkg.schemaVersion },
+    );
+  }
+  return upgraded;
 }

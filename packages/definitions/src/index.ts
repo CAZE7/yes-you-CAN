@@ -4,6 +4,7 @@ export * from "./json.js";
 export * from "./migrate.js";
 export * from "./vehicles.js";
 export * from "./evidence.js";
+export * from "./knowledge.js";
 export * from "./resolve.js";
 export {
   WMI_PROVENANCE,
@@ -22,6 +23,7 @@ export {
 } from "./simulator/simulator-package.js";
 
 import { genericPackage } from "./generic/generic-package.js";
+import { type DtcKnowledgeHit, type DtcKnowledgeQuery, findDtcKnowledge } from "./knowledge.js";
 import { mercedesExamplePackage } from "./mercedes/mercedes-package.js";
 import { type VehicleResolution, type VehicleResolutionInput, VehicleResolver } from "./resolve.js";
 import { type DefinitionPackage, type VehicleDefinition, indexVehicles, keyOf } from "./schema.js";
@@ -113,6 +115,16 @@ export class DefinitionRegistry {
    */
   resolveVehicle(input: VehicleResolutionInput): VehicleResolution {
     return new VehicleResolver(this.all()).resolve(input);
+  }
+
+  /**
+   * What is documented about one fault code for the resolved vehicle (AGENTS 20).
+   *
+   * `undefined` means nothing is documented at all — not even package-wide
+   * wording. That answer is deliberately kept distinguishable from a fallback.
+   */
+  findDtcKnowledge(query: DtcKnowledgeQuery): DtcKnowledgeHit | undefined {
+    return findDtcKnowledge(this.all(query.oem), query);
   }
 
   list(): Array<{

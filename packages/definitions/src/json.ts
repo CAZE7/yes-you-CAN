@@ -13,9 +13,12 @@ import { DefinitionError, messageOf } from "@vdp/shared";
 import { upgradePackage } from "./migrate.js";
 import type {
   DefinitionPackage,
+  DtcKnowledgeDefinition,
   EcuDefinition,
   EngineDefinition,
+  FailurePatternDefinition,
   GearboxDefinition,
+  MeasurementCheckDefinition,
   Provenance,
   SignalDefinition,
   VehicleDefinition,
@@ -122,6 +125,8 @@ function coerceProvenance(value: unknown, check: StructuralCheck, path = "proven
   return provenance;
 }
 
+const SEVERITIES = new Set(["info", "minor", "major", "critical"]);
+const LIKELIHOODS = new Set(["common", "possible", "rare"]);
 const FUELS = new Set(["petrol", "diesel", "electric", "hybrid", "plugin-hybrid", "cng", "lpg"]);
 const GEARBOX_TYPES = new Set(["manual", "automatic", "dual-clutch", "cvt", "single-speed"]);
 
@@ -267,7 +272,120 @@ function coerceVehicle(value: unknown, index: number, check: StructuralCheck): V
         coerceVehicleEcuRef(ref, `${path}.ecus[${i}]`, check),
       );
   }
+  if (value.dtcKnowledge !== undefined) {
+    if (!Array.isArray(value.dtcKnowledge)) check.fail(`${path}.dtcKnowledge`, "must be an array");
+    else
+      vehicle.dtcKnowledge = value.dtcKnowledge.map((entry, i) =>
+        coerceDtcKnowledgeEntry(entry, `${path}.dtcKnowledge[${i}]`, check),
+      );
+  }
   return vehicle;
+}
+
+function coerceMeasurementCheck(
+  value: unknown,
+  path: string,
+  check: StructuralCheck,
+): MeasurementCheckDefinition {
+  if (!isRecord(value)) {
+    check.fail(path, "must be an object with a `signal` and an `expect` statement");
+    return { signal: "", expect: "" };
+  }
+  const signal = check.string(value, path, "signal");
+  const expect = check.string(value, path, "expect");
+  const result: MeasurementCheckDefinition = { signal: signal ?? "", expect: expect ?? "" };
+  if (value.min !== undefined) {
+    const min = check.number(value, path, "min");
+    if (min !== undefined) result.min = min;
+  }
+  if (value.max !== undefined) {
+    const max = check.number(value, path, "max");
+    if (max !== undefined) result.max = max;
+  }
+  if (value.windowMs !== undefined) {
+    const windowMs = check.number(value, path, "windowMs");
+    if (windowMs !== undefined) result.windowMs = windowMs;
+  }
+  return result;
+}
+
+function coerceFailurePattern(
+  value: unknown,
+  path: string,
+  check: StructuralCheck,
+): FailurePatternDefinition {
+  if (!isRecord(value)) {
+    check.fail(path, "must be an object with an `id` and a `name`");
+    return { id: "", name: "" };
+  }
+  const id = check.string(value, path, "id");
+  const name = check.string(value, path, "name");
+  const pattern: FailurePatternDefinition = { id: id ?? "", name: name ?? "" };
+  if (isString(value.explanation)) pattern.explanation = value.explanation;
+  if (isString(value.repair)) pattern.repair = value.repair;
+  const likelihood = value.likelihood;
+  if (likelihood !== undefined) {
+    if (!isString(likelihood) || !LIKELIHOODS.has(likelihood)) {
+      check.fail(`${path}.likelihood`, 'must be "common", "possible" or "rare"');
+    } else {
+      pattern.likelihood = likelihood as FailurePatternDefinition["likelihood"];
+    }
+  }
+  if (value.checks !== undefined) {
+    if (!Array.isArray(value.checks)) check.fail(`${path}.checks`, "must be an array");
+    else
+      pattern.checks = value.checks.map((entry, index) =>
+        coerceMeasurementCheck(entry, `${path}.checks[${index}]`, check),
+      );
+  }
+  return pattern;
+}
+
+/**
+ * Variant fault knowledge from an imported file (AGENTS 20, 23).
+ *
+ * Every field is checked structurally here so a broken import says *which* entry
+ * is broken; whether it also makes sense (does the engine exist, can the signal
+ * be measured) is the semantic validator's job.
+ */
+function coerceDtcKnowledgeEntry(
+  value: unknown,
+  path: string,
+  check: StructuralCheck,
+): DtcKnowledgeDefinition {
+  if (!isRecord(value)) {
+    check.fail(path, "must be an object with a `code`");
+    return { code: "" };
+  }
+  const code = check.string(value, path, "code");
+  const entry: DtcKnowledgeDefinition = { code: code ?? "" };
+  if (isString(value.ecu)) entry.ecu = value.ecu;
+  if (isString(value.engine)) entry.engine = value.engine;
+  if (isString(value.gearbox)) entry.gearbox = value.gearbox;
+  if (isString(value.description)) entry.description = value.description;
+  if (isString(value.hint)) entry.hint = value.hint;
+  if (isString(value.conditions)) entry.conditions = value.conditions;
+  const severity = value.severity;
+  if (severity !== undefined) {
+    if (!isString(severity) || !SEVERITIES.has(severity)) {
+      check.fail(`${path}.severity`, 'must be "info", "minor", "major" or "critical"');
+    } else {
+      entry.severity = severity as DtcKnowledgeDefinition["severity"];
+    }
+  }
+  const relatedSignals = check.strings(value, path, "relatedSignals");
+  if (relatedSignals) entry.relatedSignals = relatedSignals;
+  if (value.provenance !== undefined) {
+    entry.provenance = coerceProvenance(value.provenance, check, `${path}.provenance`);
+  }
+  if (value.patterns !== undefined) {
+    if (!Array.isArray(value.patterns)) check.fail(`${path}.patterns`, "must be an array");
+    else
+      entry.patterns = value.patterns.map((pattern, index) =>
+        coerceFailurePattern(pattern, `${path}.patterns[${index}]`, check),
+      );
+  }
+  return entry;
 }
 
 function coerceSignal(value: unknown, index: number, check: StructuralCheck): SignalDefinition {

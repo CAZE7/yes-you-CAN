@@ -94,3 +94,24 @@ test("a version 1 package that already carries vehicles keeps them", () => {
   assert.equal(after.schemaVersion, CURRENT_SCHEMA_VERSION);
   assert.deepEqual(after.vehicles, before.vehicles);
 });
+
+test("a version 2 package is raised to 3 and keeps its vehicles", () => {
+  // Version 3 adds fault knowledge per variant; a version 2 package simply has
+  // none, and the upgrade must not invent any (§24: absent means undocumented).
+  const before = legacy({
+    schemaVersion: 2,
+    vehicles: [{ id: "v", brand: "B", model: "M" }],
+  });
+  const after = upgradePackage(before);
+  assert.equal(after.schemaVersion, CURRENT_SCHEMA_VERSION);
+  assert.deepEqual(after.vehicles, before.vehicles);
+  assert.equal(after.vehicles?.[0]?.dtcKnowledge, undefined);
+  assert.equal(before.schemaVersion, 2, "the original stays at its recorded version");
+});
+
+test("a version 1 package passes through every step to the current version", () => {
+  const after = upgradePackage(legacy({ schemaVersion: 1 }));
+  assert.equal(after.schemaVersion, CURRENT_SCHEMA_VERSION);
+  assert.deepEqual(after.vehicles, []);
+  assert.equal(isSupportedSchemaVersion(2), true, "version 2 stays readable on the way");
+});

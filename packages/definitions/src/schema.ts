@@ -219,6 +219,78 @@ export interface VehicleEcuRef {
  * is the missing axis: it narrows the package's ECUs to the ones this car really
  * has and carries the identification values that prove the narrowing.
  */
+/**
+ * One measurement that confirms or refutes a failure pattern (AGENTS 23
+ * "Measurement Relationships").
+ *
+ * The check names a signal *of the same package* plus the window the pattern
+ * predicts. A numeric window makes the check machine-evaluable — that is what
+ * turns knowledge into a guided diagnosis instead of a block of prose; without
+ * `min`/`max` the check stays qualitative and a human has to read it.
+ */
+export interface MeasurementCheckDefinition {
+  /** Signal id of this package, e.g. "engine.short_term_fuel_trim". */
+  signal: string;
+  /** What the pattern predicts, in operator language. */
+  expect: string;
+  /** Inclusive numeric window that confirms the pattern. */
+  min?: number;
+  max?: number;
+  /** How long to measure before judging, in ms; absent = one snapshot. */
+  windowMs?: number;
+}
+
+/**
+ * One known failure pattern behind a fault code (AGENTS 23 "Known Failure
+ * Patterns").
+ *
+ * A pattern is a named hypothesis with the measurements that would confirm it
+ * and — when somebody documented it — the repair that follows. It is never a
+ * probability claim: `likelihood` orders the checks, it does not diagnose.
+ */
+export interface FailurePatternDefinition {
+  /** Stable identifier inside its knowledge entry, e.g. "catalyst-aged". */
+  id: string;
+  name: string;
+  explanation?: string;
+  /** Ordering hint for the checks below; not a probability. */
+  likelihood?: "common" | "possible" | "rare";
+  checks?: MeasurementCheckDefinition[];
+  /** Repair information, labelled as such and carrying its own provenance (§24). */
+  repair?: string;
+}
+
+/**
+ * Fault knowledge scoped to one vehicle variant (AGENTS 20, 23).
+ *
+ * `EcuDefinition.dtcs` says what a code means for a manufacturer; this says what
+ * it means for *this* car with *this* engine — other causes, other measuring
+ * points, sometimes another severity. Entries are matched by `code` and narrowed
+ * by `ecu`, `engine` and `gearbox`; the most specific match wins and less
+ * specific patterns stay visible next to it (`findDtcKnowledge`).
+ */
+export interface DtcKnowledgeDefinition {
+  /** Character form of the code, e.g. "P0420" (SAE J2012 / ISO 14229-1). */
+  code: string;
+  /** ECU id of this package the code is read from; absent = any ECU. */
+  ecu?: string;
+  /** Engine id of this vehicle the entry applies to; absent = every engine. */
+  engine?: string;
+  /** Gearbox id of this vehicle the entry applies to; absent = every gearbox. */
+  gearbox?: string;
+  /** Variant wording; overrides the package description when present. */
+  description?: string;
+  severity?: "info" | "minor" | "major" | "critical";
+  hint?: string;
+  /** When the code sets, e.g. "only after three drive cycles with a cold engine". */
+  conditions?: string;
+  patterns?: FailurePatternDefinition[];
+  /** Signal ids of this package that belong to diagnosing this code. */
+  relatedSignals?: string[];
+  /** Refines the vehicle provenance for this entry (AGENTS 24: per-data source). */
+  provenance?: Provenance;
+}
+
 export interface VehicleDefinition {
   /** Stable identifier inside the package, e.g. "golf-vii-mqb". */
   id: string;
@@ -235,6 +307,12 @@ export interface VehicleDefinition {
   gearboxes?: GearboxDefinition[];
   /** ECUs of this package that belong to this vehicle; empty means "all ECUs". */
   ecus?: VehicleEcuRef[];
+  /**
+   * What the faults of this variant mean (AGENTS 20, 23). Absent means "only the
+   * package-wide fault descriptions exist" — the reader then says so instead of
+   * dressing a generic text up as variant knowledge.
+   */
+  dtcKnowledge?: DtcKnowledgeDefinition[];
   /** Refines the package provenance for this entry (AGENTS 24: per-data source). */
   provenance?: Provenance;
   description?: string;
@@ -259,7 +337,8 @@ export interface Provenance {
 export interface DefinitionPackage {
   /**
    * Model version of the package. Version 1 carried ECUs and signals only;
-   * version 2 adds the vehicle axis ({@link VehicleDefinition}). Both stay
+   * version 2 adds the vehicle axis ({@link VehicleDefinition}); version 3 adds
+   * fault knowledge per variant ({@link DtcKnowledgeDefinition}). All of them stay
    * readable — see {@link SUPPORTED_SCHEMA_VERSIONS} and `upgradePackage` in
    * `migrate.ts` — because recorded sessions reference the version they used
    * (AGENTS 13).
@@ -281,7 +360,7 @@ export interface DefinitionPackage {
   vehicles?: VehicleDefinition[];
 }
 
-export const CURRENT_SCHEMA_VERSION = 2;
+export const CURRENT_SCHEMA_VERSION = 3;
 
 /**
  * Registry key of a package: manufacturer and version.
@@ -304,7 +383,7 @@ export function keyOf(pkg: DefinitionPackage): string {
  * Sessions nachvollziehbar bleiben"). Anything below the oldest supported
  * version has to be migrated explicitly, not silently accepted.
  */
-export const SUPPORTED_SCHEMA_VERSIONS: readonly number[] = [1, 2];
+export const SUPPORTED_SCHEMA_VERSIONS: readonly number[] = [1, 2, 3];
 
 export interface SignalIndex {
   byId: Map<string, SignalDefinition>;

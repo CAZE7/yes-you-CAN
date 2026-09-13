@@ -237,6 +237,21 @@ test("omitted ecus/signals arrays are reported as structural errors", () => {
   );
 });
 
+/**
+ * The two signals the knowledge fixture below measures against. A check naming a
+ * signal the package does not declare is a semantic error, so a valid fixture has
+ * to bring its own measuring points.
+ */
+function knowledgeSignals(): typeof genericPackage.signals {
+  const ids = ["engine.long_term_fuel_trim", "engine.coolant_temperature"];
+  return genericPackage.signals.filter((signal) => ids.includes(signal.id));
+}
+
+/** One vehicle whose `dtcKnowledge` is exactly `knowledge` — for the error table. */
+function knowledgeVehicle(knowledge: unknown): unknown[] {
+  return [{ id: "car", brand: "B", model: "M", dtcKnowledge: knowledge }];
+}
+
 /** The generic package with one vehicle definition, as a JSON source would carry it. */
 function vehicleSource(): Record<string, unknown> {
   return {
@@ -341,7 +356,10 @@ test("an unsupported schema version is rejected by the parser", () => {
     () => parseDefinitionPackage(source),
     (error: unknown) => {
       assert.ok(error instanceof DefinitionError);
-      assert.match(error.message, /schemaVersion 3 is not supported/);
+      assert.match(
+        error.message,
+        new RegExp(`schemaVersion ${CURRENT_SCHEMA_VERSION + 1} is not supported`),
+      );
       return true;
     },
   );
@@ -443,6 +461,128 @@ test("structural problems in vehicles are collected, not silently dropped", () =
       [{ id: "car", brand: "B", model: "M", ecus: ["engine"] }],
       "vehicles[0].ecus[0]: must be an object",
     ],
+
+    // --- variant fault knowledge (schema version 3) ------------------------
+    ["vehicles", knowledgeVehicle("one"), "vehicles[0].dtcKnowledge: must be an array"],
+    ["vehicles", knowledgeVehicle([null]), "vehicles[0].dtcKnowledge[0]: must be an object"],
+    [
+      "vehicles",
+      knowledgeVehicle([{ description: "wording without a code" }]),
+      "vehicles[0].dtcKnowledge[0].code: must be a string",
+    ],
+    [
+      "vehicles",
+      knowledgeVehicle([{ code: "P0420", severity: "fatal" }]),
+      'vehicles[0].dtcKnowledge[0].severity: must be "info"',
+    ],
+    [
+      "vehicles",
+      knowledgeVehicle([{ code: "P0420", severity: 3 }]),
+      'vehicles[0].dtcKnowledge[0].severity: must be "info"',
+    ],
+    [
+      "vehicles",
+      knowledgeVehicle([{ code: "P0420", relatedSignals: "engine.load" }]),
+      "vehicles[0].dtcKnowledge[0].relatedSignals: must be an array of strings",
+    ],
+    [
+      "vehicles",
+      knowledgeVehicle([{ code: "P0420", relatedSignals: [1] }]),
+      "vehicles[0].dtcKnowledge[0].relatedSignals[0]: must be a string",
+    ],
+    [
+      "vehicles",
+      knowledgeVehicle([{ code: "P0420", provenance: "own" }]),
+      "vehicles[0].dtcKnowledge[0].provenance: must be an object",
+    ],
+    [
+      "vehicles",
+      knowledgeVehicle([{ code: "P0420", patterns: "one" }]),
+      "vehicles[0].dtcKnowledge[0].patterns: must be an array",
+    ],
+    [
+      "vehicles",
+      knowledgeVehicle([{ code: "P0420", patterns: [null] }]),
+      "vehicles[0].dtcKnowledge[0].patterns[0]: must be an object",
+    ],
+    [
+      "vehicles",
+      knowledgeVehicle([{ code: "P0420", patterns: [{ name: "no id" }] }]),
+      "vehicles[0].dtcKnowledge[0].patterns[0].id: must be a string",
+    ],
+    [
+      "vehicles",
+      knowledgeVehicle([{ code: "P0420", patterns: [{ id: "p" }] }]),
+      "vehicles[0].dtcKnowledge[0].patterns[0].name: must be a string",
+    ],
+    [
+      "vehicles",
+      knowledgeVehicle([
+        { code: "P0420", patterns: [{ id: "p", name: "n", likelihood: "certain" }] },
+      ]),
+      'vehicles[0].dtcKnowledge[0].patterns[0].likelihood: must be "common"',
+    ],
+    [
+      "vehicles",
+      knowledgeVehicle([{ code: "P0420", patterns: [{ id: "p", name: "n", likelihood: 1 }] }]),
+      'vehicles[0].dtcKnowledge[0].patterns[0].likelihood: must be "common"',
+    ],
+    [
+      "vehicles",
+      knowledgeVehicle([{ code: "P0420", patterns: [{ id: "p", name: "n", checks: "one" }] }]),
+      "vehicles[0].dtcKnowledge[0].patterns[0].checks: must be an array",
+    ],
+    [
+      "vehicles",
+      knowledgeVehicle([{ code: "P0420", patterns: [{ id: "p", name: "n", checks: [null] }] }]),
+      "vehicles[0].dtcKnowledge[0].patterns[0].checks[0]: must be an object",
+    ],
+    [
+      "vehicles",
+      knowledgeVehicle([
+        { code: "P0420", patterns: [{ id: "p", name: "n", checks: [{ expect: "no signal" }] }] },
+      ]),
+      "vehicles[0].dtcKnowledge[0].patterns[0].checks[0].signal: must be a string",
+    ],
+    [
+      "vehicles",
+      knowledgeVehicle([
+        { code: "P0420", patterns: [{ id: "p", name: "n", checks: [{ signal: "s" }] }] },
+      ]),
+      "vehicles[0].dtcKnowledge[0].patterns[0].checks[0].expect: must be a string",
+    ],
+    [
+      "vehicles",
+      knowledgeVehicle([
+        {
+          code: "P0420",
+          patterns: [{ id: "p", name: "n", checks: [{ signal: "s", expect: "e", min: "five" }] }],
+        },
+      ]),
+      "vehicles[0].dtcKnowledge[0].patterns[0].checks[0].min: must be a number",
+    ],
+    [
+      "vehicles",
+      knowledgeVehicle([
+        {
+          code: "P0420",
+          patterns: [{ id: "p", name: "n", checks: [{ signal: "s", expect: "e", max: true }] }],
+        },
+      ]),
+      "vehicles[0].dtcKnowledge[0].patterns[0].checks[0].max: must be a number",
+    ],
+    [
+      "vehicles",
+      knowledgeVehicle([
+        {
+          code: "P0420",
+          patterns: [
+            { id: "p", name: "n", checks: [{ signal: "s", expect: "e", windowMs: "1000" }] },
+          ],
+        },
+      ]),
+      "vehicles[0].dtcKnowledge[0].patterns[0].checks[0].windowMs: must be a number",
+    ],
   ];
 
   for (const [, value, expected] of cases) {
@@ -491,6 +631,135 @@ test("an ECU address that is not an object is named, not defaulted silently", ()
         error.message.includes("ecus[1].address"),
         `a missing address must be reported too:\n${error.message}`,
       );
+      return true;
+    },
+  );
+});
+
+test("variant fault knowledge survives the JSON round trip with every field", () => {
+  const source = vehicleSource();
+  source.signals = knowledgeSignals();
+  const vehicles = source.vehicles as Array<Record<string, unknown>>;
+  vehicles[0]!.dtcKnowledge = [
+    {
+      code: "P0420",
+      ecu: genericPackage.ecus[0]!.id,
+      engine: "e1",
+      gearbox: "g1",
+      description: "Variant wording",
+      severity: "critical",
+      hint: "Variant hint",
+      conditions: "Only in closed loop above 80 °C",
+      relatedSignals: ["engine.coolant_temperature"],
+      provenance: { sourceType: "own", source: "written for this test" },
+      patterns: [
+        {
+          id: "catalyst-aged",
+          name: "Aged catalyst",
+          explanation: "Oxygen storage is gone",
+          likelihood: "common",
+          repair: "Replace it only after the checks hold",
+          checks: [
+            { signal: "engine.long_term_fuel_trim", expect: "neutral", min: -5, max: 5 },
+            { signal: "engine.coolant_temperature", expect: "warm", min: 80, windowMs: 2000 },
+          ],
+        },
+        { id: "no-checks", name: "Documented without a measurement" },
+      ],
+    },
+  ];
+
+  const parsed = parseDefinitionPackage(JSON.parse(JSON.stringify(source)));
+  const entry = parsed.vehicles?.[0]?.dtcKnowledge?.[0];
+  assert.ok(entry, "the knowledge entry survived");
+  assert.equal(entry.code, "P0420");
+  assert.equal(entry.ecu, genericPackage.ecus[0]!.id);
+  assert.equal(entry.engine, "e1");
+  assert.equal(entry.gearbox, "g1");
+  assert.equal(entry.description, "Variant wording");
+  assert.equal(entry.severity, "critical");
+  assert.equal(entry.hint, "Variant hint");
+  assert.equal(entry.conditions, "Only in closed loop above 80 °C");
+  assert.deepEqual(entry.relatedSignals, ["engine.coolant_temperature"]);
+  assert.equal(entry.provenance?.sourceType, "own");
+
+  const pattern = entry.patterns?.[0];
+  assert.equal(pattern?.name, "Aged catalyst");
+  assert.equal(pattern?.explanation, "Oxygen storage is gone");
+  assert.equal(pattern?.likelihood, "common");
+  assert.equal(pattern?.repair, "Replace it only after the checks hold");
+  assert.deepEqual(pattern?.checks?.[0], {
+    signal: "engine.long_term_fuel_trim",
+    expect: "neutral",
+    min: -5,
+    max: 5,
+  });
+  assert.deepEqual(pattern?.checks?.[1], {
+    signal: "engine.coolant_temperature",
+    expect: "warm",
+    min: 80,
+    windowMs: 2000,
+  });
+  assert.deepEqual(entry.patterns?.[1], {
+    id: "no-checks",
+    name: "Documented without a measurement",
+  });
+
+  const result = validateDefinitionPackage(parsed);
+  assert.deepEqual(result.errors, [], result.errors.join(", "));
+  assert.deepEqual(
+    result.warnings.filter((warning) => warning.includes("knowledge for")),
+    [
+      'vehicle "car": knowledge for P0420, pattern "no-checks" has no measurement check — ' +
+        "it can be read, not verified",
+    ],
+    "the only complaint is the one pattern that documents no measurement",
+  );
+
+  const round = parseDefinitionPackageJson(JSON.stringify(parsed));
+  assert.deepEqual(round.vehicles, parsed.vehicles, "stringify and parse change nothing");
+});
+
+test("knowledge that references nothing real is rejected semantically", () => {
+  const source = vehicleSource();
+  const vehicles = source.vehicles as Array<Record<string, unknown>>;
+  vehicles[0]!.dtcKnowledge = [
+    {
+      code: "P0420",
+      ecu: "nosuch",
+      engine: "nosuch",
+      gearbox: "nosuch",
+      relatedSignals: ["engine.nosuch"],
+      patterns: [
+        {
+          id: "duplicate",
+          name: "First",
+          checks: [{ signal: "engine.nosuch", expect: "anything" }],
+        },
+        { id: "duplicate", name: "Second", checks: [] },
+      ],
+    },
+    { code: "P0420", ecu: "nosuch" },
+    // Same scope again, written in lower case: the duplicate has to be caught.
+    { code: "p0420", ecu: "nosuch" },
+    { code: "X9999" },
+  ];
+  assert.throws(
+    () => parseDefinitionPackage(source),
+    (error: unknown) => {
+      assert.ok(error instanceof DefinitionError);
+      const message = error.message;
+      for (const expected of [
+        'references unknown ECU "nosuch"',
+        'references unknown engine "nosuch"',
+        'references unknown gearbox "nosuch"',
+        'references unknown signal "engine.nosuch"',
+        'duplicate failure pattern id "duplicate"',
+        "declared twice with the same ECU/engine/gearbox scope",
+        'malformed DTC code "X9999"',
+      ]) {
+        assert.ok(message.includes(expected), `expected "${expected}" in:\n${message}`);
+      }
       return true;
     },
   );

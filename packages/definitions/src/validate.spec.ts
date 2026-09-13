@@ -4,6 +4,7 @@ import {
   CURRENT_SCHEMA_VERSION,
   type DefinitionPackage,
   DefinitionRegistry,
+  type DtcKnowledgeDefinition,
   type VehicleDefinition,
   ecusOfVehicle,
   genericPackage,
@@ -313,10 +314,21 @@ test("a version 1 package stays readable but says what it cannot do", () => {
   const result = validateDefinitionPackage(legacy);
   assert.equal(result.valid, true, "reading an older package is not an error");
   assert.ok(
-    result.warnings.some((w) => w.includes("predates 2")),
+    result.warnings.some((w) => w.includes(`predates ${CURRENT_SCHEMA_VERSION}`)),
     result.warnings.join(", "),
   );
   assert.ok(result.warnings.some((w) => w.includes("upgradePackage")));
+});
+
+test("a version 2 package is readable but cannot carry variant knowledge", () => {
+  const previous = clone(genericPackage);
+  previous.schemaVersion = 2;
+  const result = validateDefinitionPackage(previous);
+  assert.equal(result.valid, true, "reading the previous schema version is not an error");
+  assert.ok(
+    result.warnings.some((w) => w.includes("fault knowledge per variant")),
+    result.warnings.join(", "),
+  );
 });
 
 test("the VAG example package demonstrates the vehicle axis and stays flagged", () => {
@@ -470,5 +482,310 @@ test("an empty enum mapping and a unitless measurement are warnings, not errors"
   assert.ok(
     result.warnings.some((warning) => warning.includes("no unit")),
     `a unitless measurement is a report problem, not a package error: ${result.warnings.join("; ")}`,
+  );
+});
+
+/**
+ * Variant fault knowledge (AGENTS 20, 23). The fixture is deliberately complete:
+ * every case below breaks exactly one thing, so a message can be attributed.
+ */
+function knowledgeFixture(): DtcKnowledgeDefinition {
+  return {
+    code: "P0420",
+    ecu: "engine",
+    engine: "e1",
+    gearbox: "g1",
+    description: "Variant wording",
+    severity: "major",
+    hint: "Variant hint",
+    conditions: "Only in closed loop",
+    relatedSignals: ["engine.coolant_temperature"],
+    provenance: { sourceType: "own", source: "written for this test" },
+    patterns: [
+      {
+        id: "catalyst-aged",
+        name: "Aged catalyst",
+        likelihood: "common",
+        repair: "Replace it only after the checks hold",
+        checks: [
+          { signal: "engine.long_term_fuel_trim", expect: "neutral", min: -5, max: 5 },
+          { signal: "engine.coolant_temperature", expect: "warm", min: 80, windowMs: 2000 },
+        ],
+      },
+    ],
+  };
+}
+
+function withKnowledge(knowledge: DtcKnowledgeDefinition[]): DefinitionPackage {
+  const vehicle = vehicleFixture();
+  vehicle.dtcKnowledge = knowledge;
+  return withVehicle(vehicle);
+}
+
+/** Every complaint the validator makes about knowledge, warnings included. */
+function knowledgeMessages(pkg: DefinitionPackage): string[] {
+  const result = validateDefinitionPackage(pkg);
+  assert.deepEqual(
+    result.errors.filter((e) => !e.includes("knowledge")),
+    [],
+    result.errors.join(", "),
+  );
+  return [...result.errors, ...result.warnings].filter((message) => message.includes("knowledge"));
+}
+
+test("complete, measurable variant knowledge validates without complaint", () => {
+  const pkg = withKnowledge([knowledgeFixture()]);
+  const result = validateDefinitionPackage(pkg);
+  assert.deepEqual(result.errors, [], result.errors.join(", "));
+  assert.deepEqual(
+    result.warnings.filter((warning) => warning.includes("knowledge")),
+    [],
+    result.warnings.join(", "),
+  );
+});
+
+test("knowledge may only reference what the package and the variant declare", () => {
+  const entry = knowledgeFixture();
+  entry.ecu = "no-such-ecu";
+  entry.engine = "no-such-engine";
+  entry.gearbox = "no-such-gearbox";
+  entry.relatedSignals = ["engine.no_such_signal"];
+  entry.patterns = [
+    {
+      id: "unmeasurable",
+      name: "Check against a signal nobody declared",
+      checks: [{ signal: "engine.no_such_signal", expect: "anything", min: 1 }],
+    },
+  ];
+  const messages = knowledgeMessages(withKnowledge([entry]));
+  for (const expected of [
+    'references unknown ECU "no-such-ecu"',
+    'references unknown engine "no-such-engine"',
+    'references unknown gearbox "no-such-gearbox"',
+    'references unknown signal "engine.no_such_signal"',
+    'check "engine.no_such_signal" references unknown signal',
+  ]) {
+    assert.ok(
+      messages.some((message) => message.includes(expected)),
+      `expected "${expected}" in:\n${messages.join("\n")}`,
+    );
+  }
+});
+
+test("a malformed code, a bad severity and empty wording are errors", () => {
+  const malformed = knowledgeFixture();
+  malformed.code = "X9999";
+  const severity = knowledgeFixture();
+  severity.severity = "catastrophic" as DtcKnowledgeDefinition["severity"];
+  const empty = knowledgeFixture();
+  empty.description = "   ";
+  empty.hint = "";
+  empty.conditions = "";
+
+  const messages = knowledgeMessages(withKnowledge([malformed, severity, empty]));
+  for (const expected of [
+    'malformed DTC code "X9999"',
+    'has unsupported severity "catastrophic"',
+    "declares an empty description",
+    "declares an empty hint",
+    "declares an empty conditions",
+  ]) {
+    assert.ok(
+      messages.some((message) => message.includes(expected)),
+      `expected "${expected}" in:\n${messages.join("\n")}`,
+    );
+  }
+});
+
+test("one code may be documented per variant, but not twice for the same variant", () => {
+  const perEngine = knowledgeFixture();
+  perEngine.engine = "e1";
+  const perGearbox = knowledgeFixture();
+  perGearbox.engine = undefined;
+  perGearbox.patterns = [];
+  const duplicate = knowledgeFixture();
+  duplicate.patterns = [];
+
+  const distinct = knowledgeMessages(withKnowledge([perEngine, perGearbox]));
+  assert.deepEqual(distinct, [], "different scopes for one code are the whole point");
+
+  const twice = knowledgeMessages(withKnowledge([perEngine, duplicate]));
+  assert.ok(
+    twice.some((message) =>
+      message.includes("is declared twice with the same ECU/engine/gearbox scope"),
+    ),
+    twice.join("\n"),
+  );
+});
+
+test("failure patterns need an id, a name and a real likelihood", () => {
+  const entry = knowledgeFixture();
+  entry.patterns = [
+    {
+      id: "",
+      name: "No id",
+      checks: [{ signal: "engine.coolant_temperature", expect: "warm", min: 80 }],
+    },
+    {
+      id: "no-name",
+      name: "",
+      checks: [{ signal: "engine.coolant_temperature", expect: "warm", min: 80 }],
+    },
+    {
+      id: "certain",
+      name: "Impossible likelihood",
+      likelihood: "certain" as NonNullable<
+        DtcKnowledgeDefinition["patterns"]
+      >[number]["likelihood"],
+      checks: [{ signal: "engine.coolant_temperature", expect: "warm", min: 80 }],
+    },
+    {
+      id: "no-name",
+      name: "Duplicate id",
+      checks: [{ signal: "engine.coolant_temperature", expect: "warm", min: 80 }],
+    },
+  ];
+  const messages = knowledgeMessages(withKnowledge([entry]));
+  for (const expected of [
+    "failure pattern without id",
+    'pattern "no-name" has no name',
+    'has unsupported likelihood "certain"',
+    'duplicate failure pattern id "no-name"',
+  ]) {
+    assert.ok(
+      messages.some((message) => message.includes(expected)),
+      `expected "${expected}" in:\n${messages.join("\n")}`,
+    );
+  }
+});
+
+test("a measurement check needs a signal, a statement and a window that makes sense", () => {
+  const entry = knowledgeFixture();
+  entry.patterns = [
+    {
+      id: "broken-checks",
+      name: "Every check problem at once",
+      checks: [
+        { signal: "", expect: "no signal at all" },
+        { signal: "engine.coolant_temperature", expect: "  " },
+        { signal: "engine.coolant_temperature", expect: "inverted", min: 90, max: 20 },
+        { signal: "engine.coolant_temperature", expect: "impossible", min: Number.NaN },
+        { signal: "engine.coolant_temperature", expect: "instant", min: 10, windowMs: 0 },
+      ],
+    },
+  ];
+  const messages = knowledgeMessages(withKnowledge([entry]));
+  for (const expected of [
+    "measurement check without signal",
+    "says nothing about what to expect",
+    "has min 90 > max 20",
+    "has a non-finite min",
+    "declares a window of 0 ms",
+  ]) {
+    assert.ok(
+      messages.some((message) => message.includes(expected)),
+      `expected "${expected}" in:\n${messages.join("\n")}`,
+    );
+  }
+});
+
+test("knowledge that cannot be verified says so instead of looking complete", () => {
+  const noChecks = knowledgeFixture();
+  noChecks.patterns = [{ id: "readable", name: "Only prose" }];
+
+  const noWindow = knowledgeFixture();
+  noWindow.patterns = [
+    {
+      id: "by-ear",
+      name: "Only a human can judge this",
+      checks: [{ signal: "engine.coolant_temperature", expect: "listen at operating temperature" }],
+    },
+  ];
+
+  const noContent = knowledgeFixture();
+  noContent.description = undefined;
+  noContent.hint = undefined;
+  noContent.conditions = undefined;
+  noContent.severity = undefined;
+  noContent.patterns = undefined;
+  noContent.relatedSignals = undefined;
+
+  const unknownCode = knowledgeFixture();
+  unknownCode.code = "P0999";
+
+  const unsourcedRepair = knowledgeFixture();
+  unsourcedRepair.provenance = undefined;
+
+  const messages = knowledgeMessages(
+    withKnowledge([noChecks, noWindow, noContent, unknownCode, unsourcedRepair]),
+  );
+  for (const expected of [
+    'pattern "readable" has no measurement check — it can be read, not verified',
+    "has no numeric window — a human has to judge it",
+    "declares nothing beyond its code",
+    "knowledge for P0999 has no package-wide definition on any ECU",
+    "carries repair information without provenance",
+  ]) {
+    assert.ok(
+      messages.some((message) => message.includes(expected)),
+      `expected "${expected}" in:\n${messages.join("\n")}`,
+    );
+  }
+  assert.equal(
+    messages.some((message) => message.includes("AGENTS 24")),
+    true,
+    "the repair warning names the rule it protects",
+  );
+});
+
+test("empty repair information is an error, not a warning", () => {
+  const entry = knowledgeFixture();
+  entry.patterns = [
+    {
+      id: "empty-repair",
+      name: "Says it has repair advice and then does not",
+      repair: "   ",
+      checks: [{ signal: "engine.coolant_temperature", expect: "warm", min: 80 }],
+    },
+  ];
+  const messages = knowledgeMessages(withKnowledge([entry]));
+  assert.ok(
+    messages.some((message) => message.includes("declares empty repair information")),
+    messages.join("\n"),
+  );
+});
+
+test("entry provenance is validated like every other source (AGENTS 24)", () => {
+  const unlicensed = knowledgeFixture();
+  unlicensed.provenance = { sourceType: "licensed", source: "workshop manual" };
+  const unlicensedResult = validateDefinitionPackage(withKnowledge([unlicensed]));
+  assert.equal(
+    unlicensedResult.valid,
+    false,
+    "licensed knowledge without a license declaration is not usable",
+  );
+  assert.ok(
+    unlicensedResult.errors.some((error) =>
+      error.includes("knowledge for P0420.provenance: licensed data must declare a license"),
+    ),
+    unlicensedResult.errors.join(", "),
+  );
+
+  const nameless = knowledgeFixture();
+  nameless.provenance = { sourceType: "own", source: "" };
+  const namelessMessages = knowledgeMessages(withKnowledge([nameless]));
+  assert.ok(
+    namelessMessages.some((message) =>
+      message.includes("knowledge for P0420.provenance.source is required"),
+    ),
+    namelessMessages.join("\n"),
+  );
+
+  const reviewed = knowledgeFixture();
+  reviewed.provenance = { sourceType: "reverse-engineered", source: "community trace" };
+  const reviewedMessages = knowledgeMessages(withKnowledge([reviewed]));
+  assert.ok(
+    reviewedMessages.some((message) => message.includes("must be reviewed before distribution")),
+    reviewedMessages.join("\n"),
   );
 });

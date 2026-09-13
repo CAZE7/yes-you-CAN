@@ -12,6 +12,8 @@ import {
   CURRENT_SCHEMA_VERSION,
   type DefinitionPackage,
   type EcuDefinition,
+  type FailurePatternDefinition,
+  type MeasurementCheckDefinition,
   type Provenance,
   SUPPORTED_SCHEMA_VERSIONS,
   type SignalDefinition,
@@ -30,6 +32,8 @@ const VDS_PATTERN = /^[A-HJ-NPR-Z0-9.?]{5}$/;
 const VIN_CHAR = /^[A-HJ-NPR-Z0-9]$/;
 /** Model years are plausible years, not accident digits from a shifted column. */
 const PLAUSIBLE_MODEL_YEAR = { from: 1950, to: 2100 };
+const VALID_SEVERITIES = new Set(["info", "minor", "major", "critical"]);
+const VALID_LIKELIHOODS = new Set(["common", "possible", "rare"]);
 const VALID_ENCODINGS = new Set([
   "uint8",
   "uint16",
@@ -61,8 +65,9 @@ export function validateDefinitionPackage(pkg: DefinitionPackage): ValidationRes
     );
   } else if (pkg.schemaVersion < CURRENT_SCHEMA_VERSION) {
     warnings.push(
-      `schemaVersion ${pkg.schemaVersion} predates ${CURRENT_SCHEMA_VERSION}: no vehicle definitions, ` +
-        "so the package cannot narrow its ECUs to one car (run upgradePackage)",
+      `schemaVersion ${pkg.schemaVersion} predates ${CURRENT_SCHEMA_VERSION}: ` +
+        "vehicles arrive with version 2 and fault knowledge per variant with version 3, " +
+        "so this package can carry neither (run upgradePackage)",
     );
   }
   if (!SEMVER.test(pkg.version))
@@ -86,9 +91,15 @@ export function validateDefinitionPackage(pkg: DefinitionPackage): ValidationRes
     validateSignal(signal, ecuIds, signalIds, errors, warnings);
   }
 
+  const dtcCodes = new Set<string>();
+  for (const ecu of pkg.ecus ?? []) {
+    for (const dtc of ecu.dtcs ?? []) dtcCodes.add(dtc.code.trim().toUpperCase());
+  }
+
   const vehicleIds = new Set<string>();
   for (const vehicle of pkg.vehicles ?? []) {
     validateVehicle(vehicle, ecuIds, vehicleIds, errors, warnings);
+    validateDtcKnowledge(vehicle, ecuIds, signalIds, dtcCodes, errors, warnings);
   }
 
   return { valid: errors.length === 0, errors, warnings };
@@ -234,6 +245,172 @@ function validatePowertrain(vehicle: VehicleDefinition, where: string, errors: s
     if (gearbox.gears !== undefined && gearbox.gears < 1) {
       errors.push(`${where}: gearbox "${gearbox.id}" declares fewer than one gear`);
     }
+  }
+}
+
+/**
+ * Fault knowledge of one vehicle variant (AGENTS 20, 23).
+ *
+ * Everything this data says is shown to a technician as a statement about *their*
+ * car, so every reference it makes has to resolve: an entry pointing at an engine,
+ * an ECU or a measuring signal the package does not declare would silently become
+ * an unverifiable claim. What is missing is reported as a warning, never patched.
+ */
+function validateDtcKnowledge(
+  vehicle: VehicleDefinition,
+  ecuIds: Set<string>,
+  signalIds: Set<string>,
+  dtcCodes: Set<string>,
+  errors: string[],
+  warnings: string[],
+): void {
+  const knowledge = vehicle.dtcKnowledge ?? [];
+  if (knowledge.length === 0) return;
+  const where = vehicle.id ? `vehicle "${vehicle.id}"` : "vehicle without id";
+  const engineIds = new Set((vehicle.engines ?? []).map((engine) => engine.id));
+  const gearboxIds = new Set((vehicle.gearboxes ?? []).map((gearbox) => gearbox.id));
+  const seenEntries = new Set<string>();
+  const seenPatterns = new Set<string>();
+
+  for (const entry of knowledge) {
+    const code = typeof entry.code === "string" ? entry.code.trim().toUpperCase() : "";
+    const label = `${where}: knowledge for ${code || "(no code)"}`;
+    if (!DTC_CODE.test(entry.code ?? "")) {
+      errors.push(`${where}: malformed DTC code "${entry.code}" in variant knowledge`);
+    } else if (!dtcCodes.has(code)) {
+      warnings.push(
+        `${label} has no package-wide definition on any ECU — ` +
+          "the code cannot be read from this package's ECU list",
+      );
+    }
+
+    const scope = [code, entry.ecu ?? "", entry.engine ?? "", entry.gearbox ?? ""].join("|");
+    if (seenEntries.has(scope)) {
+      errors.push(`${label} is declared twice with the same ECU/engine/gearbox scope`);
+    }
+    seenEntries.add(scope);
+
+    if (entry.ecu !== undefined && !ecuIds.has(entry.ecu)) {
+      errors.push(`${label} references unknown ECU "${entry.ecu}"`);
+    }
+    if (entry.engine !== undefined && !engineIds.has(entry.engine)) {
+      errors.push(`${label} references unknown engine "${entry.engine}"`);
+    }
+    if (entry.gearbox !== undefined && !gearboxIds.has(entry.gearbox)) {
+      errors.push(`${label} references unknown gearbox "${entry.gearbox}"`);
+    }
+    if (entry.severity !== undefined && !VALID_SEVERITIES.has(entry.severity)) {
+      errors.push(`${label} has unsupported severity "${entry.severity}"`);
+    }
+    for (const field of ["description", "hint", "conditions"] as const) {
+      if (entry[field] !== undefined && !entry[field]?.trim()) {
+        errors.push(`${label} declares an empty ${field}`);
+      }
+    }
+    for (const signal of entry.relatedSignals ?? []) {
+      if (!signalIds.has(signal)) {
+        errors.push(`${label} references unknown signal "${signal}"`);
+      }
+    }
+    if (entry.provenance) {
+      validateProvenance(`${label}.provenance`, entry.provenance, errors, warnings);
+    }
+
+    const hasContent =
+      Boolean(entry.description?.trim() || entry.hint?.trim() || entry.conditions?.trim()) ||
+      entry.severity !== undefined ||
+      (entry.patterns?.length ?? 0) > 0 ||
+      (entry.relatedSignals?.length ?? 0) > 0;
+    if (!hasContent) {
+      warnings.push(`${label} declares nothing beyond its code — it changes no answer`);
+    }
+
+    const hasProvenance = entry.provenance !== undefined || vehicle.provenance !== undefined;
+    for (const pattern of entry.patterns ?? []) {
+      validateFailurePattern(
+        pattern,
+        label,
+        signalIds,
+        seenPatterns,
+        hasProvenance,
+        errors,
+        warnings,
+      );
+    }
+  }
+}
+
+function validateFailurePattern(
+  pattern: FailurePatternDefinition,
+  label: string,
+  signalIds: Set<string>,
+  seenPatterns: Set<string>,
+  hasProvenance: boolean,
+  errors: string[],
+  warnings: string[],
+): void {
+  const where = `${label}, pattern "${pattern.id || "(no id)"}"`;
+  if (!pattern.id) errors.push(`${label}: failure pattern without id`);
+  if (seenPatterns.has(pattern.id)) {
+    errors.push(`${label}: duplicate failure pattern id "${pattern.id}"`);
+  }
+  seenPatterns.add(pattern.id);
+  if (!pattern.name) errors.push(`${where} has no name`);
+  if (pattern.likelihood !== undefined && !VALID_LIKELIHOODS.has(pattern.likelihood)) {
+    errors.push(`${where} has unsupported likelihood "${pattern.likelihood}"`);
+  }
+  // Repair advice is the one category §24 makes rights-sensitive: without a
+  // source it cannot be checked, licensed or withdrawn.
+  if (pattern.repair !== undefined && !pattern.repair.trim()) {
+    errors.push(`${where} declares empty repair information`);
+  } else if (pattern.repair !== undefined && !hasProvenance) {
+    warnings.push(
+      `${where} carries repair information without provenance — source and rights are undocumented (AGENTS 24)`,
+    );
+  }
+
+  const checks = pattern.checks ?? [];
+  if (checks.length === 0) {
+    warnings.push(`${where} has no measurement check — it can be read, not verified`);
+  }
+  for (const check of checks) {
+    validateMeasurementCheck(check, where, signalIds, errors, warnings);
+  }
+}
+
+function validateMeasurementCheck(
+  check: MeasurementCheckDefinition,
+  where: string,
+  signalIds: Set<string>,
+  errors: string[],
+  warnings: string[],
+): void {
+  const at = `${where}, check "${check.signal || "(no signal)"}"`;
+  if (!check.signal) errors.push(`${where}: measurement check without signal`);
+  else if (!signalIds.has(check.signal)) {
+    errors.push(`${at} references unknown signal "${check.signal}"`);
+  }
+  if (!check.expect?.trim()) errors.push(`${at} says nothing about what to expect`);
+  for (const bound of ["min", "max"] as const) {
+    const value = check[bound];
+    if (value !== undefined && !Number.isFinite(value)) {
+      errors.push(`${at} has a non-finite ${bound}`);
+    }
+  }
+  if (
+    check.min !== undefined &&
+    check.max !== undefined &&
+    Number.isFinite(check.min) &&
+    Number.isFinite(check.max) &&
+    check.min > check.max
+  ) {
+    errors.push(`${at} has min ${check.min} > max ${check.max}`);
+  }
+  if (check.windowMs !== undefined && (!Number.isInteger(check.windowMs) || check.windowMs < 1)) {
+    errors.push(`${at} declares a window of ${check.windowMs} ms — it must be a positive integer`);
+  }
+  if (check.min === undefined && check.max === undefined) {
+    warnings.push(`${at} has no numeric window — a human has to judge it, the tool cannot`);
   }
 }
 

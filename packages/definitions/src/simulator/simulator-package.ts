@@ -20,6 +20,8 @@
  *    documents it instead of paraphrasing it.
  *  - the ECU set and the signals are `genericPackage`'s, because that is the
  *    package the simulator runs on by default.
+ *  - the fault knowledge lives in `simulator-knowledge.ts` and is authored here
+ *    from public signal semantics (`provenance.sourceType: "own"`, AGENTS 24).
  *
  * `tools/simulators/src/simulator-package.test.ts` asserts the coupling against
  * the live simulator, so this file cannot drift away from it silently.
@@ -31,6 +33,7 @@
 
 import { genericPackage } from "../generic/generic-package.js";
 import type { DefinitionPackage, Provenance, VehicleDefinition } from "../schema.js";
+import { simulatorDtcKnowledge } from "./simulator-knowledge.js";
 
 /** The VIN the simulator reports unless a test overrides it. */
 export const SIMULATOR_VIN = "1HGCM82633A004352";
@@ -87,6 +90,7 @@ export const simulatorVehicle: VehicleDefinition = {
     { ecu: "transmission", gearbox: "sim-automatic" },
     { ecu: "abs", hardwareVersions: ["ABS-f193"] },
   ],
+  dtcKnowledge: simulatorDtcKnowledge,
   provenance: SIMULATOR_PROVENANCE,
   description:
     "The virtual vehicle of @vdp/simulators: three ECUs on 11-bit CAN, identification answers of the form <ECU ID>-<DID>.",

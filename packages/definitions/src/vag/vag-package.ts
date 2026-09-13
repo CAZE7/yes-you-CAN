@@ -11,10 +11,10 @@
  * if it were real OEM data.
  */
 
-import type { DefinitionPackage } from "../schema.js";
+import { CURRENT_SCHEMA_VERSION, type DefinitionPackage } from "../schema.js";
 
 export const vagExamplePackage: DefinitionPackage = {
-  schemaVersion: 2,
+  schemaVersion: CURRENT_SCHEMA_VERSION,
   oem: "vag",
   name: "VAG example (placeholder data)",
   version: "0.1.0",
