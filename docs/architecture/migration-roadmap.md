@@ -1,6 +1,6 @@
 # Migrations-Roadmap zur Zielarchitektur
 
-Stand: 2026-09-12 · Bezug: ADR 0014, ADR 0015
+Stand: 2026-09-12 · Bezug: ADR 0014, ADR 0015, ADR 0023
 
 Dieses Dokument verbindet die langfristige Zielarchitektur (Vehicle Diagnostic
 Platform: Clients → Application Layer → Domain Core → Protocols/Definitions/Safety
@@ -49,6 +49,9 @@ Rote Linien (werden in `tests/architecture` erzwungen):
 | 11. Observability | Korrelations-/Action-Ids durchgängig in Traces & Logs | ⏳ | Events tragen die Ids bereits |
 | 12. Offline-first + Sync-Vertrag | `entityId`/`revision`/`updatedAt`/`deviceId` auf Entities | ⏳ | `@vdp/domain`, `@vdp/storage` |
 | 13. Deterministischer Simulator als Virtual Vehicle | Gateway + mehrere ECUs mit Zuständen, Szenarien als Tests | teilweise | `tools/simulators` |
+| 14. Fahrzeugschicht: Schema v2 + Resolver | Fahrzeuge, Plattformen, Motoren/Getriebe und VIN-Matching als Daten; Bestimmung des verbundenen Fahrzeugs aus VIN, Identifikationswerten und beantworteten Adressen — Kandidaten mit Belegen und Widersprüchen | ✅ Query `vehicle.resolve` über Port `DefinitionProvider.resolveVehicle` bis ins Workbench-Panel; WMI-Referenz (ISO 3780) mit eigener Provenance; Simulator-Paket macht die Demo auflösbar; per-file-Gate `definitions` 85/80 (ADR 0023) | `packages/definitions`, `packages/domain`, `packages/application`, `packages/runtime`, `apps/web` |
+| 15. DTC-Wissen pro Fahrzeugvariante | Fehlertexte, Ursachen, Messwerte-Sollbereich und Prüfschritte je Fahrzeug/Motor statt je Paket | ⏳ steht auf Schritt 14: `vehicles[]` liefert die Variante, `dtcKnowledge` fehlt noch | `packages/definitions`, `packages/core` |
+| 16. Geführte Diagnose | Prüfabläufe als Daten (Symptom → Hypothesen → Messschritt → Auswertung), Verbraucher von Schritt 15 | ⏳ | `packages/definitions`, `packages/runtime`, `apps/web` |
 
 ## Ergebnis der Engine-Zerlegung (Schritt 8/9, 2026-09-12)
 
@@ -89,6 +92,49 @@ Rote Linien (werden in `tests/architecture` erzwungen):
     HTTP-Antwort (`cleared: false` + `reasons`, ADR 0018; eigener
     Server-Test). Precheck und Schreibzugriff werten nachweisbar dieselbe
     Kette aus.
+
+## Ergebnis der Fahrzeugschicht (Schritt 14, 2026-09-12)
+
+- **Schema v2 statt Nebenmodell.** `vehicles[]` liegt im Paket neben ECUs, DIDs
+  und Signalen; `migrate.ts` hebt v1 → v2, Validator und JSON-Parser prüfen
+  Referenzen, Duplikate und VIN-Zeichen semantisch. Kein Fahrzeugwissen in
+  `core` — die Abhängigkeitsrichtung bleibt Test (`tests/architecture`).
+- **Resolver mit Belegen.** `VehicleResolver` gewichtet 16 Kriterien
+  (Teilenummer 4 · WMI/Motor-Getriebekennung/ECU-Abdeckung 3 · VDS/Softwarestand/
+  Modellangabe/unerwartetes Steuergerät 2 · Rest 1), `score` ist der Anteil
+  bestätigter Gewichte, `ecu-coverage` zählt anteilig. Jeder Kandidat trägt
+  `evidence[]` **und** `conflicts[]` mit `observed`/`expected`/`weight`/`reason`;
+  Provenance bricht Gleichstände (ADR 0003), Platzhalter drängen sich nicht vor.
+- **Attributionsregel.** Widersprechen kann nur ein Wert, dessen DID als
+  Teilenummer, Software- oder Hardwarestand dokumentiert ist
+  (`identificationKindForLabel`); Seriennummern und unbekannte DIDs stützen bei
+  Treffer und sind sonst neutral. Ohne die Regel bestraft der Resolver Fahrzeuge
+  für Werte, die er nicht versteht.
+- **Namensraum je Paket.** Identifikationsfakten tragen `oem` plus nacktes
+  ECU-Id, weil die Engine `"<oem>:<id>"` speichert und zwei Pakete dasselbe Id
+  tragen dürfen.
+- **Naht bis ins Panel.** `DefinitionProvider.resolveVehicle` (Domain) →
+  `vehicle.resolve` (Application) → `VehicleService.resolve` mit Faktensammlung
+  in `packages/runtime/src/vehicle-resolution.ts` → `POST /api/vehicle/resolve`
+  + SSE-Ereignis `vehicle` + `apps/web/src/vehicle-view.ts` (Übersetzung der
+  Kriterium-Schlüssel, gegen die Union-Typen der Definitionsschicht typisiert).
+- **Simulator ehrlich gemacht.** ASCII-Signale antworteten alle mit der VIN —
+  auch die Teilenummer unter 0xF187. Jetzt liefert nur 0xF190 die VIN, jedes
+  andere ASCII-Signal `<ECU-ID>-<DID>`; `simulatorPackage` deklariert genau
+  diese Werte, und ein Kopplungstest in `tools/simulators` rechnet die Antworten
+  aus den Definitionen nach (er hat die Hex-Groß-/Kleinschreibung als echten
+  Fehler gefunden). Gegen echte Hardware bleibt `genericPackage` aktiv.
+- **Messung.** Suite 1066 → **1223 Tests** in 88 Dateien (24,73 s), Coverage
+  global 96,26 Statements / 89,08 Zweige, `packages/definitions` 98,68 Zeilen /
+  92,87 Zweige; neues per-file-Gate `definitions` 85/80, Biss belegt
+  (`lines: 99` → `EXIT=1` mit `migrate.ts (87.5%)` und `validate.ts (96.07%)`).
+  Die Demo bestimmt das simulierte Fahrzeug mit score 1,00 aus 11 Belegen und 0
+  Widersprüchen; derselbe Bus mit fremder VIN ergibt score 0,39 mit vier
+  benannten VIN-Widersprüchen (Integrationstest).
+
+**Nächste Schritte (15/16):** DTC-Wissen pro Variante und geführte Diagnose als
+Verbraucher desselben Wissens. Beides braucht keine neue Architektur — es
+braucht `vehicles[]` als Anker, und der steht jetzt.
 
 ## Regeln für die nächsten Schritte
 

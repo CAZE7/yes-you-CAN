@@ -3,12 +3,14 @@
 [![CI](https://github.com/CAZE7/yes-you-CAN/actions/workflows/ci.yml/badge.svg)](https://github.com/CAZE7/yes-you-CAN/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](./package.json)
-[![Tests](https://img.shields.io/badge/tests-1066%20passed-brightgreen)](#tests)
+[![Tests](https://img.shields.io/badge/tests-1223%20passed-brightgreen)](#tests)
 [![TypeScript](https://img.shields.io/badge/TypeScript-7%20%2F%20tsgo-blue)](./tsconfig.base.json)
 
-Fahrzeugdiagnose-Plattform: CAN und DoIP lesen, Steuergeräte identifizieren,
-Fehlerspeicher auslesen, Live-Messwerte aufzeichnen und als Report exportieren —
-ohne Real-Fahrzeug testbar. Industriestandard-Toolchain: TypeScript 7/tsgo,
+Fahrzeugdiagnose-Plattform: CAN und DoIP lesen, Steuergeräte identifizieren, das
+Fahrzeug aus VIN, Identifikationswerten und beantworteten Adressen bestimmen —
+mit den Belegen je Kandidat statt einer Behauptung (ADR 0023) —, Fehlerspeicher
+auslesen, Live-Messwerte aufzeichnen und als Report exportieren, ohne
+Real-Fahrzeug testbar. Industriestandard-Toolchain: TypeScript 7/tsgo,
 Vitest 5, Biome, tsc-Projekt-Referenzen, Architekturtests, strikte Security-Baseline
 (ADR 0009) und deterministische Simulator/Replay-Tests statt Hardware-Abhängigkeit.
 
@@ -29,7 +31,7 @@ UI (apps/web)
             ├─ Protocols  (uds, kwp2000, oem)
             ├─ Transport  (iso-tp, doip, can)
             │    └─ Adapters (elm327, canable, socketcan, generic-can, host)
-            └─ Definitions (generisch, VAG, Mercedes)
+            └─ Definitions (generisch, VAG, Mercedes, Simulator) + Fahrzeugauflösung
 ```
 
 Die UI interpretiert keine CAN-Frames. OEM-Logik liegt nicht in der CAN-Schicht.
@@ -47,6 +49,19 @@ await runtime.commands.dispatch(connectVehicle());
 const dtcs = await runtime.commands.dispatch(readDtcs());
 ```
 
+Welches Fahrzeug dran ist, beantwortet eine Query — read-only, mit Belegen und
+Widersprüchen je Kandidat (AGENTS 11.1, ADR 0023):
+
+```ts
+import { resolveVehicle } from '@vdp/application';
+
+const resolution = await runtime.commands.query(resolveVehicle());
+resolution.best;         // { brand, model, platform, score, engineIds, gearboxIds, … }
+resolution.best.evidence;  // [{ kind: 'part-number', observed, expected, weight, reason }]
+resolution.best.conflicts; // was gegen den Kandidaten spricht — bleibt sichtbar
+resolution.unresolved;     // true, wenn kein Paket ein Fahrzeug deklariert — mit Grund in notes
+```
+
 ## Pakete
 
 | Paket | Zweck |
@@ -60,7 +75,7 @@ const dtcs = await runtime.commands.dispatch(readDtcs());
 | `@vdp/protocols-uds` | ISO 14229-1 Client **und** In-Prozess-Server |
 | `@vdp/protocols-kwp2000` | ISO 14230 für Alt-ECUs |
 | `@vdp/protocols-oem` | OEM-Erweiterungspunkte + Registry |
-| `@vdp/definitions` | versioniertes Schema, Validator, Pakete mit Provenance |
+| `@vdp/definitions` | versioniertes Schema (v2: Fahrzeuge, Motoren, Getriebe, VIN-Matching), Validator, Migration, WMI-Referenz (ISO 3780), Resolver mit Belegen, Pakete mit Provenance (ADR 0023) |
 | `@vdp/charts` | DOM-freie, getestete Graphen-Mathematik: Viewport, Cursor, Decimierung, Statistik (ADR 0011) |
 | `@vdp/core` | Engine, ECU-Explorer, DTC-System, Recorder, Logger, Safety |
 | `@vdp/runtime` | `createDiagnosticRuntime`: Services, Command-Handler, Domänen-Events — headless (ADR 0014) |
@@ -139,14 +154,14 @@ Zeitraum aus, Doppelklick zeigt die gesamte Aufnahme.
 
 ## Tests
 
-1066 Tests in ~23 s, Vitest 5 mit Projektkonfiguration (ADR 0010, Schritt 1 —
+1223 Tests in ~25 s, Vitest 5 mit Projektkonfiguration (ADR 0010, Schritt 1 —
 ersetzt ADR 0008). Unit-Specs liegen co-lokatiert neben dem Code
 (`src/*.spec.ts`); Property-Tests laufen mit fast-check, Coverage-Gates mit
 `npm run test:coverage` (global 90 % lines / 80 % branches als
-Projekt-Durchschnitt, Ist 97,4 Zeilen / 87,8 Zweige; per-file-Gates für
-`shared`/`core`/`protocols`/`adapters`/`transport`/`storage`/`charts`/`reports`/`ai`;
+Projekt-Durchschnitt, Ist 97,7 Zeilen / 89,1 Zweige; per-file-Gates für
+`shared`/`core`/`protocols`/`adapters`/`transport`/`storage`/`charts`/`reports`/`ai`/`definitions`;
 Hardware-Module `serial`/`binding` ausgenommen — maßgeblich ist
-`vitest.config.ts`, ADR 0017, 0020 und 0022). Test-Zeit ist ein Budget: Discovery läuft in Tests mit explizitem
+`vitest.config.ts`, ADR 0017, 0020, 0022 und 0023). Test-Zeit ist ein Budget: Discovery läuft in Tests mit explizitem
 `windowMs`/`probeDelayMs`, und statt fester Sleeps wird auf Bedingungen
 gewartet (ADR 0019).
 Ebenen nach AGENTS 31:
@@ -174,9 +189,10 @@ nicht — der laufende Test schon.
 |---|---|
 | `GET /api/state` | gesamter Zustand |
 | `GET /api/history` | gesamte Aufnahme (Samples + Marker) für die Graphen |
-| `GET /api/stream` | SSE: Samples, Trace, DTCs, Marker |
+| `GET /api/stream` | SSE: Samples, Trace, DTCs, Marker, Fahrzeugbestimmung |
 | `GET /lib/*` | kompiliertes `@vdp/charts` für den Browser (ADR 0011) |
 | `POST /api/start` | Simulator verbinden, ECUs entdecken |
+| `POST /api/vehicle/resolve` | Fahrzeug bestimmen: Kandidaten mit Belegen und Widersprüchen (read-only) |
 | `POST /api/dtc/scan` | Fehlerspeicher lesen |
 | `POST /api/live/start` \| `/stop` | Live-Messung |
 | `POST /api/analyze` | Analyse (lokaler Regel-Provider) |
@@ -191,4 +207,6 @@ SFD/Security Access, Cloud, Mobile, Marketplace.
 
 Die mitgelieferten VAG- und Mercedes-Pakete sind `example-placeholder` mit
 erfundenen Werten und werden vom Validator entsprechend gekennzeichnet
-(ADR 0003). Sie sind keine Fahrzeugwahrheit.
+(ADR 0003). Sie sind keine Fahrzeugwahrheit. `simulatorPackage` beschreibt das
+virtuelle Fahrzeug des Simulators und ist nur in Simulator-/Replay-Betrieb aktiv;
+gegen echte Hardware bleibt die OEM-neutrale Baseline stehen (ADR 0023).
