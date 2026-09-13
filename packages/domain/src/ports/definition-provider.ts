@@ -17,6 +17,8 @@ export interface VehicleDefinitionRef {
   /** SemVer — sessions reference the exact version they recorded with (§16). */
   version: string;
   platform?: string;
+  /** How many vehicle definitions the package carries; 0 means "OEM-wide". */
+  vehicles?: number;
 }
 
 export interface EcuAddressRef {
@@ -66,6 +68,108 @@ export interface FindDidQuery {
   ecu?: string;
 }
 
+/**
+ * Vehicle resolution (§11) — the narrow domain view of what the definitions
+ * layer computes.
+ *
+ * The shapes mirror the evidence-based answer deliberately: the domain never
+ * sees a single "this is the car" fact, only ranked candidates with the reasons
+ * for and against each. Anything above the port — the AI layer, guided
+ * diagnostics, the UI — therefore has to handle uncertainty, and cannot pretend
+ * a guess was knowledge.
+ */
+
+/** One identification value an ECU reported (UDS 0x22 on an identification DID). */
+export interface IdentificationFactRef {
+  /** Manufacturer key of the package the ECU id belongs to, when known. */
+  oem?: string;
+  /** ECU id as the definition package names it. */
+  ecu: string;
+  /** DID the value came from, when the reader recorded it. */
+  did?: number;
+  value: string;
+}
+
+/** One ECU that answered during discovery. */
+export interface EcuAddressFactRef {
+  txId: number;
+  rxId: number;
+  extended?: boolean;
+}
+
+export interface ResolveVehicleQuery {
+  /** VIN as read from the vehicle or entered by the operator. */
+  vin?: string;
+  identifications?: readonly IdentificationFactRef[];
+  discoveredAddresses?: readonly EcuAddressFactRef[];
+  /** What the operator or a previous session already claims. */
+  declared?: {
+    oem?: string;
+    brand?: string;
+    model?: string;
+    platform?: string;
+    modelYear?: number;
+  };
+}
+
+/** One criterion that spoke for or against a candidate. */
+export interface VehicleEvidenceRef {
+  /** Criterion name as the definitions layer reports it, e.g. "part-number". */
+  kind: string;
+  observed: string;
+  expected: string;
+  weight: number;
+  reason: string;
+}
+
+export interface VehicleCandidateRef {
+  oem: string;
+  packageVersion: string;
+  vehicleId: string;
+  brand: string;
+  model: string;
+  platform?: string;
+  /**
+   * Where the data behind this candidate comes from ("own", "licensed",
+   * "example-placeholder", …). The UI has to be able to say that a match rests
+   * on placeholder data instead of implying vehicle truth (§24).
+   */
+  provenanceType?: string;
+  /** Powertrains the evidence narrowed down; empty means "not narrowed". */
+  engineIds: readonly string[];
+  gearboxIds: readonly string[];
+  /** 0…1 — the share of evaluated criteria that supports this candidate. */
+  score: number;
+  /** 0…1 — how far the data behind this candidate can be trusted (§24). */
+  trust: number;
+  evidence: VehicleEvidenceRef[];
+  conflicts: VehicleEvidenceRef[];
+  expectedEcus: number;
+  matchedEcus: number;
+  missingEcus: readonly string[];
+}
+
+/** What the VIN says about the manufacturer, even when no vehicle matched. */
+export interface VinLookupRef {
+  wmi: string;
+  manufacturer?: string;
+  brand?: string;
+  country?: string;
+  region?: string;
+  known: boolean;
+}
+
+export interface VehicleResolutionRef {
+  candidates: VehicleCandidateRef[];
+  best?: VehicleCandidateRef;
+  unresolved: boolean;
+  vinLookup?: VinLookupRef;
+  /** Context to show next to the result — placeholder data, unknown WMI, … */
+  notes: readonly string[];
+  /** Observations no registered definition could explain. */
+  unexplained: readonly string[];
+}
+
 export interface DefinitionProvider {
   /** Where the definitions come from ("builtin", "file:…", "cloud:…") — provenance. */
   readonly source: string;
@@ -73,6 +177,22 @@ export interface DefinitionProvider {
   findEcu(query: FindEcuQuery): EcuDefinitionRef | undefined;
   findDid(query: FindDidQuery): DidDefinitionRef | undefined;
   findSignal(signalId: string): SignalDefinitionRef | undefined;
+  /**
+   * Resolve the connected vehicle from whatever is known about it (§11). Always
+   * returns a result — an empty, explained one when nothing matches.
+   */
+  resolveVehicle(query: ResolveVehicleQuery): VehicleResolutionRef;
+}
+
+/**
+ * The empty answer, with a reason.
+ *
+ * Providers that cannot resolve a vehicle must still say why — an unresolved
+ * vehicle is information the layers above act on ("no definitions installed"),
+ * not a blank field.
+ */
+export function unresolvedVehicleResolution(reason: string): VehicleResolutionRef {
+  return { candidates: [], unresolved: true, notes: [reason], unexplained: [] };
 }
 
 /**
@@ -97,6 +217,10 @@ export class NullDefinitionProvider implements DefinitionProvider {
   findSignal(_signalId: string): SignalDefinitionRef | undefined {
     return undefined;
   }
+
+  resolveVehicle(_query: ResolveVehicleQuery): VehicleResolutionRef {
+    return unresolvedVehicleResolution("no definitions are registered");
+  }
 }
 
 /**
@@ -109,6 +233,7 @@ export class StaticDefinitionProvider implements DefinitionProvider {
   private readonly ecus: EcuDefinitionRef[];
   private readonly dids: DidDefinitionRef[];
   private readonly signals: SignalDefinitionRef[];
+  private readonly resolve: ((query: ResolveVehicleQuery) => VehicleResolutionRef) | undefined;
 
   constructor(data: {
     packages?: readonly VehicleDefinitionRef[];
@@ -116,12 +241,19 @@ export class StaticDefinitionProvider implements DefinitionProvider {
     dids?: readonly DidDefinitionRef[];
     signals?: readonly SignalDefinitionRef[];
     source?: string;
+    /**
+     * Resolution hook. Reference data alone cannot resolve a vehicle — that needs
+     * the full definition model — so a static provider either delegates (tests,
+     * a source that resolves elsewhere) or answers "unresolved" with a reason.
+     */
+    resolveVehicle?: (query: ResolveVehicleQuery) => VehicleResolutionRef;
   }) {
     this.source = data.source ?? "static";
     this.packages = [...(data.packages ?? [])];
     this.ecus = [...(data.ecus ?? [])];
     this.dids = [...(data.dids ?? [])];
     this.signals = [...(data.signals ?? [])];
+    this.resolve = data.resolveVehicle;
   }
 
   listPackages(): VehicleDefinitionRef[] {
@@ -146,5 +278,12 @@ export class StaticDefinitionProvider implements DefinitionProvider {
 
   findSignal(signalId: string): SignalDefinitionRef | undefined {
     return this.signals.find((signal) => signal.id === signalId);
+  }
+
+  resolveVehicle(query: ResolveVehicleQuery): VehicleResolutionRef {
+    if (this.resolve) return this.resolve(query);
+    return unresolvedVehicleResolution(
+      `the "${this.source}" definitions carry reference data only — no vehicle definitions to resolve against`,
+    );
   }
 }

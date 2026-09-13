@@ -5,7 +5,9 @@ import { join } from "node:path";
 import { createLogger } from "@vdp/shared";
 import { test } from "vitest";
 import { waitFor } from "../../../tests/helpers/wait.js";
+import type { DtcView } from "../src/backend.js";
 import { WebServer } from "../src/server.js";
+import type { VehicleResolutionView } from "../src/vehicle-view.js";
 
 const logger = createLogger("web", { level: "ERROR" });
 
@@ -45,7 +47,7 @@ async function waitForSamples(base: string, count = 1, signal = "engine.rpm"): P
 
 test("the index page and every front end asset are served", async () => {
   await withServer(async (base) => {
-    for (const path of ["/", "/app.js", "/styles.css", "/chart.js", "/graphs.js"]) {
+    for (const path of ["/", "/app.js", "/styles.css", "/chart.js", "/graphs.js", "/vehicle.js"]) {
       const response = await fetch(`${base}${path}`);
       assert.equal(response.status, 200, `${path} should be served`);
       assert.ok((await response.text()).length > 100, `${path} looks empty`);
@@ -94,6 +96,58 @@ test("start connects to the simulated vehicle and discovers ECUs", async () => {
       ),
     );
     void server;
+  });
+});
+
+test("the connected vehicle is resolved from what was read (AGENTS 11)", async () => {
+  await withServer(async (base) => {
+    await json(base, "/api/start", { method: "POST" });
+    await json(base, "/api/identify", { method: "POST" });
+
+    const resolved = await json(base, "/api/vehicle/resolve", { method: "POST" });
+    assert.equal(resolved.status, 200);
+    const view = (resolved.body as { resolution: VehicleResolutionView }).resolution;
+    assert.equal(view.unresolved, false);
+    assert.equal(view.headline, "Virtual Simulator vehicle (SIM-1) — 100 % belegt");
+
+    const best = view.best;
+    assert.ok(best);
+    assert.equal(best.scorePercent, 100);
+    assert.deepEqual(best.conflicts, []);
+    assert.equal(best.placeholder, false, "the simulator package is own data, not a placeholder");
+    assert.deepEqual(
+      best.engineIds,
+      ["sim-petrol"],
+      "the engine code read from the ECU narrows it",
+    );
+    assert.deepEqual(best.gearboxIds, ["sim-automatic"]);
+    assert.equal(best.coverageLabel, "3 von 3 Steuergeräten der Definition gefunden");
+    assert.equal(view.vinLookup?.manufacturer, "Honda of America Mfg.");
+
+    const kinds = best.evidence.map((item) => item.kind);
+    for (const kind of ["vin-wmi", "part-number", "software-version", "ecu-coverage"])
+      assert.ok(kinds.includes(kind), `${kind} must be part of the evidence`);
+    assert.equal(
+      best.evidence.find((item) => item.kind === "part-number")?.label,
+      "Teilenummer",
+      "criteria reach the operator in German, not as resolver keys",
+    );
+
+    // The state carries the last resolution, so a reloaded page shows it again
+    // instead of asking the operator to press the button a second time.
+    const state = await json(base, "/api/state");
+    assert.equal(
+      (state.body as { vehicleResolution?: VehicleResolutionView }).vehicleResolution?.headline,
+      view.headline,
+    );
+  });
+});
+
+test("resolving a vehicle is a POST-only read", async () => {
+  await withServer(async (base) => {
+    const get = await json(base, "/api/vehicle/resolve");
+    assert.equal(get.status, 405);
+    assert.match((get.body as { error: string }).error, /POST only/);
   });
 });
 
@@ -329,13 +383,40 @@ test("DTC descriptions come from the definition package, not from invention (AGE
   await withServer(async (base) => {
     await json(base, "/api/start", { method: "POST" });
     const scanned = await json(base, "/api/dtc/scan", { method: "POST" });
-    const dtcs = (
-      scanned.body as { dtcs: Array<{ code: string; description?: string; hint?: string }> }
-    ).dtcs;
+    const dtcs = (scanned.body as { dtcs: DtcView[] }).dtcs;
     const catalyst = dtcs.find((dtc) => dtc.code === "P0420");
     assert.ok(catalyst, "the seeded catalyst code must be reported");
-    assert.match(catalyst.description ?? "", /Catalyst system efficiency below threshold/);
+    // The demo resolves the virtual vehicle on connect, so the wording is the one
+    // this variant documents — not the manufacturer-wide text (AGENTS 20, 23).
+    assert.match(catalyst.description ?? "", /Catalyst efficiency below threshold/);
     assert.ok((catalyst.hint ?? "").length > 20, "a documented code brings a next diagnostic step");
+    const knowledge = catalyst.knowledge;
+    assert.ok(knowledge, "the resolved variant documents this code");
+    assert.equal(knowledge.scope, "vehicle-engine");
+    assert.equal(knowledge.variant, true);
+    assert.equal(knowledge.scopeLabel, "Varianten-Wissen · Motor");
+    assert.equal(knowledge.scopeShort, "Motor");
+    assert.equal(knowledge.vehicleId, "virtual-vehicle");
+    assert.match(knowledge.conditions ?? "", /closed loop/);
+    assert.match(
+      knowledge.provenance ?? "",
+      /eigene Daten/,
+      "the source of the statement is named",
+    );
+    assert.deepEqual(
+      knowledge.patterns.map((pattern) => pattern.id),
+      ["catalyst-aged", "exhaust-leak-before-catalyst"],
+    );
+    const aged = knowledge.patterns[0];
+    assert.equal(aged?.likelihoodLabel, "häufig");
+    assert.ok(aged?.repair, "repair advice is labelled and travels with its pattern");
+    assert.ok(
+      aged?.checks.every(
+        (check) => check.measurable && check.window.length > 0 && check.name.length > 0,
+      ),
+      "every seeded check names a signal and a window a tool can evaluate",
+    );
+    assert.equal(aged?.checks[0]?.judgement, "automatisch prüfbar");
 
     // Codes that no definition describes are shown as such, never guessed.
     const undescribed = dtcs.find((dtc) => dtc.code === "C1234");
@@ -343,6 +424,49 @@ test("DTC descriptions come from the definition package, not from invention (AGE
       undescribed?.description ?? "",
       /Fehlertyp|Brake/,
       "an undocumented code keeps its raw failure type",
+    );
+
+    // Variant knowledge without an engine or gearbox axis: the chassis code.
+    const wheelSpeed = dtcs.find((dtc) => dtc.code === "C0035");
+    assert.equal(wheelSpeed?.knowledge?.variant, true);
+    assert.equal(wheelSpeed?.knowledge?.scopeLabel, "Varianten-Wissen · Fahrzeug");
+    assert.equal(wheelSpeed?.knowledge?.scopeShort, "Fahrzeug");
+    const straightRun = wheelSpeed?.knowledge?.patterns[0];
+    assert.equal(straightRun?.likelihoodLabel, "häufig");
+    assert.deepEqual(
+      straightRun?.checks.map((check) => check.window),
+      ["45 … 55 · 5 s messen", "45 … 55 · 5 s messen", "45 … 55 · 5 s messen"],
+      "the corner, the opposite corner and the OBD speed are measured over one window",
+    );
+    assert.ok(straightRun?.checks.every((check) => check.judgement === "automatisch prüfbar"));
+    // A watch that has a window but no bound says so instead of showing a range
+    // nobody documented (§24).
+    const harnessPattern = wheelSpeed?.knowledge?.patterns[1];
+    assert.equal(harnessPattern?.checks[0]?.measurable, false);
+    assert.equal(harnessPattern?.checks[0]?.judgement, "nur manuell beurteilbar");
+    assert.equal(harnessPattern?.checks[0]?.window, "30 s messen");
+
+    // A pattern no signal in this package can decide carries no check at all.
+    const milRequest = dtcs.find((dtc) => dtc.code === "P0700");
+    assert.equal(milRequest?.knowledge?.scopeLabel, "Varianten-Wissen · Getriebe");
+    assert.deepEqual(milRequest?.knowledge?.patterns[2]?.checks, []);
+    assert.ok(
+      milRequest?.knowledge?.patterns[2]?.repair,
+      "the repair advice is the step, because nothing here is measurable",
+    );
+
+    // A code the package describes but this variant deliberately does not stays
+    // labelled as package-wide wording instead of borrowing the variant's
+    // appearance (§24) — a network code means the same for every variant.
+    const network = dtcs.find((dtc) => dtc.code === "U0121");
+    assert.equal(network?.knowledge?.variant, false);
+    assert.equal(network?.knowledge?.scopeLabel, "nur paketweit beschrieben");
+    assert.equal(network?.knowledge?.scopeShort, "paketweit");
+    assert.ok(
+      network?.knowledge?.notes.some((note) =>
+        note.includes("no variant-specific knowledge documented"),
+      ),
+      network?.knowledge?.notes.join(" | "),
     );
   });
 });

@@ -26,6 +26,7 @@ import {
   readDid,
   readDtcFreezeFrame,
   readDtcs,
+  resolveVehicle,
   snapshotSignals,
   startMeasurements,
   stopMeasurements,
@@ -126,6 +127,11 @@ describe("query factories", () => {
   test("queries carry only the filter they need", () => {
     assert.deepEqual(getSession(), { kind: "session.get" });
     assert.deepEqual(getVehicle(), { kind: "vehicle.get" });
+    assert.deepEqual(resolveVehicle(), { kind: "vehicle.resolve" });
+    assert.deepEqual(resolveVehicle({ vin: "WVWZZZ1JZHW000001" }), {
+      kind: "vehicle.resolve",
+      hints: { vin: "WVWZZZ1JZHW000001" },
+    });
     assert.deepEqual(getEcuList(), { kind: "ecu.list" });
     assert.deepEqual(getEcu("ecu_1"), { kind: "ecu.get", ecuId: "ecu_1" });
     assert.deepEqual(getEcuCapabilities("ecu_1"), { kind: "ecu.capabilities", ecuId: "ecu_1" });
@@ -169,6 +175,7 @@ describe("query factories", () => {
       "session.get",
       "signal.list",
       "vehicle.get",
+      "vehicle.resolve",
     ]);
   });
 });

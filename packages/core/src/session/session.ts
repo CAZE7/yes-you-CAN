@@ -16,6 +16,13 @@ export const SESSION_SCHEMA_VERSION = 1;
 export interface EcuIdentification {
   label: string;
   value: string;
+  /**
+   * DID the value was read from (ISO 14229-1 0x22). Optional because older
+   * recorded sessions predate it; a session that knows it keeps the value
+   * traceable to the exact request that produced it (ADR 0004: raw and decoded
+   * stay separable), and vehicle resolution can name the DID in its evidence.
+   */
+  did?: number;
 }
 
 /**

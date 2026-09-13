@@ -127,11 +127,11 @@ export function createDiagnosticRuntime(options: RuntimeOptions): DiagnosticRunt
 
   const ecus = new EcuService(engine, events, log);
   const dtc = new DtcService(engine, ecus, events, log, ids);
-  const vehicle = new VehicleService(engine, ecus, events, log);
+  const definitions = new PackageDefinitionProvider(options.definitions ?? []);
+  const vehicle = new VehicleService(engine, ecus, events, log, definitions);
   const measurements = new MeasurementService(engine, events, log);
   const session = new SessionService(engine, options.sessionStore);
   const safety = new SafetyService(engine);
-  const definitions = new PackageDefinitionProvider(options.definitions ?? []);
 
   const actions = new ActionRegistry();
   for (const action of createStandardActions()) actions.register(action);

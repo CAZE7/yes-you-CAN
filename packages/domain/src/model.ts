@@ -14,6 +14,8 @@ import type { RiskLevel } from "./risk.js";
 export interface IdentificationEntry {
   label: string;
   value: string;
+  /** DID the value came from, when the reader recorded it (§11, §12). */
+  did?: number;
 }
 
 /** Vehicle identity as far as it is known (§11 of AGENTS.md). */
@@ -83,6 +85,68 @@ export interface DtcInfo {
   lastSeen?: string;
   /** Signals the definition package relates to this code — ids with names. */
   relatedSignals?: ReadonlyArray<{ id: string; name: string }>;
+  /**
+   * What the resolved vehicle's variant knowledge adds to this code (§20, §23).
+   * Absent when no vehicle is resolved or nothing is documented for the code.
+   */
+  knowledge?: DtcKnowledgeInfo;
+}
+
+/**
+ * One measurement a documented failure pattern predicts
+ * (§23 "Measurement Relationships").
+ *
+ * `measurable` is false when the knowledge carries no numeric window: the check
+ * can then be read by a technician but not evaluated by a tool, and that
+ * difference has to stay visible instead of turning into a silent "ok".
+ */
+export interface DtcCheckInfo {
+  signalId: string;
+  name?: string;
+  /** What the pattern predicts, in operator language. */
+  expect: string;
+  min?: number;
+  max?: number;
+  /** How long to measure before judging; absent means one snapshot. */
+  windowMs?: number;
+  measurable: boolean;
+}
+
+/** One known failure pattern behind a fault code (§23 "Known Failure Patterns"). */
+export interface DtcPatternInfo {
+  id: string;
+  name: string;
+  explanation?: string;
+  /** "common" | "possible" | "rare" — orders the checks; it is not a probability. */
+  likelihood?: string;
+  /** Repair information, labelled as such and carrying its source (§24). */
+  repair?: string;
+  /** Which knowledge entry it came from: "vehicle-engine", "vehicle-gearbox", "vehicle". */
+  scope: string;
+  checks: DtcCheckInfo[];
+}
+
+/**
+ * Variant fault knowledge on the read model (§20, §23).
+ *
+ * `scope` says where the wording on the DTC came from: "package" means the
+ * manufacturer-wide description, anything else means this variant documented its
+ * own. `notes` carries what is missing or had to be assumed — a UI shows them
+ * next to the answer, because that is the line between knowledge and a guess
+ * (§24).
+ */
+export interface DtcKnowledgeInfo {
+  /** "vehicle-engine" | "vehicle-gearbox" | "vehicle" | "package". */
+  scope: string;
+  vehicleId?: string;
+  /** When the code sets — only variant knowledge documents this. */
+  conditions?: string;
+  /** Most specific first; ids are unique across the list. */
+  patterns: DtcPatternInfo[];
+  /** Where the variant statement comes from (§24). */
+  provenanceType?: string;
+  provenanceSource?: string;
+  notes: readonly string[];
 }
 
 /** One decoded measurement sample — raw and decoded stay side by side (§14). */

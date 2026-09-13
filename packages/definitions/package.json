@@ -31,6 +31,10 @@
     "./mercedes": {
       "types": "./dist/src/mercedes/mercedes-package.d.ts",
       "default": "./dist/src/mercedes/mercedes-package.js"
+    },
+    "./simulator": {
+      "types": "./dist/src/simulator/simulator-package.d.ts",
+      "default": "./dist/src/simulator/simulator-package.js"
     }
   },
   "dependencies": {

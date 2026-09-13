@@ -78,6 +78,22 @@
         <dl id="session-info" class="kv"></dl>
       </div>
     </div>
+    <!-- Fahrzeugbestimmung (AGENTS 11): VIN ↓ Fahrzeug ↓ Plattform ↓ Motor/Getriebe ↓ ECUs ↓ Softwarestand -->
+    <div class="card" id="vehicle-resolution-card">
+      <h3>Fahrzeugbestimmung <span class="muted small" id="vehicle-resolution-headline"></span></h3>
+      <p class="hint">
+        Bestimmt wird ausschließlich aus dem, was gelesen wurde: der VIN, den
+        Identifikationswerten der Steuergeräte (Teilenummer, Softwarestand,
+        Motor- / Getriebekennung) und den Adressen, die geantwortet haben. Jeder
+        Treffer ist eine Hypothese mit Belegen — was widerspricht, steht dabei und
+        wird nicht verrechnet oder versteckt (AGENTS 11, 24).
+      </p>
+      <div class="row">
+        <button id="btn-resolve">Fahrzeug bestimmen</button>
+        <span id="vehicle-resolution-summary" class="muted small"></span>
+      </div>
+      <div id="vehicle-resolution"></div>
+    </div>
     <div class="row">
       <button id="btn-start" class="primary">Verbinden</button>
       <button id="btn-identify">Identifikation lesen</button>

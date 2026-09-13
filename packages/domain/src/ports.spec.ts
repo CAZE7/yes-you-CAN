@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
+import type { ResolveVehicleQuery, VehicleCandidateRef } from "./index.js";
 import {
   DefaultIdGenerator,
   FixedClock,
@@ -231,5 +232,93 @@ describe("definition provider port", () => {
     const did = provider.findDid({ did: 0xf187 });
     assert.equal(did?.name, "Part Number");
     assert.equal(did?.ecu, undefined);
+  });
+});
+
+describe("vehicle resolution port", () => {
+  const candidate: VehicleCandidateRef = {
+    oem: "simulator",
+    packageVersion: "1.0.0",
+    vehicleId: "virtual-vehicle",
+    brand: "Virtual",
+    model: "Simulator vehicle",
+    platform: "SIM-1",
+    provenanceType: "own",
+    engineIds: ["sim-petrol"],
+    gearboxIds: ["sim-automatic"],
+    score: 1,
+    trust: 1,
+    evidence: [
+      {
+        kind: "vin-wmi",
+        observed: "1HG",
+        expected: "1HG",
+        weight: 3,
+        reason: "WMI 1HG is one this Virtual definition claims",
+      },
+    ],
+    conflicts: [],
+    expectedEcus: 3,
+    matchedEcus: 3,
+    missingEcus: [],
+  };
+
+  test("the null provider claims nothing — and says why", () => {
+    const result = new NullDefinitionProvider().resolveVehicle({ vin: "1HGCM82633A004352" });
+    assert.equal(result.unresolved, true);
+    assert.equal(result.best, undefined);
+    assert.deepEqual(result.candidates, []);
+    assert.deepEqual(result.unexplained, []);
+    assert.equal(
+      result.notes.length,
+      1,
+      "an unresolved vehicle is information the layers above act on, not a blank field",
+    );
+  });
+
+  test("the static provider passes the query through and returns what it was given", () => {
+    const seen: ResolveVehicleQuery[] = [];
+    const provider = new StaticDefinitionProvider({
+      source: "test",
+      resolveVehicle: (query) => {
+        seen.push(query);
+        return {
+          candidates: [candidate],
+          best: candidate,
+          unresolved: false,
+          vinLookup: {
+            wmi: "1HG",
+            manufacturer: "Honda of America Mfg.",
+            brand: "Honda",
+            country: "US",
+            region: "North America",
+            known: true,
+          },
+          notes: [],
+          unexplained: [],
+        };
+      },
+    });
+
+    const result = provider.resolveVehicle({
+      vin: "1HGCM82633A004352",
+      identifications: [{ oem: "simulator", ecu: "engine", did: 0xf187, value: "ENGINE-f187" }],
+      declared: { modelYear: 2003 },
+    });
+    assert.equal(seen.length, 1);
+    assert.equal(seen[0]?.vin, "1HGCM82633A004352");
+    assert.equal(seen[0]?.identifications?.length, 1);
+    assert.deepEqual(seen[0]?.declared, { modelYear: 2003 });
+    assert.equal(result.best?.vehicleId, "virtual-vehicle");
+    assert.equal(result.best?.provenanceType, "own");
+    assert.equal(result.best?.evidence[0]?.kind, "vin-wmi");
+    assert.equal(result.vinLookup?.manufacturer, "Honda of America Mfg.");
+  });
+
+  test("without a resolver the static provider explains itself", () => {
+    const result = new StaticDefinitionProvider({}).resolveVehicle({});
+    assert.equal(result.unresolved, true);
+    assert.deepEqual(result.candidates, []);
+    assert.match(result.notes[0] ?? "", /reference data only/);
   });
 });

@@ -1,7 +1,10 @@
 # AGENTS.md — Vehicle Diagnostics Platform
 
-> **Version:** 1.8 · **Letzte Änderung:** 2026-09-12
+> **Version:** 1.12 · **Letzte Änderung:** 2026-09-13
 > **Changelog:**
+> - 1.12: **Wissensqualität: Gates für Einträge und Quellen, zwei gemessene Datenfehler (ADR 0025).** (1) Provenance wird je Quellentyp geprüft: `licensed` ohne `license` bleibt Fehler, ohne `version`/`retrievedAt` warnt es jetzt — ein Stand ohne Datum und Ausgabe macht einen Widerruf unbemerkbar (AGENTS 13); `standard` ohne Ausgabe (`version` **oder** `notes`) warnt, weil „SAE J1979" ohne Jahr ein Verweis und kein Zitat ist; `community` war die einzige Kategorie in §23 **ohne** Regel und warnt jetzt über ungeklärte Rechte; ein `retrievedAt`, das kein ISO-8601-Datum ist, ist ein **Fehler** — ein Datum, das nichts parsen kann, sieht dokumentiert aus und ist mit nichts vergleichbar. Fehler nur, wo Daten rechtlich oder logisch unbrauchbar sind, sonst Warnung: ein Fehler erzeugt den Anreiz, ein Feld auszudenken, statt es zu ergänzen. (2) **Echter Datenverlust, als Regressionseintrag katalogisiert:** `coerceProvenance` kopierte `license`/`version`/`retrievedAt`, aber nicht `notes` — ein aus einer Datei geladenes lizenziertes Paket verlor damit den einzigen Satz, der die Lizenz in menschlicher Sprache einschränkt. Kein Typfehler (jedes Feld ist optional), keine Warnung (der Validator prüft nur, was ankam), kein Test. Jetzt kopiert eine Feld-Schleife alle vier, und ein vorhandenes Feld, das kein String ist, schlägt strukturell fehl statt still zu verschwinden; der JSON-Parser ruft denselben Validator, also gelten die Gates auf dem Weg, auf dem lizenziertes Wissen tatsächlich kommt. Biss belegt: ohne die Kopie `1 failed | 19 passed`. (3) **Zweiter Datenfehler, von der laufenden Demo gefunden:** das Muster „intermittierendes Signal" zu P0715 prüfte 30 s lang die Getriebeöltemperatur und nannte das einen Dropout-Wächter — das Paket definiert kein Eingangsdrehzahlsignal, also beobachtete der Check einen anderen Fehler als den, zu dem er gehörte, und konnte praktisch nicht fehlschlagen. Neu sagt das Muster im `explanation`, welche Messung dieses Paket nicht machen kann, und prüft nur die Bedingung, unter der der Fehler auftritt (Öl über 60 °C); der Schritt für einen Menschen (30 s Kabelbaum bewegen, Statusbits beobachten) steht als Text. Regel daraus: **kein Stellvertreter-Signal** — ein Check muss den Fehler beobachten können, zu dem er gehört; zwei Tests pinnen das (jeder Prüfschritt referenziert ein deklariertes Signal, jeder Check trägt Grenze oder Fenster). (4) Wissen 4 → **6 Codes**: P0700 (Getriebe; drei Muster, das dritte ohne Check, weil kein Signal dieses Pakets einen Selbsttest des Moduls entscheidet — das Gangfenster 3…4 liest die `enumMapping` desselben Pakets statt einer erfundenen Skala) und C0035 (Fahrzeug; drei auswertbare Fenster 45…55 km/h über 5 s — linke Ecke, rechte Ecke, OBD-Geschwindigkeit aus einem anderen Steuergerät — plus ein 30-s-Wächter ohne Grenze, also `measurable: false` und in der View „nur manuell beurteilbar"). `U0121` bleibt **bewusst** ohne Eintrag: ein Kommunikationscode bedeutet für jeden Motor, jedes Getriebe und jede Ausstattung dasselbe, seine Ursachen liegen in Versorgung, Masse und Busleitung — Variantenwissen dafür wäre Füllung, die sich als Wissen ausgibt. Ein Test zählt die vom Paket beschriebenen Codes gegen die dokumentierten, die Differenz ist damit benannt und wächst nicht unbeobachtet; die Antwort bleibt `scope: "package"` plus Note. (5) Fenster sind Messbedingungen, keine Toleranzen: `45…55 km/h` gilt für die im `expect`-Text genannte Geradeausfahrt bei rund 50 km/h, `≥ 60 °C` sagt, wann ein Monitor gelaufen sein kann — beides aus öffentlichen Semantiken begründet, kein Kalibrierwert (AGENTS 24). (6) Suite: **1300 Tests / 90 Dateien in ~25 s** grün, Coverage global 96,48 Statements / 89,67 Zweige / 97,52 Funktionen / 97,86 Zeilen, `packages/definitions` 97,91/94,15/100/99,08, `validate.ts` 94,22/92,06, `json.ts` 98,61/94,37, `knowledge.ts` unverändert 100 Zeilen / 96,98 Zweige; per-file-Gate `definitions` 85/80 gehalten. `validate.ts` 525 → 574, `json.ts` 536 → 545, `simulator-knowledge.ts` 326 → 506 Zeilen; kein eingebautes Paket warnt neu (`genericPackage` zitiert `standard` mit Ausgabe **und** Notes).
+> - 1.11: **DTC-Wissen pro Fahrzeugvariante: Schema v3, Auflösung nach Spezifität, Ehrlichkeit als Datenmodell (ADR 0024).** (1) `vehicles[].dtcKnowledge[]` ist neu: `code` plus optional `ecu`/`engine`/`gearbox` als Scope, varianteneigene Texte (`description`, `severity`, `hint`, `conditions` = wann der Code setzt), `patterns[]` (`id`, `name`, `explanation`, `likelihood` ∈ common/possible/rare, `repair`, `checks[]`) und darin die Messbeziehungen (`signal`, `expect`, `min`/`max`, `windowMs`) — die drei in §23 genannten, bisher fehlenden Kategorien „Known Failure Patterns", „Measurement Relationships", „Repair Information" sind damit Daten. `CURRENT_SCHEMA_VERSION` 2→3, `SUPPORTED_SCHEMA_VERSIONS` [1,2,3], `upgradePackage` verkettet 1→2→3 (v2→v3 hebt nur die Version, denn Wissen **darf** fehlen und eine Migration erfindet nichts); eingebaute Pakete deklarieren die Konstante statt einer Zahl, damit ein Bump nicht an drei Stellen nachgezogen werden muss. (2) Validator und JSON-Parser prüfen strukturell und semantisch: Code-Format nach SAE J2012, unbekannte ECU-/Motor-/Getriebe-/Signalreferenzen, doppelte Scopes (`code|ecu|engine|gearbox`), doppelte Pattern-IDs **je Fahrzeug** (eine Pattern-ID ist damit global adressierbar — Schritt 16 braucht das als Schlüssel), `min > max`, nicht-ganzzahliges `windowMs`, leere Texte, Werte außerhalb der Union, Provenance je Eintrag; ein Reparaturhinweis ohne Provenance wird zur Warnung mit Regelverweis (§24), weil an dieser Kategorie Rechte hängen können. (3) `findDtcKnowledge(packages, query)` lebt in `packages/definitions` (damit das per-file-Gate 85/80 greift) und gewichtet: Motor bestätigt 16 · Getriebe bestätigt 8 · ECU 4 · Motor angenommen 2 · Getriebe angenommen 1 — ein Eintrag für einen anderen Motor ist **kein schwacher Treffer, sondern keiner**; Patterns werden über alle zutreffenden Einträge gesammelt (spezifischster zuerst, IDs eindeutig), denn eine motorspezifische und eine variantenweite Ursache ergänzen sich, und Texte kommen aus dem spezifischsten Eintrag, sonst aus der Definition des **lesenden** Steuergeräts, sonst aus der ersten im Paket. `dtcKnowledgeQuery(candidate, code, ecu)` bildet einen `VehicleCandidate` direkt ab, damit kein Aufrufer die Einengung selbst auspackt und dabei versehentlich verengt. (4) Eine bewusste Ausnahme von der Strenge: hat die Auflösung nichts zum Antriebsstrang eingeengt und deklariert die Variante **genau einen** Motor (bzw. Getriebe), gilt der darauf gescopete Eintrag — unter allem Bestätigten rangierend und mit Note, dass die Belege den Antriebsstrang nicht eingeengt haben und dieser Motor der einzige deklarierte ist; sind mehrere deklariert, wird abgelehnt, weil die Wahl ohne Beleg ein Münzwurf wäre. Praktisch: Nur-VIN zeigt das Wissen des einzigen dokumentierten Motors, nach dem Lesen der Identifikations-DIDs verschwindet die Annahme samt Note. (5) **Schichtung statt Ersetzen:** `DtcScanner` behält `EcuDefinition.dtcs[]` als Basis und legt Variantenwissen darüber (`setVehicle(context)`, Cache je Kontext+Code und bei Neubindung verworfen, `enrich(records, ecuName, ecuId, definition?)` überschreibt description/severity/hint und **merged** `relatedSignals` — Paket plus Variante, eindeutig, nur im Paket definierte IDs); `DtcVariantKnowledge` ist die bewusst flachere Record-Form (scope, vehicleId, conditions, patterns, `provenanceType`/`-Source`, notes), weil jeder gespeicherte DTC klein und selbstständig bleiben soll. `DiagnosticEngine.setVehicleContext` reicht die Bindung durch, `VehicleService.connect()` bindet **sofort** (VIN und Identifikation sind dann gelesen — der erste Scan trägt das Wissen ohne Zusatzschritt), `resolve(hints)` bindet mit den Angaben des Bedieners neu, `engine.disconnect()` löst, damit Wissen die Sitzung nicht überlebt. Ohne gebundenes Fahrzeug entsteht **kein** `knowledge`: die paketweite Beschreibung steht bereits am Record, und sie als Variantenwissen auszugeben wäre genau die Verwechslung, gegen die die Fahrzeugachse existiert. (6) Ehrlichkeit als Datenmodell: `scope` ∈ vehicle-engine/vehicle-gearbox/vehicle/package, `notes[]` (kein Variantenwissen dokumentiert · nur Text ohne Muster · kein Zahlenfenster, ein Mensch muss beurteilen · Antriebsstrang angenommen · Fahrzeug im Paket nicht deklariert), `checks[].measurable`, und `knowledgeProvenance` nennt die Quelle **der angezeigten Aussage** (Entry → sonst Fahrzeug, aber nur wenn ein Entry gewann → sonst Paket). Keine erfundenen Messpunkte: `genericPackage` definiert keine Lambda-Sonden (PID 0x14–0x1B), also prüft das Katalysator-Muster über Kraftstoffkorrektur und Kühlmitteltemperatur und sagt im Text, was das belegt und was nicht — eine erfundene Signal-ID hätte einen Prüfschritt erzeugt, der nie laufen kann. (7) Naht bis in die UI: `DtcInfo.knowledge` in `domain` (eigene Feldnamen `signalId`/`name` wie jede andere Messung), `toDtcKnowledge` in `runtime/mappers.ts`, `DtcView.knowledge` über `apps/web/src/dtc-knowledge-view.ts` (200 Zeilen; Scope- und Likelihood-Labels sind gegen die Union-Typen der Definitionsschicht typisiert, ein neuer Scope bricht also den Build statt als Key beim Bediener anzukommen, unbekannte Werte bleiben als sie selbst sichtbar, `checkWindow()` bildet `min`/`max`/`windowMs` auf „−5 … 5 · 2 s messen" ab), und `public/app.js` enthält damit kein Vokabular mehr: Muster als Karten, Messpunkte als Tabelle (Messpunkt · Erwartung · Fenster · Bewertung), Reparaturhinweise als solche gelabelt, Notes als Warnungen, in der Liste ein Pill nur bei Variantenwissen. (8) Echte Daten für das einzige überall verfügbare Fahrzeug: `simulator-knowledge.ts` (326 Zeilen, Provenance `own`, Begründung je Fenster im Dateikopf) zu P0420 (Motor-Scope, 2 Muster, 5 auswertbare Fenster, Enable-Bedingung „closed loop, > 80 °C, drei Fahrzyklen"), P0300 (variantenweit, 3 Muster inkl. 5-s-Fenster für Leerlauf-Unruhe), P0171 (Motor, 2 Muster) und P0715 (Getriebe-Scope, 2 Muster inkl. 30-s-Fenster, weil ein intermittierender Kabelbaumfehler im Snapshot gesund aussieht); das Simulator-Paket validiert damit **ohne** Wissens-Warnung. (9) Suite: **1290 Tests / 90 Dateien in ~25 s grün** (global 96,4 Statements / 89,6 Zweige / 97,5 Funktionen / 97,8 Zeilen; `packages/definitions` 97,8/94,1/100/99,0; `knowledge.ts` 100 Zeilen / 96,9 Zweige; `scanner.ts` 100/87,8), Biome und beide Typecheck-Projekte grün; `backend.ts` wuchs um 10 Zeilen (ein Feld plus Mapper-Aufruf, das View-Mapping liegt in `dtc-knowledge-view.ts`), `services.ts` um 9, `app.js` um 103 (nur Rendern) und `styles.css` um 55 — E15 ist damit am 2026-09-13 nachgemessen (1336 / 726 / 724); Ende-zu-Ende belegt durch `tests/integration/vehicle-resolution.test.ts` (Scan nach Connect: `scope: "vehicle-engine"`, zwei Muster, `notes: []`, Getriebe-Code über die Getriebe-Achse, C0035 als „nur paketweit") und `apps/web/test/server.spec.ts` über HTTP inkl. der deutschen Labels.
+> - 1.10: **Fahrzeugschicht: Schema v2, Resolver mit Belegen, Attributionsregel (ADR 0023).** (1) `packages/definitions` trägt jetzt `vehicles[]` — Marke, Modell, Plattform, Generation, Karosserieformen, Modelljahre, `vinMatch` (WMI, VDS-Muster, Modelljahr- und Werkzeichen), Motoren und Getriebe mit `codes`, je Fahrzeug ECUs mit Teilenummern/Softwareständen/`optional` — samt Migration v1→v2, semantischer Prüfung (unbekannte ECU-/Motor-/Getriebereferenzen, doppelte IDs, die in VINs verbotenen Zeichen I/O/Q) und WMI-Referenz nach ISO 3780 mit eigener Provenance. (2) `VehicleResolver` bestimmt das Fahrzeug aus VIN, Identifikationswerten und beantworteten Adressen: 16 gewichtete Kriterien (Teilenummer 4 · WMI/Motor-Getriebekennung/ECU-Abdeckung 3 · VDS/Softwarestand/Modellangabe/unerwartetes Steuergerät 2 · Rest 1), `score` = Anteil bestätigter Gewichte, `ecu-coverage` anteilig, Kandidaten nur mit `score > 0`, jeder mit `evidence[]` **und** `conflicts[]` (`observed`/`expected`/`weight`/`reason`); Provenance-Trust bricht nur Gleichstände (ADR 0003). (3) **Attributionsregel** (neu §11.1): widersprechen kann nur ein Wert, dessen DID als Teilenummer, Software- oder Hardwarestand dokumentiert ist (`identificationKindForLabel`); Seriennummern und unbekannte DIDs stützen bei Treffer und sind sonst neutral — ohne die Regel bestrafte der Resolver das richtige Auto für Werte, die es nicht kennt. Identifikationsfakten tragen zusätzlich `oem`, weil die Engine `"<oem>:<id>"` speichert und zwei Pakete dasselbe ECU-Id tragen dürfen. (4) Naht durch alle Schichten: Port `DefinitionProvider.resolveVehicle` (inkl. Null/Static und `unresolvedVehicleResolution(reason)`), Query `vehicle.resolve` mit `ResolveVehicleHints`, `VehicleService.resolve` mit Faktensammlung in `runtime/src/vehicle-resolution.ts` (`services.ts` 780 → 717 Zeilen), `POST /api/vehicle/resolve`, SSE-Ereignis `vehicle`, Panel „Fahrzeugbestimmung" mit `apps/web/src/vehicle-view.ts` (235 Zeilen, gegen die Union-Typen der Definitionsschicht typisiert — ein neues Kriterium ohne Übersetzung bricht den Build). (5) **Zwei echte Fehler, beide als Regressionstests mit Symptom katalogisiert:** ASCII-Signale des Simulators antworteten ausnahmslos mit der VIN (Teilenummer unter 0xF187 = `1HGCM82633A00435`) — jetzt trägt nur DID 0xF190 die VIN, jedes andere ASCII-Signal antwortet `<ECU-ID>-<DID>`; und „Wert passt zu keinem deklarierten Token" galt als Widerspruch. Neu: `simulatorPackage` (genericPackage plus `virtual-vehicle`, Provenance `own`), das `genericPackage` **nur** in Simulator-/Replay-Betrieb ersetzt — gegen echte Hardware bleibt die OEM-neutrale Baseline aktiv —, mit Kopplungstest in `tools/simulators`, der die Antworten aus den Definitionen nachrechnet (er fand die Hex-Groß-/Kleinschreibung der DID-Werte). (6) Leitplanke neu: per-file-Gate `packages/definitions/**/src/**` 85/80; dass es beißt, ist belegt (`lines: 99` → `EXIT=1` mit `migrate.ts (87.5%)` und `validate.ts (96.07%)` im Fehlertext). Suite: **1223 Tests in ~25 s grün** (88 Dateien; global 96,3 Statements / 89,1 Zweige / 97,5 Funktionen / 97,7 Zeilen; `packages/definitions` 98,7 Zeilen / 92,9 Zweige), Biome und beide Typecheck-Projekte grün. Die Demo bestimmt das simulierte Fahrzeug mit `score 1,00` aus 11 Belegen und 0 Widersprüchen; derselbe Bus mit fremder VIN ergibt `score 0,39` mit vier benannten VIN-Widersprüchen.
 > - 1.9: **Ausgabepfad und Analyse — ein echter Fehler, ein Vertrag statt 45 Kopien, Gates dafür.** (1) `reports/pdf.ts` schrieb UTF-8-Bytes in ein Dokument, dessen Schriften `/WinAnsiEncoding` deklarieren. Gemessen am 2026-09-12 an `Kühlmittel 90 °C`: `ü` als `c3 bc`, `°` als `c2 b0`, der Binärkommentar als acht statt vier Bytes — jeder exportierte Bericht mit Umlaut oder Gradzeichen war Mojibake, auf dem realen Pfad `apps/web/src/server.ts → renderPdf`. Strukturell war die Datei gültig, weil `/Length` und xref dieselben falschen Bytes zählten; nur ein Byte-Test findet das (ADR 0021). Neu: ein Latin-1-Encoder für Text, `/Length` und Offsets, drei Byte-/Struktur-Tests, der tote `case 0x00b0` entfernt; `pdf.ts` 93,9/71,4 → **100/88,9**. (2) Analyse-Pfad nachgetestet: der eingebaute `defaultHttpClient` war nie gelaufen (`ai/http.ts` **63,6 % Funktionen**), ebenso Timeout-Wache, `safeHost`-Fallback und der Fehlerpfad des Dienstes. `JSON.parse` wurde blind auf `Partial<AnalysisResult>` gecastet, und `clamp` machte aus `"confidence": "high"` ein `NaN`, aus dem `JSON.stringify` ein `null` schrieb — die Anzeige zeigte gar keine Konfidenz. Jetzt prüft `normalise` Feld für Feld und `clamp` nimmt `unknown`; `ai.spec.ts` 13 → **21 Tests**, `http.ts` → **100/87,7**, `service.ts` → **100/100**. (3) `error instanceof Error ? …message : String(…)` stand **45 mal in 25 Dateien** (sieben private `messageOf` plus 38 inline), keine Variante getestet — `shared/errors.ts` hatte keine Spec. Ein Vertrag `messageOf`/`asError` in `@vdp/shared/errors.ts` ersetzt 40 Stellen, Objekte werden mit Inhalt benannt statt `[object Object]`, `errors.spec.ts` neu mit 10 Tests; `charts/group.ts` bleibt bewusst lokal (Allowlist `"@vdp/charts": []`). (4) **Manifest-Metadaten**: alle 25 Workspace-Pakete deklarierten weder `license` noch `engines` noch `repository` — nur das Wurzel-Manifest tat es, obwohl Lizenz-Scanner, Renovate und `npm outdated` diese Felder pro Paket lesen. Jetzt MIT / `node >=22` / `repository.directory` je Paket, geprüft durch sechs neue Architektur-Tests (Einstiegspunkte müssen auf existierende Quellen zeigen); die Paket-Discovery liegt einmal in `tests/architecture/workspace.ts`. (5) **Fundament nachgetestet**: `shared/logger.ts` 91,8/76,6 → **100/100** (ConsoleSink-Level-Routing auf `console.error`/`warn`/`log`, MemorySink-Limit, `byScope`, `clear`, `safeStringify` für Bytes und BigInt, `addSink`-Idempotenz, Collect-Limit bei 10 000, Default-Level INFO) und `bytes.ts` 96,9/78,6 → **100/100** (`bytesEqual` mit ungleichen Längen und mit einem abweichenden Byte, Leser über das Pufferende mit definiertem Null-Padding) — `packages/shared` ist damit in allen fünf Dateien vollständig gedeckt. (6) Gates: `reports` und `ai` hatten **keines**, `storage` stand auf 90/55, obwohl E13 die Dateien weit darüber gehoben hatte — die beabsichtigte Anhebung war nie committet (`db5d525` enthält nur `migrations.ts` und die Spec). Neu `reports` 95/75, `ai` 90/75, `storage` 95/80 (ADR 0022); dass sie beißen, ist gemessen (absichtlich unmögliche 99 % → `EXIT=1` mit `pdf.ts` 88,88 % im Fehlertext). E12 und E13 sind aus 0.E entfernt. Suite: **1066 Tests in ~23 s grün** (78 Dateien; global 95,9 Statements / 87,8 Zweige / 97,3 Funktionen / 97,4 Zeilen), Biome und Typecheck grün.
 > - 1.8: **Zeitbudget, Coverage und Doku-Wahrheit — alles gemessen.** (1) `windowMs` begrenzte die ECU-Discovery nicht: die Probepause war mit 15 ms hart verdrahtet, `connect({ windowMs: 30 })` dauerte 200 ms, ein Connect ohne Optionen ~1,37 s — in jedem Test und bei jedem Workbench-Start gegen den Simulator. Neu: `probeDelayMs` als Discovery-Option bis hinauf ins Kommando `connectVehicle`, `DEFAULT_PROBE_DELAY_MS`/`DEFAULT_DISCOVERY_WINDOW_MS` als benannte Konstanten, injizierbarer `sleep` in der DoIP-Discovery, kurze Fenster im Simulator-Modus des Backends, feste Sleeps in den Workbench-Tests ersetzt durch Bedingungs-Waits (ADR 0019). **Messung: Gesamtlauf 71,69 s → 23,83 s** (Replay 11,74 → 1,41 s, Integration 36,67 → 7,71 s, Regression 3,97 → 1,57 s). (2) E4 erledigt: DoIP nachgetestet (`transport.ts` 78,6/68,3 → **98,5/88,7**, `discovery.ts` 91,3/52,9 → **100/78,9**) und `charts/group.ts` 77,0/77,6 → **99,1/91,3**; Gates angehoben auf global 90/80, transport 85/70, charts 90/75 (ADR 0020). (3) Zwei echte Fehler, die das Nachtesten freigelegt hat: ein fehlgeschlagener Routing-Aktivierung ließ den DoIP-Transport in `connecting` mit offenem Socket und abonniertem Listener zurück (jetzt: Freigabe + `error` + `lastError`), und `ChartGroup.notify()` schluckte Subscriber-Fehler in einem leeren `catch {}` (jetzt: `onListenerError`). Damit sind **alle drei** verbliebenen leeren `catch {}` beseitigt (Regel 34.25) — auch `canable.close()` und der Serial-Error-Listener loggen strukturiert. (4) Nach Regel 34.24 korrigiert: README und 0.A behaupteten Quality-Job, CodeQL, Dependency-Review und nächtlichen vcan-Job — im Repo liegt nur `ci.yml` mit `build` + `npm test`, und das README zeigte ein CodeQL-Badge auf einen nicht existierenden Workflow. Die vier gehärteten Workflows sind fertig, aber weiterhin nicht pushbar (gemessen 2026-09-12: `refusing to allow a GitHub App to create or update workflow ... without 'workflows' permission`); E10 nennt jetzt den Freischaltweg. Suite: **991 Tests grün**, Coverage-Gates grün, Biome/Typecheck grün. Neu in 0.E: E11 (ecu-session am Gate), E12 (host/catalog), E13 (storage-Branches), E14 (`isolate: false`), E15 (`backend.ts`-Größe).
 > - 1.7: **Nacharbeit zur Engine-Zerlegung — alle offenen Punkte geschlossen.** (1) Der Escape-Hatch `runtime.engine` ist aus der öffentlichen Runtime-Fläche entfernt; kein Code außerhalb von `@vdp/runtime` erreicht die Engine mehr (Restarbeit: Auflösung der Engine-Klasse in Kollaborateure, ADR 0014 Phase 4 — dort jetzt 🟡 geführt, Phase 5 auf ✅). (2) Live-Fehler sind wieder sichtbar: `LiveDataEngine.onError` meldet Loop-Crashes, der Measurement-Service publiziert `diagnostic-error`, das Backend leitet sie als SSE-`error` weiter (Regel 34.25; Unit-Test mit injizierter Uhr). (3) Sample-Streams dürfen vor dem Start abonnieren (Service puffert Listener bis zur nächsten Live-Engine) — der Stream-Integrationstest ist dadurch deterministisch. (4) Abgelehnte Fehlerspeicher-Löschungen tragen ihre Gründe bis in die HTTP-Antwort (`cleared:false` + `reasons`) und sind als Entscheidung in **ADR 0018** festgeschrieben (neuer Server-Test; Precheck und Write werten dieselbe Kette aus). (5) `apps/web` ist `@vdp/core`-frei: `SessionLogger`/Rohspur/Session-Daten laufen über die Storage-Naht, `AppState.statistics` bekam eine eigene View-Form. Suite: 971 Tests grün, Coverage-Gates grün, Biome/Typecheck grün. Verbleibend in 0.E: E4 (DoIP-Coverage), E9 (CI-Retries), E10 (Workflow-Dateien pushbar machen).
@@ -21,7 +24,7 @@
 
 Dieser Teil steht bewusst vor der Spezifikation. Er sagt dir, *was schon existiert*, *wie du arbeitest* und *wo die harten Grenzen sind*. Die Abschnitte 0–36 dahinter bleiben die normative Produktspezifikation.
 
-## 0.A Umsetzungsstand (verifiziert gegen `arena/01a091b8` 2026-09-11, Basis `f79a91e`)
+## 0.A Umsetzungsstand (verifiziert gegen `arena/01a09708` 2026-09-12, Basis `9f0e70a`)
 
 | Bereich | Stand | Bemerkung |
 |---|---|---|
@@ -32,15 +35,16 @@ Dieser Teil steht bewusst vor der Spezifikation. Er sagt dir, *was schon existie
 | KWP2000 (ISO 14230) | ✅ Basis-Client | für Alt-ECUs |
 | DoIP (ISO 13400) | 🚧 Codecs, Routing activation, UDP-Discovery, TLS vorhanden; Transport-Seam in der Engine (Roadmap 8a) | noch nicht in der Workbench verdrahtet; der MVP braucht es nicht (Abschnitt 29). Nachgetestet 2026-09-12 (ADR 0020): `transport.ts` 98,5/88,7, `discovery.ts` 100/78,9; ein fehlgeschlagener Routing-Aktivierung gibt den Socket jetzt frei, statt `connecting` zu bleiben |
 | OEM-Hooks + Registry | ✅ | füllen nur Lücken — dokumentierte Daten gewinnen immer (ADR 0003) |
-| Definition Packages | ✅ Schema, Validator, Pflicht-Provenance | VAG-/Mercedes-Pakete sind `example-placeholder` mit erfundenen Werten, keine Fahrzeugwahrheit |
-| Core (VIN, ECU-Discovery, DTC, Live-Engine, Recorder, Safety) | ✅ | DTC-System komplett: Freeze Frames, First/Last-Seen, Safety-gated Clear (AGENTS 20); Discovery ignoriert eigene tx-Echos (Regressionskatalog) |
+| Definition Packages | ✅ Schema v3 mit Fahrzeugen (Plattform, Motor, Getriebe, VIN-Matching) **und DTC-Wissen pro Variante** (`dtcKnowledge[]` mit Ausfallmustern, Messfenstern, Reparaturhinweisen), Validator, Pflicht-Provenance je Quelle mit Gates nach Quellentyp (ADR 0025), Migration v1→v2→v3, WMI-Referenz nach ISO 3780 | VAG-/Mercedes-Pakete sind `example-placeholder` mit erfundenen Werten, keine Fahrzeugwahrheit; `simulatorPackage` beschreibt das virtuelle Fahrzeug und ersetzt `genericPackage` nur in Simulator-/Replay-Betrieb (ADR 0023); sein Variantenwissen ist `own` und aus öffentlichen SAE-J1979-Semantiken begründet; ECU- und Signal-Satz sind die von `genericPackage`, also referenziert es nur deklarierte Messpunkte und erfindet keine Lambda-Sonden (ADR 0024) |
+| Fahrzeugauflösung (AGENTS 11) | ✅ Resolver mit Belegen: Query `vehicle.resolve` → `DefinitionProvider.resolveVehicle` → Kandidaten mit `evidence`/`conflicts`, Score = Anteil bestätigter Gewichte | Attributionsregel: widersprechen kann nur ein Wert, dessen DID als Teilenummer/Software-/Hardwarestand dokumentiert ist (ADR 0023); durchgehend read-only, `unresolved` kommt immer mit Grund; Panel „Fahrzeugbestimmung" in der Workbench |
+| Core (VIN, ECU-Discovery, DTC, Live-Engine, Recorder, Safety) | ✅ | DTC-System komplett: Freeze Frames, First/Last-Seen, Safety-gated Clear (AGENTS 20); Discovery ignoriert eigene tx-Echos (Regressionskatalog); Identifikationswerte tragen die DID, aus der sie gelesen wurden (§11/§12) |
 | Graphen (AGENTS 16) | ✅ | DOM-freier Chart-Kern `@vdp/charts` (Viewport, Cursor, Decimierung, Statistik; 41 Unit-Tests, ADR 0011) + synchronisierte Zeitachsen in der Workbench; Rendering in `public/*.js` (s. Web-Workbench) |
 | Storage (JSON + NDJSON, Migrationen, ZIP-Export) | ✅ | ADR 0007; Session-IDs werden vor Dateizugriff validiert |
 | Reports (HTML/PDF) | ✅ | eigener PDF-Writer (ADR 0002); Ersatz durch pdf-lib in ADR 0010 vorgesehen |
 | KI-Schicht | 🚧 Provider-Abstraktion, lokaler Heuristik-Provider, HTTP-Gateway mit VIN-Redaktion | bewusst keine „große KI“ im MVP (Abschnitt 29) |
-| Web-Workbench (`apps/web`) | ✅ Node HTTP + SSE, Vanilla ESM, 9 Views | `public/*.js` via Biome formatiert, `/lib` liefert `@vdp/charts`; Security-Header + Body-Limit (ADR 0009) |
+| Web-Workbench (`apps/web`) | ✅ Node HTTP + SSE, Vanilla ESM, 9 Views + Panel „Fahrzeugbestimmung" | `public/*.js` via Biome formatiert, `/lib` liefert `@vdp/charts`; Security-Header + Body-Limit (ADR 0009) |
 | Simulator + Replay | ✅ | VirtualVehicle, VirtualCanNetwork, ReplayTransport mit strikter Abweichungsmelding |
-| Tests | ✅ 1066 Tests auf 6 Ebenen (unit / protocol / regression / replay / integration / architecture) + 1 hardware smoke | Vitest 5 mit Projektkonfiguration (ADR 0010, Schritt 1); Unit-Specs co-lokatiert (`src/*.spec.ts`), Property-Tests (fast-check), Coverage-Gates global 90/80/90/90 als Durchschnitt (Ist 95,9 Statements / 87,8 Zweige / 97,3 Funktionen / 97,4 Zeilen), per-file laut `vitest.config.ts` für shared/core/protocols/adapters/transport/storage/charts/reports/ai (ADR 0017, angehoben durch ADR 0020 und 0022); Struktur ist mitgetestet — Abhängigkeitsgraph, Hygiene-Regeln und die Manifest-Metadaten aller 25 Pakete (license/engines/repository.directory, `tests/architecture/manifests.test.ts`) — grün; Gesamtlauf ~23 s (gemessen 22,82 s), weil Discovery in Tests ein explizites Zeitbudget fährt und auf Bedingungen statt auf feste Sleeps gewartet wird (ADR 0019); `hardware` (`tests/hardware/vcan.test.ts`) läuft manual (`npm run test:hardware`), der nächtliche Job ist Teil von E10. Zähl-Falle beim Vergleichen von Zahlen: ein bloßes `npx vitest run` ohne `--project` nimmt `hardware` mit und meldet 79 Dateien / 1067 Tests statt 78 / 1066 — ohne `vcan0` besteht der Test per Selbst-Skip immer. |
+| Tests | ✅ 1300 Tests auf 6 Ebenen (unit / protocol / regression / replay / integration / architecture) + 1 hardware smoke | Vitest 5 mit Projektkonfiguration (ADR 0010, Schritt 1); Unit-Specs co-lokatiert (`src/*.spec.ts`), Property-Tests (fast-check), Coverage-Gates global 90/80/90/90 als Durchschnitt (Ist 96,5 Statements / 89,7 Zweige / 97,5 Funktionen / 97,9 Zeilen), per-file laut `vitest.config.ts` für shared/core/protocols/adapters/transport/storage/charts/reports/ai/definitions (ADR 0017, angehoben durch ADR 0020 und 0022, `definitions` 85/80 neu durch ADR 0023); Struktur ist mitgetestet — Abhängigkeitsgraph, Hygiene-Regeln und die Manifest-Metadaten aller 25 Pakete (license/engines/repository.directory, `tests/architecture/manifests.test.ts`) — grün; Gesamtlauf ~25 s (gemessen 25,17 s), weil Discovery in Tests ein explizites Zeitbudget fährt und auf Bedingungen statt auf feste Sleeps gewartet wird (ADR 0019); `hardware` (`tests/hardware/vcan.test.ts`) läuft manual (`npm run test:hardware`), der nächtliche Job ist Teil von E10. Zähl-Falle beim Vergleichen von Zahlen: ein bloßes `npx vitest run` ohne `--project` nimmt `hardware` mit und meldet 91 Dateien / 1301 Tests statt 90 / 1300 — ohne `vcan0` besteht der Test per Selbst-Skip immer. |
 | CI/CD | 🚧 GitHub Actions: `ci.yml` mit `npm ci` → `build` → `npm test` auf Node 22 + 24 (`checkout@v4`/`setup-node@v4`, Concurrency, `contents: read`) + Dependabot (gruppiert) | **Ist-Zustand nach Regel 34.24:** Quality-Job (`biome check`·`typecheck`·`npm audit`), Coverage-Upload, `codeql.yml`, `dependency-review.yml` und `hardware.yml` sind nach ADR 0016 §3 fertig entwickelt, liegen aber nur in der Arbeitskopie — GitHub lehnt den Push von Workflow-Dateien ohne `workflows`-Berechtigung der App ab (gemessen 2026-09-12). Verbindliches Tor ist deshalb `npm run ci`; Freischaltung und Folge-PR siehe 0.E E10 |
 | HTTP-Security-Baseline | ✅ | localhost-Default, Security-Header, Body-Limit (ADR 0009) |
 | Coding Framework (Abschnitt 25) | ❌ bewusst nicht begonnen | erst nach stabilem Read-only-System |
@@ -164,7 +168,7 @@ Offen bleiben:
 | E11 | P2 | `packages/core/src/diagnostics/ecu-session.ts` liegt bei 85,6 % lines / 71,3 % branches (nachgemessen am 2026-09-12, vorher 65,3) und damit **0,6 Punkte** über seinem Gate (`core` 85/65, per file) — die knappste Datei im ganzen Baum. Keine Spec referenziert `EcuDiagnosticSession` direkt: die Deckung stammt ausschließlich aus Integrations-/Replay-Läufen, und es existiert kein UDS-Test-Double, das Fehlerfälle einspielen könnte. Jede größere Änderung kann die Datei rot machen, ohne dass ein echter Mangel vorliegt; unbeobachtet bleiben u. a. die Zweige um `probeSupportedServices`, NRC-Behandlung und Timing-Übernahme aus der Session-Antwort (ISO 14229-2). | Fehler-/NRC-Zweige und die Session-Timing-Übernahme gezielt nachtesten, danach das `core`-Gate anheben (ADR 0017/0020: erst Tests, dann Gate). Keine neue Logik. |
 | E14 | P3 | **`isolate: false` halbiert die Suite-Laufzeit — gemessen, bewusst noch nicht übernommen.** Vier Läufe am 2026-09-12 (Node 22, jedes Mal 75 Dateien / 991 Tests grün): mit Isolation 26,77 s und 23,79 s, mit `--no-isolate` 13,18 s und 13,51 s — ≈45 % schneller; im Coverage-Modus 32,78 s → 16,35 s. Der Runner meldet denselben Befund selbst (75 Worker, ~104 ms Start je Datei, „at least ~7.72s faster with `isolate: false`“), die eigene Messung liegt deutlich darüber. Eine Abweichung ist dokumentiert: Branches gesamt 84,21 → **84,19** (0,02 Prozentpunkte), weil wiederverwendete Worker Modul-Initialisierung nur einmal zählen; alle Gates bleiben grün. | Die Entscheidung gehört in einen eigenen PR mit ADR, nicht stillschweigend in `vitest.config.ts`: `isolate: false` macht Modulzustand über Dateien hinweg sichtbar (Logger-Sinks, feste Uhren, Singletons). Vor der Übernahme dreimal grün in Folge plus gezielter Nachweis, dass kein Test auf frischem Modulzustand beruht; Determinismus schlägt Laufzeit (AGENTS 31). Bleibt der Nachweis aus, bleibt die Isolation — dann ist der Laufzeitgewinn verworfen, nicht aufgeschoben. |
 | E16 | P2 | **Fünf Dateien liegen weniger als fünf Punkte über ihrem per-file-Gate** (gemessen am 2026-09-12 im Gesamtlauf, Puffer in Zeilen/Zweigen): `adapters/elm327/src/protocol.ts` 96,3/**76,0** (+11,3/+1,0 — Gate `adapters` 85/75), `transport/can/src/bus.ts` **87,5**/100 (+2,5), `adapters/elm327/src/stream.ts` **88,2**/100 (+3,2), `reports/src/report.ts` 100/**79,5** (+5,0/+4,5), `ai/src/heuristic.ts` **94,9**/**79,5** (+4,9/+4,5). Ein Gate, das nur durch Stillstand hält, ist keine Leitplanke (ADR 0020) — dieselbe Lage, die E11 für `ecu-session.ts` beschreibt. | Je Datei die unbeobachteten Zweige nachtesten und danach das Gate anheben (ADR 0017: erst Tests, dann Gate). Reihenfolge nach Puffer: `protocol.ts` (+1,0 Zweige), `bus.ts` (+2,5), `stream.ts` (+3,2), danach `report.ts` und `heuristic.ts` — beide gleichauf bei +4,5 Zweigen. Für `protocol.ts` und `stream.ts` sind Rahmen-Fehlerfälle der Hebel (unvollständige Frames, Timeouts, OBD-Modus-Wechsel), für `report.ts` die Berichtsvarianten ohne Befunde/Empfehlungen, für `heuristic.ts` die Signal-Kombinationen unterhalb der Schwellen. Keine neue Logik. |
-| E15 | P3 | `apps/web/src/backend.ts` ist mit 1269 Zeilen das größte Modul des Baums (nächste: `iso-tp/connection.ts` 724, `runtime/services.ts` 684 — nachgemessen am 2026-09-12). Es mischt Transportauswahl, Rohspur, Präsentation (`toEcuView`/`toDtcView`/`toTraceView`) und HTTP-Zustand — dieselbe Mischung, die ADR 0014 für die Engine aufgelöst hat. | In Kollaborateure teilen (Adapter-/Bus-Auswahl, View-Mapper, Präsentationszustand) ohne Verhaltensänderung; die View-Mapper sind der natürliche erste Schnitt, weil sie bereits als `*View`-Typen der Domain-Projektion gegenüberstehen (Roadmap-Schritt 9). Architekturtest-Allowlist bleibt unverändert. |
+| E15 | P3 | `apps/web/src/backend.ts` ist mit 1336 Zeilen das größte Modul des Baums (nächste: `runtime/services.ts` 726, `iso-tp/connection.ts` 724 — nachgemessen am 2026-09-13; `public/app.js` folgt mit 1009 Zeilen als reines Rendern ohne Vokabular). Es mischt Transportauswahl, Rohspur, Präsentation (`toEcuView`/`toDtcView`/`toTraceView`) und HTTP-Zustand — dieselbe Mischung, die ADR 0014 für die Engine aufgelöst hat. | In Kollaborateure teilen (Adapter-/Bus-Auswahl, View-Mapper, Präsentationszustand) ohne Verhaltensänderung; die View-Mapper sind der natürliche erste Schnitt, weil sie bereits als `*View`-Typen der Domain-Projektion gegenüberstehen (Roadmap-Schritt 9). Architekturtest-Allowlist bleibt unverändert. Dass der Schnitt trägt, zeigen drei Auslagerungen: `apps/web/src/vehicle-view.ts` (235 Zeilen View-Mapping statt in `backend.ts`), `packages/runtime/src/vehicle-resolution.ts` (112 Zeilen Faktensammlung statt in `services.ts`, das dadurch von 780 auf 717 Zeilen zurückkam) und `apps/web/src/dtc-knowledge-view.ts` (200 Zeilen View-Mapping am 2026-09-13): Schritt 15 wuchs `backend.ts` nur um 10 Zeilen (ein Feld in `DtcView` plus Mapper-Aufruf) und `services.ts` um 9 (Bindung des aufgelösten Fahrzeugs an den Scanner), während das Rendern mit +103 Zeilen in `app.js` blieb — ohne ein deutsches Wort dort, weil die Labels im View-Modul gegen die Union-Typen der Definitionsschicht typisiert sind. |
 
 ---
 
@@ -463,6 +467,37 @@ ECUs
 
 VIN automatisch erkennen, wenn verfügbar. Prüfziffer-Validierung (ISO 3779 Position 9) einbauen, um Lesefehler von Übertragungsfehlern zu unterscheiden.
 
+### 11.1 Bestimmung aus Belegen (verbindlich, ADR 0023)
+
+Fahrzeugidentität wird bestimmt, nicht geraten:
+
+1. **Eingabe** ist, was bekannt ist: VIN, Identifikationswerte je Steuergerät
+   (mit `ecu`, `oem`, `did`, `value`), die Adressen, die geantwortet haben, und
+   was der Bediener oder eine frühere Session angibt (`declared`).
+2. **Ausgabe** ist eine Rangliste von Kandidaten mit `score` (Anteil der
+   bestätigten Gewichte an allen geprüften) sowie `evidence[]` und `conflicts[]`
+   — je Kriterium `observed`, `expected`, `weight`, `reason` — dazu `unresolved`,
+   `notes` und `unexplained`.
+3. **Kein Kandidat ohne Beleg.** `score <= 0` erscheint nicht. Ein leeres
+   Ergebnis ist eine gültige Antwort und trägt einen Grund („kein Paket deklariert
+   Fahrzeugdefinitionen"), nie eine leere Maske.
+4. **Widersprüche bleiben sichtbar.** Sie werden nicht verrechnet, nicht
+   versteckt und nicht zu einer „Konfidenz" zusammengeschmolzen.
+5. **Attributionsregel.** Ein Identifikationswert kann nur widersprechen, wenn
+   seine DID im Paket als Teilenummer, Software- oder Hardwarestand dokumentiert
+   ist. Werte ohne dokumentierte Art (Seriennummern, Werkstattcodes) stützen bei
+   Treffer und sind sonst neutral.
+6. **Namensraum.** Identifikationsfakten tragen `oem` und das nackte ECU-Id;
+   Belege aus einem fremden Paket zählen nicht.
+7. **Angaben wiegen weniger als der Bus.** `declared` ist ein Kriterium mit
+   eigenem Gewicht, kein Filter: widerspricht die Busspur, gewinnt die Busspur,
+   und der Widerspruch steht im Ergebnis.
+8. **Provenance bricht nur Gleichstände** (ADR 0003): `own`/`standard`/`licensed`
+   1,0 · `community` 0,8 · `reverse-engineered` 0,6 · `example-placeholder` 0,3.
+   Ein Treffer auf Platzhalterdaten muss als solcher gekennzeichnet sein.
+9. **Read-only.** Auflösung schreibt nichts auf den Bus und ändert keine Session
+   (§25/§26 bleiben unberührt). Sie ist eine Query, kein Command.
+
 ## 12. ECU Explorer
 
 Nach dem Verbinden möglichst systematisch erreichbare ECUs erkennen und darstellen.
@@ -527,6 +562,67 @@ Das Modell soll u. a. aufnehmen können:
 - Source/Provenance
 
 Definition Packages selbst müssen semantisch versioniert werden (z. B. SemVer), damit Sessions, die mit einer älteren Definition aufgezeichnet wurden, nachvollziehbar bleiben, auch wenn sich die Definition später ändert.
+
+### 13.1 Fahrzeuge im Paket (Schema v2, ADR 0023)
+
+Zusätzlich zu ECUs, DIDs und Signalen trägt ein Paket `vehicles[]`: Marke,
+Modell, Plattform, Generation, Karosserieformen, Modelljahre, `vinMatch`
+(WMI-Liste, VDS-Muster, Modelljahr- und Werkzeichen), Motoren und Getriebe mit
+Kennungen (`codes`) sowie je Fahrzeug die zugehörigen ECUs mit Teilenummern,
+Softwareständen und optional `engine`/`gearbox`/`optional`.
+
+Verbindlich:
+
+- **Schema-Version und Migration.** `schemaVersion` ist Pflicht; ältere Pakete
+  werden über einen expliziten Schritt gehoben (`migrate.ts`), nie über
+  stillschweigende Annahmen. Eine unterstützte Version ohne Migrationsschritt ist
+  ein Fehler.
+- **Semantische Prüfung.** Unbekannte ECU-/Motor-/Getriebereferenzen, doppelte IDs
+  und VIN-Matching mit in VINs verbotenen Zeichen (I, O, Q) sind Fehler, keine
+  Warnungen; fehlende Einheiten und leere Enum-Mappings sind Warnungen.
+- **Referenzdaten getrennt.** Standardwissen (WMI nach ISO 3780) liegt mit eigener
+  Provenance neben den OEM-Paketen, nicht in der Engine.
+- **Provenance je Fahrzeug.** Ein Paket darf dokumentierte und beispielhafte
+  Fahrzeuge mischen; die Herkunft wird je Fahrzeug angegeben und erreicht die UI
+  (§24).
+
+### 13.2 DTC-Wissen pro Variante (Schema v3, ADR 0024)
+
+Ein Fahrzeug trägt `dtcKnowledge[]`: je `code` mit optional `ecu`/`engine`/`gearbox`
+(Scope) Texte, `patterns[]` (Ursache, Erklärung, `likelihood`, `repair`) und darin
+`checks[]` (`signal`, `expect`, `min`/`max`, `windowMs`).
+
+Verbindlich:
+
+- **Auflösung nach Spezifität.** `findDtcKnowledge(packages, query)` gewichtet
+  Motor 16 · Getriebe 8 · ECU 4 · angenommen 2/1. Ein Eintrag für einen anderen
+  Motor ist kein schwacher Treffer, sondern keiner. Muster werden über alle
+  zutreffenden Einträge gesammelt (spezifischster zuerst), Texte kommen aus dem
+  spezifischsten Eintrag, sonst aus der Definition des lesenden Steuergeräts.
+- **Nur deklarierte Signale.** Eine Prüfung referenziert ein Signal aus dem Paket.
+  Fehlt das Signal, fehlt die Prüfung — eine erfundene Signal-ID erzeugt einen
+  Prüfschritt, der nie laufen kann.
+- **Kein Stellvertreter-Signal.** Ein Check muss den Fehler beobachten können, zu
+  dem er gehört. Kann das Paket ihn nicht beobachten, sagt das Muster das in
+  `explanation` und prüft nur die Bedingung, unter der der Fehler auftritt
+  (ADR 0025).
+- **Fenster sind Messbedingungen.** `min`/`max` nennen die Bedingung im
+  `expect`-Text (Testgeschwindigkeit, Temperatur), nicht eine Toleranz aus einer
+  Kalibrierung. Ein numerisches Fenster für ein Enum-Signal ist nur zulässig, wenn
+  es die `enumMapping` desselben Pakets liest.
+- **Eine Lücke ist eine Entscheidung.** Ein Code ohne Varianteneintrag bleibt
+  paketweit, wenn die Variante nichts beitragen kann (ein Kommunikationscode
+  bedeutet für jeden Motor dasselbe). Beschriebene und dokumentierte Codes werden
+  gegeneinander gezählt, damit die Differenz benannt bleibt (ADR 0025).
+- **Annahme nur bei Eindeutigkeit.** Ohne Eingrenzung des Antriebsstrangs gilt ein
+  motor-/getriebegescoper Eintrag nur, wenn genau ein Motor (bzw. Getriebe)
+  deklariert ist; dann steht er unter allem Bestätigten und mit Note.
+- **Pattern-IDs sind je Fahrzeug eindeutig.** Damit sind Muster global adressierbar
+  (Verbraucher: Schritt 16, Geführte Diagnose).
+- **Provenance je Eintrag.** Wissen ohne Herkunft ist ein Fehler; ein
+  Reparaturhinweis ohne Provenance ist eine Warnung (§24, Rechtefrage).
+- **Migration erfindet nichts.** v2→v3 hebt die Version; Wissen darf fehlen, dann
+  bleibt die paketweite Beschreibung stehen (§20.1).
 
 ## 14. Messwert-Engine
 
@@ -688,6 +784,18 @@ Last Seen
 Related Signals
 ```
 
+Über das Fahrzeug gebundenes Variantenwissen (§13.2, ADR 0024) erweitert den
+Datensatz:
+
+```text
+Scope (vehicle-engine / vehicle-gearbox / vehicle / package)
+Fahrzeug (id, name, Provenance der angezeigten Aussage)
+Bedingungen (wann der Code setzt)
+Ausfallmuster (id, name, Erklärung, likelihood, Reparatur, Checks)
+Notes (kein Variantenwissen / nur Text / kein Zahlenfenster / angenommen)
+Checks (Signal, Erwartung, min/max, windowMs, measurable)
+```
+
 Funktionen:
 - Scan all ECUs
 - Read DTCs
@@ -695,6 +803,23 @@ Funktionen:
 - Snapshot
 - Before/After Compare
 - Clear DTCs mit expliziter Bestätigung
+
+### 20.1 Variantenwissen und Ehrlichkeit (ADR 0024)
+
+- **Schichtung statt Ersetzen.** `EcuDefinition.dtcs[]` bleibt die Basis (sie trägt
+  Enable-Bedingungen und Snapshot-Referenzen); Variantenwissen überschreibt
+  Description/Severity/Hint und merged `relatedSignals`.
+- **Bindung.** `DtcScanner.setVehicle(context)` schaltet es ein, `connect()` bindet
+  das aufgelöste Fahrzeug sofort, `resolve(hints)` bindet neu, `disconnect()` löst.
+  Ein Scanner, der ein Fahrzeug trägt, darf beim Verbinden kein paketweites Wissen
+  zeigen.
+- **Ohne gebundenes Fahrzeug entsteht kein `knowledge`.** Die paketweite
+  Beschreibung steht bereits am Record; sie als Variantenwissen auszugeben wäre
+  genau die Verwechslung, gegen die die Fahrzeugachse existiert.
+- **Die Aussage verrät ihre Quelle.** `scope`, `notes[]`, `checks[].measurable` und
+  `knowledgeProvenance` (Entry → sonst Fahrzeug, aber nur wenn ein Entry gewann →
+  sonst Paket) machen sichtbar, woraus ein Satz besteht und welche Messung er
+  nicht trägt.
 
 ## 21. Diagnosebericht
 
@@ -757,15 +882,15 @@ Keine Scheinsicherheit bei Diagnosen.
 Später eigene strukturierte Wissensbasis:
 
 ```text
-DTC Definitions
-DID Definitions
-ECU Information
-Vehicle Variants
-Known Failure Patterns
-Measurement Relationships
-Repair Information
-Legal/Licensed Documentation
-Community Knowledge
+DTC Definitions            ✅ EcuDefinition.dtcs[] (paketweit)
+DID Definitions            ✅ EcuDefinition.dids[] mit Signalpfad
+ECU Information            ✅ EcuDefinition (Adresse, Protokoll, Enable-Bedingungen)
+Vehicle Variants           ✅ vehicles[] (§13.1, ADR 0023)
+Known Failure Patterns     ✅ vehicles[].dtcKnowledge[].patterns[] (§13.2, ADR 0024)
+Measurement Relationships  ✅ patterns[].checks[] mit min/max/windowMs
+Repair Information         ✅ patterns[].repair, gelabelt als Hinweis (§24)
+Legal/Licensed Documentation ⏳ Provenance je Quelle vorhanden, Lizenzprüfung offen
+Community Knowledge        ⏳ noch kein Eingabepfad
 ```
 
 Jede Quelle braucht Provenance.
@@ -779,6 +904,27 @@ Jede Quelle braucht Provenance.
   "retrievedAt": "..."
 }
 ```
+
+Verbindlich für die Wissensbasis:
+
+- Wissen liegt **im Paket bei den Fahrzeugen**, nicht in einer Engine
+  (ADR 0024): es versioniert mit dem Paket, bleibt in Sessions und Reports
+  nachvollziehbar und braucht keinen zweiten Ablageort.
+- Provenance je **Eintrag**, nicht je Paket: dokumentiertes und beispielhaftes
+  Wissen dürfen nebeneinander stehen.
+- **Gates nach Quellentyp** (ADR 0025): `licensed` braucht `license` (Fehler) und
+  soll `version` plus `retrievedAt` tragen (Warnung) — ohne Stand und Datum ist ein
+  Widerruf nicht bemerkbar. `standard` ohne Ausgabe (`version` oder `notes`) warnt,
+  `community` warnt immer über ungeklärte Rechte. Ein `retrievedAt`, das kein
+  ISO-8601-Datum ist, ist ein Fehler.
+- **Beide Wege, dieselben Regeln.** Der JSON-Parser ruft denselben Validator und
+  verwirft kein Provenance-Feld still: ein Feld, das vorhanden, aber kein String
+  ist, schlägt strukturell fehl (Regressionseintrag: `notes` ging auf dem Dateipfad
+  verloren).
+- Ein Reparaturhinweis ohne Provenance ist eine Warnung — an dieser Kategorie
+  können Rechte Dritter hängen (§24).
+- Fehlendes Wissen ist ein Zustand (`notes: []` bzw. `scope: "package"`), kein
+  Raten: keine erfundenen Ursachen, keine erfundenen Messpunkte.
 
 ## 24. Datenherkunft / Commercial Readiness
 

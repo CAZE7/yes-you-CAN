@@ -19,6 +19,7 @@ import type {
   SessionSummary,
   SignalInfo,
   SignalStatisticsInfo,
+  VehicleResolutionRef,
   VehicleStateReading,
   VehicleSummary,
 } from "@vdp/domain";
@@ -28,6 +29,7 @@ import type { Query } from "./command-bus.js";
 export const QueryKinds = {
   GetSession: "session.get",
   GetVehicle: "vehicle.get",
+  ResolveVehicle: "vehicle.resolve",
   GetEcuList: "ecu.list",
   GetEcu: "ecu.get",
   GetEcuCapabilities: "ecu.capabilities",
@@ -59,6 +61,42 @@ export interface GetVehicleQuery extends Query<VehicleSummary | undefined> {
 
 export function getVehicle(): GetVehicleQuery {
   return { kind: QueryKinds.GetVehicle };
+}
+
+/**
+ * What the caller adds to the vehicle resolution on top of what the session
+ * already knows (§11). Everything is optional — a resolution without hints uses
+ * the VIN, the identification values and the discovered ECUs of the live session.
+ */
+export interface ResolveVehicleHints {
+  /** Use this VIN instead of the one read from the vehicle. */
+  vin?: string;
+  /** Claims about the car: operator input, a previous session, a work order. */
+  declared?: {
+    oem?: string;
+    brand?: string;
+    model?: string;
+    platform?: string;
+    modelYear?: number;
+  };
+}
+
+export interface ResolveVehicleQuery extends Query<VehicleResolutionRef> {
+  readonly kind: typeof QueryKinds.ResolveVehicle;
+  readonly hints?: ResolveVehicleHints;
+}
+
+/**
+ * Which vehicle is connected — ranked candidates with evidence (§11).
+ *
+ * A query, not a command: resolving changes nothing on the bus. It answers with
+ * hypotheses and the reasons behind them, never with a single asserted fact, so
+ * callers cannot mistake a guess for knowledge.
+ */
+export function resolveVehicle(hints?: ResolveVehicleHints): ResolveVehicleQuery {
+  return hints === undefined
+    ? { kind: QueryKinds.ResolveVehicle }
+    : { kind: QueryKinds.ResolveVehicle, hints };
 }
 
 export interface GetEcuListQuery extends Query<readonly EcuSummary[]> {

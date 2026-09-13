@@ -189,7 +189,7 @@ export class EcuDiagnosticSession {
         const raw = await this.client.readDid(entry.did);
         if (!raw) continue;
         const value = entry.encoding === "ascii" || entry.did >= 0xf180 ? toAscii(raw) : toHex(raw);
-        identification.push({ label: entry.label, value });
+        identification.push({ label: entry.label, value, did: entry.did });
       } catch (error) {
         this.log.debug("identification DID not available", {
           ecu: this.record.name,

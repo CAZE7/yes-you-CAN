@@ -7,7 +7,11 @@
  * services keep their signatures and simply receive new implementations.
  */
 
-import type { ConnectVehicleOptions, ConnectVehicleResult } from "@vdp/application";
+import type {
+  ConnectVehicleOptions,
+  ConnectVehicleResult,
+  ResolveVehicleHints,
+} from "@vdp/application";
 import type {
   ClearDtcResult,
   DiagnosticEngine,
@@ -24,6 +28,7 @@ import type {
 import type {
   AnomalyInfo,
   ClearDtcOutcome,
+  DefinitionProvider,
   DiagnosticCapability,
   DtcClearPrecheckInfo,
   DtcInfo,
@@ -40,6 +45,7 @@ import type {
   SessionSummary,
   SignalInfo,
   SignalStatisticsInfo,
+  VehicleResolutionRef,
   VehicleStateReading,
   VehicleSummary,
 } from "@vdp/domain";
@@ -62,6 +68,7 @@ import {
   toSignalStatisticsInfo,
   toVehicleSummary,
 } from "./mappers.js";
+import { dtcVehicleContextOf, resolveVehicleQuery } from "./vehicle-resolution.js";
 
 export function unknownEcu(ecuId: string): Error {
   return new Error(`unknown ECU "${ecuId}" — connect first or check the id`);
@@ -184,6 +191,7 @@ export class VehicleService {
     private readonly ecus: EcuService,
     private readonly events: EventBus,
     private readonly log: Logger,
+    private readonly definitions: DefinitionProvider,
   ) {}
 
   async connect(options?: ConnectVehicleOptions): Promise<ConnectVehicleResult> {
@@ -218,6 +226,12 @@ export class VehicleService {
       ...(vehicle?.vin !== undefined ? { vin: vehicle.vin } : {}),
       ecuCount: summaries.length,
     });
+    // Connect already read the VIN and every identification value, so the car can
+    // be resolved without another bus access — and the first fault scan then
+    // carries the knowledge of this variant instead of the manufacturer-wide
+    // wording (AGENTS 11 → 20). An explicit `resolve(hints)` rebinds with the
+    // operator's claims.
+    this.engine.setVehicleContext(dtcVehicleContextOf(this.resolve().best));
     return {
       session: toSessionSummary(session),
       ...(vehicle !== undefined ? { vehicle } : {}),
@@ -227,6 +241,34 @@ export class VehicleService {
 
   identity(): VehicleSummary | undefined {
     return toVehicleSummary(this.engine.vehicleSession?.data.vehicle);
+  }
+
+  /**
+   * Which vehicle is connected (AGENTS 11).
+   *
+   * Collects everything the session already knows — the VIN, the identification
+   * values every ECU reported and the addresses that answered discovery — and
+   * hands it to the definitions layer, which ranks candidates and states its
+   * evidence. Nothing is written, nothing is asserted: the result is a list of
+   * hypotheses, and an empty one is a legitimate answer.
+   */
+  resolve(hints?: ResolveVehicleHints): VehicleResolutionRef {
+    const query = resolveVehicleQuery({
+      identity: this.identity(),
+      ecus: this.ecus.list(),
+      ...(hints !== undefined ? { hints } : {}),
+    });
+    const resolution = this.definitions.resolveVehicle(query);
+    // From here on the DTC system enriches with what this variant documents
+    // (AGENTS 20/23); an unresolved car keeps the manufacturer-wide wording.
+    this.engine.setVehicleContext(dtcVehicleContextOf(resolution.best));
+    this.log.info("vehicle resolved", {
+      candidates: resolution.candidates.length,
+      best: resolution.best?.vehicleId,
+      score: resolution.best?.score,
+      unresolved: resolution.unresolved,
+    });
+    return resolution;
   }
 
   async disconnect(): Promise<void> {

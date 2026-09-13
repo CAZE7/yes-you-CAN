@@ -28,3 +28,6 @@ er wird durch einen neuen ersetzt, der den alten als `superseded` markiert.
 | [0020](0020-coverage-gates-raised.md) | Coverage-Gates nach DoIP- und Chart-Nachtest angehoben | accepted |
 | [0021](0021-pdf-strings-are-latin1.md) | PDF-Strings sind Latin-1: ein Encoder für Text, Länge und Offsets | accepted |
 | [0022](0022-coverage-gates-output-and-analysis.md) | Coverage-Gates für Export-Pfad und Analyse, storage nachgezogen | accepted |
+| [0023](0023-vehicle-resolution.md) | Fahrzeugauflösung: Schema v2, Resolver mit Belegen, Attributionsregel | accepted |
+| [0024](0024-dtc-knowledge-per-variant.md) | DTC-Wissen pro Variante: Schema v3, Auflösung nach Spezifität, Ehrlichkeit als Datenmodell | accepted |
+| [0025](0025-knowledge-quality-gates.md) | Was Wissen tragen muss: Provenance-Gates je Quellentyp, Checks ohne Stellvertreter-Signal, bewusste Lücken | accepted |

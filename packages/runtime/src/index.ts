@@ -38,6 +38,7 @@ export {
   deniedClearOutcome,
   toClearDtcOutcome,
   toDtcInfo,
+  toDtcKnowledge,
   toEcuSummary,
   toMeasurementReading,
   toSessionSummary,

@@ -9,14 +9,21 @@
  * - nothing is invented: a code without a definition stays without a description;
  * - a definition from the *first* matching package wins, so a base package cannot
  *   be overwritten by an OEM one loaded after it;
- * - a comparison is keyed per ECU, because the same code on two ECUs is two faults.
+ * - a comparison is keyed per ECU, because the same code on two ECUs is two faults;
+ * - variant knowledge is layered on top of the package wording only while a
+ *   vehicle is bound, and every record says which of the two it is showing
+ *   (`knowledge.scope`) — a package text never poses as variant knowledge (§24).
  *
  * First/last seen tracking lives in `dtc-tracker.spec.ts`, the write path in
  * `dtc.spec.ts`.
  */
 
 import assert from "node:assert/strict";
-import type { DefinitionPackage, EcuDefinition } from "@vdp/definitions";
+import {
+  CURRENT_SCHEMA_VERSION,
+  type DefinitionPackage,
+  type EcuDefinition,
+} from "@vdp/definitions";
 import { type DtcRecord, decodeDtcStatus, dtcSeverity } from "@vdp/protocols-uds";
 import { describe, expect, test } from "vitest";
 import { DtcScanner, type EnrichedDtc } from "./scanner.js";
@@ -520,4 +527,220 @@ describe("DtcScanner.compare — before/after a repair or a clear", () => {
       "the before-scan keeps its own status after being compared",
     );
   });
+});
+
+/**
+ * FULL_PACKAGE plus one vehicle variant that documents its own faults. Two
+ * engines on purpose: knowledge for one of them must not leak into the other.
+ */
+function knowledgePackage(): DefinitionPackage {
+  return {
+    ...FULL_PACKAGE,
+    schemaVersion: CURRENT_SCHEMA_VERSION,
+    vehicles: [
+      {
+        id: "variant",
+        brand: "Fixture",
+        model: "Variant",
+        engines: [
+          { id: "petrol", name: "Petrol" },
+          { id: "diesel", name: "Diesel" },
+        ],
+        gearboxes: [{ id: "auto", name: "Automatic" }],
+        ecus: [{ ecu: "engine", engine: "petrol" }],
+        provenance: { sourceType: "own", source: "unit test fixture" },
+        dtcKnowledge: [
+          {
+            code: "P0420",
+            ecu: "engine",
+            engine: "petrol",
+            description: "Catalyst efficiency on the petrol variant",
+            severity: "critical",
+            hint: "measure the trims in closed loop first",
+            conditions: "only in closed loop above 80 °C",
+            relatedSignals: ["engine.long_term_fuel_trim", "not.in.this.package"],
+            provenance: {
+              sourceType: "licensed",
+              source: "workshop manual",
+              license: "contract",
+            },
+            patterns: [
+              {
+                id: "catalyst-aged",
+                name: "Aged catalyst",
+                likelihood: "common",
+                repair: "replace it only after the checks hold",
+                checks: [
+                  {
+                    signal: "engine.long_term_fuel_trim",
+                    expect: "neutral",
+                    min: -5,
+                    max: 5,
+                  },
+                ],
+              },
+            ],
+          },
+          { code: "P0171", engine: "diesel", description: "Lean correction on the diesel variant" },
+          {
+            code: "C1234",
+            gearbox: "auto",
+            description: "Wheel speed plausibility on the automatic",
+            patterns: [{ id: "no-window", name: "Only prose" }],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+const ENGINE_REF = { oem: "test", ecu: "engine" };
+const PETROL_VARIANT = { oem: "test", vehicleId: "variant", engineIds: ["petrol"] };
+
+test("without a bound vehicle nothing is claimed to be variant knowledge", () => {
+  const scanner = scannerOf(knowledgePackage());
+  const [dtc] = scanner.enrich([record("P0420")], "Engine Control Unit", "engine", ENGINE_REF);
+  assert.equal(dtc?.description, "Catalyst efficiency below threshold");
+  assert.equal(dtc?.severity, "major");
+  assert.equal(dtc?.knowledge, undefined, "no car is resolved, so no variant answer exists");
+  assert.equal(scanner.vehicleContext, undefined);
+});
+
+test("the resolved variant overrides wording, severity and related signals", () => {
+  const scanner = scannerOf(knowledgePackage());
+  scanner.setVehicle(PETROL_VARIANT);
+  const [dtc] = scanner.enrich([record("P0420")], "Engine Control Unit", "engine", ENGINE_REF);
+  assert.ok(dtc);
+  assert.equal(dtc.description, "Catalyst efficiency on the petrol variant");
+  assert.equal(dtc.hint, "measure the trims in closed loop first");
+  assert.equal(dtc.severity, "critical", "the variant severity replaces the package one");
+  assert.deepEqual(
+    dtc.relatedSignals,
+    [
+      { id: "engine.rpm", name: "Engine speed" },
+      { id: "engine.long_term_fuel_trim", name: "Long term fuel trim" },
+    ],
+    "package and variant signals are merged, once each, and only ids the package defines",
+  );
+
+  const knowledge = dtc.knowledge;
+  assert.ok(knowledge, "the record says what the variant adds");
+  assert.equal(knowledge.scope, "vehicle-engine");
+  assert.equal(knowledge.vehicleId, "variant");
+  assert.equal(knowledge.conditions, "only in closed loop above 80 °C");
+  assert.equal(knowledge.provenanceType, "licensed");
+  assert.equal(knowledge.provenanceSource, "workshop manual");
+  assert.deepEqual(knowledge.notes, []);
+  assert.deepEqual(
+    knowledge.patterns.map((pattern) => pattern.id),
+    ["catalyst-aged"],
+  );
+  assert.deepEqual(knowledge.patterns[0]?.checks, [
+    {
+      signal: "engine.long_term_fuel_trim",
+      signalName: "Long term fuel trim",
+      expect: "neutral",
+      min: -5,
+      max: 5,
+      measurable: true,
+    },
+  ]);
+});
+
+test("knowledge for another engine stays where it belongs", () => {
+  const scanner = scannerOf(knowledgePackage());
+  scanner.setVehicle({ oem: "test", vehicleId: "variant", engineIds: ["diesel"] });
+  const [catalyst, lean] = scanner.enrich(
+    [record("P0420"), record("P0171")],
+    "Engine Control Unit",
+    "engine",
+    ENGINE_REF,
+  );
+  assert.equal(catalyst?.description, "Catalyst efficiency below threshold");
+  assert.equal(catalyst?.severity, "major");
+  assert.equal(catalyst?.knowledge?.scope, "package");
+  assert.ok(
+    catalyst?.knowledge?.notes.some((note) => note.includes("no variant-specific knowledge")),
+    catalyst?.knowledge?.notes.join(" | "),
+  );
+  assert.equal(lean?.description, "Lean correction on the diesel variant");
+  assert.equal(lean?.knowledge?.scope, "vehicle-engine");
+});
+
+test("a gearbox-scoped entry answers for the gearbox the resolution named", () => {
+  const scanner = scannerOf(knowledgePackage(), EXTRA_PACKAGE);
+  scanner.setVehicle({ oem: "test", vehicleId: "variant", gearboxIds: ["auto"] });
+  const [dtc] = scanner.enrich([record("C1234")], "Transmission", "gearbox", {
+    oem: "test",
+    ecu: "gearbox",
+  });
+  assert.equal(dtc?.description, "Wheel speed plausibility on the automatic");
+  assert.equal(dtc?.knowledge?.scope, "vehicle-gearbox");
+  assert.ok(
+    dtc?.knowledge?.notes.some((note) => note.includes("no numeric window")),
+    dtc?.knowledge?.notes.join(" | "),
+  );
+});
+
+test("a code nothing documents stays without an answer", () => {
+  const scanner = scannerOf(knowledgePackage());
+  scanner.setVehicle(PETROL_VARIANT);
+  const [dtc] = scanner.enrich([record("B9999")], "Engine Control Unit", "engine", ENGINE_REF);
+  assert.equal(dtc?.description, undefined);
+  assert.equal(dtc?.knowledge, undefined);
+});
+
+test("the ECU that reported the code supplies the manufacturer", () => {
+  const scanner = scannerOf(knowledgePackage());
+  // No oem in the context: the definition reference of the answering ECU says
+  // which package the knowledge has to come from.
+  scanner.setVehicle({ vehicleId: "variant", engineIds: ["petrol"] });
+  const [dtc] = scanner.enrich([record("P0420")], "Engine Control Unit", "engine", ENGINE_REF);
+  assert.equal(dtc?.description, "Catalyst efficiency on the petrol variant");
+});
+
+test("rebinding another vehicle replaces the cached knowledge", () => {
+  const scanner = scannerOf(knowledgePackage());
+  scanner.setVehicle(PETROL_VARIANT);
+  const [petrol] = scanner.enrich([record("P0420")], "Engine Control Unit", "engine", ENGINE_REF);
+  assert.equal(petrol?.description, "Catalyst efficiency on the petrol variant");
+
+  scanner.setVehicle({ oem: "test", vehicleId: "variant", engineIds: ["diesel"] });
+  const [diesel] = scanner.enrich([record("P0420")], "Engine Control Unit", "engine", ENGINE_REF);
+  assert.equal(diesel?.description, "Catalyst efficiency below threshold");
+
+  scanner.setVehicle(undefined);
+  const [unbound] = scanner.enrich([record("P0420")], "Engine Control Unit", "engine", ENGINE_REF);
+  assert.equal(unbound?.knowledge, undefined, "detaching removes every variant claim");
+  assert.equal(unbound?.description, "Catalyst efficiency below threshold");
+});
+
+test("knowledge survives a repeated scan of the same ECU unchanged", () => {
+  const scanner = scannerOf(knowledgePackage());
+  scanner.setVehicle(PETROL_VARIANT);
+  const first = scanner.enrich([record("P0420")], "Engine Control Unit", "engine", ENGINE_REF);
+  const second = scanner.enrich([record("P0420")], "Engine Control Unit", "engine", ENGINE_REF);
+  assert.deepEqual(second[0]?.knowledge, first[0]?.knowledge);
+  assert.equal(second[0]?.firstSeenInThisScan, false, "the code was already there");
+  assert.equal(second[0]?.firstSeen, first[0]?.firstSeen);
+});
+
+test("a comparison keeps the variant knowledge of the scan it came from", () => {
+  const scanner = scannerOf(knowledgePackage());
+  scanner.setVehicle(PETROL_VARIANT);
+  const before: EnrichedDtc[] = scanner.enrich(
+    [record("P0420")],
+    "Engine Control Unit",
+    "engine",
+    ENGINE_REF,
+  );
+  const after: EnrichedDtc[] = scanner.enrich(
+    [record("P0420", 0x00)],
+    "Engine Control Unit",
+    "engine",
+    ENGINE_REF,
+  );
+  const comparison = scanner.compare(before, after);
+  assert.equal(comparison.changed.length, 1);
+  assert.equal(after[0]?.knowledge?.scope, "vehicle-engine");
 });

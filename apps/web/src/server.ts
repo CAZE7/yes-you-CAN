@@ -270,6 +270,14 @@ export class WebServer {
     }
     if (path === "/api/identify" && method === "POST")
       return this.sendJson(response, 200, { ecus: await this.backend.identify() });
+
+    // Which vehicle is connected (AGENTS 11). A query, never a write: the answer
+    // is a ranked list of hypotheses with the evidence behind each of them, and
+    // "nothing matches the installed definitions" is a valid answer.
+    if (path === "/api/vehicle/resolve" && method === "POST")
+      return this.sendJson(response, 200, { resolution: await this.backend.resolveVehicle() });
+    if (path === "/api/vehicle/resolve" && method !== "POST")
+      throw new HttpError(405, "resolving a vehicle is POST only");
     if (path === "/api/dtc/scan" && method === "POST")
       return this.sendJson(response, 200, { dtcs: await this.backend.scanDtcs() });
 

@@ -3,10 +3,72 @@
  *
  * Adds the pieces the raw UDS layer does not have: description enrichment from
  * definition packages, severity, snapshots and before/after comparison.
+ *
+ * Enrichment has two layers, and they stay distinguishable:
+ *  - what a code means for a manufacturer (`EcuDefinition.dtcs`) — always
+ *    available as soon as a package is loaded,
+ *  - what it means for the *resolved vehicle* with its engine and gearbox
+ *    (`VehicleDefinition.dtcKnowledge`, AGENTS 23) — available once
+ *    {@link DtcScanner.setVehicle} knows which car is connected.
+ * The second layer overrides the first where it says something, and everything it
+ * cannot say is reported in `notes` instead of being dressed up (§24).
  */
 
-import type { DefinitionPackage } from "@vdp/definitions";
+import {
+  type DefinitionPackage,
+  type DtcKnowledgeHit,
+  type DtcKnowledgePattern,
+  type DtcKnowledgeScope,
+  findDtcKnowledge,
+} from "@vdp/definitions";
 import type { DtcRecord } from "@vdp/protocols-uds";
+
+/** The resolved vehicle a scan belongs to (AGENTS 11 → AGENTS 20). */
+export interface DtcVehicleContext {
+  /** Manufacturer key of the package the vehicle was resolved in. */
+  oem?: string;
+  vehicleId?: string;
+  /** Powertrains the resolution narrowed down; empty means "not narrowed". */
+  engineIds?: readonly string[];
+  gearboxIds?: readonly string[];
+}
+
+/** Where a code was read from, in the definition package's own words. */
+export interface DtcDefinitionRef {
+  /** Manufacturer key the ECU id belongs to ("<oem>:<id>" split apart). */
+  oem?: string;
+  /** Bare ECU id of the package, e.g. "engine". */
+  ecu?: string;
+}
+
+/**
+ * Variant knowledge as it travels with a scanned code (§20, §23).
+ *
+ * This is the *record* shape — what is stored in a session and shown in a report
+ * — so it carries only what a reader can act on: the scope that says where the
+ * wording came from, the documented failure patterns with their measurement
+ * checks, the source of the statement and what is missing. The definitions layer
+ * knows more (package version, baseline provenance); flattening it here keeps
+ * every stored DTC small and self-contained.
+ */
+export interface DtcVariantKnowledge {
+  /**
+   * Where description/severity/hint came from: `vehicle-engine`,
+   * `vehicle-gearbox`, `vehicle` or `package` (AGENTS 24: no guess poses as
+   * variant knowledge).
+   */
+  scope: DtcKnowledgeScope;
+  vehicleId?: string;
+  /** When the code sets — only variant knowledge documents this. */
+  conditions?: string;
+  /** Known failure patterns, most specific first, with their measurement checks. */
+  patterns: DtcKnowledgePattern[];
+  /** Where the variant statement comes from (AGENTS 24). */
+  provenanceType?: string;
+  provenanceSource?: string;
+  /** What is missing or had to be assumed; shown next to the answer. */
+  notes: string[];
+}
 
 export interface EnrichedDtc extends DtcRecord {
   /** Description from the definition package, when one exists. */
@@ -27,6 +89,11 @@ export interface EnrichedDtc extends DtcRecord {
    * Only ids the package itself defines — no inferred relation.
    */
   relatedSignals?: Array<{ id: string; name: string }>;
+  /**
+   * What the resolved vehicle's variant knowledge adds (§23). Absent when no
+   * vehicle is bound or when nothing is documented for this code.
+   */
+  knowledge?: DtcVariantKnowledge;
 }
 
 /** What the tracker knows about one code of one ECU. */
@@ -110,6 +177,12 @@ export interface DtcScannerOptions {
 }
 
 export class DtcScanner {
+  private readonly packages: readonly DefinitionPackage[];
+  /** Signal names across all packages, first declaration wins. */
+  private readonly signalNames = new Map<string, string>();
+  private vehicle: DtcVehicleContext | undefined;
+  /** Knowledge per code and context: a scan asks for the same codes repeatedly. */
+  private readonly knowledgeCache = new Map<string, DtcKnowledgeHit | undefined>();
   private readonly descriptions = new Map<
     string,
     {
@@ -125,9 +198,12 @@ export class DtcScanner {
 
   constructor(options: DtcScannerOptions = {}) {
     this.clock = options.clock ?? (() => new Date());
-    for (const pkg of options.definitions ?? []) {
-      const signalNames = new Map<string, string>();
-      for (const signal of pkg.signals ?? []) signalNames.set(signal.id, signal.name);
+    this.packages = options.definitions ?? [];
+    for (const pkg of this.packages) {
+      const signalNames = this.signalNames;
+      for (const signal of pkg.signals ?? []) {
+        if (!signalNames.has(signal.id)) signalNames.set(signal.id, signal.name);
+      }
       for (const ecu of pkg.ecus) {
         for (const dtc of ecu.dtcs ?? []) {
           const existing = this.descriptions.get(dtc.code);
@@ -146,7 +222,85 @@ export class DtcScanner {
     }
   }
 
-  enrich(records: readonly DtcRecord[], ecuName: string, ecuId: string): EnrichedDtc[] {
+  /**
+   * Bind the resolved vehicle (AGENTS 11). Every later scan enriches its codes
+   * with what this variant documents about them.
+   *
+   * `undefined` detaches: a new connection is a new car until the resolution
+   * proves otherwise, and knowledge attributed to the previous one would be a
+   * statement about a vehicle that is no longer connected.
+   */
+  setVehicle(context: DtcVehicleContext | undefined): void {
+    this.vehicle = context;
+    this.knowledgeCache.clear();
+  }
+
+  /** The vehicle the scanner currently enriches for, when one is bound. */
+  get vehicleContext(): DtcVehicleContext | undefined {
+    return this.vehicle;
+  }
+
+  /**
+   * Variant knowledge for one code, or `undefined` when nothing is documented.
+   *
+   * Deliberately refuses to answer without a bound vehicle: the package-wide
+   * description is already on the record, and presenting it as variant knowledge
+   * would hide the difference the whole vehicle axis exists for (§24).
+   */
+  private knowledgeFor(
+    code: string,
+    definition: DtcDefinitionRef | undefined,
+  ): DtcKnowledgeHit | undefined {
+    const vehicle = this.vehicle;
+    if (vehicle?.vehicleId === undefined) return undefined;
+    const oem = vehicle.oem ?? definition?.oem;
+    const engineIds = vehicle.engineIds ?? [];
+    const gearboxIds = vehicle.gearboxIds ?? [];
+    const key = [
+      oem ?? "",
+      vehicle.vehicleId,
+      engineIds.join(","),
+      gearboxIds.join(","),
+      definition?.ecu ?? "",
+      code.trim().toUpperCase(),
+    ].join("|");
+    if (this.knowledgeCache.has(key)) return this.knowledgeCache.get(key);
+
+    const hit = findDtcKnowledge(this.packages, {
+      code,
+      vehicleId: vehicle.vehicleId,
+      ...(definition?.ecu !== undefined ? { ecu: definition.ecu } : {}),
+      ...(oem !== undefined ? { oem } : {}),
+      ...(engineIds.length > 0 ? { engineIds } : {}),
+      ...(gearboxIds.length > 0 ? { gearboxIds } : {}),
+    });
+    this.knowledgeCache.set(key, hit);
+    return hit;
+  }
+
+  /** The record shape of one lookup result (see {@link DtcVariantKnowledge}). */
+  private variantKnowledgeOf(hit: DtcKnowledgeHit): DtcVariantKnowledge {
+    const knowledge: DtcVariantKnowledge = {
+      scope: hit.scope,
+      patterns: [...hit.patterns],
+      notes: [...hit.notes],
+    };
+    if (hit.vehicleId !== undefined) knowledge.vehicleId = hit.vehicleId;
+    if (hit.conditions !== undefined) knowledge.conditions = hit.conditions;
+    const provenance = hit.knowledgeProvenance;
+    if (provenance !== undefined) {
+      knowledge.provenanceType = provenance.sourceType;
+      knowledge.provenanceSource = provenance.source;
+    }
+    return knowledge;
+  }
+
+  enrich(
+    records: readonly DtcRecord[],
+    ecuName: string,
+    ecuId: string,
+    definition?: DtcDefinitionRef,
+  ): EnrichedDtc[] {
     const timestamp = this.clock().toISOString();
     // Register the whole scan first, so "first seen in this scan" is decided once
     // for all codes of the ECU instead of depending on the response order.
@@ -158,14 +312,25 @@ export class DtcScanner {
     return records.map((record) => {
       const info = this.descriptions.get(record.code);
       const occurrence = occurrences.get(`${ecuId}:${record.code.toUpperCase()}`);
+      const hit = this.knowledgeFor(record.code, definition);
+      // Variant wording wins over the package wording; whatever the variant does
+      // not declare keeps the package's answer (AGENTS 20).
+      const description = hit?.description ?? info?.description;
+      const hint = hit?.hint ?? info?.hint;
+      const related = hit
+        ? hit.relatedSignals
+            .filter((id) => this.signalNames.has(id))
+            .map((id) => ({ id, name: this.signalNames.get(id) ?? id }))
+        : info?.relatedSignals;
       return {
         ...record,
-        ...(info?.description ? { description: info.description } : {}),
-        ...(info?.hint ? { hint: info.hint } : {}),
-        ...(info?.relatedSignals ? { relatedSignals: info.relatedSignals } : {}),
-        severity: info?.severity ?? record.severity,
+        ...(description ? { description } : {}),
+        ...(hint ? { hint } : {}),
+        ...(related && related.length > 0 ? { relatedSignals: related } : {}),
+        severity: hit?.severity ?? info?.severity ?? record.severity,
         ecuName,
         ecuId,
+        ...(hit ? { knowledge: this.variantKnowledgeOf(hit) } : {}),
         ...(occurrence
           ? {
               firstSeen: occurrence.firstSeen,

@@ -10,6 +10,7 @@
 import type {
   ClearDtcResult,
   DecodedSignal,
+  DtcVariantKnowledge,
   EcuSession,
   EnrichedDtc,
   FreezeFrame,
@@ -25,6 +26,7 @@ import type {
   AnomalyInfo,
   ClearDtcOutcome,
   DtcInfo,
+  DtcKnowledgeInfo,
   EcuSummary,
   FreezeFrameInfo,
   MarkerInfo,
@@ -93,6 +95,44 @@ export function toSessionSummary(session: VehicleSession): SessionSummary {
   };
 }
 
+/**
+ * Variant knowledge → read model (§20, §23).
+ *
+ * Field names follow the domain's (`signalId`/`name` like every other reading),
+ * and nothing is added: what the definitions layer could not document stays
+ * absent, so the UI cannot show a completeness the data does not have.
+ */
+export function toDtcKnowledge(knowledge: DtcVariantKnowledge): DtcKnowledgeInfo {
+  const result: DtcKnowledgeInfo = {
+    scope: knowledge.scope,
+    patterns: knowledge.patterns.map((pattern) => ({
+      id: pattern.id,
+      name: pattern.name,
+      scope: pattern.scope,
+      checks: pattern.checks.map((check) => ({
+        signalId: check.signal,
+        name: check.signalName,
+        expect: check.expect,
+        measurable: check.measurable,
+        ...(check.min !== undefined ? { min: check.min } : {}),
+        ...(check.max !== undefined ? { max: check.max } : {}),
+        ...(check.windowMs !== undefined ? { windowMs: check.windowMs } : {}),
+      })),
+      ...(pattern.explanation !== undefined ? { explanation: pattern.explanation } : {}),
+      ...(pattern.likelihood !== undefined ? { likelihood: pattern.likelihood } : {}),
+      ...(pattern.repair !== undefined ? { repair: pattern.repair } : {}),
+    })),
+    notes: [...knowledge.notes],
+    ...(knowledge.vehicleId !== undefined ? { vehicleId: knowledge.vehicleId } : {}),
+    ...(knowledge.conditions !== undefined ? { conditions: knowledge.conditions } : {}),
+    ...(knowledge.provenanceType !== undefined ? { provenanceType: knowledge.provenanceType } : {}),
+    ...(knowledge.provenanceSource !== undefined
+      ? { provenanceSource: knowledge.provenanceSource }
+      : {}),
+  };
+  return result;
+}
+
 export function toDtcInfo(dtc: EnrichedDtc): DtcInfo {
   return {
     code: dtc.code,
@@ -114,6 +154,7 @@ export function toDtcInfo(dtc: EnrichedDtc): DtcInfo {
     ...(dtc.relatedSignals !== undefined && dtc.relatedSignals.length > 0
       ? { relatedSignals: dtc.relatedSignals.map((signal) => ({ ...signal })) }
       : {}),
+    ...(dtc.knowledge !== undefined ? { knowledge: toDtcKnowledge(dtc.knowledge) } : {}),
   };
 }
 

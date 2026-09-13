@@ -1,6 +1,6 @@
 # Migrations-Roadmap zur Zielarchitektur
 
-Stand: 2026-09-12 · Bezug: ADR 0014, ADR 0015
+Stand: 2026-09-12 · Bezug: ADR 0014, ADR 0015, ADR 0023
 
 Dieses Dokument verbindet die langfristige Zielarchitektur (Vehicle Diagnostic
 Platform: Clients → Application Layer → Domain Core → Protocols/Definitions/Safety
@@ -49,6 +49,9 @@ Rote Linien (werden in `tests/architecture` erzwungen):
 | 11. Observability | Korrelations-/Action-Ids durchgängig in Traces & Logs | ⏳ | Events tragen die Ids bereits |
 | 12. Offline-first + Sync-Vertrag | `entityId`/`revision`/`updatedAt`/`deviceId` auf Entities | ⏳ | `@vdp/domain`, `@vdp/storage` |
 | 13. Deterministischer Simulator als Virtual Vehicle | Gateway + mehrere ECUs mit Zuständen, Szenarien als Tests | teilweise | `tools/simulators` |
+| 14. Fahrzeugschicht: Schema v2 + Resolver | Fahrzeuge, Plattformen, Motoren/Getriebe und VIN-Matching als Daten; Bestimmung des verbundenen Fahrzeugs aus VIN, Identifikationswerten und beantworteten Adressen — Kandidaten mit Belegen und Widersprüchen | ✅ Query `vehicle.resolve` über Port `DefinitionProvider.resolveVehicle` bis ins Workbench-Panel; WMI-Referenz (ISO 3780) mit eigener Provenance; Simulator-Paket macht die Demo auflösbar; per-file-Gate `definitions` 85/80 (ADR 0023) | `packages/definitions`, `packages/domain`, `packages/application`, `packages/runtime`, `apps/web` |
+| 15. DTC-Wissen pro Fahrzeugvariante | Fehlertexte, Ursachen, Messwerte-Sollbereich und Prüfschritte je Fahrzeug/Motor statt je Paket | ✅ Schema v3: `vehicles[].dtcKnowledge[]` mit `patterns[]` (Ursachen, `likelihood`, Reparaturhinweis) und `checks[]` (Messpunkt, Erwartung, `min`/`max`/`windowMs`); `findDtcKnowledge` löst nach Spezifität (Motor 16 · Getriebe 8 · ECU 4 · angenommen 2/1) und sammelt breitere Muster statt sie zu verdrängen; `DtcScanner.setVehicle` schichtet Variantenwissen über die paketweite Beschreibung, `connect()` bindet das aufgelöste Fahrzeug sofort; Scope/Notes/`measurable`/Provenance machen sichtbar, woraus eine Aussage besteht (ADR 0024). Simulator-Variante trägt echtes Wissen zu P0420/P0300/P0171/P0700/P0715/C0035, `U0121` bewusst ohne (ein Kommunikationscode bedeutet für jede Variante dasselbe); Gates für Einträge und Quellen (kein Stellvertreter-Signal, Fenster als Messbedingung, Provenance je Quellentyp, ADR 0025) | `packages/definitions`, `packages/core`, `packages/domain`, `packages/runtime`, `apps/web` |
+| 16. Geführte Diagnose | Prüfabläufe als Daten (Symptom → Hypothesen → Messschritt → Auswertung), Verbraucher von Schritt 15 | ⏳ steht auf Schritt 15: `patterns[]` sind die Hypothesen, `checks[]` die Messschritte mit auswertbarem Fenster, Pattern-IDs sind je Fahrzeug eindeutig und damit adressierbar; offen ist die Ablaufsteuerung (messen → Fenster bewerten → Ergebnis je Muster), was „nicht prüfbar" für einen Ablauf bedeutet, und wie eine Beziehung zwischen zwei Messpunkten ausgedrückt wird — heute stehen für „linke gegen rechte Radgeschwindigkeit" zwei Checks mit demselben Fenster nebeneinander und die Beziehung im `expect`-Text (ADR 0025) | `packages/definitions`, `packages/runtime`, `apps/web` |
 
 ## Ergebnis der Engine-Zerlegung (Schritt 8/9, 2026-09-12)
 
@@ -89,6 +92,129 @@ Rote Linien (werden in `tests/architecture` erzwungen):
     HTTP-Antwort (`cleared: false` + `reasons`, ADR 0018; eigener
     Server-Test). Precheck und Schreibzugriff werten nachweisbar dieselbe
     Kette aus.
+
+## Ergebnis der Fahrzeugschicht (Schritt 14, 2026-09-12)
+
+- **Schema v2 statt Nebenmodell.** `vehicles[]` liegt im Paket neben ECUs, DIDs
+  und Signalen; `migrate.ts` hebt v1 → v2, Validator und JSON-Parser prüfen
+  Referenzen, Duplikate und VIN-Zeichen semantisch. Kein Fahrzeugwissen in
+  `core` — die Abhängigkeitsrichtung bleibt Test (`tests/architecture`).
+- **Resolver mit Belegen.** `VehicleResolver` gewichtet 16 Kriterien
+  (Teilenummer 4 · WMI/Motor-Getriebekennung/ECU-Abdeckung 3 · VDS/Softwarestand/
+  Modellangabe/unerwartetes Steuergerät 2 · Rest 1), `score` ist der Anteil
+  bestätigter Gewichte, `ecu-coverage` zählt anteilig. Jeder Kandidat trägt
+  `evidence[]` **und** `conflicts[]` mit `observed`/`expected`/`weight`/`reason`;
+  Provenance bricht Gleichstände (ADR 0003), Platzhalter drängen sich nicht vor.
+- **Attributionsregel.** Widersprechen kann nur ein Wert, dessen DID als
+  Teilenummer, Software- oder Hardwarestand dokumentiert ist
+  (`identificationKindForLabel`); Seriennummern und unbekannte DIDs stützen bei
+  Treffer und sind sonst neutral. Ohne die Regel bestraft der Resolver Fahrzeuge
+  für Werte, die er nicht versteht.
+- **Namensraum je Paket.** Identifikationsfakten tragen `oem` plus nacktes
+  ECU-Id, weil die Engine `"<oem>:<id>"` speichert und zwei Pakete dasselbe Id
+  tragen dürfen.
+- **Naht bis ins Panel.** `DefinitionProvider.resolveVehicle` (Domain) →
+  `vehicle.resolve` (Application) → `VehicleService.resolve` mit Faktensammlung
+  in `packages/runtime/src/vehicle-resolution.ts` → `POST /api/vehicle/resolve`
+  + SSE-Ereignis `vehicle` + `apps/web/src/vehicle-view.ts` (Übersetzung der
+  Kriterium-Schlüssel, gegen die Union-Typen der Definitionsschicht typisiert).
+- **Simulator ehrlich gemacht.** ASCII-Signale antworteten alle mit der VIN —
+  auch die Teilenummer unter 0xF187. Jetzt liefert nur 0xF190 die VIN, jedes
+  andere ASCII-Signal `<ECU-ID>-<DID>`; `simulatorPackage` deklariert genau
+  diese Werte, und ein Kopplungstest in `tools/simulators` rechnet die Antworten
+  aus den Definitionen nach (er hat die Hex-Groß-/Kleinschreibung als echten
+  Fehler gefunden). Gegen echte Hardware bleibt `genericPackage` aktiv.
+- **Messung.** Suite 1066 → **1223 Tests** in 88 Dateien (24,73 s), Coverage
+  global 96,26 Statements / 89,08 Zweige, `packages/definitions` 98,68 Zeilen /
+  92,87 Zweige; neues per-file-Gate `definitions` 85/80, Biss belegt
+  (`lines: 99` → `EXIT=1` mit `migrate.ts (87.5%)` und `validate.ts (96.07%)`).
+  Die Demo bestimmt das simulierte Fahrzeug mit score 1,00 aus 11 Belegen und 0
+  Widersprüchen; derselbe Bus mit fremder VIN ergibt score 0,39 mit vier
+  benannten VIN-Widersprüchen (Integrationstest).
+
+**Nächste Schritte (15/16):** DTC-Wissen pro Variante und geführte Diagnose als
+Verbraucher desselben Wissens. Beides braucht keine neue Architektur — es
+braucht `vehicles[]` als Anker, und der steht jetzt.
+
+## Ergebnis der Wissensschicht (Schritt 15, 2026-09-13)
+
+- **Schema v3 statt Wissens-Nebenmodell.** `vehicles[].dtcKnowledge[]` liegt im
+  Paket neben den ECUs; `migrate.ts` verkettet jetzt v1 → v2 → v3 und der
+  v3-Schritt hebt nur die Version — Wissen darf fehlen, und eine Migration
+  erfindet nichts. Eingebaute Pakete deklarieren `CURRENT_SCHEMA_VERSION` statt
+  einer Zahl, damit ein Bump nicht an drei Stellen nachgezogen werden muss.
+- **Auflösung nach Spezifität, nicht nach Reihenfolge.** `findDtcKnowledge`
+  gewichtet Motor 16 · Getriebe 8 · ECU 4 · angenommen 2/1. Ein Eintrag für einen
+  anderen Motor ist kein schwacher Treffer, sondern keiner. Muster werden über
+  **alle** zutreffenden Einträge gesammelt (spezifischster zuerst, IDs je Fahrzeug
+  eindeutig), weil eine motorspezifische und eine variantenweite Ursache sich
+  ergänzen, statt sich zu verdrängen.
+- **Eine bewusste Ausnahme.** Ist der Antriebsstrang nicht eingeengt und deklariert
+  die Variante genau einen Motor, gilt der darauf gescopete Eintrag — unter allem
+  Bestätigten und mit Note. Sind mehrere deklariert, wird abgelehnt: ohne Beleg
+  wäre die Wahl ein Münzwurf. Praktisch heißt das: Nur-VIN zeigt das Wissen des
+  einzigen dokumentierten Motors, nach dem Lesen der Identifikations-DIDs
+  verschwindet Annahme samt Note.
+- **Schichtung statt Ersetzen.** `EcuDefinition.dtcs[]` bleibt die Basis (sie trägt
+  Enable-Bedingungen und Snapshot-Referenzen); `DtcScanner.setVehicle` legt
+  Variantenwissen darüber und `enrich(...)` merged `relatedSignals` — Paket plus
+  Variante, eindeutig, nur im Paket definierte IDs. `connect()` bindet sofort, weil
+  VIN und Identifikation dann gelesen sind; `disconnect()` löst, damit Wissen die
+  Sitzung nicht überlebt. Ohne gebundenes Fahrzeug entsteht **kein** `knowledge`.
+- **Ehrlichkeit als Datenmodell.** `scope` (vehicle-engine / vehicle-gearbox /
+  vehicle / package), `notes[]` (kein Variantenwissen · nur Text · kein
+  Zahlenfenster · Antriebsstrang angenommen · Fahrzeug nicht deklariert),
+  `checks[].measurable` und `knowledgeProvenance` als Quelle **der angezeigten**
+  Aussage (Entry → sonst Fahrzeug, aber nur wenn ein Entry gewann → sonst Paket).
+  Der Provenance-Fehler fiel erst in der laufenden Demo auf: paketweit beschriebene
+  Codes (C0035, U0121, P0700) trugen die Herkunft des Fahrzeugs und verliehen
+  damit einer Variante eine Aussage, die sie nicht getroffen hatte.
+- **Keine erfundenen Messpunkte.** `genericPackage` definiert keine Lambda-Sonden
+  (PID 0x14–0x1B), also prüft das Katalysator-Muster über Kraftstoffkorrektur und
+  Kühlmitteltemperatur und sagt im Text, was das belegt und was nicht. Eine
+  erfundene Signal-ID hätte einen Prüfschritt erzeugt, der nie laufen kann.
+- **Naht bis in die UI.** `DtcInfo.knowledge` (Domain) → `toDtcKnowledge`
+  (`runtime/mappers.ts`) → `DtcView.knowledge` über
+  `apps/web/src/dtc-knowledge-view.ts`, dessen Scope- und Likelihood-Labels gegen
+  die Union-Typen der Definitionsschicht typisiert sind (ein neuer Scope bricht den
+  Build, statt als Rohschlüssel beim Bediener anzukommen). `public/app.js` enthält
+  damit kein Vokabular mehr: Muster als Karten, Messpunkte als Tabelle (Messpunkt ·
+  Erwartung · Fenster · Bewertung), Reparaturhinweise als solche gelabelt, Notes
+  als Warnungen.
+- **Was ein Eintrag tragen muss (ADR 0025).** Provenance wird je Quellentyp
+  geprüft: `licensed` ohne `license` ist ein Fehler, ohne `version`/`retrievedAt`
+  eine Warnung; `standard` ohne Ausgabe warnt; `community` — vorher die einzige
+  Kategorie ohne Regel — warnt über ungeklärte Rechte; ein `retrievedAt`, das kein
+  ISO-8601-Datum ist, ist ein Fehler. Auf dem Dateipfad verschwindet kein
+  Provenance-Feld mehr still: `coerceProvenance` kopierte `notes` nicht, ein
+  geladenes lizenziertes Paket verlor also den Satz, der seine Lizenz einschränkt
+  (Regressionseintrag, Biss belegt). Und in den Daten selbst: kein
+  Stellvertreter-Signal mehr — P0715 „intermittierend" prüfte 30 s die
+  Öltemperatur und nannte es einen Dropout-Wächter, obwohl das Paket kein
+  Eingangsdrehzahlsignal definiert; jetzt sagt das Muster, was es nicht messen
+  kann, und prüft nur die Bedingung. Beide Fehler waren unsichtbar für den
+  Compiler: optionale Felder und ein Window ohne Bedeutung sind typkorrekt.
+- **Wissen 4 → 6 Codes.** Neu P0700 (drei Muster, das dritte ohne Check, weil kein
+  Signal dieses Pakets einen Selbsttest entscheidet; das Gangfenster 3…4 liest die
+  `enumMapping` des Pakets) und C0035 (drei auswertbare Fenster 45…55 km/h über 5 s
+  — linke Ecke, rechte Ecke, OBD-Geschwindigkeit aus einem anderen Steuergerät —
+  plus ein 30-s-Wächter ohne Grenze, also „nur manuell beurteilbar"). `U0121`
+  bleibt bewusst ohne Eintrag; ein Test zählt beschriebene gegen dokumentierte
+  Codes, damit die Lücke benannt bleibt.
+- **Messung.** Suite 1223 → **1300 Tests** in 90 Dateien (25,17 s), Coverage
+  global 96,48 Statements / 89,67 Zweige / 97,86 Zeilen, `packages/definitions`
+  99,08 Zeilen / 94,15 Zweige, `knowledge.ts` 100 Zeilen / 96,98 Zweige,
+  `scanner.ts` 100 / 87,8. Ende-zu-Ende belegt: der Integrationstest scannt nach
+  dem Connect und sieht `scope: "vehicle-engine"`, zwei Muster und `notes: []`;
+  der Server-Test sieht dieselbe Antwort über HTTP inkl. der deutschen Labels.
+  Die Demo zeigt P0420 mit zwei Mustern und fünf auswertbaren Fenstern, P0715 über
+  die Getriebe-Achse und C1234 ohne Wissen (Note statt Raten).
+
+**Nächster Schritt (16):** Geführte Diagnose verbraucht dasselbe Wissen — `patterns[]`
+sind die Hypothesen, `checks[]` die Messschritte mit auswertbarem Fenster, und eine
+Pattern-ID ist je Fahrzeug eindeutig, also adressierbar. Offen ist die
+Ablaufsteuerung (messen → Fenster bewerten → Ergebnis je Muster) und was
+„nicht prüfbar" für einen Ablauf bedeutet.
 
 ## Regeln für die nächsten Schritte
 
