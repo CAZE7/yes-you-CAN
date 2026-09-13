@@ -13,6 +13,7 @@
     "forceConsistentCasingInFileNames": true,
     "paths": {
       "/graphs.js": ["./apps/web/public/graphs.js"],
+      "/vehicle.js": ["./apps/web/public/vehicle.js"],
       "/chart.js": ["./apps/web/public/chart.js"],
       "/lib/index.js": ["./packages/charts/src/index.ts"]
     }

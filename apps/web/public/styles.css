@@ -592,3 +592,40 @@ ul.plain.check-list li.info::before {
   content: "· ";
   color: var(--muted);
 }
+
+/* ------------------------------------------------- Fahrzeugbestimmung (11) */
+
+.candidate {
+  margin-top: 0.75rem;
+  padding: 0.7rem 0.8rem;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.candidate-best {
+  border-color: rgba(79, 249, 169, 0.45);
+}
+.candidate-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.candidate-head .pill {
+  margin-left: auto;
+}
+.score {
+  height: 6px;
+  margin: 0.55rem 0 0.65rem;
+  background: rgba(255, 255, 255, 0.07);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.score-fill {
+  height: 100%;
+  background: var(--ok);
+  border-radius: 999px;
+}
+.score-fill-weak {
+  background: var(--warn);
+}

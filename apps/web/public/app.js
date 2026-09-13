@@ -7,6 +7,7 @@
  */
 
 import { GraphBoard } from "/graphs.js";
+import { renderVehicleResolution } from "/vehicle.js";
 
 /** Shared error message extraction — `catch` bindings are `unknown`. */
 const messageOf = (error) => (error instanceof Error ? error.message : String(error));
@@ -345,6 +346,7 @@ function applyState(data) {
   state.connected = data.connected;
   state.live = data.live;
   renderConnection(data);
+  if (data.vehicleResolution) renderVehicleResolution(data.vehicleResolution);
   renderEcus(data.ecus);
   renderDtcs(data.dtcs);
   renderStatistics(data.statistics, data.anomalies);
@@ -681,6 +683,7 @@ function connectStream() {
     renderEcus(ecus);
   });
   source.addEventListener("analysis", (event) => renderAnalysis(payloadOf(event)));
+  source.addEventListener("vehicle", (event) => renderVehicleResolution(payloadOf(event)));
   source.addEventListener("error", (event) => {
     const data = /** @type {MessageEvent} */ (event).data;
     if (data) logError(new Error(JSON.parse(data).message ?? "SSE Fehler"));
@@ -834,11 +837,26 @@ $("#btn-start").addEventListener("click", () => {
     .catch(logError);
 });
 
+/**
+ * Determine the connected vehicle (AGENTS 11).
+ *
+ * Read-only: it weighs what is already known — VIN, identification values, the
+ * addresses that answered — against the installed definitions.
+ */
+const resolve = () =>
+  api("/api/vehicle/resolve", { method: "POST" })
+    .then((data) => renderVehicleResolution(data.resolution))
+    .catch(logError);
+$("#btn-resolve").addEventListener("click", resolve);
+
 $("#btn-identify").addEventListener("click", () => {
   api("/api/identify", { method: "POST" })
     .then((data) => {
       state.ecusCache = data.ecus;
       renderEcus(data.ecus);
+      // The identification values are the evidence a resolution weighs, so the
+      // vehicle panel is refreshed with them instead of waiting for a click.
+      return resolve();
     })
     .catch(logError);
 });
