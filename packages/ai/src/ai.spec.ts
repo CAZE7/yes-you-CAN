@@ -503,3 +503,273 @@ test("a service without providers fails loudly instead of silently returning not
     /no analysis provider registered/,
   );
 });
+
+/**
+ * What the analysis is allowed to claim (AGENTS 22, ADR 0026).
+ *
+ * The provider used to receive codes and statistics only, so "P0420 stored in Engine"
+ * was as specific as it got — a rule answering about a car it never saw. These tests
+ * pin the two halves of the fix: the vehicle travels with the input, and the answer
+ * says how far its own reach goes. Confidence only ever goes down on missing context:
+ * a reward for knowing the variant would be exactly the false certainty §22 forbids.
+ */
+
+const P0420 = {
+  code: "P0420",
+  severity: "major",
+  ecu: "Engine",
+  description: "Catalyst system efficiency below threshold",
+};
+
+test("the summary names the vehicle the input was about", async () => {
+  const result = await new HeuristicAnalysisProvider().analyze(sampleInput());
+  assert.match(result.summary, /on Honda Accord 2003\./);
+  assert.ok(
+    !result.summary.includes("1HGCM82633A004352"),
+    "the summary is not where a VIN belongs (AGENTS 27)",
+  );
+});
+
+test("a determined vehicle keeps confidence, it does not raise it", async () => {
+  const result = await new HeuristicAnalysisProvider().analyze(
+    sampleInput({
+      vehicle: { brand: "Honda", model: "Accord", modelYear: 2003, vehicleId: "accord-2003" },
+    }),
+  );
+  assert.match(result.summary, /on Honda Accord 2003 \(accord-2003\)\./);
+  assert.equal(result.confidence, 0.4);
+  assert.ok(
+    !result.warnings?.some((warning) => warning.includes("No vehicle was determined")),
+    (result.warnings ?? []).join(" | "),
+  );
+});
+
+test("an identified car is not a determined one", async () => {
+  // A brand and a model can come from the VIN alone. Variant statements still need a
+  // matched definition, so this session has to be told that — the difference between
+  // "known car" and "resolved car" is the whole point of AGENTS 11.1.
+  const result = await new HeuristicAnalysisProvider().analyze(sampleInput());
+  assert.ok(
+    result.warnings?.some((warning) => warning.includes("No vehicle was determined")),
+    (result.warnings ?? []).join(" | "),
+  );
+  assert.equal(result.confidence, 0.3);
+});
+
+test("an input without a vehicle says so and claims less", async () => {
+  const result = await new HeuristicAnalysisProvider().analyze(sampleInput({ vehicle: undefined }));
+  assert.match(result.summary, /on an unidentified vehicle\./);
+  assert.ok(
+    result.warnings?.some((warning) => warning.includes("every statement is manufacturer-wide")),
+    (result.warnings ?? []).join(" | "),
+  );
+  assert.equal(result.confidence, 0.3, "no determination is a reason to lower, never to hold");
+});
+
+test("the vehicle id is what turns an unnamed car into a named determination", async () => {
+  const result = await new HeuristicAnalysisProvider().analyze(
+    sampleInput({
+      vehicle: { vehicleId: "virtual-vehicle", score: 1, trust: 1 },
+    }),
+  );
+  assert.match(result.summary, /on virtual-vehicle\./);
+  assert.ok(!result.warnings?.some((warning) => warning.includes("No vehicle was determined")));
+});
+
+test("a weak match and weak data are said out loud", async () => {
+  const result = await new HeuristicAnalysisProvider().analyze(
+    sampleInput({
+      vehicle: {
+        brand: "Virtual",
+        model: "Simulator vehicle",
+        vehicleId: "virtual-vehicle",
+        score: 0.4,
+        trust: 0.3,
+        provenanceType: "example-placeholder",
+      },
+    }),
+  );
+  assert.ok(
+    result.warnings?.some((warning) => warning.includes("40 % of the evaluated criteria")),
+    (result.warnings ?? []).join(" | "),
+  );
+  assert.ok(
+    result.warnings?.some((warning) => warning.includes('"example-placeholder" data')),
+    (result.warnings ?? []).join(" | "),
+  );
+  assert.equal(result.confidence, 0.3);
+});
+
+test("an unresolved determination passes its reason through", async () => {
+  const result = await new HeuristicAnalysisProvider().analyze(
+    sampleInput({
+      vehicle: {
+        brand: "Virtual",
+        model: "Simulator vehicle",
+        unresolvedReason: "no package declares vehicles",
+      },
+    }),
+  );
+  assert.ok(
+    result.warnings?.some(
+      (warning) =>
+        warning.includes("No vehicle matched (no package declares vehicles)") &&
+        warning.includes("manufacturer-wide"),
+    ),
+    (result.warnings ?? []).join(" | "),
+  );
+});
+
+test("a code quotes its scope, its condition and the check a device can run", async () => {
+  const result = await new HeuristicAnalysisProvider().analyze(
+    sampleInput({
+      dtcs: [
+        {
+          ...P0420,
+          hint: "Rule out mixture and exhaust leaks before replacing the monitor.",
+          scope: "vehicle-engine",
+          conditions: "closed loop, above 80 °C, three drive cycles",
+          measure: {
+            signal: "cat.temp",
+            name: "Catalyst temperature",
+            expect: "above 600 while driving",
+            min: 600,
+            windowMs: 5000,
+            measurable: true,
+          },
+        },
+      ],
+    }),
+  );
+  const finding = result.findings.find((entry) => entry.id === "dtc-P0420");
+  assert.ok(finding);
+  assert.match(finding.detail, /sets when: closed loop/);
+  assert.match(finding.detail, /wording of this vehicle's definition/);
+  assert.ok(
+    result.recommendations.some((entry) =>
+      entry.includes("measure first: Catalyst temperature · above 600 while driving · ≥ 600 · 5 s"),
+    ),
+    result.recommendations.join(" | "),
+  );
+  assert.ok(
+    result.recommendations.some((entry) => entry.startsWith("P0420 (Engine): Rule out mixture")),
+    result.recommendations.join(" | "),
+    "the documented hint stays in front of the measuring step",
+  );
+});
+
+test("a check without numbers stays a judgement, and a range is written as a range", async () => {
+  const result = await new HeuristicAnalysisProvider().analyze(
+    sampleInput({
+      dtcs: [
+        {
+          ...P0420,
+          scope: "vehicle",
+          measure: {
+            signal: "engine.load",
+            name: "Engine load",
+            expect: "steady",
+            min: 30,
+            max: 80,
+          },
+        },
+      ],
+    }),
+  );
+  const recommendation = result.recommendations.find((entry) => entry.startsWith("P0420"));
+  assert.ok(recommendation);
+  assert.match(
+    recommendation,
+    /documented check, a person judges it: Engine load · steady · 30…80/,
+  );
+  assert.ok(!recommendation.includes("measure first"), recommendation);
+});
+
+test("a code nobody documented keeps the generic line and says that it does", async () => {
+  const result = await new HeuristicAnalysisProvider().analyze(
+    sampleInput({
+      dtcs: [{ code: "C1234", severity: "critical", ecu: "ABS" }],
+    }),
+  );
+  const finding = result.findings.find((entry) => entry.id === "dtc-C1234");
+  assert.match(finding?.detail ?? "", /no scan record carries knowledge for this code/);
+  assert.ok(
+    result.recommendations.some((entry) => entry.includes("diagnose before further use")),
+    result.recommendations.join(" | "),
+  );
+});
+
+test("package-wide wording is labelled instead of looking like variant knowledge", async () => {
+  const result = await new HeuristicAnalysisProvider().analyze(
+    sampleInput({ dtcs: [{ ...P0420, scope: "package" }] }),
+  );
+  const finding = result.findings.find((entry) => entry.id === "dtc-P0420");
+  assert.match(finding?.detail ?? "", /manufacturer-wide wording only/);
+  assert.ok(!/measure first/.test(result.recommendations.join(" | ")));
+});
+
+test("an unknown scope key survives as itself rather than becoming a claim", async () => {
+  const result = await new HeuristicAnalysisProvider().analyze(
+    sampleInput({ dtcs: [{ ...P0420, scope: "vehicle-platform" }] }),
+  );
+  assert.match(
+    result.findings.find((e) => e.id === "dtc-P0420")?.detail ?? "",
+    /vehicle's definition/,
+  );
+});
+
+test("findings without an action still produce the honest suggestion", async () => {
+  // An anomaly is an observation, not a fault: it must not generate a repair-style
+  // recommendation, and the empty list must not stay empty either. Both are the same
+  // trap — a report that looks undecided because nothing was said.
+  const result = await new HeuristicAnalysisProvider().analyze(
+    sampleInput({
+      dtcs: [],
+      signals: [],
+      anomalies: [{ signal: "engine.rpm", reason: "delta 3420 far above median" }],
+    }),
+  );
+  assert.ok(result.findings.some((finding) => finding.id === "anomaly-engine.rpm"));
+  assert.deepEqual(result.recommendations, [
+    "Repeat the recording under load to confirm the deviations are reproducible.",
+  ]);
+});
+
+test("an unknown severity degrades to info instead of guessing a grade", async () => {
+  // Severity strings come from definition packages; a package that says "warning"
+  // must not be read as "major" (AGENTS 24: no invented knowledge).
+  const result = await new HeuristicAnalysisProvider().analyze(
+    sampleInput({ dtcs: [{ code: "P9999", severity: "warning", ecu: "Body" }] }),
+  );
+  const finding = result.findings.find((entry) => entry.id === "dtc-P9999");
+  assert.equal(finding?.severity, "info");
+  assert.equal(
+    result.recommendations.some((entry) => entry.includes("P9999")),
+    false,
+    "an ungraded code is not an action",
+  );
+});
+
+test("sample thresholds are configuration, not constants", async () => {
+  // Both knobs exist for real devices: a workshop that recorded 40 samples, or one
+  // that tolerates a wide swing, has to get a different answer out of the same rules
+  // — otherwise the thresholds are folklore rather than configuration.
+  const strict = new HeuristicAnalysisProvider({ minSamples: 50, deltaFactor: 10 });
+  const strictResult = await strict.analyze(sampleInput());
+  assert.ok(
+    strictResult.findings.some((finding) => finding.id === "low-samples-engine.rpm"),
+    "40 samples fall below a minimum of 50",
+  );
+  assert.ok(
+    !strictResult.findings.some((finding) => finding.id.startsWith("spread-")),
+    strictResult.findings.map((finding) => finding.id).join(" | "),
+  );
+
+  const lenient = new HeuristicAnalysisProvider({ minSamples: 1, deltaFactor: 1 });
+  const lenientResult = await lenient.analyze(sampleInput());
+  assert.ok(
+    !lenientResult.findings.some((finding) => finding.id.startsWith("low-samples-")),
+    lenientResult.findings.map((finding) => finding.id).join(" | "),
+  );
+  assert.ok(lenientResult.findings.some((finding) => finding.id === "spread-engine.rpm"));
+});

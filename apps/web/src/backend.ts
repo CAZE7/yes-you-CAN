@@ -84,6 +84,7 @@ import {
   createWebAdapterCatalog,
   isApplicationManaged,
 } from "./adapters.js";
+import { analysisDtcOf, analysisVehicleOf } from "./analysis-input.js";
 import { type DtcKnowledgeView, toDtcKnowledgeView } from "./dtc-knowledge-view.js";
 import { type VehicleResolutionView, toVehicleResolutionView } from "./vehicle-view.js";
 
@@ -993,8 +994,13 @@ export class DemoBackend {
 
   async analyze(): Promise<AnalysisResult> {
     const runtime = this.requireRuntime();
+    const session = this.session();
     const input: AnalysisInput = {
-      mileageKm: this.session()?.mileageKm,
+      // Which car, and how firmly it was determined: without these two the provider
+      // answers about an unnamed vehicle while its output reads like a variant
+      // statement (AGENTS 22, ADR 0026).
+      vehicle: analysisVehicleOf(runtime.vehicle.identity(), session?.determination),
+      mileageKm: session?.mileageKm,
       signals: runtime.measurements.statistics().map((stat) => ({
         signal: stat.signalId,
         name: stat.name,
@@ -1006,12 +1012,7 @@ export class DemoBackend {
         delta: stat.delta ?? 0,
         outOfRangeCount: stat.outOfRangeCount,
       })),
-      dtcs: this.dtcs.map((dtc) => ({
-        code: dtc.code,
-        description: dtc.description,
-        severity: dtc.severity,
-        ecu: dtc.ecu,
-      })),
+      dtcs: this.dtcs.map(analysisDtcOf),
       anomalies: runtime.measurements.anomalies().map((anomaly) => ({
         signal: anomaly.signalId,
         reason: anomaly.reason,

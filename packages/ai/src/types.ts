@@ -18,17 +18,66 @@ export interface AnalysisSignalSummary {
   outOfRangeCount: number;
 }
 
+/**
+ * The one measurement a definition package documents for this code and variant.
+ *
+ * `measurable` is the load-bearing field: only with a numeric bound or a window can
+ * the engine call it a step to run; without one it stays a check a person judges, and
+ * the wording has to keep that difference (AGENTS 22: no false certainty).
+ */
+export interface AnalysisCheck {
+  signal: string;
+  name?: string;
+  expect?: string;
+  min?: number;
+  max?: number;
+  windowMs?: number;
+  measurable?: boolean;
+}
+
 export interface AnalysisDtc {
   code: string;
   description?: string;
   severity: string;
   ecu: string;
   status?: number;
+  /** Suggested next step as the package words it — absent means nobody wrote one. */
+  hint?: string;
+  /**
+   * Where the wording came from: `vehicle-engine` | `vehicle-gearbox` | `vehicle` |
+   * `package`, or absent when no scan record carries knowledge for this code.
+   */
+  scope?: string;
+  /** When the code sets — only variant knowledge documents this. */
+  conditions?: string;
+  /** The first documented check, most specific first. */
+  measure?: AnalysisCheck;
 }
 
 export interface AnalysisInput {
-  /** Deliberately free of VIN and other personal data unless the caller opted in. */
-  vehicle?: { brand?: string; model?: string; modelYear?: number; vin?: string };
+  /**
+   * Which vehicle this is about. Deliberately free of VIN and other personal data
+   * unless the caller opted in — an HTTP provider sends this object off the box.
+   *
+   * `vehicleId`/`score`/`trust`/`provenanceType` come from the session determination
+   * (AGENTS 11.1, ADR 0026). They are here because an answer that does not say which
+   * variant it assumes is a manufacturer-wide guess wearing a diagnosis's clothes, and
+   * because a weak match has to lower confidence instead of hiding.
+   */
+  vehicle?: {
+    brand?: string;
+    model?: string;
+    modelYear?: number;
+    vin?: string;
+    vehicleId?: string;
+    /** 0…1 — share of the evaluated criteria that confirmed the match. */
+    score?: number;
+    /** 0…1 — provenance trust of the data behind the match. */
+    trust?: number;
+    provenanceType?: string;
+    /** Set when the resolution came back without a match (§11.1 rule 3). */
+    unresolvedReason?: string;
+  };
   mileageKm?: number;
   signals: readonly AnalysisSignalSummary[];
   dtcs: readonly AnalysisDtc[];

@@ -247,7 +247,13 @@ export default defineConfig({
         'packages/reports/**/src/**': { lines: 95, branches: 75, perFile: true },
         // New on 2026-09-12: measured heuristic.ts 94.9/79.5, http.ts 100/87.7,
         // service.ts 100/100 after the transport, timeout and gateway-junk tests.
-        'packages/ai/**/src/**': { lines: 90, branches: 75, perFile: true },
+        // Raised 90/75 -> 95/85 on 2026-09-14 after the analysis-input backfill
+        // (E16, ADR 0017: tests first). Measured in this tree: heuristic.ts 94,9/79,5 ->
+        // 100/89,4 (empty-recommendation, unknown-severity and threshold-configuration
+        // arms included), http.ts 100/87,7 — the binding file — service.ts 100/100.
+        // 85 sits 2,7 points under the weakest branch count, so a new untested branch in
+        // `ai` is a red run instead of a drift.
+        'packages/ai/**/src/**': { lines: 95, branches: 85, perFile: true },
         // New on 2026-09-12 with the vehicle-definition layer (ADR 0023): the
         // resolver decides which car a workshop is looking at, so its criteria,
         // its weights and its evidence strings are all tested per file. Measured

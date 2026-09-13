@@ -116,3 +116,35 @@ Der Rahmen, in dem das zu beheben war: `@vdp/reports` darf nur `@vdp/core`
 - Offen, bewusst: die volle Kandidatenliste wird nicht gespeichert (rekonstruierbar,
   und eine zweite Kopie wäre eine zweite Wahrheit); `determination` erscheint nicht in
   `StoredSessionSummary` (die Liste zeigt `vin`), weil dafür ein Lesertest fehlt.
+
+## Nachtrag (Punkt 3, 2026-09-14) — die Analyse liest dieselbe Kette
+
+Gemessen am Input, den `apps/web/src/backend.ts::analyze()` bis dahin baute: Signale,
+Anomalien, Notizen, Laufleistung und `code/description/severity/ecu` je Code —
+`AnalysisInput.vehicle` (`ai/types.ts:31`) war deklariert und wurde **nie** gefüllt. Der
+eingebaute Provider antwortete daraus `C0035 stored in ABS / Brake Control Unit` und
+`diagnose before further use`, während dieselbe Sitzung die Auflösung und das
+Variantenwissen schon trug. Der Auftrag war deshalb eine Leitung, kein Feature:
+
+- `vehicle` aus dem Read Model plus Bestimmung (`brand`/`model`/`modelYear`/`vehicleId`/
+  `score`/`trust`/`provenanceType`, `unresolvedReason` bei leerem Ergebnis). **Kein VIN**:
+  `@vdp/ai` kann per Konfiguration an ein Modell-Gateway hängen (AGENTS 27).
+- Pro Code `hint`, `scope`, `conditions` und `measure` (mit `measurable`). Der Mapper lebt
+  in `apps/web/src/analysis-input.ts` und deklariert seine Eingabe schmal-strukturell
+  (`AnalysisDtcSource`) statt `DtcView` aus `backend.ts` zurückzuimportieren — ein Mapper,
+  der von seinem Aufrufer abhängt, ist ein Zyklus.
+- Der Provider **übersetzt keine Scope-Tabelle**; die vierstufige Benennung gehört in
+  Bericht (`scopeSentence`) und UI (`SCOPE_LABELS`). Ein Austauschbarer Analyse-Layer,
+  der Fahrzeugvokabular besitzt, wäre eine zweite Wahrheit über dieselbe Achse.
+- Konfidenz ist eine Obergrenze, keine Belohnung: ohne bestimmte Auflösung, bei Score
+  < 60 % oder bei `example-placeholder`/`reverse-engineered`/`community`-Daten gilt
+  `min(base, 0,3)` plus begründete Warnung. Ein Anstieg *weil* Wissen vorhanden ist, wäre
+  genau die Scheinsicherheit, die AGENTS 22 verbietet.
+
+Nachweis (Demo, `POST /api/analyze`): Summary
+`2 critical finding(s) on Virtual Simulator vehicle 2003 (virtual-vehicle). …`,
+eine Empfehlung zitiert `measure first: Wheel speed front left · 45…55 km/h … · 5 s`,
+`confidence` 0,4 bei einer einzigen standing warning. Für eine Sitzung ohne
+Auflösung: 0,3 und der Hinweis, dass alles paketweit gemeint ist (`ai.spec.ts`).
+Suite 1326 → 1351 Tests, `heuristic.ts` 94,9/79,5 → 100 Zeilen/89,4 Zweige, Gate `ai`
+90/75 → 95/85 (ADR 0017: erst Tests, dann Gate).
