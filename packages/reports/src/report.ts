@@ -270,20 +270,20 @@ function formatNumber(value: number | null): string {
 
 /** Render to a self-contained HTML document. */
 export function renderHtml(document: ReportDocument): string {
-  const escape = (text: string): string =>
+  const escapeHtml = (text: string): string =>
     text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
   const sections = document.sections
     .map((section) => {
       const rows = section.rows
-        .map((row) => `<tr><th>${escape(row.label)}</th><td>${escape(row.value)}</td></tr>`)
+        .map((row) => `<tr><th>${escapeHtml(row.label)}</th><td>${escapeHtml(row.value)}</td></tr>`)
         .join("\n");
       const table = section.table
-        ? `<table class="grid"><thead><tr>${section.table.columns.map((column) => `<th>${escape(column)}</th>`).join("")}</tr></thead><tbody>${section.table.rows
-            .map((row) => `<tr>${row.map((cell) => `<td>${escape(cell)}</td>`).join("")}</tr>`)
+        ? `<table class="grid"><thead><tr>${section.table.columns.map((column) => `<th>${escapeHtml(column)}</th>`).join("")}</tr></thead><tbody>${section.table.rows
+            .map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`)
             .join("")}</tbody></table>`
         : "";
-      return `<section><h2>${escape(section.heading)}</h2><table class="kv"><tbody>${rows}</tbody></table>${table}</section>`;
+      return `<section><h2>${escapeHtml(section.heading)}</h2><table class="kv"><tbody>${rows}</tbody></table>${table}</section>`;
     })
     .join("\n");
 
@@ -292,7 +292,7 @@ export function renderHtml(document: ReportDocument): string {
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>${escape(document.title)}</title>
+<title>${escapeHtml(document.title)}</title>
 <style>
   :root { color-scheme: light dark; }
   body { font: 14px/1.5 system-ui, sans-serif; margin: 2rem auto; max-width: 960px; padding: 0 1rem; }
@@ -307,10 +307,10 @@ export function renderHtml(document: ReportDocument): string {
 </style>
 </head>
 <body>
-<h1>${escape(document.title)}</h1>
-<p class="subtitle">${escape(document.subtitle)}</p>
+<h1>${escapeHtml(document.title)}</h1>
+<p class="subtitle">${escapeHtml(document.subtitle)}</p>
 ${sections}
-<footer>Generated ${escape(document.generatedAt)} · yes-you-CAN diagnostics platform</footer>
+<footer>Generated ${escapeHtml(document.generatedAt)} · yes-you-CAN diagnostics platform</footer>
 </body>
 </html>
 `;

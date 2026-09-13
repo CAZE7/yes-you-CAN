@@ -385,11 +385,11 @@ function weighDeclared(
   }
   if (declared.brand) {
     const ok = sameText(declared.brand, vehicle.brand);
-    tally.weigh("declared-brand", declared.brand, vehicle.brand, `declared brand`, ok);
+    tally.weigh("declared-brand", declared.brand, vehicle.brand, "declared brand", ok);
   }
   if (declared.model) {
     const ok = sameText(declared.model, vehicle.model);
-    tally.weigh("declared-model", declared.model, vehicle.model, `declared model`, ok);
+    tally.weigh("declared-model", declared.model, vehicle.model, "declared model", ok);
   }
   if (declared.platform && vehicle.platform) {
     const ok = sameText(declared.platform, vehicle.platform);

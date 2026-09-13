@@ -66,6 +66,10 @@ must appear in the allowlist — a new package without an entry fails the suite.
 - TypeScript 7 (`tsgo`) via `tsc -b`, `strict: true`, `verbatimModuleSyntax: true`.
 - Biome for lint + format (`biome.json`): 2-space indent, 100-char line, double quotes,
   organized imports. Run `npx biome check --write .` before pushing.
+- **Every rule that is not an error carries its reason** (`tests/architecture/guardrails.test.ts`
+  reads `biome.json`): a rule is either made sharper or listed with the finding that keeps it
+  open, overrides may only relax test sources, and the strict TypeScript flags from
+  `tsconfig.base.json` are inherited, not negotiated (ADR 0026).
 - No runtime dependencies (ADR 0002) except where ADR 0010 explicitly allows them.
   Infrastructure deps need maintenance proof, license check (MIT/Apache-2.0/BSD) and
   a locally regenerated `package-lock.json` in the same PR.

@@ -226,8 +226,8 @@ describe("resolveContained — the request path a route hands over", () => {
           const request = segments.join("/");
           assert.equal(resolveContained(ROOT, request), join(ROOT, ...segments));
           // The same segments, prefixed with enough `..` to leave the root: no answer.
-          const escape = [...segments.map(() => ".."), "outside.txt"].join("/");
-          assert.equal(resolveContained(ROOT, escape), null);
+          const escaping = [...segments.map(() => ".."), "outside.txt"].join("/");
+          assert.equal(resolveContained(ROOT, escaping), null);
         },
       ),
       { numRuns: 200 },

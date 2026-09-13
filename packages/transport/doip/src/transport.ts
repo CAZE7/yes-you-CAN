@@ -26,6 +26,7 @@ import {
   DOIP_HEADER_LENGTH,
   DOIP_TLS_PORT,
   DOIP_UDP_PORT,
+  type DoipHeader,
   PAYLOAD_TYPE,
   ROUTING_ACTIVATION_TYPE,
   decodeDiagnosticAck,
@@ -250,7 +251,7 @@ export class DoipTransport implements VehicleTransport {
     this.buffer = concat(this.buffer, chunk);
     for (;;) {
       if (this.buffer.length < DOIP_HEADER_LENGTH) return;
-      let header;
+      let header: DoipHeader;
       try {
         header = decodeHeader(this.buffer);
       } catch (error) {
