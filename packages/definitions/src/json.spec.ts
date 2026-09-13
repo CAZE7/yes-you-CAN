@@ -88,6 +88,7 @@ test("every optional field survives the round-trip", () => {
       license: "internal",
       version: "2026-01",
       retrievedAt: "2026-09-11T00:00:00Z",
+      notes: "retrieved under workshop licence 2026/114",
     },
     ecus: [
       {
@@ -149,6 +150,14 @@ test("every optional field survives the round-trip", () => {
   assert.equal(ecu?.address.functionalId, 0x7df);
   assert.equal(ecu?.timing?.p2StarMs, 500);
   assert.equal(parsed.provenance.license, "internal");
+  assert.equal(parsed.provenance.version, "2026-01");
+  assert.equal(parsed.provenance.retrievedAt, "2026-09-11T00:00:00Z");
+  assert.equal(
+    parsed.provenance.notes,
+    "retrieved under workshop licence 2026/114",
+    "the notes are part of the source declaration — dropping them would lose the only " +
+      "human-readable qualification of a licence (AGENTS 24)",
+  );
 });
 
 test("invalid enums and wrong-typed optional fields are reported, not guessed", () => {
@@ -453,6 +462,30 @@ test("structural problems in vehicles are collected, not silently dropped", () =
     ],
     [
       "vehicles",
+      [
+        {
+          id: "car",
+          brand: "B",
+          model: "M",
+          provenance: { sourceType: "own", source: "s", notes: 42 },
+        },
+      ],
+      "vehicles[0].provenance.notes: must be a string",
+    ],
+    [
+      "vehicles",
+      [
+        {
+          id: "car",
+          brand: "B",
+          model: "M",
+          provenance: { sourceType: "licensed", source: "s", license: "x", retrievedAt: 2026 },
+        },
+      ],
+      "vehicles[0].provenance.retrievedAt: must be a string",
+    ],
+    [
+      "vehicles",
       [{ id: "car", brand: "B", model: "M", gearboxes: ["manual"] }],
       "vehicles[0].gearboxes[0]: must be an object",
     ],
@@ -494,6 +527,13 @@ test("structural problems in vehicles are collected, not silently dropped", () =
       "vehicles",
       knowledgeVehicle([{ code: "P0420", provenance: "own" }]),
       "vehicles[0].dtcKnowledge[0].provenance: must be an object",
+    ],
+    [
+      "vehicles",
+      knowledgeVehicle([
+        { code: "P0420", provenance: { sourceType: "own", source: "s", version: 1 } },
+      ]),
+      "vehicles[0].dtcKnowledge[0].provenance.version: must be a string",
     ],
     [
       "vehicles",
@@ -611,6 +651,47 @@ test("an invalid vehicle that parses structurally is still rejected semantically
       return true;
     },
   );
+});
+
+test("a file-loaded package faces the same provenance gates (AGENTS 24)", () => {
+  // The JSON path is how licensed data will arrive, so a source declaration that
+  // the validator rejects must not become loadable by being written to a file.
+  const source = vehicleSource();
+  source.provenance = { sourceType: "licensed", source: "OEM documentation" };
+  assert.throws(
+    () => parseDefinitionPackage(source),
+    (error: unknown) => {
+      assert.ok(error instanceof DefinitionError);
+      assert.match(error.message, /licensed data must declare a license/);
+      return true;
+    },
+  );
+
+  source.provenance = {
+    sourceType: "licensed",
+    source: "OEM documentation",
+    license: "workshop licence 2026/114",
+    retrievedAt: "11.09.2026",
+  };
+  assert.throws(
+    () => parseDefinitionPackage(source),
+    (error: unknown) => {
+      assert.ok(error instanceof DefinitionError);
+      assert.match(error.message, /not an ISO-8601 date/);
+      return true;
+    },
+  );
+
+  source.provenance = {
+    sourceType: "licensed",
+    source: "OEM documentation",
+    license: "workshop licence 2026/114",
+    version: "2026-04",
+    retrievedAt: "2026-09-11",
+    notes: "delivery as PDF, shelf copy",
+  };
+  const parsed = parseDefinitionPackage(source);
+  assert.deepEqual(parsed.provenance.notes, "delivery as PDF, shelf copy");
 });
 
 test("an ECU address that is not an object is named, not defaulted silently", () => {

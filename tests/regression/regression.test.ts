@@ -384,6 +384,39 @@ test("REGRESSION: definition packages without provenance passed validation", () 
   });
 });
 
+test("REGRESSION: a file-loaded package silently lost its provenance notes", () => {
+  // Symptom: `coerceProvenance` copied license, version and retrievedAt but not
+  // `notes` — the one field that qualifies a source in human language. A licensed
+  // package read from a file then looked fully documented while the sentence that
+  // limited the licence was gone, and nothing complained: every provenance field
+  // is optional, so a dropped optional field is not a type error and the semantic
+  // validator only checks what arrived.
+  return import("@vdp/definitions").then(({ CURRENT_SCHEMA_VERSION, parseDefinitionPackage }) => {
+    const parsed = parseDefinitionPackage({
+      schemaVersion: CURRENT_SCHEMA_VERSION,
+      oem: "regression",
+      name: "provenance notes",
+      version: "1.0.0",
+      provenance: {
+        sourceType: "licensed",
+        source: "OEM documentation",
+        license: "workshop licence 2026/114",
+        version: "2026-04",
+        retrievedAt: "2026-09-11",
+        notes: "shelf copy, redistribution outside the workshop is not covered",
+      },
+      ecus: [],
+      signals: [],
+    });
+    assert.equal(
+      parsed.provenance.notes,
+      "shelf copy, redistribution outside the workshop is not covered",
+    );
+    assert.equal(parsed.provenance.version, "2026-04");
+    assert.equal(parsed.provenance.retrievedAt, "2026-09-11");
+  });
+});
+
 test("REGRESSION: the workbench lost the ECU name in its state snapshot", async () => {
   // Symptom: live samples arrived as "Engine speed" over SSE but the snapshot
   // showed the bare signal id, because the recorder stores no name.

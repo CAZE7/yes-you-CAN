@@ -105,6 +105,25 @@ export function validateDefinitionPackage(pkg: DefinitionPackage): ValidationRes
   return { valid: errors.length === 0, errors, warnings };
 }
 
+/**
+ * ISO-8601 date or timestamp (RFC 3339 profile).
+ *
+ * A retrieval date that cannot be parsed is worse than none: it looks documented
+ * and cannot be compared with anything — neither with a license term nor with
+ * the date a source was withdrawn (AGENTS 13, 24).
+ */
+const ISO_8601 =
+  /^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?\s?([Zz]|[+-]\d{2}:?\d{2})?)?$/;
+
+/**
+ * Provenance is the part of a package that can be checked later (AGENTS 24).
+ *
+ * The rules differ by source type because the risk differs: licensed data has to
+ * be traceable to a contract, a version and a date — otherwise a withdrawal or an
+ * update cannot be noticed. A standard reference has to name its edition, because
+ * "SAE J1979" without a year is not a citation. Community data carries unclear
+ * rights and must not reach a customer uncleared.
+ */
 function validateProvenance(
   path: string,
   provenance: Provenance,
@@ -113,8 +132,38 @@ function validateProvenance(
 ): void {
   if (!provenance.sourceType) errors.push(`${path}.sourceType is required`);
   if (!provenance.source) errors.push(`${path}.source is required`);
-  if (provenance.sourceType === "licensed" && !provenance.license) {
-    errors.push(`${path}: licensed data must declare a license`);
+  if (provenance.retrievedAt !== undefined && !ISO_8601.test(provenance.retrievedAt.trim())) {
+    errors.push(
+      `${path}.retrievedAt: "${provenance.retrievedAt}" is not an ISO-8601 date — a retrieval ` +
+        "date nothing can parse cannot be compared with a license term or a withdrawal",
+    );
+  }
+  if (provenance.sourceType === "licensed") {
+    if (!provenance.license) errors.push(`${path}: licensed data must declare a license`);
+    if (!provenance.version) {
+      warnings.push(
+        `${path}: licensed data without a version cannot be checked against an update or a ` +
+          "withdrawal (AGENTS 13)",
+      );
+    }
+    if (!provenance.retrievedAt) {
+      warnings.push(
+        `${path}: licensed data without a retrieval date cannot be dated — the rights situation ` +
+          "may have changed since it was taken (AGENTS 24)",
+      );
+    }
+  }
+  if (provenance.sourceType === "standard" && !provenance.version && !provenance.notes) {
+    warnings.push(
+      `${path}: a standard reference should name its edition (year or revision) so the citation ` +
+        "can be checked (AGENTS 24)",
+    );
+  }
+  if (provenance.sourceType === "community") {
+    warnings.push(
+      `${path}: community data carries unclear rights — the license must be cleared before ` +
+        "distribution (AGENTS 24)",
+    );
   }
   if (provenance.sourceType === "reverse-engineered") {
     warnings.push(`${path}: reverse-engineered definitions must be reviewed before distribution`);

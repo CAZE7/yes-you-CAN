@@ -119,9 +119,18 @@ function coerceProvenance(value: unknown, check: StructuralCheck, path = "proven
     sourceType: (isString(sourceType) ? sourceType : "own") as Provenance["sourceType"],
     source: isString(value.source) ? value.source : "",
   };
-  if (isString(value.license)) provenance.license = value.license;
-  if (isString(value.version)) provenance.version = value.version;
-  if (isString(value.retrievedAt)) provenance.retrievedAt = value.retrievedAt;
+  // Every optional field either arrives as a string or is complained about: a
+  // silently dropped license or retrieval date would leave a package that looks
+  // documented and cannot be checked (AGENTS 24).
+  for (const field of ["license", "version", "retrievedAt", "notes"] as const) {
+    const raw = value[field];
+    if (raw === undefined) continue;
+    if (!isString(raw)) {
+      check.fail(`${path}.${field}`, "must be a string");
+      continue;
+    }
+    provenance[field] = raw;
+  }
   return provenance;
 }
 

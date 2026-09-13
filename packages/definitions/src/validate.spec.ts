@@ -62,6 +62,109 @@ test("licensed data without a license declaration is rejected", () => {
   assert.ok(result.errors.some((e) => e.includes("license")));
 });
 
+test("a licensed source must be traceable: license, version and date (AGENTS 13, 24)", () => {
+  const pkg = clone(genericPackage);
+  pkg.provenance = { sourceType: "licensed", source: "OEM documentation" };
+  const incomplete = validateDefinitionPackage(pkg);
+  assert.ok(
+    incomplete.errors.some((e) => e.includes("must declare a license")),
+    incomplete.errors.join(", "),
+  );
+  assert.ok(
+    incomplete.warnings.some((w) => w.includes("licensed data without a version")),
+    `a licence that cannot be tied to an edition cannot be checked: ${incomplete.warnings.join(", ")}`,
+  );
+  assert.ok(
+    incomplete.warnings.some((w) => w.includes("licensed data without a retrieval date")),
+    incomplete.warnings.join(", "),
+  );
+
+  pkg.provenance = {
+    sourceType: "licensed",
+    source: "OEM documentation",
+    license: "workshop licence 2026/114",
+    version: "2026-04",
+    retrievedAt: "2026-09-11",
+  };
+  const complete = validateDefinitionPackage(pkg);
+  assert.deepEqual(complete.errors, [], complete.errors.join(", "));
+  assert.deepEqual(
+    complete.warnings.filter((w) => w.includes("licensed")),
+    [],
+    complete.warnings.join(", "),
+  );
+});
+
+test("a retrieval date nothing can parse is an error, not a warning", () => {
+  const pkg = clone(genericPackage);
+  for (const bad of ["11.09.2026", "September 2026", "2026-9-1", "yesterday"]) {
+    pkg.provenance = { sourceType: "own", source: "s", retrievedAt: bad };
+    const result = validateDefinitionPackage(pkg);
+    assert.equal(result.valid, false, `\"${bad}\" must not pass as a retrieval date`);
+    assert.ok(
+      result.errors.some((e) => e.includes("not an ISO-8601 date")),
+      result.errors.join(", "),
+    );
+  }
+  for (const good of ["2026-09-11", "2026-09-11T14:03:00Z", "2026-09-11 14:03+02:00"]) {
+    pkg.provenance = { sourceType: "own", source: "s", retrievedAt: good };
+    const result = validateDefinitionPackage(pkg);
+    assert.deepEqual(result.errors, [], `\"${good}\" is a date: ${result.errors.join(", ")}`);
+  }
+});
+
+test("a standard reference without an edition cannot be cited (AGENTS 24)", () => {
+  const pkg = clone(genericPackage);
+  pkg.provenance = { sourceType: "standard", source: "SAE J1979" };
+  assert.ok(
+    validateDefinitionPackage(pkg).warnings.some((w) => w.includes("should name its edition")),
+  );
+
+  pkg.provenance = { sourceType: "standard", source: "SAE J1979", version: "PID set as of 2017" };
+  assert.equal(
+    validateDefinitionPackage(pkg).warnings.some((w) => w.includes("should name its edition")),
+    false,
+    "a named edition is a citation",
+  );
+  assert.equal(
+    validateDefinitionPackage(genericPackage).warnings.some((w) =>
+      w.includes("should name its edition"),
+    ),
+    false,
+    "the built-in baseline cites version and notes and stays quiet",
+  );
+});
+
+test("community data warns about unclear rights before distribution (AGENTS 24)", () => {
+  const pkg = clone(genericPackage);
+  pkg.provenance = { sourceType: "community", source: "forum thread, author unknown" };
+  const result = validateDefinitionPackage(pkg);
+  assert.ok(
+    result.warnings.some((w) => w.includes("unclear rights")),
+    result.warnings.join(", "),
+  );
+});
+
+test("the provenance gates reach a knowledge entry, not just the package", () => {
+  const entry = knowledgeFixture();
+  entry.provenance = {
+    sourceType: "licensed",
+    source: "OEM repair manual",
+    license: "workshop licence 2026/114",
+  };
+  const result = validateDefinitionPackage(withKnowledge([entry]));
+  const messages = result.warnings.filter((w) => w.includes("knowledge for P0420"));
+  assert.ok(
+    messages.some((message) => message.includes("without a version")),
+    messages.join(" | "),
+  );
+  assert.ok(
+    messages.some((message) => message.includes("without a retrieval date")),
+    messages.join(" | "),
+  );
+  assert.deepEqual(result.errors, [], result.errors.join(", "));
+});
+
 test("wrong schema version is rejected", () => {
   const pkg = clone(genericPackage);
   pkg.schemaVersion = CURRENT_SCHEMA_VERSION + 1;
