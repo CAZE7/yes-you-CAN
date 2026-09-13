@@ -1,4 +1,5 @@
 export * from "./vehicle/vin.js";
+export * from "./vehicle/determination.js";
 export * from "./vehicle/identity.js";
 export * from "./session/session.js";
 export * from "./session/compare.js";

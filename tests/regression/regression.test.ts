@@ -9,7 +9,8 @@
  */
 
 import assert from "node:assert/strict";
-import { DiagnosticEngine } from "@vdp/core";
+import { connectVehicle } from "@vdp/application";
+import { DiagnosticEngine, VehicleSession, createSession } from "@vdp/core";
 import {
   DefinitionRegistry,
   SIMULATOR_VIN,
@@ -17,6 +18,7 @@ import {
   genericPackage,
   simulatorPackage,
 } from "@vdp/definitions";
+import { createDiagnosticRuntime } from "@vdp/runtime";
 import { DefinitionError, ascii, fromHex, toHex } from "@vdp/shared";
 import { createLogger } from "@vdp/shared";
 import { VirtualVehicle, createVirtualCanNetwork } from "@vdp/simulators";
@@ -695,4 +697,111 @@ test("REGRESSION: an identification value nobody declared counted as a contradic
     ["part-number"],
     "the rule distinguishes: a documented DID that disagrees still contradicts",
   );
+});
+
+test("REGRESSION: a stored fault snapshot claimed a code was new in the session", () => {
+  // Symptom: `sessions-local/<id>/session.json` carried `firstSeenInThisScan: true`
+  // on every record of every snapshot (measured on the running demo: all 8 codes of
+  // one scan). The flag answers "absent from the previous scan", which is a property
+  // of the live scan — so a session reloaded from that file had to read every old
+  // code as newly appeared. The scanner is right to put it on the record (the
+  // workbench filters by it), and the snapshot is the boundary that has to drop it.
+  const session = new VehicleSession(
+    createSession({
+      adapter: { id: "virtual", kind: "virtual", name: "Virtual CAN", channels: ["vcan0"] },
+      transport: { kind: "virtual", channel: "vcan0", mtu: 8 },
+    }),
+  );
+  const scanned = {
+    code: "P0420",
+    raw: "04202A",
+    failureType: "2A",
+    status: 0x2f,
+    statusBits: {
+      testFailed: true,
+      testFailedThisOperationCycle: true,
+      pendingDtc: true,
+      confirmedDtc: true,
+      testNotCompletedSinceLastClear: false,
+      testFailedSinceLastClear: true,
+      testNotCompletedThisOperationCycle: false,
+      warningIndicatorRequested: false,
+    },
+    severity: "major" as const,
+    ecuName: "Engine",
+    ecuId: "ecu_1",
+    knowledge: { scope: "vehicle-engine" as const, patterns: [], notes: [] },
+    firstSeenInThisScan: true,
+  };
+
+  const snapshot = session.addDtcSnapshot([scanned]);
+  const stored = snapshot.records[0];
+  assert.ok(stored);
+  assert.equal(
+    "firstSeenInThisScan" in stored,
+    false,
+    "the live-scan mark never enters a snapshot",
+  );
+  assert.equal(stored.knowledge?.scope, "vehicle-engine", "everything else is kept");
+  assert.equal(scanned.firstSeenInThisScan, true, "the caller's record is not mutated");
+  assert.equal(
+    JSON.parse(JSON.stringify(session.data)).dtcSnapshots[0].records[0].firstSeenInThisScan,
+    undefined,
+    "and so it never reaches the file either",
+  );
+});
+
+test("REGRESSION: a resolved vehicle confirmed itself in the next resolution", async () => {
+  // Symptom: as soon as the determination is stored in the session, a second
+  // resolution scored the car higher than the first one, without a single new frame
+  // on the bus: brand and model that the *first* resolution had concluded were
+  // handed back as `declared` evidence, so the conclusion appeared among its own
+  // premises. Measured while this was being written: `tests/integration/
+  // vehicle-resolution.test.ts` failed with "a contradicting VIN must lower the
+  // score" — the score had climbed to 1 on the second call. Declared evidence means
+  // what the bus answered and what the operator claims, never what we computed
+  // (AGENTS 11.1 rule 7).
+  const vehicle = new VirtualVehicle({ definitions: simulatorPackage, dynamic: false });
+  const runtime = createDiagnosticRuntime({
+    bus: vehicle.testerBus,
+    definitions: [simulatorPackage],
+  });
+  try {
+    await vehicle.start();
+    await runtime.commands.dispatch(connectVehicle({ windowMs: 120, probeDelayMs: 0 }));
+    // A VIN that contradicts the bus, so any extra supporting criterion shows up in
+    // the score instead of hiding behind a 100 % match.
+    const hints = { vin: "WVWZZZ1JZHW000001" };
+
+    const first = runtime.vehicle.resolve(hints);
+    const second = runtime.vehicle.resolve(hints);
+    assert.ok(first.best && second.best);
+    assert.ok(
+      first.best.score < 1,
+      `the contradicting VIN must lower the score, got ${first.best.score}`,
+    );
+    assert.equal(
+      second.best.score,
+      first.best.score,
+      "resolving twice must not change the answer — the bus did not say anything new",
+    );
+    // The model year survives: the VIN itself declares it, which is a read fact.
+    // Brand and model do not — they are what the resolution concludes, and a
+    // conclusion must never appear among the premises that produced it.
+    for (const [label, resolution] of [
+      ["first", first],
+      ["second", second],
+    ] as const) {
+      assert.deepEqual(
+        (resolution.best?.evidence ?? [])
+          .filter((entry) => entry.kind === "declared-brand" || entry.kind === "declared-model")
+          .map((entry) => entry.kind),
+        [],
+        `${label}: a determination is not an input to the next determination`,
+      );
+    }
+  } finally {
+    await runtime.dispose();
+    await vehicle.stop();
+  }
 });

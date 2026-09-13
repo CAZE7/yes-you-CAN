@@ -6,7 +6,9 @@ import {
   type EcuSession,
   type EnrichedDtc,
   type MeasurementSample,
+  type VehicleDetermination,
   type VehicleIdentity,
+  type VehicleMatch,
   VehicleSession,
   createSession,
 } from "@vdp/core";
@@ -430,5 +432,81 @@ describe("toDtcKnowledge", () => {
       checks: [],
     });
     assert.deepEqual(info.notes, []);
+  });
+});
+
+describe("toVehicleSummary with a determination", () => {
+  const adapter: AdapterInfo = { id: "sim", kind: "virtual", name: "Sim", channels: ["vcan0"] };
+  const transport: TransportInfo = { kind: "virtual", channel: "vcan0", mtu: 8 };
+
+  function determination(overrides: Partial<VehicleMatch> = {}): VehicleDetermination {
+    return {
+      resolvedAt: "2026-09-13T00:00:00.000Z",
+      match: {
+        oem: "simulator",
+        packageVersion: "1.0.0",
+        vehicleId: "virtual-vehicle",
+        brand: "Virtual",
+        model: "Simulator vehicle",
+        score: 1,
+        trust: 1,
+        engineIds: [],
+        gearboxIds: [],
+        ecus: { expected: 3, matched: 3, missing: [] },
+        evidence: [],
+        conflicts: [],
+        ...overrides,
+      },
+      notes: [],
+      unexplained: [],
+      alternatives: [],
+    };
+  }
+
+  test("names the definition the session matched", () => {
+    const summary = toVehicleSummary({ vin: "1HGCM82633A004352" }, determination());
+    assert.equal(summary?.vehicleId, "virtual-vehicle");
+    assert.equal(summary?.vin, "1HGCM82633A004352");
+  });
+
+  test("measured facts win over the conclusion, and gaps are filled by it", () => {
+    const summary = toVehicleSummary({ brand: "Honda" }, determination());
+    assert.equal(summary?.brand, "Honda", "what the bus answered is never overwritten");
+    assert.equal(summary?.model, "Simulator vehicle", "what nothing answered is not left blank");
+  });
+
+  test("a determination without any identity is still an answer", () => {
+    const summary = toVehicleSummary(undefined, determination({ platform: "SIM-1" }));
+    assert.ok(summary);
+    assert.equal(summary.platform, "SIM-1");
+    assert.ok(summary.description.includes("Virtual Simulator vehicle"), summary.description);
+  });
+
+  test("an unresolved determination produces no vehicle out of nothing", () => {
+    const unresolved: VehicleDetermination = {
+      resolvedAt: "2026-09-13T00:00:00.000Z",
+      reason: "no package declares vehicle definitions",
+      notes: [],
+      unexplained: [],
+      alternatives: [],
+    };
+    assert.equal(toVehicleSummary(undefined, unresolved), undefined);
+    // With an identity it does produce one — the VIN is still a read fact.
+    assert.equal(toVehicleSummary({ vin: "WVW" }, unresolved)?.vehicleId, undefined);
+  });
+
+  test("toSessionSummary carries the matched vehicle id, and only that", () => {
+    const session = new VehicleSession(createSession({ adapter, transport }));
+    session.data.vehicle = { vin: "WVWZZZ1KZAW000001" };
+    // A VIN without a resolution is a read fact, not a determination: the summary
+    // names no vehicle id, because nothing matched this car to a definition.
+    assert.equal(toSessionSummary(session).vehicle?.vin, "WVWZZZ1KZAW000001");
+    assert.equal("vehicleId" in (toSessionSummary(session).vehicle ?? {}), false);
+
+    session.data.determination = determination();
+    assert.equal(toSessionSummary(session).vehicle?.vehicleId, "virtual-vehicle");
+
+    const fresh = new VehicleSession(createSession({ adapter, transport }));
+    assert.equal("vehicle" in toSessionSummary(fresh), false, "neither → no vehicle line at all");
   });
 });

@@ -1063,7 +1063,9 @@ export class DemoBackend {
   state(): AppState {
     const runtime = this.runtime;
     const session = this.session();
-    const identity = session?.vehicle;
+    // The read model, not the raw identity: it is the only place that knows both
+    // what was measured and what the resolution concluded (ADR 0026).
+    const identity = runtime?.vehicle.identity();
     const trace = this.sessionLogger.snapshot().trace.slice(-200);
     return {
       connected: this.connected,
