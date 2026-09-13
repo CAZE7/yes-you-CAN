@@ -18,11 +18,32 @@
  * from public semantics is not declared — the check then says what to look at and
  * leaves the judgement to the technician, visibly (see `MeasurementCheckDefinition`).
  *
- * What is missing on purpose: lambda sensor signals. `genericPackage` does not
- * define PID 0x14–0x1B, so a catalyst check cannot be evaluated from oxygen
- * storage activity here. Inventing a signal id would produce a check that can
- * never run; the honest shape is a pattern whose checks use the signals that do
- * exist (fuel trims) and say what they can and cannot prove.
+ * What is missing on purpose:
+ *
+ *  - **lambda sensor signals.** `genericPackage` does not define PID 0x14–0x1B,
+ *    so a catalyst check cannot be evaluated from oxygen storage activity here.
+ *    Inventing a signal id would produce a check that can never run; the honest
+ *    shape is a pattern whose checks use the signals that do exist (fuel trims)
+ *    and say what they can and cannot prove.
+ *  - **an entry for U0121.** "Lost communication with the ABS control module"
+ *    means the same thing for every engine, every gearbox and every equipment
+ *    line — its causes sit in supply, ground and bus wiring, none of which this
+ *    variant narrows down. Variant wording for it would be padding that dresses
+ *    up as knowledge, so the package-wide description stays the answer and the
+ *    UI says so (`scope: "package"`, AGENTS 20.1).
+ *
+ * Two kinds of window appear below and neither is a calibration value:
+ * `45…55 km/h` for a wheel speed names the *test condition* (a straight run at
+ * roughly 50 km/h, stated in `expect`), and `3…4` for the gear selector reads
+ * this package's own `enumMapping` (drive, sport) — the only place where a
+ * numeric window is legitimate for a signal that is really a set of states.
+ * Where no bound can be justified but the observation is real, the check keeps
+ * `windowMs` and drops the bounds — the wheel-speed dropout watch below is such a
+ * case, and the view then says "only a human can judge this" instead of showing a
+ * range nobody documented (`measurable`). Where the package defines no signal that
+ * could show the fault at all, the pattern says so in its explanation and checks
+ * only the condition the fault needs — pretending otherwise with a proxy signal
+ * would be a check that always passes.
  */
 
 import type { DtcKnowledgeDefinition, Provenance } from "../schema.js";
@@ -264,6 +285,81 @@ export const simulatorDtcKnowledge: DtcKnowledgeDefinition[] = [
     provenance: KNOWLEDGE_PROVENANCE,
   },
   {
+    code: "P0700",
+    ecu: "transmission",
+    gearbox: "sim-automatic",
+    description:
+      "Transmission control system malfunction on the simulated five-speed automatic. The code " +
+      "carries no fault of its own: it is the request to look at what else the module stored, and " +
+      "its whole diagnostic value is the code that sits beside it.",
+    conditions:
+      "Stored when the transmission control module decides a fault is worth the warning lamp — set " +
+      "with that decision, not with the underlying symptom, and it survives the repair until it is " +
+      "cleared.",
+    hint:
+      "Read the module's own code list before measuring anything: diagnosing P0700 on its own is " +
+      "always a guess about a fault nobody has named yet.",
+    relatedSignals: ["transmission.gear_position", "transmission.oil_temperature"],
+    patterns: [
+      {
+        id: "underlying-code-in-module",
+        name: "Another code in the same module is the actual fault",
+        likelihood: "common",
+        explanation:
+          "P0700 has no enable condition and no freeze frame of its own; the companion code — on " +
+          "this gearbox typically P0715 — carries the operating point that makes the fault " +
+          "measurable. The step is reading the module again, not measuring the bus.",
+        checks: [
+          {
+            signal: "transmission.gear_position",
+            expect:
+              "selector in drive or sport (3…4 in this package's own enum mapping) — in park or " +
+              "neutral the gearbox performs no shifts, so no shift monitor can confirm anything",
+            min: 3,
+            max: 4,
+          },
+        ],
+        repair:
+          "Diagnose the companion code, not this one; clearing P0700 without it comes back on the " +
+          "next drive cycle.",
+      },
+      {
+        id: "request-outlived-the-fault",
+        name: "The request outlived the fault it was set for",
+        likelihood: "possible",
+        explanation:
+          "Because the code is stored with the lamp request, repairing and clearing the companion " +
+          "fault leaves P0700 behind when only the companion was erased. The status bits then read " +
+          "confirmed without test-failed (ISO 14229-1): a memory entry, not a live fault.",
+        checks: [
+          {
+            signal: "transmission.oil_temperature",
+            expect:
+              "oil temperature above 60 °C before believing a clean run — below that the shift and " +
+              "converter monitors are inactive and cannot have re-tested anything",
+            min: 60,
+          },
+        ],
+        repair:
+          "Clear the module's codes after the companion fault is repaired and run the drive cycle " +
+          "again; if P0700 returns on its own, the companion code was never the whole story.",
+      },
+      {
+        id: "module-self-test",
+        name: "The control module's own self-test failed",
+        likelihood: "rare",
+        explanation:
+          "An internal electronic fault requests the lamp without any sensor circuit being " +
+          "involved. No signal in this package decides that, so the pattern deliberately carries " +
+          "no check — the judgement needs the module's own diagnosis instead of a measurement.",
+        repair:
+          "Rule out supply, ground and the harness to the module first; replacing the module " +
+          "before the companion codes were read is a guess with a part number on it.",
+      },
+    ],
+    provenance: KNOWLEDGE_PROVENANCE,
+  },
+  {
     code: "P0715",
     ecu: "transmission",
     gearbox: "sim-automatic",
@@ -305,20 +401,104 @@ export const simulatorDtcKnowledge: DtcKnowledgeDefinition[] = [
         likelihood: "possible",
         explanation:
           "The signal drops out only when the loom moves or heats up, so a snapshot taken at the " +
-          "right moment looks perfectly healthy. Judging it needs a window, not a single reading.",
+          "right moment looks perfectly healthy. This package defines no input/turbine speed " +
+          "signal — the gearbox answers oil temperature and gear position only — so nothing here " +
+          "can observe the dropout. The step is a person's: watch the code's status bits for at " +
+          "least 30 s while the loom is moved. What a tool can check is the condition under which " +
+          "the fault appears at all.",
         checks: [
           {
             signal: "transmission.oil_temperature",
             expect:
-              "the signal stays readable for the whole window — any dropout inside it points at the " +
-              "harness rather than at the sensor",
-            min: -40,
-            windowMs: 30000,
+              "oil temperature above 60 °C before judging it — a chafed loom drops out when it is " +
+              "warm and expanded, so a cold gearbox proves nothing in either direction",
+            min: 60,
           },
         ],
         repair:
           "Move the loom while watching the signal; repair the chafed section instead of replacing " +
           "a sensor that measures correctly.",
+      },
+    ],
+    provenance: KNOWLEDGE_PROVENANCE,
+  },
+  {
+    code: "C0035",
+    ecu: "abs",
+    description:
+      "Left front wheel speed sensor circuit on the virtual vehicle. The code names the circuit, " +
+      "not the sensor element: the module stopped seeing a plausible speed from that corner, and " +
+      "the sensor itself is the smaller share of the causes behind it.",
+    conditions:
+      "Set when the module's plausibility check against the other wheels fails; at standstill that " +
+      "check is inactive, so the code only appears once the vehicle moves.",
+    hint:
+      "The opposite corner and the OBD road speed are answered by different sources — compare all " +
+      "three before anything at the left front corner is replaced.",
+    relatedSignals: ["abs.wheel_speed_front_right", "vehicle.speed"],
+    patterns: [
+      {
+        id: "implausible-speed-on-straight-run",
+        name: "The corner reports a speed the other wheels do not confirm",
+        likelihood: "common",
+        explanation:
+          "On a straight run every wheel turns at the same rate, so a fixed offset or a value that " +
+          "stays at zero while the vehicle moves belongs to the sensor circuit — not to a bearing " +
+          "and not to a brake. The OBD road speed is the independent reference precisely because " +
+          "another module answers it.",
+        checks: [
+          {
+            signal: "abs.wheel_speed_front_left",
+            expect:
+              "45…55 km/h on a straight run at roughly 50 km/h — the stated test condition, not a " +
+              "tolerance taken from a calibration",
+            min: 45,
+            max: 55,
+            windowMs: 5000,
+          },
+          {
+            signal: "abs.wheel_speed_front_right",
+            expect:
+              "the same 45…55 km/h on the opposite corner — it is the reference the comparison is " +
+              "made against",
+            min: 45,
+            max: 55,
+            windowMs: 5000,
+          },
+          {
+            signal: "vehicle.speed",
+            expect:
+              "45…55 km/h from the engine module while the ABS corner disagrees — two modules, one " +
+              "road speed",
+            min: 45,
+            max: 55,
+            windowMs: 5000,
+          },
+        ],
+        repair:
+          "Check the air gap and the reluctor ring before the sensor: a ring that lost teeth sets " +
+          "the same code and is invisible from the connector.",
+      },
+      {
+        id: "intermittent-wheel-harness",
+        name: "Chafed harness or corroded connector at the wheel",
+        likelihood: "possible",
+        explanation:
+          "The signal drops out only when the loom moves or the connector is wet, so a snapshot " +
+          "taken in the workshop looks healthy. Judging it needs a window and movement, and no " +
+          "signal in this package can decide it numerically — hence a window without bounds.",
+        checks: [
+          {
+            signal: "abs.wheel_speed_front_left",
+            expect:
+              "readable and plausible for the whole 30 s while the loom is moved and the wheel is " +
+              "turned by hand — any dropout inside the window is the harness, not the sensor",
+            windowMs: 30000,
+          },
+        ],
+        repair:
+          "Repair the chafed section or the connector; replacing a sensor that measures correctly " +
+          "leaves the fault where it is, in the loom.",
       },
     ],
     provenance: KNOWLEDGE_PROVENANCE,

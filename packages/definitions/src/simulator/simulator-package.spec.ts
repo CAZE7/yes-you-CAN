@@ -118,6 +118,77 @@ test("a wrong part number contradicts the virtual vehicle", () => {
   assert.equal(conflict.expected, simulatorAnswer("engine", 0xf187));
 });
 
+test("the knowledge covers what this variant can justify — and names what it leaves out", () => {
+  const documented = (simulatorVehicle.dtcKnowledge ?? []).map((entry) => entry.code);
+  assert.deepEqual(documented, ["P0420", "P0300", "P0171", "P0700", "P0715", "C0035"]);
+
+  // Every code this package describes either has variant knowledge or is left out
+  // on purpose. U0121 is left out because a lost-communication code means the same
+  // thing for every engine, gearbox and equipment line — variant wording for it
+  // would be padding dressed up as knowledge (AGENTS 24). The answer then says
+  // that it is package-wide instead of borrowing the variant's appearance.
+  const described = simulatorPackage.ecus.flatMap((ecu) => (ecu.dtcs ?? []).map((dtc) => dtc.code));
+  assert.deepEqual(
+    described.filter((code) => !documented.includes(code)),
+    ["U0121"],
+  );
+});
+
+test("a fault this package cannot observe says so instead of using a proxy signal", () => {
+  // The gearbox answers oil temperature and gear position only — there is no
+  // input/turbine speed signal, so an intermittent speed-sensor dropout cannot be
+  // watched here. An earlier version of this data "checked" the oil temperature
+  // for 30 s and called it a dropout watch: a step that observes the wrong signal
+  // and can never fail. The honest shape names the gap and checks only the
+  // condition the fault needs (AGENTS 24).
+  const gearbox = (simulatorVehicle.dtcKnowledge ?? []).find((entry) => entry.code === "P0715");
+  const intermittent = gearbox?.patterns?.find(
+    (pattern) => pattern.id === "input-sensor-intermittent",
+  );
+  assert.ok(intermittent, "the intermittent pattern is documented");
+  assert.match(
+    intermittent.explanation ?? "",
+    /no input\/turbine speed signal/,
+    "the pattern must say which measurement this package cannot make",
+  );
+  assert.deepEqual(
+    (intermittent.checks ?? []).map((check) => [
+      check.signal,
+      check.min,
+      check.max,
+      check.windowMs,
+    ]),
+    [["transmission.oil_temperature", 60, undefined, undefined]],
+    "one bounded measuring condition, no invented observation window",
+  );
+});
+
+test("every measuring point exists and every check can be judged", () => {
+  const signals = new Set(simulatorPackage.signals.map((signal) => signal.id));
+  for (const entry of simulatorVehicle.dtcKnowledge ?? []) {
+    for (const signal of entry.relatedSignals ?? []) {
+      assert.ok(signals.has(signal), `${entry.code} relates to an undeclared signal ${signal}`);
+    }
+    for (const pattern of entry.patterns ?? []) {
+      for (const check of pattern.checks ?? []) {
+        assert.ok(
+          signals.has(check.signal),
+          `${entry.code}/${pattern.id}: ${check.signal} is not in this package — a check against ` +
+            "a signal nobody defines can never run",
+        );
+        // This file's rule: a check either carries a bound, or it carries the
+        // window it has to be watched over and is therefore honest about being
+        // judged by a human. A check with neither is a sentence, not a step.
+        const bounded = check.min !== undefined || check.max !== undefined;
+        assert.ok(
+          bounded || check.windowMs !== undefined,
+          `${entry.code}/${pattern.id}: "${check.expect}" has neither a bound nor a window`,
+        );
+      }
+    }
+  }
+});
+
 test("a different VIN does not resolve to the virtual vehicle", () => {
   const result = new VehicleResolver([simulatorPackage]).resolve({
     vin: "WVWZZZ1JZHW000001",

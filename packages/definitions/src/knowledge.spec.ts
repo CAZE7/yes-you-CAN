@@ -601,15 +601,69 @@ test("the seeded simulator knowledge is usable end to end", () => {
     assumed?.notes.join(" | ") ?? "",
   );
 
+  // The chassis code is variant knowledge without an engine or gearbox axis.
+  const chassis = findDtcKnowledge([simulatorPackage], dtcKnowledgeQuery(best, "C0035", "abs"));
+  assert.equal(chassis?.scope, "vehicle", "an entry scoped to the ABS ECU answers for the vehicle");
+  assert.equal(chassis?.patterns.length, 2);
+  const straightRun = chassis?.patterns.find(
+    (pattern) => pattern.id === "implausible-speed-on-straight-run",
+  );
+  assert.equal(
+    straightRun?.checks.length,
+    3,
+    "the corner, the opposite corner and the OBD speed from another module",
+  );
+  assert.ok(
+    straightRun?.checks.every((check) => check.measurable && check.windowMs === 5000),
+    "the comparison is a window a tool can evaluate, taken over the same five seconds",
+  );
+  const harness = chassis?.patterns.find((pattern) => pattern.id === "intermittent-wheel-harness");
+  assert.equal(harness?.checks[0]?.measurable, false, "no bound is invented for a dropout watch");
+  assert.equal(
+    harness?.checks[0]?.windowMs,
+    30000,
+    "the observation window is real even where no number is",
+  );
+
+  // P0700 names no fault of its own — the knowledge says so instead of guessing.
+  const milRequest = findDtcKnowledge(
+    [simulatorPackage],
+    dtcKnowledgeQuery(best, "P0700", "transmission"),
+  );
+  assert.equal(milRequest?.scope, "vehicle-gearbox");
+  assert.equal(milRequest?.patterns.length, 3);
+  const selfTest = milRequest?.patterns.find((pattern) => pattern.id === "module-self-test");
+  assert.deepEqual(
+    selfTest?.checks,
+    [],
+    "a pattern no signal in this package can decide carries no check at all",
+  );
+  const companion = milRequest?.patterns.find(
+    (pattern) => pattern.id === "underlying-code-in-module",
+  );
+  assert.deepEqual(
+    [companion?.checks[0]?.min, companion?.checks[0]?.max],
+    [3, 4],
+    "the gear window reads the package's own enum mapping: drive and sport",
+  );
+
+  // U0121 has no variant entry on purpose: a network code means the same thing
+  // for every engine and gearbox, so the package wording stays the answer.
   const undocumented = findDtcKnowledge(
     [simulatorPackage],
-    dtcKnowledgeQuery(best, "C0035", "abs"),
+    dtcKnowledgeQuery(best, "U0121", "abs"),
   );
   assert.equal(undocumented?.scope, "package", "a code without variant knowledge keeps saying so");
+  assert.ok(
+    undocumented?.notes.some((note) => note.includes("no variant-specific knowledge documented")),
+    undocumented?.notes.join(" | ") ?? "",
+  );
   assert.deepEqual(documentedDtcCodes([simulatorPackage], "virtual-vehicle"), [
     "P0420",
     "P0300",
     "P0171",
+    "P0700",
     "P0715",
+    "C0035",
   ]);
 });
