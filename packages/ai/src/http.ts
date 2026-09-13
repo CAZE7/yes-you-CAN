@@ -213,7 +213,9 @@ function defaultHttpClient(): HttpClient {
         method: init.method,
         headers: init.headers,
         body: init.body,
-        signal: init.signal,
+        // `AbortSignal | undefined` is not a `RequestInit` once the optional
+        // property types are exact: no signal and an undefined signal differ.
+        ...(init.signal !== undefined ? { signal: init.signal } : {}),
       });
       return { ok: response.ok, status: response.status, text: () => response.text() };
     },

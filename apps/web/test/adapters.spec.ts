@@ -163,7 +163,7 @@ test("switching the adapter while connected drops the old connection instead of 
  * the bus. This is the strongest hardware check that runs without a car.
  */
 test("hardware mode runs the full diagnostic path over an injected bus", async () => {
-  const vehicle = new VirtualVehicle({ seed: 7, definitions: undefined });
+  const vehicle = new VirtualVehicle({ seed: 7 });
   await vehicle.start();
   const backend = new DemoBackend({
     logger,

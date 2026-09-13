@@ -15,6 +15,18 @@ import {
   validateDefinitionPackage,
 } from "./index.js";
 
+/**
+ * The likelihood union as the *element* sees it. Indexing an optional property
+ * through an array type yields `X | undefined`; the alias keeps the deliberately
+ * invalid values in these specs assigned to the narrowed form (E18).
+ */
+type PatternLikelihood = NonNullable<
+  NonNullable<DtcKnowledgeDefinition["patterns"]>[number]["likelihood"]
+>;
+
+/** The severity union without its optional `undefined` arm — same reason. */
+type KnownSeverity = NonNullable<DtcKnowledgeDefinition["severity"]>;
+
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
@@ -401,7 +413,10 @@ test("a vehicle-level provenance is validated like the package one (AGENTS 24)",
 
 test("a vehicle that can only match a user's own claim is flagged", () => {
   const vehicle = vehicleFixture();
-  vehicle.vinMatch = undefined;
+  // Absent, not present-and-undefined: the validator must read this as
+  // "no VIN criteria" (ADR 0026 §3 — the exact-optional change made the
+  // difference between the two spellings visible in the type system).
+  delete vehicle.vinMatch;
   vehicle.ecus = [];
   const result = validateDefinitionPackage(withVehicle(vehicle));
   assert.deepEqual(result.errors, []);
@@ -460,7 +475,7 @@ test("vehicles are indexed by id and narrowed to their ECU set", () => {
   );
 
   const oemWide = vehicleFixture();
-  oemWide.ecus = undefined;
+  delete oemWide.ecus;
   assert.equal(
     ecusOfVehicle(pkg, oemWide).length,
     pkg.ecus.length,
@@ -679,7 +694,7 @@ test("a malformed code, a bad severity and empty wording are errors", () => {
   const malformed = knowledgeFixture();
   malformed.code = "X9999";
   const severity = knowledgeFixture();
-  severity.severity = "catastrophic" as DtcKnowledgeDefinition["severity"];
+  severity.severity = "catastrophic" as KnownSeverity;
   const empty = knowledgeFixture();
   empty.description = "   ";
   empty.hint = "";
@@ -704,7 +719,7 @@ test("one code may be documented per variant, but not twice for the same variant
   const perEngine = knowledgeFixture();
   perEngine.engine = "e1";
   const perGearbox = knowledgeFixture();
-  perGearbox.engine = undefined;
+  delete perGearbox.engine;
   perGearbox.patterns = [];
   const duplicate = knowledgeFixture();
   duplicate.patterns = [];
@@ -737,9 +752,7 @@ test("failure patterns need an id, a name and a real likelihood", () => {
     {
       id: "certain",
       name: "Impossible likelihood",
-      likelihood: "certain" as NonNullable<
-        DtcKnowledgeDefinition["patterns"]
-      >[number]["likelihood"],
+      likelihood: "certain" as PatternLikelihood,
       checks: [{ signal: "engine.coolant_temperature", expect: "warm", min: 80 }],
     },
     {
@@ -806,18 +819,18 @@ test("knowledge that cannot be verified says so instead of looking complete", ()
   ];
 
   const noContent = knowledgeFixture();
-  noContent.description = undefined;
-  noContent.hint = undefined;
-  noContent.conditions = undefined;
-  noContent.severity = undefined;
-  noContent.patterns = undefined;
-  noContent.relatedSignals = undefined;
+  delete noContent.description;
+  delete noContent.hint;
+  delete noContent.conditions;
+  delete noContent.severity;
+  delete noContent.patterns;
+  delete noContent.relatedSignals;
 
   const unknownCode = knowledgeFixture();
   unknownCode.code = "P0999";
 
   const unsourcedRepair = knowledgeFixture();
-  unsourcedRepair.provenance = undefined;
+  delete unsourcedRepair.provenance;
 
   const messages = knowledgeMessages(
     withKnowledge([noChecks, noWindow, noContent, unknownCode, unsourcedRepair]),

@@ -303,6 +303,10 @@ const REQUIRED_STRICT_FLAGS = [
   "noImplicitOverride",
   "verbatimModuleSyntax",
   "forceConsistentCasingInFileNames",
+  // Turned on 2026-09-14 (E18): 88 errors across production sources and specs
+  // were migrated, and the flag is now inherited like the others. A workspace
+  // project that re-opens it fails this test.
+  "exactOptionalPropertyTypes",
 ] as const;
 
 /**
@@ -310,16 +314,6 @@ const REQUIRED_STRICT_FLAGS = [
  * open. Turning them on is a task, not a config line (AGENTS 0.E E18/E19).
  */
 const RELAXED_FLAGS: ReadonlyArray<{ file: string; flag: string; reason: string }> = [
-  {
-    file: "tsconfig.base.json",
-    flag: "exactOptionalPropertyTypes",
-    reason:
-      "Measured 2026-09-14: 27 errors in 13 production files (build) plus 61 in the typecheck " +
-      "project, 88 in total, concentrated in the definition parsers (`json.ts`, `mappers.ts`) " +
-      "that copy optional fields — the flag would force those copy sites to say whether they " +
-      "mean `undefined` or *absent*, which is a real semantic refactor of the raw→decoded " +
-      "boundary (ADR 0004), not a config flip.",
-  },
   {
     file: "tsconfig.frontend.json",
     flag: "noImplicitAny",

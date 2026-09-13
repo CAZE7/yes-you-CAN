@@ -380,9 +380,13 @@ export function decodeMessages(
   for (const message of messages) {
     if (message.direction === "request") {
       const request = decodeUdsRequest(message.bytes);
-      message.decoded = request
-        ? `REQUEST ${serviceName(request.serviceId)}${request.did !== undefined ? ` 0x${request.did.toString(16).toUpperCase().padStart(4, "0")}` : ""}`
-        : undefined;
+      if (request) {
+        message.decoded = `REQUEST ${serviceName(request.serviceId)}${
+          request.did !== undefined
+            ? ` 0x${request.did.toString(16).toUpperCase().padStart(4, "0")}`
+            : ""
+        }`;
+      }
       if (request?.did !== undefined) message.did = request.did;
       continue;
     }

@@ -403,8 +403,8 @@ test("memory repository honours the options object and reads its streams back", 
 
   // A session without title/VIN omits the optional summary fields entirely.
   const bare = sampleSession("session_bare");
-  bare.title = undefined;
-  bare.vehicle = undefined;
+  delete bare.title;
+  delete bare.vehicle;
   await repo.save(bare);
   const bareSummary = (await repo.list()).find((entry) => entry.id === "session_bare");
   assert.ok(bareSummary);

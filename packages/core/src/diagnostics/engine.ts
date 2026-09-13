@@ -255,11 +255,18 @@ export class DiagnosticEngine {
           {
             txId: ecu.txId,
             rxId: ecu.rxId,
-            extended: ecu.extended,
+            // Absent is the default (standard 11-bit addressing); spreading keeps
+            // "not stated" and "stated as undefined" from becoming one thing.
+            ...(ecu.extended !== undefined ? { extended: ecu.extended } : {}),
             logger: this.log,
             decoder: this.decoder,
-            definitionPackage: this.activePackage,
-            definitionEcuId: ecu.definitionEcuId?.split(":")[1],
+            // Discovery may have found this ECU without a definition package
+            // (a plain CAN scan); the session then runs identifier-free instead
+            // of being handed a package-shaped `undefined`.
+            ...(this.activePackage !== undefined ? { definitionPackage: this.activePackage } : {}),
+            ...(ecu.definitionEcuId !== undefined
+              ? { definitionEcuId: ecu.definitionEcuId.split(":")[1] }
+              : {}),
           },
         );
         failed.record.lastError = message;
@@ -482,11 +489,12 @@ export class DiagnosticEngine {
   async clearDtcs(rxId: number, options: ClearDtcOptions): Promise<ClearDtcResult> {
     const handle = this.requireHandle(rxId);
     const session = this.session;
+    // Resolved once into a named value: the conditional spread below can only
+    // stay exactly typed if the narrowed value is read from a binding.
+    const definitionVersion = options.definitionVersion ?? this.activePackage?.version;
     return this.dtcClear.clear(this.clearableEcu(handle), {
       ...options,
-      ...((options.definitionVersion ?? this.activePackage?.version)
-        ? { definitionVersion: options.definitionVersion ?? this.activePackage?.version }
-        : {}),
+      ...(definitionVersion !== undefined ? { definitionVersion } : {}),
       recordSnapshot: (records, label) => {
         session?.addDtcSnapshot([...records], label);
       },

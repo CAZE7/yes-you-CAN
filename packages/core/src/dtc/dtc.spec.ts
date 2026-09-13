@@ -150,7 +150,7 @@ function service(
   options: { vehicleState?: Parameters<typeof DtcClearService.prototype.clear>[1] } = {},
 ) {
   void options;
-  const safety = new SafetyManager({ logger: undefined });
+  const safety = new SafetyManager();
   const scanner = new DtcScanner({ definitions: [genericPackage] });
   return {
     safety,

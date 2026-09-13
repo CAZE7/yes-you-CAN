@@ -9,6 +9,7 @@
 import assert from "node:assert/strict";
 import { createLogger } from "@vdp/shared";
 import { beforeEach, describe, test } from "vitest";
+import { type FixturePatch, dropUndefined } from "../../../../tests/helpers/fixture.js";
 import { NRC } from "./nrc.js";
 import { UdsServer, type UdsServerLink } from "./server.js";
 import { DTC_REPORT, SESSION, SID, SUPPRESS_POSITIVE_RESPONSE } from "./services.js";
@@ -21,7 +22,7 @@ interface Harness {
   send(payload: number[]): Promise<void>;
 }
 
-function h(options: Partial<ConstructorParameters<typeof UdsServer>[1]> = {}): Harness {
+function h(options: FixturePatch<ConstructorParameters<typeof UdsServer>[1]> = {}): Harness {
   const sent: Uint8Array[] = [];
   const link: UdsServerLink = {
     onMessage: () => () => undefined,
@@ -52,7 +53,7 @@ function h(options: Partial<ConstructorParameters<typeof UdsServer>[1]> = {}): H
       verifyKey: (level, key) => key[0] === level,
       lockoutMs: 500,
     },
-    ...options,
+    ...dropUndefined(options),
   });
   return {
     server,

@@ -253,9 +253,12 @@ export class VehicleService {
    * hypotheses, and an empty one is a legitimate answer.
    */
   resolve(hints?: ResolveVehicleHints): VehicleResolutionRef {
+    // Not connected yet means "no identity was established", which is an absent
+    // field in the query — the resolver must not read it as a known empty one.
+    const identity = this.identity();
     const query = resolveVehicleQuery({
-      identity: this.identity(),
       ecus: this.ecus.list(),
+      ...(identity !== undefined ? { identity } : {}),
       ...(hints !== undefined ? { hints } : {}),
     });
     const resolution = this.definitions.resolveVehicle(query);

@@ -7,6 +7,7 @@
 import assert from "node:assert/strict";
 import { SafetyViolationError } from "@vdp/shared";
 import { describe, test } from "vitest";
+import { type FixturePatch, patched } from "../../../../tests/helpers/fixture.js";
 import {
   DEFAULT_MIN_BATTERY_VOLTAGE,
   SafetyManager,
@@ -94,7 +95,7 @@ describe("evaluate — precondition catalogue", () => {
 
   test("definition/ECU mismatches and missing evidence block the write", () => {
     const manager = new SafetyManager();
-    const cases: Array<Partial<WriteRequestContext>> = [
+    const cases: Array<FixturePatch<WriteRequestContext>> = [
       { expectedEcuType: "BCM", actualEcuType: "Gateway" },
       { expectedSoftwareVariant: "EU", actualSoftwareVariant: "US" },
       { definitionVersion: undefined },
@@ -103,7 +104,9 @@ describe("evaluate — precondition catalogue", () => {
       { activeSessionType: 0x01 },
     ];
     for (const patch of cases) {
-      const result = manager.evaluate({ ...OK_CONTEXT, ...patch }, OK_STATE);
+      // `undefined` in a patch means "this evidence was never gathered", so the
+      // key is removed from the base context rather than blanked (E18).
+      const result = manager.evaluate(patched(OK_CONTEXT, patch), OK_STATE);
       assert.equal(result.ok, false, `expected a failure for ${JSON.stringify(patch)}`);
       assert.ok(result.failed.length >= 1);
     }

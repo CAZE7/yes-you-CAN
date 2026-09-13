@@ -13,6 +13,7 @@ import assert from "node:assert/strict";
 import { EVIDENCE_WEIGHT } from "@vdp/definitions";
 import type { VehicleCandidateRef, VehicleResolutionRef } from "@vdp/domain";
 import { describe, test } from "vitest";
+import { type FixturePatch, dropUndefined, patched } from "../../../tests/helpers/fixture.js";
 import {
   criterionLabel,
   knownCriterionKinds,
@@ -20,37 +21,39 @@ import {
   toVehicleResolutionView,
 } from "../src/vehicle-view.js";
 
-function candidate(fields: Partial<VehicleCandidateRef> = {}): VehicleCandidateRef {
-  return {
-    oem: "simulator",
-    packageVersion: "1.0.0",
-    vehicleId: "virtual-vehicle",
-    brand: "Virtual",
-    model: "Simulator vehicle",
-    platform: "SIM-1",
-    provenanceType: "own",
-    engineIds: ["sim-petrol"],
-    gearboxIds: ["sim-automatic"],
-    score: 1,
-    trust: 1,
-    evidence: [
-      {
-        kind: "part-number",
-        observed: "ENGINE-f187",
-        expected: "ENGINE-f187",
-        weight: 4,
-        reason: "part number read from DID 0xF187 is declared for this vehicle",
-      },
-    ],
-    conflicts: [],
-    expectedEcus: 3,
-    matchedEcus: 3,
-    missingEcus: [],
-    ...fields,
-  };
+function candidate(fields: FixturePatch<VehicleCandidateRef> = {}): VehicleCandidateRef {
+  return patched(
+    {
+      oem: "simulator",
+      packageVersion: "1.0.0",
+      vehicleId: "virtual-vehicle",
+      brand: "Virtual",
+      model: "Simulator vehicle",
+      platform: "SIM-1",
+      provenanceType: "own",
+      engineIds: ["sim-petrol"],
+      gearboxIds: ["sim-automatic"],
+      score: 1,
+      trust: 1,
+      evidence: [
+        {
+          kind: "part-number",
+          observed: "ENGINE-f187",
+          expected: "ENGINE-f187",
+          weight: 4,
+          reason: "part number read from DID 0xF187 is declared for this vehicle",
+        },
+      ],
+      conflicts: [],
+      expectedEcus: 3,
+      matchedEcus: 3,
+      missingEcus: [],
+    },
+    fields,
+  );
 }
 
-function resolution(fields: Partial<VehicleResolutionRef> = {}): VehicleResolutionRef {
+function resolution(fields: FixturePatch<VehicleResolutionRef> = {}): VehicleResolutionRef {
   const candidates = fields.candidates ?? [candidate()];
   return {
     candidates,
@@ -58,7 +61,7 @@ function resolution(fields: Partial<VehicleResolutionRef> = {}): VehicleResoluti
     notes: [],
     unexplained: [],
     ...(candidates[0] !== undefined ? { best: candidates[0] } : {}),
-    ...fields,
+    ...dropUndefined(fields),
   };
 }
 

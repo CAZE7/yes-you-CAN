@@ -398,29 +398,29 @@ export class DemoBackend {
   readonly log: Logger;
   readonly analysisService: AnalysisService;
   readonly adapters: AdapterCatalog;
-  private vehicle?: VirtualVehicle;
-  private bus?: CanBus;
+  private vehicle: VirtualVehicle | undefined;
+  private bus: CanBus | undefined;
   /**
    * The headless diagnostic runtime (ADR 0014): the backend owns transport and
    * presentation only — every vehicle operation goes through the command/query
    * bus, never through the engine below it.
    */
-  private runtime?: DiagnosticRuntime;
+  private runtime: DiagnosticRuntime | undefined;
   private selection: AdapterSelection;
   private mode: BackendMode;
-  private probe?: AdapterProbe;
+  private probe: AdapterProbe | undefined;
   private readonly sessionLogger = new SessionLogger();
   private readonly listeners = new Set<(event: BackendEvent) => void>();
-  private unsubscribeBus?: () => void;
-  private unsubscribeSamples?: () => void;
-  private unsubscribeEvents?: () => void;
+  private unsubscribeBus: (() => void) | undefined;
+  private unsubscribeSamples: (() => void) | undefined;
+  private unsubscribeEvents: (() => void) | undefined;
   private ecus: EcuView[] = [];
   private dtcs: DtcView[] = [];
   private live = false;
   private connected = false;
   private readonly vin: string;
   private definitions: readonly DefinitionPackage[];
-  private resolution?: VehicleResolutionView;
+  private resolution: VehicleResolutionView | undefined;
   private readonly repository?: SessionRepository;
   /**
    * Turns raw protocol codes into described fault entries. Descriptions come
@@ -993,8 +993,11 @@ export class DemoBackend {
 
   async analyze(): Promise<AnalysisResult> {
     const runtime = this.requireRuntime();
+    // No odometer reading is an absent input, not a present zero: the heuristic
+    // provider must not read "unknown mileage" as "0 km" (AGENTS 22).
+    const mileageKm = this.session()?.mileageKm;
     const input: AnalysisInput = {
-      mileageKm: this.session()?.mileageKm,
+      ...(mileageKm !== undefined ? { mileageKm } : {}),
       signals: runtime.measurements.statistics().map((stat) => ({
         signal: stat.signalId,
         name: stat.name,

@@ -253,7 +253,14 @@ const fakeResponse = (body: unknown, status = 200) => ({
 });
 
 test("the default HTTP client posts to the endpoint and parses the answer", async () => {
-  let seen: { url?: string; method?: string; body?: string; signal?: AbortSignal } = {};
+  // The recorder keeps whatever the built-in client passed on, including
+  // "nothing" — so the fields are `| undefined`, not optional (E18).
+  let seen: {
+    url?: string;
+    method: string | undefined;
+    body: string | undefined;
+    signal: AbortSignal | undefined;
+  } = { method: undefined, body: undefined, signal: undefined };
   await withFetch(
     async (url: unknown, init: unknown) => {
       const call = (init ?? {}) as { method?: string; body?: string; signal?: AbortSignal };

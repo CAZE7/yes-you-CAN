@@ -11,6 +11,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { genericPackage } from "../generic/generic-package.js";
+import type { DiscoveredAddress } from "../resolve.js";
 import { VehicleResolver } from "../resolve.js";
 import { validateDefinitionPackage } from "../validate.js";
 import { matchesPattern, vinPositions } from "../vehicles.js";
@@ -34,10 +35,12 @@ test("declared tokens mirror the simulator answers exactly", () => {
   ]);
 });
 
-const DISCOVERED = simulatorPackage.ecus.map((ecu) => ({
+const DISCOVERED: DiscoveredAddress[] = simulatorPackage.ecus.map((ecu) => ({
   txId: ecu.address.txId,
   rxId: ecu.address.rxId,
-  extended: ecu.address.extended,
+  // Standard 11-bit addressing is Discovery's default; an absent key states that
+  // instead of a key holding `undefined` (E18).
+  ...(ecu.address.extended !== undefined ? { extended: ecu.address.extended } : {}),
 }));
 
 test("the package is valid and states where it comes from", () => {

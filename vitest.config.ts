@@ -153,7 +153,7 @@ export default defineConfig({
       ...(junitFile ? (['junit'] as const) : []),
       './tools/test-reporters/flaky-reporter.ts',
     ],
-    outputFile: junitFile ? { junit: junitFile } : undefined,
+    ...(junitFile ? { outputFile: { junit: junitFile } } : {}),
     projects: [
       project({
         name: 'unit',
