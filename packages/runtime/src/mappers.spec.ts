@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   type ClearDtcResult,
   type DecodedSignal,
+  type DtcVariantKnowledge,
   type EcuSession,
   type EnrichedDtc,
   type MeasurementSample,
@@ -17,6 +18,7 @@ import {
   deniedClearOutcome,
   toClearDtcOutcome,
   toDtcInfo,
+  toDtcKnowledge,
   toEcuSummary,
   toMeasurementReading,
   toSessionSummary,
@@ -238,6 +240,46 @@ describe("toDtcInfo", () => {
     assert.equal("hint" in info, false);
     assert.equal("firstSeen" in info, false);
     assert.equal("relatedSignals" in info, false);
+    assert.equal("knowledge" in info, false, "no vehicle, no variant knowledge");
+  });
+
+  test("carries the variant knowledge of the scan it came from", () => {
+    const info = toDtcInfo(
+      makeDtc({
+        knowledge: {
+          scope: "vehicle-engine",
+          vehicleId: "virtual-vehicle",
+          patterns: [
+            {
+              id: "catalyst-aged",
+              name: "Aged catalyst",
+              scope: "vehicle-engine",
+              checks: [
+                {
+                  signal: "engine.long_term_fuel_trim",
+                  signalName: "Long term fuel trim",
+                  expect: "neutral",
+                  min: -5,
+                  max: 5,
+                  measurable: true,
+                },
+              ],
+            },
+          ],
+          notes: [],
+        },
+      }),
+    );
+    assert.equal(info.knowledge?.scope, "vehicle-engine");
+    assert.equal(info.knowledge?.vehicleId, "virtual-vehicle");
+    assert.deepEqual(info.knowledge?.patterns[0]?.checks[0], {
+      signalId: "engine.long_term_fuel_trim",
+      name: "Long term fuel trim",
+      expect: "neutral",
+      min: -5,
+      max: 5,
+      measurable: true,
+    });
   });
 });
 
@@ -292,5 +334,101 @@ describe("decodedToReading / clear outcomes", () => {
     assert.equal(outcome.verified, false);
     assert.deepEqual(outcome.reasons, ["no confirmation"]);
     assert.deepEqual(outcome.remainingCodes, []);
+  });
+});
+
+describe("toDtcKnowledge", () => {
+  /** Variant knowledge as the DTC system records it (AGENTS 20, 23). */
+  function knowledge(overrides: Partial<DtcVariantKnowledge> = {}): DtcVariantKnowledge {
+    return {
+      scope: "vehicle-engine",
+      vehicleId: "virtual-vehicle",
+      conditions: "only in closed loop above 80 °C",
+      patterns: [
+        {
+          id: "catalyst-aged",
+          name: "Aged catalyst",
+          explanation: "Oxygen storage is gone",
+          likelihood: "common",
+          repair: "Replace it after the checks hold",
+          scope: "vehicle-engine",
+          checks: [
+            {
+              signal: "engine.long_term_fuel_trim",
+              signalName: "Long term fuel trim",
+              expect: "neutral",
+              min: -5,
+              max: 5,
+              measurable: true,
+            },
+            {
+              signal: "engine.coolant_temperature",
+              signalName: "Coolant temperature",
+              expect: "listen at operating temperature",
+              measurable: false,
+            },
+          ],
+        },
+      ],
+      provenanceType: "licensed",
+      provenanceSource: "workshop manual",
+      notes: ["the evidence did not narrow the powertrain"],
+      ...overrides,
+    };
+  }
+
+  test("maps to the domain's field names and keeps every statement", () => {
+    const info = toDtcKnowledge(knowledge());
+    assert.equal(info.scope, "vehicle-engine");
+    assert.equal(info.vehicleId, "virtual-vehicle");
+    assert.equal(info.conditions, "only in closed loop above 80 °C");
+    assert.equal(info.provenanceType, "licensed");
+    assert.equal(info.provenanceSource, "workshop manual");
+    assert.deepEqual(info.notes, ["the evidence did not narrow the powertrain"]);
+
+    const pattern = info.patterns[0];
+    assert.ok(pattern);
+    assert.equal(pattern.id, "catalyst-aged");
+    assert.equal(pattern.likelihood, "common");
+    assert.equal(pattern.repair, "Replace it after the checks hold");
+    assert.equal(pattern.scope, "vehicle-engine");
+    assert.deepEqual(pattern.checks[0], {
+      signalId: "engine.long_term_fuel_trim",
+      name: "Long term fuel trim",
+      expect: "neutral",
+      min: -5,
+      max: 5,
+      measurable: true,
+    });
+    assert.deepEqual(pattern.checks[1], {
+      signalId: "engine.coolant_temperature",
+      name: "Coolant temperature",
+      expect: "listen at operating temperature",
+      measurable: false,
+    });
+  });
+
+  test("what is not documented stays absent instead of becoming empty", () => {
+    const info = toDtcKnowledge(
+      knowledge({
+        vehicleId: undefined,
+        conditions: undefined,
+        provenanceType: undefined,
+        provenanceSource: undefined,
+        patterns: [{ id: "prose", name: "Only prose", scope: "vehicle", checks: [] }],
+        notes: [],
+      }),
+    );
+    assert.equal("vehicleId" in info, false);
+    assert.equal("conditions" in info, false);
+    assert.equal("provenanceType" in info, false);
+    assert.equal("provenanceSource" in info, false);
+    assert.deepEqual(info.patterns[0], {
+      id: "prose",
+      name: "Only prose",
+      scope: "vehicle",
+      checks: [],
+    });
+    assert.deepEqual(info.notes, []);
   });
 });

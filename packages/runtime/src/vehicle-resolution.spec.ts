@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
-import type { EcuSummary, VehicleSummary } from "@vdp/domain";
+import type { EcuSummary, VehicleCandidateRef, VehicleSummary } from "@vdp/domain";
 import { describe, test } from "vitest";
-import { declaredOf, resolveVehicleQuery, splitDefinitionEcuId } from "./vehicle-resolution.js";
+import {
+  declaredOf,
+  dtcVehicleContextOf,
+  resolveVehicleQuery,
+  splitDefinitionEcuId,
+} from "./vehicle-resolution.js";
 
 /** An ECU summary with only the fields the mapping actually reads set. */
 function ecu(
@@ -184,5 +189,55 @@ describe("resolveVehicleQuery", () => {
       discoveredAddresses: [],
       declared: {},
     });
+  });
+});
+
+describe("dtcVehicleContextOf", () => {
+  /** A resolution candidate with only the fields the DTC binding reads. */
+  function candidate(overrides: Partial<VehicleCandidateRef> = {}): VehicleCandidateRef {
+    return {
+      oem: "simulator",
+      packageVersion: "1.0.0",
+      vehicleId: "virtual-vehicle",
+      brand: "Virtual",
+      model: "Simulator vehicle",
+      engineIds: [],
+      gearboxIds: [],
+      score: 1,
+      trust: 1,
+      evidence: [],
+      conflicts: [],
+      expectedEcus: 3,
+      matchedEcus: 3,
+      missingEcus: [],
+      ...overrides,
+    };
+  }
+
+  test("an unresolved car binds nothing", () => {
+    assert.equal(dtcVehicleContextOf(undefined), undefined);
+  });
+
+  test("passes on the vehicle and only the narrowing the evidence produced", () => {
+    assert.deepEqual(dtcVehicleContextOf(candidate()), {
+      oem: "simulator",
+      vehicleId: "virtual-vehicle",
+    });
+    assert.deepEqual(
+      dtcVehicleContextOf(candidate({ engineIds: ["sim-petrol"], gearboxIds: ["sim-automatic"] })),
+      {
+        oem: "simulator",
+        vehicleId: "virtual-vehicle",
+        engineIds: ["sim-petrol"],
+        gearboxIds: ["sim-automatic"],
+      },
+    );
+  });
+
+  test("copies the narrowing, so a later resolution cannot rewrite a bound one", () => {
+    const engines = ["sim-petrol"];
+    const context = dtcVehicleContextOf(candidate({ engineIds: engines }));
+    engines.push("sim-diesel");
+    assert.deepEqual(context?.engineIds, ["sim-petrol"]);
   });
 });

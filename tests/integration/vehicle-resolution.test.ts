@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { connectVehicle, getEcuList, resolveVehicle } from "@vdp/application";
+import { connectVehicle, getEcuList, readDtcs, resolveVehicle } from "@vdp/application";
 import { SIMULATOR_VIN, simulatorPackage } from "@vdp/definitions";
 import { createDiagnosticRuntime } from "@vdp/runtime";
 import { MemorySink, createLogger } from "@vdp/shared";
@@ -16,6 +16,11 @@ import { afterAll, beforeAll, test } from "vitest";
  * comes off the bus, the identification values come out of the UDS responses, the
  * discovered addresses come out of discovery, and nothing about the car is typed
  * in by a test.
+ *
+ * The last test walks one step further (AGENTS 20, 23): the resolution is what
+ * makes fault knowledge specific, so a scanned code has to arrive with the
+ * wording, the patterns and the measuring checks of *this* variant — and a code
+ * nobody documented for it has to arrive saying exactly that.
  */
 
 const logSink = new MemorySink();
@@ -119,5 +124,52 @@ test("the provider reports how many vehicles a package carries", () => {
   assert.deepEqual(
     packages.map((pkg) => [pkg.oem, pkg.vehicles]),
     [["simulator", 1]],
+  );
+});
+
+test("a scanned fault carries the knowledge of the resolved variant", async () => {
+  // connect() resolved the car from the bus already, so the first scan is
+  // enriched with what this variant documents — no extra operator step.
+  const dtcs = await runtime.commands.dispatch(readDtcs());
+  const byCode = new Map(dtcs.map((dtc) => [dtc.code, dtc]));
+
+  const catalyst = byCode.get("P0420");
+  assert.ok(catalyst, "the virtual vehicle reports the seeded catalyst code");
+  assert.equal(catalyst.knowledge?.scope, "vehicle-engine");
+  assert.equal(catalyst.knowledge?.vehicleId, "virtual-vehicle");
+  assert.equal(catalyst.knowledge?.provenanceType, "own");
+  assert.match(catalyst.description ?? "", /2\.4 L petrol/, "the variant wording wins");
+  assert.match(catalyst.knowledge?.conditions ?? "", /closed loop/);
+  assert.deepEqual(
+    catalyst.knowledge?.patterns.map((pattern) => pattern.id),
+    ["catalyst-aged", "exhaust-leak-before-catalyst"],
+  );
+  assert.deepEqual(catalyst.knowledge?.notes, [], "the powertrain was read, nothing is assumed");
+  const aged = catalyst.knowledge?.patterns[0];
+  assert.equal(aged?.repair !== undefined, true, "repair advice travels with its pattern");
+  assert.ok(
+    aged?.checks.every((check) => check.measurable && check.name !== undefined),
+    "every check names a signal the package defines and a window a tool can evaluate",
+  );
+
+  const gearbox = byCode.get("P0715");
+  assert.equal(
+    gearbox?.knowledge?.scope,
+    "vehicle-gearbox",
+    "the transmission code answers for the automatic gearbox",
+  );
+
+  const undocumented = byCode.get("C0035");
+  assert.equal(undocumented?.knowledge?.scope, "package");
+  assert.ok(
+    undocumented?.knowledge?.notes.some((note) =>
+      note.includes("no variant-specific knowledge documented"),
+    ),
+    undocumented?.knowledge?.notes.join(" | "),
+  );
+  assert.match(
+    undocumented?.description ?? "",
+    /Left front wheel speed sensor circuit/,
+    "the manufacturer-wide wording stays, and says that it is",
   );
 });

@@ -15,10 +15,12 @@
  */
 
 import type { ResolveVehicleHints } from "@vdp/application";
+import type { DtcVehicleContext } from "@vdp/core";
 import type {
   EcuSummary,
   IdentificationFactRef,
   ResolveVehicleQuery,
+  VehicleCandidateRef,
   VehicleSummary,
 } from "@vdp/domain";
 
@@ -109,4 +111,25 @@ export function resolveVehicleQuery(input: VehicleFactInput): ResolveVehicleQuer
       .map((ecu) => ({ txId: ecu.txId, rxId: ecu.rxId, extended: ecu.extended })),
     declared: declaredOf(input.identity, input.hints),
   };
+}
+
+/**
+ * What the DTC system needs from a resolution (AGENTS 11 → AGENTS 20).
+ *
+ * Only the narrowing the evidence produced is passed on: engines the resolver did
+ * not identify stay unknown, so knowledge written for one engine cannot be
+ * attributed to another. `undefined` for an unresolved car — the fault list then
+ * keeps showing the manufacturer-wide wording and says that it does.
+ */
+export function dtcVehicleContextOf(
+  candidate: VehicleCandidateRef | undefined,
+): DtcVehicleContext | undefined {
+  if (candidate === undefined) return undefined;
+  const context: DtcVehicleContext = {
+    oem: candidate.oem,
+    vehicleId: candidate.vehicleId,
+  };
+  if (candidate.engineIds.length > 0) context.engineIds = [...candidate.engineIds];
+  if (candidate.gearboxIds.length > 0) context.gearboxIds = [...candidate.gearboxIds];
+  return context;
 }

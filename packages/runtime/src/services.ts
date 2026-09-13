@@ -68,7 +68,7 @@ import {
   toSignalStatisticsInfo,
   toVehicleSummary,
 } from "./mappers.js";
-import { resolveVehicleQuery } from "./vehicle-resolution.js";
+import { dtcVehicleContextOf, resolveVehicleQuery } from "./vehicle-resolution.js";
 
 export function unknownEcu(ecuId: string): Error {
   return new Error(`unknown ECU "${ecuId}" — connect first or check the id`);
@@ -226,6 +226,12 @@ export class VehicleService {
       ...(vehicle?.vin !== undefined ? { vin: vehicle.vin } : {}),
       ecuCount: summaries.length,
     });
+    // Connect already read the VIN and every identification value, so the car can
+    // be resolved without another bus access — and the first fault scan then
+    // carries the knowledge of this variant instead of the manufacturer-wide
+    // wording (AGENTS 11 → 20). An explicit `resolve(hints)` rebinds with the
+    // operator's claims.
+    this.engine.setVehicleContext(dtcVehicleContextOf(this.resolve().best));
     return {
       session: toSessionSummary(session),
       ...(vehicle !== undefined ? { vehicle } : {}),
@@ -253,6 +259,9 @@ export class VehicleService {
       ...(hints !== undefined ? { hints } : {}),
     });
     const resolution = this.definitions.resolveVehicle(query);
+    // From here on the DTC system enriches with what this variant documents
+    // (AGENTS 20/23); an unresolved car keeps the manufacturer-wide wording.
+    this.engine.setVehicleContext(dtcVehicleContextOf(resolution.best));
     this.log.info("vehicle resolved", {
       candidates: resolution.candidates.length,
       best: resolution.best?.vehicleId,
