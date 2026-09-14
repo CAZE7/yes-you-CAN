@@ -125,6 +125,18 @@
       ],
       "why": "Virtual vehicle answers like a real ECU stack."
     },
+    "@vdp/golden-sessions": {
+      "mayImport": [
+        "@vdp/shared",
+        "@vdp/diagnostic-ir",
+        "@vdp/definitions",
+        "@vdp/transport-can",
+        "@vdp/transport-iso-tp",
+        "@vdp/core",
+        "@vdp/simulators"
+      ],
+      "why": "Recorded sessions plus their expectation: it records against the simulator, replays through the real core and compares in the IR vocabulary. A tool, not a layer — nothing imports it."
+    },
     "@vdp/trace-analyzer": {
       "mayImport": ["@vdp/shared", "@vdp/definitions", "@vdp/protocols-uds", "@vdp/transport-can"],
       "why": "Offline trace tooling decodes with the protocol layer, without the core."
@@ -153,8 +165,8 @@
   },
   "rules": {
     "nodeBuiltins": {
-      "allowedIn": ["@vdp/adapter-host", "@vdp/storage", "@vdp/web"],
-      "why": "Portable layers (domain, application, protocols, transports, core, runtime) must stay free of node:fs and sockets; file system and host bindings belong to storage, host adapters and apps."
+      "allowedIn": ["@vdp/adapter-host", "@vdp/storage", "@vdp/web", "@vdp/golden-sessions"],
+      "why": "Portable layers (domain, application, protocols, transports, core, runtime) must stay free of node:fs and sockets; file system and host bindings belong to storage, host adapters and apps. @vdp/golden-sessions is a tool, not a layer — nothing imports it, and its CLI is the part that reads and writes the fixture files on disk."
     },
     "ui": {
       "package": "@vdp/web",

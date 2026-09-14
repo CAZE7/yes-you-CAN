@@ -340,6 +340,12 @@ test("process.exit only at the entry point that owns exit codes", () => {
       file: "apps/web/src/server.ts",
       reason: "CLI entry point — the exit code is its interface (AGENTS 33)",
     },
+    {
+      file: "tools/golden-sessions/src/cli.ts",
+      reason:
+        "the recording entry point: `npm run golden:record` fails the build when a replayed " +
+        "expectation does not hold, so its exit code is its interface (master backlog P0 #10)",
+    },
   ];
   assertGate(
     "process.exit in a library kills the host process",

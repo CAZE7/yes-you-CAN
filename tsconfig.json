@@ -71,6 +71,9 @@
       "path": "tools/simulators"
     },
     {
+      "path": "tools/golden-sessions"
+    },
+    {
       "path": "tools/trace-analyzer"
     },
     {

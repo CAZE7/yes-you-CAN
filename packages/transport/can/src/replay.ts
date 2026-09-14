@@ -61,6 +61,21 @@ export interface ReplayTransportOptions {
   immediate?: boolean;
   /** Fall back to matching by identifier when the payload differs. Default true. */
   matchByIdOnly?: boolean;
+  /**
+   * Deliver each recorded response at its recorded offset after the request.
+   *
+   * A recording is not only its bytes but also its timing, and the timing is load
+   * bearing: an ECU that answers "response pending" (NRC 0x78) and sends the real
+   * answer 30 ms later is *two* messages, and the tester only asks for the second
+   * one after it has processed the first. Delivered in one burst, the second
+   * message arrives before anyone listens for it and is lost.
+   *
+   * A paced replay therefore behaves like a bus, not like a table: `send` schedules
+   * the recorded responses and returns, each response is emitted at its recorded
+   * offset, and the tester can act in between. Off by default — a unit test wants
+   * `await send()` to mean "the answer has been delivered".
+   */
+  pace?: boolean;
 }
 
 interface Exchange {
@@ -97,8 +112,11 @@ export class ReplayTransport {
   private readonly channel: string;
   private readonly immediate: boolean;
   private readonly matchByIdOnly: boolean;
+  private readonly pace: boolean;
   private opened = false;
   private clock = 0;
+  /** Scheduled response timers of a paced replay; cleared on close. */
+  private readonly timers = new Set<ReturnType<typeof setTimeout>>();
 
   constructor(
     private readonly recording: ReplayRecording,
@@ -107,6 +125,7 @@ export class ReplayTransport {
     this.channel = options.channel ?? recording.channel ?? "replay0";
     this.immediate = options.immediate ?? false;
     this.matchByIdOnly = options.matchByIdOnly ?? true;
+    this.pace = options.pace ?? false;
     this.log = (options.logger ?? createLogger("replay", { level: "INFO" })).child("replay");
     this.info = { ...REPLAY_INFO, channels: [this.channel], ...(options.info ?? {}) };
     this.groupExchanges();
@@ -117,6 +136,9 @@ export class ReplayTransport {
     let current: Exchange | null = null;
     for (const entry of this.recording.frames) {
       if (entry.direction === "tx") {
+        // The tester's Flow Control frame belongs to the answer being received; it
+        // neither opens an exchange nor closes the current one (see isFlowControl).
+        if (isFlowControl(entry.payload)) continue;
         current = { request: entry, responses: [], used: false };
         this.exchanges.push(current);
       } else if (current) {
@@ -135,6 +157,10 @@ export class ReplayTransport {
   async close(): Promise<void> {
     this.opened = false;
     this.listeners.length = 0;
+    // A paced replay owns timers; leaving them running would emit into a closed
+    // transport (and keep a test runner alive).
+    for (const timer of this.timers) clearTimeout(timer);
+    this.timers.clear();
   }
 
   isOpen(): boolean {
@@ -157,6 +183,16 @@ export class ReplayTransport {
     }
     this.stats.sends++;
 
+    // A Flow Control frame is part of the answer the tester is receiving, not a
+    // request of its own: answering it with the next recorded exchange would shift
+    // every following match by one (see isFlowControl).
+    if (isFlowControl(frame.payload)) {
+      this.log.debug("replay: flow control frame ignored (it belongs to a response)", {
+        canId: `0x${frame.id.toString(16)}`,
+      });
+      return;
+    }
+
     const exchange = this.takeExchange(frame);
     if (!exchange) {
       this.stats.unmatched++;
@@ -168,25 +204,65 @@ export class ReplayTransport {
     }
     this.stats.matched++;
 
-    const deliver = (): void => {
-      for (const response of exchange.responses) {
-        this.clock = Math.max(this.clock, response.t);
-        this.emit({
-          timestamp: this.clock,
-          id: response.canId,
-          extended: response.extended ?? false,
-          fd: response.fd ?? false,
-          dlc: response.payload.length,
-          payload: response.payload,
-          channel: response.channel ?? this.channel,
-          direction: "rx",
-        });
-        this.stats.delivered++;
-      }
-    };
+    // Pacing wins over `immediate`: "deliver it now" and "deliver it when it
+    // happened" are two different answers, and the caller asked for the latter.
+    if (this.pace) {
+      this.schedulePaced(exchange);
+      return;
+    }
 
-    if (this.immediate) deliver();
-    else await Promise.resolve().then(deliver);
+    if (this.immediate) {
+      this.deliver(exchange);
+      return;
+    }
+    await Promise.resolve().then(() => this.deliver(exchange));
+  }
+
+  /** Emit every recorded response of one exchange, in recording order. */
+  private deliver(exchange: Exchange): void {
+    for (const response of exchange.responses) {
+      this.emitResponse(response);
+    }
+  }
+
+  /**
+   * Emit the recorded responses at the offsets they were recorded with.
+   *
+   * Timer based and not awaited on purpose: the caller must be able to react
+   * between two messages of the same exchange (NRC 0x78 → wait → final response),
+   * which is impossible if `send` blocks until the whole answer has been emitted.
+   */
+  private schedulePaced(exchange: Exchange): void {
+    const requestAt = exchange.request.t;
+    const byOffset = new Map<number, ReplayFrameEntry[]>();
+    for (const response of exchange.responses) {
+      const offset = Math.max(0, response.t - requestAt);
+      const group = byOffset.get(offset) ?? [];
+      group.push(response);
+      byOffset.set(offset, group);
+    }
+    for (const [offset, group] of [...byOffset.entries()].sort(([a], [b]) => a - b)) {
+      const timer = setTimeout(() => {
+        this.timers.delete(timer);
+        for (const response of group) this.emitResponse(response);
+      }, offset);
+      this.timers.add(timer);
+    }
+  }
+
+  private emitResponse(response: ReplayFrameEntry): void {
+    this.clock = Math.max(this.clock, response.t);
+    this.emit({
+      timestamp: this.clock,
+      id: response.canId,
+      extended: response.extended ?? false,
+      fd: response.fd ?? false,
+      dlc: response.payload.length,
+      payload: response.payload,
+      channel: response.channel ?? this.channel,
+      direction: "rx",
+    });
+    this.stats.delivered++;
   }
 
   private takeExchange(frame: CanFrame): Exchange | undefined {
@@ -257,6 +333,33 @@ export class ReplayTransport {
   get durationMs(): number {
     return this.recording.frames.reduce((max, frame) => Math.max(max, frame.t), 0);
   }
+}
+
+/**
+ * Is this frame an ISO-TP Flow Control frame?
+ *
+ * A response that does not fit into one frame arrives as First Frame plus
+ * Consecutive Frames, and the *tester* answers the First Frame with a Flow Control
+ * frame — on the same two identifiers, in the middle of the response. For the
+ * replay that frame is not a request: if it opened an exchange, the consecutive
+ * frames of the real answer would be attached to it, the answer would never be
+ * complete, and every following request would be matched against the wrong
+ * recorded exchange (a cascade that looks like a broken recording, not like a
+ * matching bug).
+ *
+ * The test is the PCI nibble, which is how ISO 15765-2 distinguishes the four
+ * frame types: `0x30`–`0x3F` is Flow Control, and the frame is at least three bytes
+ * long. A framed UDS request cannot begin with one of those bytes — its first byte
+ * is its own PCI (`0x0n` single frame, `0x1n` first frame).
+ */
+function isFlowControl(payload: Uint8Array): boolean {
+  const pci = payload[0];
+  if (pci === undefined || pci >> 4 !== 0x3) return false;
+  // A Flow Control frame is at least three bytes: PCI plus Block Size plus STmin
+  // (ISO 15765-2 §9.6.3.2). A shorter frame that starts with 0x3n is a TesterPresent
+  // written without ISO-TP framing, which a bus capture of a raw tester contains —
+  // treating it as Flow Control would silently swallow a real request.
+  return payload.length >= 3;
 }
 
 function sameBytes(a: Uint8Array, b: Uint8Array): boolean {

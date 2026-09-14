@@ -42,7 +42,8 @@
     "audit": "npm audit --audit-level=moderate",
     "ci": "npm run build && npm run typecheck && npm run check && npm run check:deps && npm test",
     "demo": "npm run build && node apps/web/dist/src/server.js --demo --sessions=./sessions-local",
-    "check:deps": "node tools/architecture/check-dependencies.mjs"
+    "check:deps": "node tools/architecture/check-dependencies.mjs",
+    "golden:record": "npm run build && node tools/golden-sessions/dist/src/cli.js --out tests/fixtures/golden-sessions --verify"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
