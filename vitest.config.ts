@@ -217,7 +217,13 @@ export default defineConfig({
         perFile: false,
         // Safety-adjacent cores: per-file gates stay high but branches relaxed
         // to 65 while coverage is backfilled (was 95/90, causing 87 red thresholds).
-        'packages/core/src/**': { lines: 85, branches: 65, perFile: true },
+        // Raised 85/65 -> 88/80 on 2026-09-14 after the E11 backfill (ADR 0017: tests
+        // first, then the gate). Measured per file: weakest lines `dtc/clear.ts` 90,24,
+        // weakest branches `diagnostics/engine.ts` 82,10 — `ecu-session.ts` itself went
+        // 85,58/71,26 -> 99,09/90,80 with its own spec (19 tests over probes, NRC
+        // handling, session timing and the write precondition). The gap of ~2 points is
+        // what makes the gate bite: a new uncovered file in core now fails the run.
+        'packages/core/src/**': { lines: 88, branches: 80, perFile: true },
         'packages/protocols/**/src/**': { lines: 90, branches: 75, perFile: true },
         // Adapter glue — hardware paths are injected, not mocked away.
         // Raised 65/45 → 85/75 on 2026-09-12: `host/catalog.ts` was the reason
@@ -226,11 +232,17 @@ export default defineConfig({
         // through an injected SocketCAN binding and a regular file standing in
         // for a serial device. Weakest adapter file: elm327/protocol.ts 96.3/76.
         // `serial.ts` and `socketcan/binding.ts` stay excluded (ADR 0016 §2).
-        'packages/adapters/**/src/**': { lines: 85, branches: 75, perFile: true },
+        // Raised 85/75 -> 92/78 on 2026-09-14 (E16): `elm327/protocol.ts` 96,3/76,0 and
+        // `elm327/stream.ts` 88,2/100 are at 100/100 now, and the weakest files measured
+        // 95,40 lines / 83,78 branches (`host/selection.ts`) in the same run.
+        'packages/adapters/**/src/**': { lines: 92, branches: 78, perFile: true },
         // Raised 75/50 → 85/70 on 2026-09-12: after the DoIP backfill the
         // weakest transport file is iso-tp/connection.ts at 92.9/75.3 and
         // doip/transport.ts went from 78.6/68.3 to 98.5/88.7 (ADR 0017).
-        'packages/transport/**/src/**': { lines: 85, branches: 70, perFile: true },
+        // Raised 85/70 -> 88/72 on 2026-09-14 after `transport/can/src/bus.ts` was
+        // backfilled to 100/100 (registry lookups and the unknown-adapter message, E16);
+        // weakest measured: `iso-tp/connection.ts` 92,85 lines / 75,62 branches.
+        'packages/transport/**/src/**': { lines: 88, branches: 72, perFile: true },
         // Raised from 70/45 on 2026-09-11 after backfilling the crash-tolerance,
         // migration-persistence and list-resilience paths (ADR 0017: tests first).
         // Raised again 90/55 -> 95/80 on 2026-09-12 after the corrupt-archive and
@@ -249,7 +261,11 @@ export default defineConfig({
         // New on 2026-09-12: the export path had no per-file gate at all, which
         // is how a UTF-8/Latin-1 encoding bug survived in `pdf.ts`. Measured
         // pdf.ts 100/88.9 and report.ts 100/79.5.
-        'packages/reports/**/src/**': { lines: 95, branches: 75, perFile: true },
+        // Raised 95/75 -> 95/80 on 2026-09-14: report.ts and pdf.ts both measure 100
+        // lines, and the weakest branches are 83,33 (`report.ts`, after the variant-
+        // knowledge tests of ADR 0026) — 3,3 points of room, so a new branch in the
+        // export path has to arrive with a test.
+        'packages/reports/**/src/**': { lines: 95, branches: 80, perFile: true },
         // New on 2026-09-12: measured heuristic.ts 94.9/79.5, http.ts 100/87.7,
         // service.ts 100/100 after the transport, timeout and gateway-junk tests.
         // Raised 90/75 -> 95/85 on 2026-09-14 after the analysis-input backfill
