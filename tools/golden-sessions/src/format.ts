@@ -149,7 +149,7 @@ export interface GoldenTraceEntry {
   [key: string]: unknown;
 }
 
-/** One golden session: recording + circumstances + expectation. */
+/** One golden session: recording + circumstances + expectation (ADR 0036 §1). */
 export interface GoldenSession {
   format: typeof GOLDEN_FORMAT;
   formatVersion: number;

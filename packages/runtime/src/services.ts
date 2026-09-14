@@ -73,7 +73,16 @@ import {
   toVehicleSummary,
   toWriteStageInfo,
 } from "./mappers.js";
-import { dtcVehicleContextOf, resolveVehicleQuery } from "./vehicle-resolution.js";
+import { type SampleListener, SampleStream } from "./sample-stream.js";
+// The stream vocabulary stays importable from the service module: the SSE path
+// and the specs reached it here before the split, and a re-export beats a second
+// import path for the same type (ADR 0014: outward API unchanged).
+export type { SampleListener, SampleRound } from "./sample-stream.js";
+import {
+  dtcVehicleContextOf,
+  resolveVehicleQuery,
+  vehicleDeterminationOf,
+} from "./vehicle-resolution.js";
 
 export function unknownEcu(ecuId: string): Error {
   return new Error(`unknown ECU "${ecuId}" — connect first or check the id`);
@@ -245,7 +254,8 @@ export class VehicleService {
   }
 
   identity(): VehicleSummary | undefined {
-    return toVehicleSummary(this.engine.vehicleSession?.data.vehicle);
+    const data = this.engine.vehicleSession?.data;
+    return data === undefined ? undefined : toVehicleSummary(data.vehicle, data.determination);
   }
 
   /**
@@ -258,18 +268,26 @@ export class VehicleService {
    * hypotheses, and an empty one is a legitimate answer.
    */
   resolve(hints?: ResolveVehicleHints): VehicleResolutionRef {
-    // Not connected yet means "no identity was established", which is an absent
-    // field in the query — the resolver must not read it as a known empty one.
-    const identity = this.identity();
+    const data = this.engine.vehicleSession?.data;
+    // Declared evidence is what the bus answered and what the operator claims —
+    // never what a previous resolution concluded. Handing the determination back
+    // in here would let a candidate confirm itself through `declared-brand` and
+    // `declared-model`, and the score would rise without one new fact on the bus.
+    const identity = data === undefined ? undefined : toVehicleSummary(data.vehicle);
     const query = resolveVehicleQuery({
-      ecus: this.ecus.list(),
       ...(identity !== undefined ? { identity } : {}),
+      ecus: this.ecus.list(),
       ...(hints !== undefined ? { hints } : {}),
     });
     const resolution = this.definitions.resolveVehicle(query);
     // From here on the DTC system enriches with what this variant documents
     // (AGENTS 20/23); an unresolved car keeps the manufacturer-wide wording.
     this.engine.setVehicleContext(dtcVehicleContextOf(resolution.best));
+    // The same answer is written into the session, so the stored file, the report
+    // and the analysis all know which car this was and how far the evidence
+    // reached (AGENTS 11.1, ADR 0026). An unresolved attempt is recorded too — a
+    // session that never asked is different from one that asked and found nothing.
+    this.engine.vehicleSession?.recordDetermination(vehicleDeterminationOf(resolution));
     this.log.info("vehicle resolved", {
       candidates: resolution.candidates.length,
       best: resolution.best?.vehicleId,
@@ -542,23 +560,14 @@ export class DtcService {
   }
 }
 
-/** Readings of one recorded poll round — the payload of the sample stream. */
-export interface SampleRound {
-  readings: readonly MeasurementReading[];
-}
-
-export type SampleListener = (round: SampleRound) => void;
-
 /** Measurements: snapshots, live polling, recorded samples. */
 export class MeasurementService {
   private liveEngine: LiveDataEngine | null = null;
   /**
-   * Sample-stream listeners survive start/stop cycles and may be registered
-   * before the measurement starts — they attach to the next live engine, so a
-   * subscriber can never miss the first round by ordering alone.
+   * Who listens to poll rounds, and how a listener follows start/stop cycles —
+   * its own class, see `sample-stream.ts` for the two rules it enforces.
    */
-  private readonly sampleListeners = new Set<SampleListener>();
-  private readonly sampleDetaches = new Map<SampleListener, () => void>();
+  private readonly sampleStream = new SampleStream();
 
   constructor(
     private readonly engine: DiagnosticEngine,
@@ -611,8 +620,11 @@ export class MeasurementService {
     if (!this.engine.vehicleSession) throw new Error("no session — call vehicle.connect() first");
     this.liveEngine = await this.engine.startLiveData(options);
     this.liveEngine.onError((error) => this.reportLiveFailure(error));
-    for (const listener of this.sampleListeners) this.attachSampleListener(listener);
-    this.log.info("live measurements started", { intervalMs: options.intervalMs ?? 100 });
+    this.sampleStream.bind(this.liveEngine);
+    this.log.info("live measurements started", {
+      intervalMs: options.intervalMs ?? 100,
+      listeners: this.sampleStream.size,
+    });
   }
 
   stop(): void {
@@ -620,8 +632,7 @@ export class MeasurementService {
     this.liveEngine = null;
     // The engine is gone; the subscriptions stay registered and reattach on
     // the next start.
-    for (const detach of this.sampleDetaches.values()) detach();
-    this.sampleDetaches.clear();
+    this.sampleStream.unbind();
   }
 
   /** Recorded samples, optionally restricted to one signal. */
@@ -714,28 +725,7 @@ export class MeasurementService {
    * the rounds of the next (and every later) live run until unsubscribed.
    */
   onSample(listener: SampleListener): () => void {
-    this.sampleListeners.add(listener);
-    this.attachSampleListener(listener);
-    return () => {
-      this.sampleListeners.delete(listener);
-      this.sampleDetaches.get(listener)?.();
-      this.sampleDetaches.delete(listener);
-    };
-  }
-
-  private attachSampleListener(listener: SampleListener): void {
-    const live = this.liveEngine;
-    if (!live || this.sampleDetaches.has(listener)) return;
-    this.sampleDetaches.set(
-      listener,
-      live.onRound((result) => {
-        const names = new Map(result.signals.map((signal) => [signal.signalId, signal.name]));
-        const readings = result.samples.map(
-          (sample): MeasurementReading => toMeasurementReading(sample, names.get(sample.signal)),
-        );
-        if (readings.length > 0) listener({ readings });
-      }),
-    );
+    return this.sampleStream.subscribe(listener);
   }
 
   /** A crashed poll loop must stay visible — as an event, not only a log line. */

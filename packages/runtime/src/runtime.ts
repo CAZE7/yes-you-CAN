@@ -128,7 +128,7 @@ export function createDiagnosticRuntime(options: RuntimeOptions): DiagnosticRunt
 
   const ecus = new EcuService(engine, events, log);
   // The write path is its own port (master backlog P0 #3): reads never reach it,
-  // and every write goes through the staged flow with permit and audit (ADR 0028
+  // and every write goes through the staged flow with permit and audit (ADR 28
   // is the architecture rule; this is the composition of that rule).
   const writes = createWritePort({
     safety: engine.safety,

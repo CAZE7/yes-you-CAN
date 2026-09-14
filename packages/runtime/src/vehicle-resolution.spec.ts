@@ -1,11 +1,18 @@
 import assert from "node:assert/strict";
-import type { EcuSummary, VehicleCandidateRef, VehicleSummary } from "@vdp/domain";
+import type {
+  EcuSummary,
+  VehicleCandidateRef,
+  VehicleResolutionRef,
+  VehicleSummary,
+} from "@vdp/domain";
+import { unresolvedVehicleResolution } from "@vdp/domain";
 import { describe, test } from "vitest";
 import {
   declaredOf,
   dtcVehicleContextOf,
   resolveVehicleQuery,
   splitDefinitionEcuId,
+  vehicleDeterminationOf,
 } from "./vehicle-resolution.js";
 
 /** An ECU summary with only the fields the mapping actually reads set. */
@@ -239,5 +246,112 @@ describe("dtcVehicleContextOf", () => {
     const context = dtcVehicleContextOf(candidate({ engineIds: engines }));
     engines.push("sim-diesel");
     assert.deepEqual(context?.engineIds, ["sim-petrol"]);
+  });
+});
+
+describe("vehicleDeterminationOf", () => {
+  function evidence(kind: string, observed: string) {
+    return { kind, observed, expected: observed, weight: 3, reason: `${kind} matched` };
+  }
+  function candidate(overrides: Partial<VehicleCandidateRef> = {}): VehicleCandidateRef {
+    return {
+      oem: "simulator",
+      packageVersion: "1.0.0",
+      vehicleId: "virtual-vehicle",
+      brand: "Virtual",
+      model: "Simulator vehicle",
+      platform: "SIM-1",
+      provenanceType: "own",
+      engineIds: ["sim-petrol"],
+      gearboxIds: [],
+      score: 0.8,
+      trust: 1,
+      evidence: [evidence("vin-wmi", "1HG")],
+      conflicts: [evidence("vin-plant", "A")],
+      expectedEcus: 3,
+      matchedEcus: 2,
+      missingEcus: ["gearbox"],
+      ...overrides,
+    };
+  }
+  function resolution(fields: Partial<VehicleResolutionRef> = {}): VehicleResolutionRef {
+    const best = fields.best;
+    return {
+      candidates: fields.candidates ?? (best ? [best] : []),
+      ...(best ? { best } : {}),
+      unresolved: best === undefined,
+      notes: [],
+      unexplained: [],
+      ...fields,
+    };
+  }
+
+  test("carries the winner and its evidence, copied rather than aliased", () => {
+    const engineIds = ["sim-petrol"];
+    const best = candidate({ engineIds });
+    const determination = vehicleDeterminationOf(resolution({ best }));
+    assert.ok(determination.match);
+    assert.equal(determination.match.vehicleId, "virtual-vehicle");
+    assert.equal(determination.match.brand, "Virtual");
+    assert.equal(determination.match.platform, "SIM-1");
+    assert.equal(determination.match.score, 0.8);
+    assert.equal(determination.match.trust, 1);
+    assert.equal(determination.match.provenanceType, "own");
+    assert.deepEqual(determination.match.ecus, { expected: 3, matched: 2, missing: ["gearbox"] });
+    assert.deepEqual(
+      determination.match.evidence.map((entry) => entry.kind),
+      ["vin-wmi"],
+    );
+    assert.deepEqual(
+      determination.match.conflicts.map((entry) => entry.kind),
+      ["vin-plant"],
+      "contradictions travel with the record instead of being netted into the score",
+    );
+    engineIds.push("late-addition");
+    assert.deepEqual(
+      determination.match.engineIds,
+      ["sim-petrol"],
+      "a later change to the resolution must not change a stored record",
+    );
+  });
+
+  test("an unresolved answer keeps the provider's reason and invents no match", () => {
+    const determination = vehicleDeterminationOf(
+      unresolvedVehicleResolution("no package declares vehicle definitions"),
+    );
+    assert.equal(determination.match, undefined);
+    assert.equal(determination.reason, "no package declares vehicle definitions");
+    assert.deepEqual(determination.alternatives, []);
+  });
+
+  test("an unresolved answer without a reason stays without one", () => {
+    // No filler text here on purpose: "unknown vehicle" is already what the reader
+    // sees, and inventing a reason would be a claim about the definitions.
+    const determination = vehicleDeterminationOf(resolution());
+    assert.equal(determination.match, undefined);
+    assert.equal(determination.reason, undefined);
+  });
+
+  test("runner-ups are reduced to what a reader can weigh", () => {
+    const winner = candidate();
+    const second = candidate({ vehicleId: "other-vehicle", score: 0.3 });
+    const third = candidate({ vehicleId: "third-vehicle", score: 0.1 });
+    const determination = vehicleDeterminationOf(
+      resolution({ best: winner, candidates: [winner, second, third] }),
+    );
+    assert.deepEqual(determination.alternatives, [
+      { vehicleId: "other-vehicle", oem: "simulator", score: 0.3 },
+      { vehicleId: "third-vehicle", oem: "simulator", score: 0.1 },
+    ]);
+  });
+
+  test("notes and unexplained observations are carried over", () => {
+    const determination = vehicleDeterminationOf({
+      ...resolution({ best: candidate() }),
+      notes: ["the winning match rests on placeholder data"],
+      unexplained: ["ecu 0x77b answered no definition"],
+    });
+    assert.deepEqual(determination.notes, ["the winning match rests on placeholder data"]);
+    assert.deepEqual(determination.unexplained, ["ecu 0x77b answered no definition"]);
   });
 });

@@ -183,12 +183,17 @@ export default defineConfig({
     ],
     coverage: {
       provider: 'v8',
-      include: ['packages/**/src/**/*.ts'],
+      // The measurement covers the whole tree that has behaviour, not only `packages`:
+      // apps/web (server, backend, mappers to the screen) and tools (importer,
+      // simulators, trace analyzer, flaky reporter) are product code too. Their 77 web
+      // tests ran without ever appearing in a coverage number (ADR 0027).
+      include: ['packages/**/src/**/*.ts', 'apps/web/src/**/*.ts', 'tools/**/*.ts'],
       exclude: [
-        // Barrel files re-export only; they carry no behaviour to cover.
-        'packages/**/src/index.ts',
+        // Barrel files re-export only; they carry no behaviour to cover. Scoped to
+        // `**/src/` so a tool's entry point outside a src directory stays visible.
+        '**/src/index.ts',
         // Type-only modules have no executable lines.
-        'packages/**/src/**/types.ts',
+        '**/src/**/types.ts',
         '**/*.d.ts',
         // Hardware-bound modules: require OS serial / socketcan / vcan; covered
         // by integration/hardware suites, not by unit thresholds.
@@ -212,7 +217,13 @@ export default defineConfig({
         perFile: false,
         // Safety-adjacent cores: per-file gates stay high but branches relaxed
         // to 65 while coverage is backfilled (was 95/90, causing 87 red thresholds).
-        'packages/core/src/**': { lines: 85, branches: 65, perFile: true },
+        // Raised 85/65 -> 88/80 on 2026-09-14 after the E11 backfill (ADR 0017: tests
+        // first, then the gate). Measured per file: weakest lines `dtc/clear.ts` 90,24,
+        // weakest branches `diagnostics/engine.ts` 82,10 — `ecu-session.ts` itself went
+        // 85,58/71,26 -> 99,09/90,80 with its own spec (19 tests over probes, NRC
+        // handling, session timing and the write precondition). The gap of ~2 points is
+        // what makes the gate bite: a new uncovered file in core now fails the run.
+        'packages/core/src/**': { lines: 88, branches: 80, perFile: true },
         'packages/protocols/**/src/**': { lines: 90, branches: 75, perFile: true },
         // Adapter glue — hardware paths are injected, not mocked away.
         // Raised 65/45 → 85/75 on 2026-09-12: `host/catalog.ts` was the reason
@@ -221,11 +232,17 @@ export default defineConfig({
         // through an injected SocketCAN binding and a regular file standing in
         // for a serial device. Weakest adapter file: elm327/protocol.ts 96.3/76.
         // `serial.ts` and `socketcan/binding.ts` stay excluded (ADR 0016 §2).
-        'packages/adapters/**/src/**': { lines: 85, branches: 75, perFile: true },
+        // Raised 85/75 -> 92/78 on 2026-09-14 (E16): `elm327/protocol.ts` 96,3/76,0 and
+        // `elm327/stream.ts` 88,2/100 are at 100/100 now, and the weakest files measured
+        // 95,40 lines / 83,78 branches (`host/selection.ts`) in the same run.
+        'packages/adapters/**/src/**': { lines: 92, branches: 78, perFile: true },
         // Raised 75/50 → 85/70 on 2026-09-12: after the DoIP backfill the
         // weakest transport file is iso-tp/connection.ts at 92.9/75.3 and
         // doip/transport.ts went from 78.6/68.3 to 98.5/88.7 (ADR 0017).
-        'packages/transport/**/src/**': { lines: 85, branches: 70, perFile: true },
+        // Raised 85/70 -> 88/72 on 2026-09-14 after `transport/can/src/bus.ts` was
+        // backfilled to 100/100 (registry lookups and the unknown-adapter message, E16);
+        // weakest measured: `iso-tp/connection.ts` 92,85 lines / 75,62 branches.
+        'packages/transport/**/src/**': { lines: 88, branches: 72, perFile: true },
         // Raised from 70/45 on 2026-09-11 after backfilling the crash-tolerance,
         // migration-persistence and list-resilience paths (ADR 0017: tests first).
         // Raised again 90/55 -> 95/80 on 2026-09-12 after the corrupt-archive and
@@ -244,10 +261,20 @@ export default defineConfig({
         // New on 2026-09-12: the export path had no per-file gate at all, which
         // is how a UTF-8/Latin-1 encoding bug survived in `pdf.ts`. Measured
         // pdf.ts 100/88.9 and report.ts 100/79.5.
-        'packages/reports/**/src/**': { lines: 95, branches: 75, perFile: true },
+        // Raised 95/75 -> 95/80 on 2026-09-14: report.ts and pdf.ts both measure 100
+        // lines, and the weakest branches are 83,33 (`report.ts`, after the variant-
+        // knowledge tests of ADR 0026) — 3,3 points of room, so a new branch in the
+        // export path has to arrive with a test.
+        'packages/reports/**/src/**': { lines: 95, branches: 80, perFile: true },
         // New on 2026-09-12: measured heuristic.ts 94.9/79.5, http.ts 100/87.7,
         // service.ts 100/100 after the transport, timeout and gateway-junk tests.
-        'packages/ai/**/src/**': { lines: 90, branches: 75, perFile: true },
+        // Raised 90/75 -> 95/85 on 2026-09-14 after the analysis-input backfill
+        // (E16, ADR 0017: tests first). Measured in this tree: heuristic.ts 94,9/79,5 ->
+        // 100/89,4 (empty-recommendation, unknown-severity and threshold-configuration
+        // arms included), http.ts 100/87,7 — the binding file — service.ts 100/100.
+        // 85 sits 2,7 points under the weakest branch count, so a new untested branch in
+        // `ai` is a red run instead of a drift.
+        'packages/ai/**/src/**': { lines: 95, branches: 85, perFile: true },
         // New on 2026-09-12 with the vehicle-definition layer (ADR 0023): the
         // resolver decides which car a workshop is looking at, so its criteria,
         // its weights and its evidence strings are all tested per file. Measured
@@ -258,6 +285,22 @@ export default defineConfig({
         // SUPPORTED_SCHEMA_VERSIONS without a migration step, so no input can
         // reach it — that is the point of the line, and it says so in a comment.
         'packages/definitions/**/src/**': { lines: 85, branches: 80, perFile: true },
+        // New on 2026-09-14 with the measurement scope widened to the whole tree
+        // (ADR 0027). This is a FLOOR, not a target: measured per file — server.ts
+        // 69,63 lines / 65,53 branches, backend.ts 89,61/73,22, adapters.ts
+        // 73,68/54,54 (functions 60), paths.ts 100/91,66, vehicle-view.ts 100/87,5,
+        // dtc-knowledge-view.ts and analysis-input.ts 100/100 and 100/97,4. The gate
+        // sits one point under the weakest measured value per column, so it cannot be
+        // satisfied by moving code around and it fails the moment coverage slips — the
+        // web layer used to be invisible to this file entirely, which is how its two
+        // thin files stayed thin. Closing the gap is 0.E E17, not a gate to dream up.
+        'apps/web/src/**': { lines: 69, branches: 54, perFile: true },
+        // `tools/**` is measured now (definition-importer 97,9/95,3 lines, simulators
+        // 94,9/82,0, trace-analyzer 97,8/75,3) but deliberately has NO per-file gate:
+        // `tools/test-reporters/flaky-reporter.ts` measures 0 % — lines 29-101, no
+        // test — because nothing can run it (E10: the hardened CI workflows are not
+        // pushable, so the flaky reporter has no host). Excluding it would raise the
+        // number by deleting the finding, so it stays visible at 0 % and named in 0.E.
         // Raised 75/70 → 90/75 on 2026-09-12: `group.ts` was the reason the old
         // gate existed (77.0/77.6, one refactor away from red) and is now at
         // 99.1/91.3; the weakest chart file is viewport.ts at 92.5/77.1.

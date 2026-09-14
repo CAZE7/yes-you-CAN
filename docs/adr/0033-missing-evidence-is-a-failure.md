@@ -1,4 +1,4 @@
-# ADR 0030 — Fehlende Evidenz ist ein Fehlschlag, keine Warnung
+# ADR 30 — Fehlende Evidenz ist ein Fehlschlag, keine Warnung
 
 - Status: akzeptiert (2026-09-14)
 - Kontext: AGENTS 26 („Safety Layer"), AGENTS 24 (Datenherkunft/Ehrlichkeit), Master-Backlog P0 #5

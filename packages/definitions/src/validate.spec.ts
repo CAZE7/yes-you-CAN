@@ -414,7 +414,7 @@ test("a vehicle-level provenance is validated like the package one (AGENTS 24)",
 test("a vehicle that can only match a user's own claim is flagged", () => {
   const vehicle = vehicleFixture();
   // Absent, not present-and-undefined: the validator must read this as
-  // "no VIN criteria" (ADR 0026 §3 — the exact-optional change made the
+  // "no VIN criteria" (ADR 26 §3 — the exact-optional change made the
   // difference between the two spellings visible in the type system).
   delete vehicle.vinMatch;
   vehicle.ecus = [];

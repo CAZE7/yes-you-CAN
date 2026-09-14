@@ -497,3 +497,93 @@ test("zip listing survives a header cut mid-way and a corrupted size field", () 
     "one readable entry, then the offset leaves the archive",
   );
 });
+
+test("a determination round trips, and a session written before it exists still loads", async () => {
+  // The determination is additive optional data, so it needs no schema bump — and it
+  // must not get one: `SESSION_SCHEMA_VERSION` is 1 with an empty migration list, so a
+  // bump without a registered step would make every stored session unreadable
+  // (`migrate` throws instead of shrugging). Both halves are pinned here.
+  const dir = await mkdtemp(join(tmpdir(), "vdp-determination-"));
+  const repo = new FileSystemSessionRepository({ rootDir: dir, logger });
+  const statusBits = {
+    testFailed: true,
+    testFailedThisOperationCycle: true,
+    pendingDtc: true,
+    confirmedDtc: true,
+    testNotCompletedSinceLastClear: false,
+    testFailedSinceLastClear: true,
+    testNotCompletedThisOperationCycle: false,
+    warningIndicatorRequested: false,
+  };
+  try {
+    const data = sampleSession("session_det");
+    data.determination = {
+      resolvedAt: "2026-09-13T00:00:00.000Z",
+      match: {
+        oem: "simulator",
+        packageVersion: "1.0.0",
+        vehicleId: "virtual-vehicle",
+        brand: "Virtual",
+        model: "Simulator vehicle",
+        score: 1,
+        trust: 1,
+        provenanceType: "own",
+        engineIds: ["sim-petrol"],
+        gearboxIds: [],
+        ecus: { expected: 3, matched: 3, missing: [] },
+        evidence: [
+          {
+            kind: "vin-wmi",
+            observed: "1HG",
+            expected: "1HG",
+            weight: 3,
+            reason: "WMI 1HG is one this definition claims",
+          },
+        ],
+        conflicts: [],
+      },
+      notes: [],
+      unexplained: [],
+      alternatives: [{ vehicleId: "other", oem: "simulator", score: 0.2 }],
+    };
+    data.dtcSnapshots.push({
+      id: "dtc_1",
+      takenAt: "2026-09-13T00:00:01.000Z",
+      label: "scan",
+      records: [
+        {
+          code: "P0420",
+          raw: "04202A",
+          failureType: "2A",
+          status: 0x2f,
+          statusBits,
+          severity: "major",
+          description: "Catalyst efficiency below threshold",
+          ecuName: "Engine Control Unit",
+          ecuId: "ecu_1",
+          knowledge: { scope: "vehicle-engine", patterns: [], notes: [] },
+        },
+      ],
+    });
+    await repo.save(data);
+    const loaded = await repo.load("session_det");
+    assert.deepEqual(loaded.appliedMigrations, [], "nothing to migrate for optional data");
+    assert.equal(loaded.data.determination?.match?.vehicleId, "virtual-vehicle");
+    assert.equal(loaded.data.determination?.match?.evidence[0]?.observed, "1HG");
+    assert.deepEqual(loaded.data.determination?.alternatives, [
+      { vehicleId: "other", oem: "simulator", score: 0.2 },
+    ]);
+    assert.equal(
+      loaded.data.dtcSnapshots[0]?.records[0]?.knowledge?.scope,
+      "vehicle-engine",
+      "the enrichment a scan stored stays readable after a reload",
+    );
+
+    await repo.save(sampleSession("session_old"));
+    const old = await repo.load("session_old");
+    assert.equal("determination" in old.data, false, "an absent key stays absent, not empty");
+    assert.deepEqual(old.appliedMigrations, []);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

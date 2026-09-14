@@ -202,8 +202,8 @@
     },
     "measurements": [
       {
-        "timestamp": "2026-09-14T06:38:14.445Z",
-        "t": 85,
+        "timestamp": "2026-09-14T06:56:53.294Z",
+        "t": 88,
         "signal": "abs.wheel_speed_front_left",
         "value": 0,
         "rawValue": 0,
@@ -212,8 +212,8 @@
         "outOfRange": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.445Z",
-        "t": 85,
+        "timestamp": "2026-09-14T06:56:53.294Z",
+        "t": 88,
         "signal": "abs.wheel_speed_front_right",
         "value": 0,
         "rawValue": 0,
@@ -222,8 +222,8 @@
         "outOfRange": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.445Z",
-        "t": 85,
+        "timestamp": "2026-09-14T06:56:53.295Z",
+        "t": 89,
         "signal": "abs.brake_pedal",
         "value": 0,
         "rawValue": 0,
@@ -232,8 +232,8 @@
         "outOfRange": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.448Z",
-        "t": 88,
+        "timestamp": "2026-09-14T06:56:53.297Z",
+        "t": 91,
         "signal": "engine.vin",
         "value": "REDACTED-VIN-0000",
         "rawValue": "REDACTED-VIN-0000",
@@ -241,8 +241,8 @@
         "outOfRange": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.448Z",
-        "t": 88,
+        "timestamp": "2026-09-14T06:56:53.297Z",
+        "t": 91,
         "signal": "engine.spare_part_number",
         "value": "ENGINE-f187",
         "rawValue": "ENGINE-f187",
@@ -250,8 +250,8 @@
         "outOfRange": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.448Z",
-        "t": 88,
+        "timestamp": "2026-09-14T06:56:53.297Z",
+        "t": 91,
         "signal": "engine.application_software",
         "value": "ENGINE-f181",
         "rawValue": "ENGINE-f181",
@@ -259,8 +259,8 @@
         "outOfRange": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.448Z",
-        "t": 88,
+        "timestamp": "2026-09-14T06:56:53.297Z",
+        "t": 91,
         "signal": "engine.serial_number",
         "value": "ENGINE-f18c",
         "rawValue": "ENGINE-f18c",
@@ -268,8 +268,8 @@
         "outOfRange": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.448Z",
-        "t": 88,
+        "timestamp": "2026-09-14T06:56:53.297Z",
+        "t": 91,
         "signal": "engine.rpm",
         "value": 850,
         "rawValue": 3400,
@@ -278,8 +278,8 @@
         "outOfRange": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.448Z",
-        "t": 88,
+        "timestamp": "2026-09-14T06:56:53.297Z",
+        "t": 91,
         "signal": "engine.coolant_temperature",
         "value": 90,
         "rawValue": 130,
@@ -288,8 +288,8 @@
         "outOfRange": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.448Z",
-        "t": 88,
+        "timestamp": "2026-09-14T06:56:53.297Z",
+        "t": 91,
         "signal": "engine.load",
         "value": 22,
         "rawValue": 56,
@@ -298,8 +298,8 @@
         "outOfRange": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.448Z",
-        "t": 88,
+        "timestamp": "2026-09-14T06:56:53.298Z",
+        "t": 92,
         "signal": "vehicle.speed",
         "value": 0,
         "rawValue": 0,
@@ -308,8 +308,8 @@
         "outOfRange": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.448Z",
-        "t": 88,
+        "timestamp": "2026-09-14T06:56:53.298Z",
+        "t": 92,
         "signal": "engine.intake_air_temperature",
         "value": 26,
         "rawValue": 66,
@@ -318,8 +318,8 @@
         "outOfRange": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.448Z",
-        "t": 88,
+        "timestamp": "2026-09-14T06:56:53.298Z",
+        "t": 92,
         "signal": "engine.throttle_position",
         "value": 14.1,
         "rawValue": 36,
@@ -328,8 +328,8 @@
         "outOfRange": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.448Z",
-        "t": 88,
+        "timestamp": "2026-09-14T06:56:53.298Z",
+        "t": 92,
         "signal": "engine.short_term_fuel_trim",
         "value": 0,
         "rawValue": 128,
@@ -338,8 +338,8 @@
         "outOfRange": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.448Z",
-        "t": 88,
+        "timestamp": "2026-09-14T06:56:53.298Z",
+        "t": 92,
         "signal": "engine.long_term_fuel_trim",
         "value": 0,
         "rawValue": 128,
@@ -348,8 +348,8 @@
         "outOfRange": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.448Z",
-        "t": 88,
+        "timestamp": "2026-09-14T06:56:53.298Z",
+        "t": 92,
         "signal": "engine.intake_manifold_pressure",
         "value": 35,
         "rawValue": 35,
@@ -358,8 +358,8 @@
         "outOfRange": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.448Z",
-        "t": 88,
+        "timestamp": "2026-09-14T06:56:53.298Z",
+        "t": 92,
         "signal": "engine.timing_advance",
         "value": 12,
         "rawValue": 152,
@@ -368,8 +368,8 @@
         "outOfRange": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.448Z",
-        "t": 88,
+        "timestamp": "2026-09-14T06:56:53.298Z",
+        "t": 92,
         "signal": "engine.maf_airflow",
         "value": 5,
         "rawValue": 500,
@@ -378,8 +378,8 @@
         "outOfRange": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.448Z",
-        "t": 88,
+        "timestamp": "2026-09-14T06:56:53.298Z",
+        "t": 92,
         "signal": "engine.fuel_rail_pressure",
         "value": 320,
         "rawValue": 32,
@@ -388,8 +388,8 @@
         "outOfRange": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.448Z",
-        "t": 88,
+        "timestamp": "2026-09-14T06:56:53.298Z",
+        "t": 92,
         "signal": "engine.runtime",
         "value": 0,
         "rawValue": 0,
@@ -398,8 +398,8 @@
         "outOfRange": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.448Z",
-        "t": 88,
+        "timestamp": "2026-09-14T06:56:53.298Z",
+        "t": 92,
         "signal": "engine.fuel_system_status",
         "value": 2,
         "rawValue": 2,
@@ -408,8 +408,8 @@
         "outOfRange": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.448Z",
-        "t": 88,
+        "timestamp": "2026-09-14T06:56:53.298Z",
+        "t": 92,
         "signal": "transmission.oil_temperature",
         "value": 60,
         "rawValue": 100,
@@ -418,8 +418,8 @@
         "outOfRange": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.448Z",
-        "t": 88,
+        "timestamp": "2026-09-14T06:56:53.298Z",
+        "t": 92,
         "signal": "transmission.gear_position",
         "value": 3,
         "rawValue": 3,
@@ -431,56 +431,56 @@
     "markers": [
       {
         "id": "marker_1",
-        "t": 89,
-        "timestamp": "2026-09-14T06:38:14.449Z",
+        "t": 93,
+        "timestamp": "2026-09-14T06:56:53.299Z",
         "label": "C0035",
         "kind": "dtc",
         "detail": "ABS / Brake Control Unit · Status 0x2F"
       },
       {
         "id": "marker_2",
-        "t": 89,
-        "timestamp": "2026-09-14T06:38:14.449Z",
+        "t": 93,
+        "timestamp": "2026-09-14T06:56:53.299Z",
         "label": "U0121",
         "kind": "dtc",
         "detail": "ABS / Brake Control Unit · Status 0x08"
       },
       {
         "id": "marker_3",
-        "t": 89,
-        "timestamp": "2026-09-14T06:38:14.449Z",
+        "t": 93,
+        "timestamp": "2026-09-14T06:56:53.299Z",
         "label": "P0420",
         "kind": "dtc",
         "detail": "Engine Control Unit · Status 0x2F"
       },
       {
         "id": "marker_4",
-        "t": 89,
-        "timestamp": "2026-09-14T06:38:14.449Z",
+        "t": 93,
+        "timestamp": "2026-09-14T06:56:53.299Z",
         "label": "P0300",
         "kind": "dtc",
         "detail": "Engine Control Unit · Status 0x08"
       },
       {
         "id": "marker_5",
-        "t": 89,
-        "timestamp": "2026-09-14T06:38:14.449Z",
+        "t": 93,
+        "timestamp": "2026-09-14T06:56:53.299Z",
         "label": "P0171",
         "kind": "dtc",
         "detail": "Engine Control Unit · Status 0x08"
       },
       {
         "id": "marker_6",
-        "t": 89,
-        "timestamp": "2026-09-14T06:38:14.449Z",
+        "t": 93,
+        "timestamp": "2026-09-14T06:56:53.299Z",
         "label": "P0700",
         "kind": "dtc",
         "detail": "Transmission Control Unit · Status 0x2F"
       },
       {
         "id": "marker_7",
-        "t": 89,
-        "timestamp": "2026-09-14T06:38:14.449Z",
+        "t": 93,
+        "timestamp": "2026-09-14T06:56:53.299Z",
         "label": "P0715",
         "kind": "dtc",
         "detail": "Transmission Control Unit · Status 0x08"
@@ -489,8 +489,8 @@
     "dtcs": [],
     "trace": [
       {
-        "timestamp": "2026-09-14T06:38:14.361Z",
-        "t": 89367894360,
+        "timestamp": "2026-09-14T06:56:53.208Z",
+        "t": 89369013207,
         "canId": 2015,
         "canIdHex": "0x7DF",
         "direction": "tx",
@@ -502,8 +502,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.392Z",
-        "t": 89367894391,
+        "timestamp": "2026-09-14T06:56:53.238Z",
+        "t": 89369013237,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -515,8 +515,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.393Z",
-        "t": 89367894392,
+        "timestamp": "2026-09-14T06:56:53.239Z",
+        "t": 89369013238,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -528,8 +528,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.394Z",
-        "t": 89367894393,
+        "timestamp": "2026-09-14T06:56:53.240Z",
+        "t": 89369013239,
         "canId": 2017,
         "canIdHex": "0x7E1",
         "direction": "tx",
@@ -541,8 +541,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.394Z",
-        "t": 89367894393,
+        "timestamp": "2026-09-14T06:56:53.240Z",
+        "t": 89369013239,
         "canId": 2025,
         "canIdHex": "0x7E9",
         "direction": "rx",
@@ -554,8 +554,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.395Z",
-        "t": 89367894394,
+        "timestamp": "2026-09-14T06:56:53.242Z",
+        "t": 89369013241,
         "canId": 1811,
         "canIdHex": "0x713",
         "direction": "tx",
@@ -567,8 +567,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.395Z",
-        "t": 89367894394,
+        "timestamp": "2026-09-14T06:56:53.242Z",
+        "t": 89369013241,
         "canId": 1915,
         "canIdHex": "0x77B",
         "direction": "rx",
@@ -580,8 +580,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.397Z",
-        "t": 89367894396,
+        "timestamp": "2026-09-14T06:56:53.243Z",
+        "t": 89369013242,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -593,8 +593,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.397Z",
-        "t": 89367894396,
+        "timestamp": "2026-09-14T06:56:53.243Z",
+        "t": 89369013242,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -606,8 +606,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.398Z",
-        "t": 89367894397,
+        "timestamp": "2026-09-14T06:56:53.245Z",
+        "t": 89369013244,
         "canId": 2017,
         "canIdHex": "0x7E1",
         "direction": "tx",
@@ -619,8 +619,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.398Z",
-        "t": 89367894397,
+        "timestamp": "2026-09-14T06:56:53.245Z",
+        "t": 89369013244,
         "canId": 2025,
         "canIdHex": "0x7E9",
         "direction": "rx",
@@ -632,8 +632,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.400Z",
-        "t": 89367894399,
+        "timestamp": "2026-09-14T06:56:53.246Z",
+        "t": 89369013245,
         "canId": 2018,
         "canIdHex": "0x7E2",
         "direction": "tx",
@@ -645,8 +645,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.401Z",
-        "t": 89367894400,
+        "timestamp": "2026-09-14T06:56:53.247Z",
+        "t": 89369013246,
         "canId": 2019,
         "canIdHex": "0x7E3",
         "direction": "tx",
@@ -658,8 +658,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.402Z",
-        "t": 89367894401,
+        "timestamp": "2026-09-14T06:56:53.248Z",
+        "t": 89369013247,
         "canId": 2020,
         "canIdHex": "0x7E4",
         "direction": "tx",
@@ -671,8 +671,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.403Z",
-        "t": 89367894402,
+        "timestamp": "2026-09-14T06:56:53.250Z",
+        "t": 89369013249,
         "canId": 2021,
         "canIdHex": "0x7E5",
         "direction": "tx",
@@ -684,8 +684,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.404Z",
-        "t": 89367894403,
+        "timestamp": "2026-09-14T06:56:53.251Z",
+        "t": 89369013250,
         "canId": 2022,
         "canIdHex": "0x7E6",
         "direction": "tx",
@@ -697,8 +697,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.405Z",
-        "t": 89367894404,
+        "timestamp": "2026-09-14T06:56:53.252Z",
+        "t": 89369013251,
         "canId": 2023,
         "canIdHex": "0x7E7",
         "direction": "tx",
@@ -710,8 +710,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.438Z",
-        "t": 89367894437,
+        "timestamp": "2026-09-14T06:56:53.285Z",
+        "t": 89369013284,
         "canId": 1811,
         "canIdHex": "0x713",
         "direction": "tx",
@@ -723,8 +723,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.438Z",
-        "t": 89367894437,
+        "timestamp": "2026-09-14T06:56:53.285Z",
+        "t": 89369013284,
         "canId": 1915,
         "canIdHex": "0x77B",
         "direction": "rx",
@@ -736,8 +736,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.438Z",
-        "t": 89367894437,
+        "timestamp": "2026-09-14T06:56:53.285Z",
+        "t": 89369013284,
         "canId": 1811,
         "canIdHex": "0x713",
         "direction": "tx",
@@ -749,8 +749,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.438Z",
-        "t": 89367894437,
+        "timestamp": "2026-09-14T06:56:53.285Z",
+        "t": 89369013284,
         "canId": 1915,
         "canIdHex": "0x77B",
         "direction": "rx",
@@ -762,8 +762,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.438Z",
-        "t": 89367894437,
+        "timestamp": "2026-09-14T06:56:53.285Z",
+        "t": 89369013284,
         "canId": 1915,
         "canIdHex": "0x77B",
         "direction": "rx",
@@ -775,8 +775,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.438Z",
-        "t": 89367894437,
+        "timestamp": "2026-09-14T06:56:53.286Z",
+        "t": 89369013285,
         "canId": 1811,
         "canIdHex": "0x713",
         "direction": "tx",
@@ -788,8 +788,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.438Z",
-        "t": 89367894437,
+        "timestamp": "2026-09-14T06:56:53.286Z",
+        "t": 89369013285,
         "canId": 1915,
         "canIdHex": "0x77B",
         "direction": "rx",
@@ -801,8 +801,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.438Z",
-        "t": 89367894437,
+        "timestamp": "2026-09-14T06:56:53.286Z",
+        "t": 89369013285,
         "canId": 1811,
         "canIdHex": "0x713",
         "direction": "tx",
@@ -814,8 +814,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.438Z",
-        "t": 89367894437,
+        "timestamp": "2026-09-14T06:56:53.286Z",
+        "t": 89369013285,
         "canId": 1915,
         "canIdHex": "0x77B",
         "direction": "rx",
@@ -827,8 +827,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.439Z",
-        "t": 89367894438,
+        "timestamp": "2026-09-14T06:56:53.286Z",
+        "t": 89369013285,
         "canId": 1811,
         "canIdHex": "0x713",
         "direction": "tx",
@@ -840,8 +840,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.439Z",
-        "t": 89367894438,
+        "timestamp": "2026-09-14T06:56:53.286Z",
+        "t": 89369013285,
         "canId": 1915,
         "canIdHex": "0x77B",
         "direction": "rx",
@@ -853,8 +853,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.439Z",
-        "t": 89367894438,
+        "timestamp": "2026-09-14T06:56:53.286Z",
+        "t": 89369013285,
         "canId": 1811,
         "canIdHex": "0x713",
         "direction": "tx",
@@ -866,8 +866,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.439Z",
-        "t": 89367894438,
+        "timestamp": "2026-09-14T06:56:53.287Z",
+        "t": 89369013286,
         "canId": 1915,
         "canIdHex": "0x77B",
         "direction": "rx",
@@ -879,8 +879,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.439Z",
-        "t": 89367894438,
+        "timestamp": "2026-09-14T06:56:53.287Z",
+        "t": 89369013286,
         "canId": 1811,
         "canIdHex": "0x713",
         "direction": "tx",
@@ -892,8 +892,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.439Z",
-        "t": 89367894438,
+        "timestamp": "2026-09-14T06:56:53.287Z",
+        "t": 89369013286,
         "canId": 1915,
         "canIdHex": "0x77B",
         "direction": "rx",
@@ -905,8 +905,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.439Z",
-        "t": 89367894438,
+        "timestamp": "2026-09-14T06:56:53.287Z",
+        "t": 89369013286,
         "canId": 1811,
         "canIdHex": "0x713",
         "direction": "tx",
@@ -918,8 +918,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.440Z",
-        "t": 89367894439,
+        "timestamp": "2026-09-14T06:56:53.287Z",
+        "t": 89369013286,
         "canId": 1915,
         "canIdHex": "0x77B",
         "direction": "rx",
@@ -931,8 +931,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.440Z",
-        "t": 89367894439,
+        "timestamp": "2026-09-14T06:56:53.288Z",
+        "t": 89369013287,
         "canId": 1811,
         "canIdHex": "0x713",
         "direction": "tx",
@@ -944,8 +944,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.440Z",
-        "t": 89367894439,
+        "timestamp": "2026-09-14T06:56:53.288Z",
+        "t": 89369013287,
         "canId": 1915,
         "canIdHex": "0x77B",
         "direction": "rx",
@@ -957,8 +957,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.440Z",
-        "t": 89367894439,
+        "timestamp": "2026-09-14T06:56:53.288Z",
+        "t": 89369013287,
         "canId": 1811,
         "canIdHex": "0x713",
         "direction": "tx",
@@ -970,8 +970,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.440Z",
-        "t": 89367894439,
+        "timestamp": "2026-09-14T06:56:53.288Z",
+        "t": 89369013287,
         "canId": 1915,
         "canIdHex": "0x77B",
         "direction": "rx",
@@ -983,8 +983,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.440Z",
-        "t": 89367894439,
+        "timestamp": "2026-09-14T06:56:53.288Z",
+        "t": 89369013287,
         "canId": 1811,
         "canIdHex": "0x713",
         "direction": "tx",
@@ -996,8 +996,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.440Z",
-        "t": 89367894439,
+        "timestamp": "2026-09-14T06:56:53.288Z",
+        "t": 89369013287,
         "canId": 1915,
         "canIdHex": "0x77B",
         "direction": "rx",
@@ -1009,8 +1009,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.440Z",
-        "t": 89367894439,
+        "timestamp": "2026-09-14T06:56:53.288Z",
+        "t": 89369013287,
         "canId": 1811,
         "canIdHex": "0x713",
         "direction": "tx",
@@ -1022,8 +1022,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.440Z",
-        "t": 89367894439,
+        "timestamp": "2026-09-14T06:56:53.288Z",
+        "t": 89369013287,
         "canId": 1915,
         "canIdHex": "0x77B",
         "direction": "rx",
@@ -1035,8 +1035,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.440Z",
-        "t": 89367894439,
+        "timestamp": "2026-09-14T06:56:53.288Z",
+        "t": 89369013287,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -1048,8 +1048,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.440Z",
-        "t": 89367894439,
+        "timestamp": "2026-09-14T06:56:53.289Z",
+        "t": 89369013288,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -1061,8 +1061,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.440Z",
-        "t": 89367894439,
+        "timestamp": "2026-09-14T06:56:53.289Z",
+        "t": 89369013288,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -1074,8 +1074,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.440Z",
-        "t": 89367894439,
+        "timestamp": "2026-09-14T06:56:53.289Z",
+        "t": 89369013288,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -1087,8 +1087,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.440Z",
-        "t": 89367894439,
+        "timestamp": "2026-09-14T06:56:53.290Z",
+        "t": 89369013289,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -1100,8 +1100,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.441Z",
-        "t": 89367894440,
+        "timestamp": "2026-09-14T06:56:53.290Z",
+        "t": 89369013289,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -1113,8 +1113,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.441Z",
-        "t": 89367894440,
+        "timestamp": "2026-09-14T06:56:53.290Z",
+        "t": 89369013289,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -1126,8 +1126,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.441Z",
-        "t": 89367894440,
+        "timestamp": "2026-09-14T06:56:53.290Z",
+        "t": 89369013289,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -1139,8 +1139,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.442Z",
-        "t": 89367894441,
+        "timestamp": "2026-09-14T06:56:53.290Z",
+        "t": 89369013289,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -1152,8 +1152,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.442Z",
-        "t": 89367894441,
+        "timestamp": "2026-09-14T06:56:53.290Z",
+        "t": 89369013289,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -1165,8 +1165,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.442Z",
-        "t": 89367894441,
+        "timestamp": "2026-09-14T06:56:53.290Z",
+        "t": 89369013289,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -1178,8 +1178,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.442Z",
-        "t": 89367894441,
+        "timestamp": "2026-09-14T06:56:53.290Z",
+        "t": 89369013289,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -1191,8 +1191,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.442Z",
-        "t": 89367894441,
+        "timestamp": "2026-09-14T06:56:53.290Z",
+        "t": 89369013289,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -1204,8 +1204,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.442Z",
-        "t": 89367894441,
+        "timestamp": "2026-09-14T06:56:53.290Z",
+        "t": 89369013289,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -1217,8 +1217,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.442Z",
-        "t": 89367894441,
+        "timestamp": "2026-09-14T06:56:53.290Z",
+        "t": 89369013289,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -1230,8 +1230,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.442Z",
-        "t": 89367894441,
+        "timestamp": "2026-09-14T06:56:53.290Z",
+        "t": 89369013289,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -1243,8 +1243,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.442Z",
-        "t": 89367894441,
+        "timestamp": "2026-09-14T06:56:53.291Z",
+        "t": 89369013290,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -1256,8 +1256,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.442Z",
-        "t": 89367894441,
+        "timestamp": "2026-09-14T06:56:53.291Z",
+        "t": 89369013290,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -1269,8 +1269,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.442Z",
-        "t": 89367894441,
+        "timestamp": "2026-09-14T06:56:53.291Z",
+        "t": 89369013290,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -1282,8 +1282,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.442Z",
-        "t": 89367894441,
+        "timestamp": "2026-09-14T06:56:53.291Z",
+        "t": 89369013290,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -1295,8 +1295,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.442Z",
-        "t": 89367894441,
+        "timestamp": "2026-09-14T06:56:53.291Z",
+        "t": 89369013290,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -1308,8 +1308,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.442Z",
-        "t": 89367894441,
+        "timestamp": "2026-09-14T06:56:53.291Z",
+        "t": 89369013290,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -1321,8 +1321,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.442Z",
-        "t": 89367894441,
+        "timestamp": "2026-09-14T06:56:53.291Z",
+        "t": 89369013290,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -1334,8 +1334,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.442Z",
-        "t": 89367894441,
+        "timestamp": "2026-09-14T06:56:53.291Z",
+        "t": 89369013290,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -1347,8 +1347,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.442Z",
-        "t": 89367894441,
+        "timestamp": "2026-09-14T06:56:53.291Z",
+        "t": 89369013290,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -1360,8 +1360,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.442Z",
-        "t": 89367894441,
+        "timestamp": "2026-09-14T06:56:53.291Z",
+        "t": 89369013290,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -1373,8 +1373,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.442Z",
-        "t": 89367894441,
+        "timestamp": "2026-09-14T06:56:53.291Z",
+        "t": 89369013290,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -1386,8 +1386,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.442Z",
-        "t": 89367894441,
+        "timestamp": "2026-09-14T06:56:53.291Z",
+        "t": 89369013290,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -1399,8 +1399,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.442Z",
-        "t": 89367894441,
+        "timestamp": "2026-09-14T06:56:53.291Z",
+        "t": 89369013290,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -1412,8 +1412,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.442Z",
-        "t": 89367894441,
+        "timestamp": "2026-09-14T06:56:53.291Z",
+        "t": 89369013290,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -1425,8 +1425,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.442Z",
-        "t": 89367894441,
+        "timestamp": "2026-09-14T06:56:53.291Z",
+        "t": 89369013290,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -1438,8 +1438,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.442Z",
-        "t": 89367894441,
+        "timestamp": "2026-09-14T06:56:53.291Z",
+        "t": 89369013290,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -1451,8 +1451,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.442Z",
-        "t": 89367894441,
+        "timestamp": "2026-09-14T06:56:53.291Z",
+        "t": 89369013290,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -1464,8 +1464,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.443Z",
-        "t": 89367894442,
+        "timestamp": "2026-09-14T06:56:53.291Z",
+        "t": 89369013290,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -1477,8 +1477,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.443Z",
-        "t": 89367894442,
+        "timestamp": "2026-09-14T06:56:53.291Z",
+        "t": 89369013290,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -1490,8 +1490,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.443Z",
-        "t": 89367894442,
+        "timestamp": "2026-09-14T06:56:53.291Z",
+        "t": 89369013290,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -1503,8 +1503,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.443Z",
-        "t": 89367894442,
+        "timestamp": "2026-09-14T06:56:53.291Z",
+        "t": 89369013290,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -1516,8 +1516,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.443Z",
-        "t": 89367894442,
+        "timestamp": "2026-09-14T06:56:53.292Z",
+        "t": 89369013291,
         "canId": 2017,
         "canIdHex": "0x7E1",
         "direction": "tx",
@@ -1529,8 +1529,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.443Z",
-        "t": 89367894442,
+        "timestamp": "2026-09-14T06:56:53.292Z",
+        "t": 89369013291,
         "canId": 2025,
         "canIdHex": "0x7E9",
         "direction": "rx",
@@ -1542,8 +1542,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.443Z",
-        "t": 89367894442,
+        "timestamp": "2026-09-14T06:56:53.292Z",
+        "t": 89369013291,
         "canId": 2017,
         "canIdHex": "0x7E1",
         "direction": "tx",
@@ -1555,8 +1555,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.443Z",
-        "t": 89367894442,
+        "timestamp": "2026-09-14T06:56:53.292Z",
+        "t": 89369013291,
         "canId": 2025,
         "canIdHex": "0x7E9",
         "direction": "rx",
@@ -1568,8 +1568,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.443Z",
-        "t": 89367894442,
+        "timestamp": "2026-09-14T06:56:53.292Z",
+        "t": 89369013291,
         "canId": 2025,
         "canIdHex": "0x7E9",
         "direction": "rx",
@@ -1581,8 +1581,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.443Z",
-        "t": 89367894442,
+        "timestamp": "2026-09-14T06:56:53.292Z",
+        "t": 89369013291,
         "canId": 2017,
         "canIdHex": "0x7E1",
         "direction": "tx",
@@ -1594,8 +1594,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.443Z",
-        "t": 89367894442,
+        "timestamp": "2026-09-14T06:56:53.292Z",
+        "t": 89369013291,
         "canId": 2025,
         "canIdHex": "0x7E9",
         "direction": "rx",
@@ -1607,8 +1607,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.443Z",
-        "t": 89367894442,
+        "timestamp": "2026-09-14T06:56:53.292Z",
+        "t": 89369013291,
         "canId": 2017,
         "canIdHex": "0x7E1",
         "direction": "tx",
@@ -1620,8 +1620,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.443Z",
-        "t": 89367894442,
+        "timestamp": "2026-09-14T06:56:53.292Z",
+        "t": 89369013291,
         "canId": 2025,
         "canIdHex": "0x7E9",
         "direction": "rx",
@@ -1633,8 +1633,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.443Z",
-        "t": 89367894442,
+        "timestamp": "2026-09-14T06:56:53.292Z",
+        "t": 89369013291,
         "canId": 2025,
         "canIdHex": "0x7E9",
         "direction": "rx",
@@ -1646,8 +1646,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.443Z",
-        "t": 89367894442,
+        "timestamp": "2026-09-14T06:56:53.292Z",
+        "t": 89369013291,
         "canId": 2017,
         "canIdHex": "0x7E1",
         "direction": "tx",
@@ -1659,8 +1659,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.443Z",
-        "t": 89367894442,
+        "timestamp": "2026-09-14T06:56:53.292Z",
+        "t": 89369013291,
         "canId": 2025,
         "canIdHex": "0x7E9",
         "direction": "rx",
@@ -1672,8 +1672,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.443Z",
-        "t": 89367894442,
+        "timestamp": "2026-09-14T06:56:53.292Z",
+        "t": 89369013291,
         "canId": 2017,
         "canIdHex": "0x7E1",
         "direction": "tx",
@@ -1685,8 +1685,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.443Z",
-        "t": 89367894442,
+        "timestamp": "2026-09-14T06:56:53.292Z",
+        "t": 89369013291,
         "canId": 2025,
         "canIdHex": "0x7E9",
         "direction": "rx",
@@ -1698,8 +1698,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.443Z",
-        "t": 89367894442,
+        "timestamp": "2026-09-14T06:56:53.292Z",
+        "t": 89369013291,
         "canId": 2017,
         "canIdHex": "0x7E1",
         "direction": "tx",
@@ -1711,8 +1711,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.443Z",
-        "t": 89367894442,
+        "timestamp": "2026-09-14T06:56:53.292Z",
+        "t": 89369013291,
         "canId": 2025,
         "canIdHex": "0x7E9",
         "direction": "rx",
@@ -1724,8 +1724,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.443Z",
-        "t": 89367894442,
+        "timestamp": "2026-09-14T06:56:53.292Z",
+        "t": 89369013291,
         "canId": 2017,
         "canIdHex": "0x7E1",
         "direction": "tx",
@@ -1737,8 +1737,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.443Z",
-        "t": 89367894442,
+        "timestamp": "2026-09-14T06:56:53.292Z",
+        "t": 89369013291,
         "canId": 2025,
         "canIdHex": "0x7E9",
         "direction": "rx",
@@ -1750,8 +1750,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.443Z",
-        "t": 89367894442,
+        "timestamp": "2026-09-14T06:56:53.292Z",
+        "t": 89369013291,
         "canId": 2017,
         "canIdHex": "0x7E1",
         "direction": "tx",
@@ -1763,8 +1763,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.443Z",
-        "t": 89367894442,
+        "timestamp": "2026-09-14T06:56:53.292Z",
+        "t": 89369013291,
         "canId": 2025,
         "canIdHex": "0x7E9",
         "direction": "rx",
@@ -1776,8 +1776,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.444Z",
-        "t": 89367894443,
+        "timestamp": "2026-09-14T06:56:53.292Z",
+        "t": 89369013291,
         "canId": 2017,
         "canIdHex": "0x7E1",
         "direction": "tx",
@@ -1789,8 +1789,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.444Z",
-        "t": 89367894443,
+        "timestamp": "2026-09-14T06:56:53.292Z",
+        "t": 89369013291,
         "canId": 2025,
         "canIdHex": "0x7E9",
         "direction": "rx",
@@ -1802,8 +1802,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.444Z",
-        "t": 89367894443,
+        "timestamp": "2026-09-14T06:56:53.292Z",
+        "t": 89369013291,
         "canId": 2017,
         "canIdHex": "0x7E1",
         "direction": "tx",
@@ -1815,8 +1815,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.444Z",
-        "t": 89367894443,
+        "timestamp": "2026-09-14T06:56:53.292Z",
+        "t": 89369013291,
         "canId": 2025,
         "canIdHex": "0x7E9",
         "direction": "rx",
@@ -1828,8 +1828,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.444Z",
-        "t": 89367894443,
+        "timestamp": "2026-09-14T06:56:53.292Z",
+        "t": 89369013291,
         "canId": 2017,
         "canIdHex": "0x7E1",
         "direction": "tx",
@@ -1841,8 +1841,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.444Z",
-        "t": 89367894443,
+        "timestamp": "2026-09-14T06:56:53.293Z",
+        "t": 89369013292,
         "canId": 2025,
         "canIdHex": "0x7E9",
         "direction": "rx",
@@ -1854,8 +1854,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.444Z",
-        "t": 89367894443,
+        "timestamp": "2026-09-14T06:56:53.293Z",
+        "t": 89369013292,
         "canId": 1811,
         "canIdHex": "0x713",
         "direction": "tx",
@@ -1867,8 +1867,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.444Z",
-        "t": 89367894443,
+        "timestamp": "2026-09-14T06:56:53.293Z",
+        "t": 89369013292,
         "canId": 1915,
         "canIdHex": "0x77B",
         "direction": "rx",
@@ -1880,8 +1880,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.444Z",
-        "t": 89367894443,
+        "timestamp": "2026-09-14T06:56:53.293Z",
+        "t": 89369013292,
         "canId": 1811,
         "canIdHex": "0x713",
         "direction": "tx",
@@ -1893,8 +1893,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.444Z",
-        "t": 89367894443,
+        "timestamp": "2026-09-14T06:56:53.293Z",
+        "t": 89369013292,
         "canId": 1915,
         "canIdHex": "0x77B",
         "direction": "rx",
@@ -1906,8 +1906,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.444Z",
-        "t": 89367894443,
+        "timestamp": "2026-09-14T06:56:53.293Z",
+        "t": 89369013292,
         "canId": 1915,
         "canIdHex": "0x77B",
         "direction": "rx",
@@ -1919,8 +1919,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.444Z",
-        "t": 89367894443,
+        "timestamp": "2026-09-14T06:56:53.293Z",
+        "t": 89369013292,
         "canId": 1811,
         "canIdHex": "0x713",
         "direction": "tx",
@@ -1932,8 +1932,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.444Z",
-        "t": 89367894443,
+        "timestamp": "2026-09-14T06:56:53.293Z",
+        "t": 89369013292,
         "canId": 1915,
         "canIdHex": "0x77B",
         "direction": "rx",
@@ -1945,8 +1945,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.444Z",
-        "t": 89367894443,
+        "timestamp": "2026-09-14T06:56:53.293Z",
+        "t": 89369013292,
         "canId": 1811,
         "canIdHex": "0x713",
         "direction": "tx",
@@ -1958,8 +1958,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.444Z",
-        "t": 89367894443,
+        "timestamp": "2026-09-14T06:56:53.293Z",
+        "t": 89369013292,
         "canId": 1915,
         "canIdHex": "0x77B",
         "direction": "rx",
@@ -1971,8 +1971,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.444Z",
-        "t": 89367894443,
+        "timestamp": "2026-09-14T06:56:53.293Z",
+        "t": 89369013292,
         "canId": 1915,
         "canIdHex": "0x77B",
         "direction": "rx",
@@ -1984,8 +1984,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.445Z",
-        "t": 89367894444,
+        "timestamp": "2026-09-14T06:56:53.294Z",
+        "t": 89369013293,
         "canId": 1811,
         "canIdHex": "0x713",
         "direction": "tx",
@@ -1997,8 +1997,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.445Z",
-        "t": 89367894444,
+        "timestamp": "2026-09-14T06:56:53.294Z",
+        "t": 89369013293,
         "canId": 1915,
         "canIdHex": "0x77B",
         "direction": "rx",
@@ -2010,8 +2010,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.445Z",
-        "t": 89367894444,
+        "timestamp": "2026-09-14T06:56:53.294Z",
+        "t": 89369013293,
         "canId": 1811,
         "canIdHex": "0x713",
         "direction": "tx",
@@ -2023,8 +2023,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.445Z",
-        "t": 89367894444,
+        "timestamp": "2026-09-14T06:56:53.294Z",
+        "t": 89369013293,
         "canId": 1915,
         "canIdHex": "0x77B",
         "direction": "rx",
@@ -2036,8 +2036,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.445Z",
-        "t": 89367894444,
+        "timestamp": "2026-09-14T06:56:53.295Z",
+        "t": 89369013294,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -2049,8 +2049,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.445Z",
-        "t": 89367894444,
+        "timestamp": "2026-09-14T06:56:53.295Z",
+        "t": 89369013294,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2062,8 +2062,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.445Z",
-        "t": 89367894444,
+        "timestamp": "2026-09-14T06:56:53.295Z",
+        "t": 89369013294,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -2075,8 +2075,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.445Z",
-        "t": 89367894444,
+        "timestamp": "2026-09-14T06:56:53.295Z",
+        "t": 89369013294,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2088,8 +2088,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.445Z",
-        "t": 89367894444,
+        "timestamp": "2026-09-14T06:56:53.295Z",
+        "t": 89369013294,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2101,8 +2101,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.445Z",
-        "t": 89367894444,
+        "timestamp": "2026-09-14T06:56:53.295Z",
+        "t": 89369013294,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -2114,8 +2114,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.445Z",
-        "t": 89367894444,
+        "timestamp": "2026-09-14T06:56:53.295Z",
+        "t": 89369013294,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2127,8 +2127,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.445Z",
-        "t": 89367894444,
+        "timestamp": "2026-09-14T06:56:53.295Z",
+        "t": 89369013294,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -2140,8 +2140,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.446Z",
-        "t": 89367894445,
+        "timestamp": "2026-09-14T06:56:53.295Z",
+        "t": 89369013294,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2153,8 +2153,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.446Z",
-        "t": 89367894445,
+        "timestamp": "2026-09-14T06:56:53.295Z",
+        "t": 89369013294,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2166,8 +2166,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.446Z",
-        "t": 89367894445,
+        "timestamp": "2026-09-14T06:56:53.295Z",
+        "t": 89369013294,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -2179,8 +2179,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.446Z",
-        "t": 89367894445,
+        "timestamp": "2026-09-14T06:56:53.295Z",
+        "t": 89369013294,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2192,8 +2192,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.446Z",
-        "t": 89367894445,
+        "timestamp": "2026-09-14T06:56:53.295Z",
+        "t": 89369013294,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -2205,8 +2205,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.446Z",
-        "t": 89367894445,
+        "timestamp": "2026-09-14T06:56:53.295Z",
+        "t": 89369013294,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2218,8 +2218,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.446Z",
-        "t": 89367894445,
+        "timestamp": "2026-09-14T06:56:53.295Z",
+        "t": 89369013294,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2231,8 +2231,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.446Z",
-        "t": 89367894445,
+        "timestamp": "2026-09-14T06:56:53.295Z",
+        "t": 89369013294,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -2244,8 +2244,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.446Z",
-        "t": 89367894445,
+        "timestamp": "2026-09-14T06:56:53.295Z",
+        "t": 89369013294,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2257,8 +2257,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.446Z",
-        "t": 89367894445,
+        "timestamp": "2026-09-14T06:56:53.295Z",
+        "t": 89369013294,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -2270,8 +2270,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.446Z",
-        "t": 89367894445,
+        "timestamp": "2026-09-14T06:56:53.295Z",
+        "t": 89369013294,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2283,8 +2283,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.446Z",
-        "t": 89367894445,
+        "timestamp": "2026-09-14T06:56:53.295Z",
+        "t": 89369013294,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2296,8 +2296,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.446Z",
-        "t": 89367894445,
+        "timestamp": "2026-09-14T06:56:53.295Z",
+        "t": 89369013294,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -2309,8 +2309,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.446Z",
-        "t": 89367894445,
+        "timestamp": "2026-09-14T06:56:53.295Z",
+        "t": 89369013294,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2322,8 +2322,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.446Z",
-        "t": 89367894445,
+        "timestamp": "2026-09-14T06:56:53.295Z",
+        "t": 89369013294,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -2335,8 +2335,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.446Z",
-        "t": 89367894445,
+        "timestamp": "2026-09-14T06:56:53.295Z",
+        "t": 89369013294,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2348,8 +2348,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.446Z",
-        "t": 89367894445,
+        "timestamp": "2026-09-14T06:56:53.295Z",
+        "t": 89369013294,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -2361,8 +2361,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.446Z",
-        "t": 89367894445,
+        "timestamp": "2026-09-14T06:56:53.296Z",
+        "t": 89369013295,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2374,8 +2374,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.446Z",
-        "t": 89367894445,
+        "timestamp": "2026-09-14T06:56:53.296Z",
+        "t": 89369013295,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -2387,8 +2387,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.446Z",
-        "t": 89367894445,
+        "timestamp": "2026-09-14T06:56:53.296Z",
+        "t": 89369013295,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2400,8 +2400,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.446Z",
-        "t": 89367894445,
+        "timestamp": "2026-09-14T06:56:53.296Z",
+        "t": 89369013295,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -2413,8 +2413,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.446Z",
-        "t": 89367894445,
+        "timestamp": "2026-09-14T06:56:53.296Z",
+        "t": 89369013295,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2426,8 +2426,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.446Z",
-        "t": 89367894445,
+        "timestamp": "2026-09-14T06:56:53.296Z",
+        "t": 89369013295,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -2439,8 +2439,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.446Z",
-        "t": 89367894445,
+        "timestamp": "2026-09-14T06:56:53.296Z",
+        "t": 89369013295,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2452,8 +2452,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.446Z",
-        "t": 89367894445,
+        "timestamp": "2026-09-14T06:56:53.296Z",
+        "t": 89369013295,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -2465,8 +2465,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.446Z",
-        "t": 89367894445,
+        "timestamp": "2026-09-14T06:56:53.296Z",
+        "t": 89369013295,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2478,8 +2478,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.446Z",
-        "t": 89367894445,
+        "timestamp": "2026-09-14T06:56:53.296Z",
+        "t": 89369013295,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -2491,8 +2491,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.446Z",
-        "t": 89367894445,
+        "timestamp": "2026-09-14T06:56:53.296Z",
+        "t": 89369013295,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2504,8 +2504,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.446Z",
-        "t": 89367894445,
+        "timestamp": "2026-09-14T06:56:53.296Z",
+        "t": 89369013295,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -2517,8 +2517,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.447Z",
-        "t": 89367894446,
+        "timestamp": "2026-09-14T06:56:53.296Z",
+        "t": 89369013295,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2530,8 +2530,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.447Z",
-        "t": 89367894446,
+        "timestamp": "2026-09-14T06:56:53.297Z",
+        "t": 89369013296,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -2543,8 +2543,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.447Z",
-        "t": 89367894446,
+        "timestamp": "2026-09-14T06:56:53.297Z",
+        "t": 89369013296,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2556,8 +2556,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.447Z",
-        "t": 89367894446,
+        "timestamp": "2026-09-14T06:56:53.297Z",
+        "t": 89369013296,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -2569,8 +2569,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.447Z",
-        "t": 89367894446,
+        "timestamp": "2026-09-14T06:56:53.297Z",
+        "t": 89369013296,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2582,8 +2582,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.447Z",
-        "t": 89367894446,
+        "timestamp": "2026-09-14T06:56:53.297Z",
+        "t": 89369013296,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -2595,8 +2595,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.447Z",
-        "t": 89367894446,
+        "timestamp": "2026-09-14T06:56:53.297Z",
+        "t": 89369013296,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2608,8 +2608,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.447Z",
-        "t": 89367894446,
+        "timestamp": "2026-09-14T06:56:53.297Z",
+        "t": 89369013296,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -2621,8 +2621,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.447Z",
-        "t": 89367894446,
+        "timestamp": "2026-09-14T06:56:53.297Z",
+        "t": 89369013296,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2634,8 +2634,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.448Z",
-        "t": 89367894447,
+        "timestamp": "2026-09-14T06:56:53.297Z",
+        "t": 89369013296,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -2647,8 +2647,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.448Z",
-        "t": 89367894447,
+        "timestamp": "2026-09-14T06:56:53.297Z",
+        "t": 89369013296,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2660,8 +2660,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.448Z",
-        "t": 89367894447,
+        "timestamp": "2026-09-14T06:56:53.298Z",
+        "t": 89369013297,
         "canId": 2017,
         "canIdHex": "0x7E1",
         "direction": "tx",
@@ -2673,8 +2673,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.448Z",
-        "t": 89367894447,
+        "timestamp": "2026-09-14T06:56:53.298Z",
+        "t": 89369013297,
         "canId": 2025,
         "canIdHex": "0x7E9",
         "direction": "rx",
@@ -2686,8 +2686,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.448Z",
-        "t": 89367894447,
+        "timestamp": "2026-09-14T06:56:53.298Z",
+        "t": 89369013297,
         "canId": 2017,
         "canIdHex": "0x7E1",
         "direction": "tx",
@@ -2699,8 +2699,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.448Z",
-        "t": 89367894447,
+        "timestamp": "2026-09-14T06:56:53.298Z",
+        "t": 89369013297,
         "canId": 2025,
         "canIdHex": "0x7E9",
         "direction": "rx",
@@ -2712,8 +2712,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.448Z",
-        "t": 89367894447,
+        "timestamp": "2026-09-14T06:56:53.298Z",
+        "t": 89369013297,
         "canId": 1811,
         "canIdHex": "0x713",
         "direction": "tx",
@@ -2725,8 +2725,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.448Z",
-        "t": 89367894447,
+        "timestamp": "2026-09-14T06:56:53.298Z",
+        "t": 89369013297,
         "canId": 1915,
         "canIdHex": "0x77B",
         "direction": "rx",
@@ -2738,8 +2738,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.448Z",
-        "t": 89367894447,
+        "timestamp": "2026-09-14T06:56:53.298Z",
+        "t": 89369013297,
         "canId": 1811,
         "canIdHex": "0x713",
         "direction": "tx",
@@ -2751,8 +2751,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.448Z",
-        "t": 89367894447,
+        "timestamp": "2026-09-14T06:56:53.298Z",
+        "t": 89369013297,
         "canId": 1915,
         "canIdHex": "0x77B",
         "direction": "rx",
@@ -2764,8 +2764,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.449Z",
-        "t": 89367894448,
+        "timestamp": "2026-09-14T06:56:53.299Z",
+        "t": 89369013298,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -2777,8 +2777,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.449Z",
-        "t": 89367894448,
+        "timestamp": "2026-09-14T06:56:53.299Z",
+        "t": 89369013298,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2790,8 +2790,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.449Z",
-        "t": 89367894448,
+        "timestamp": "2026-09-14T06:56:53.299Z",
+        "t": 89369013298,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -2803,8 +2803,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.449Z",
-        "t": 89367894448,
+        "timestamp": "2026-09-14T06:56:53.299Z",
+        "t": 89369013298,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2816,8 +2816,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.449Z",
-        "t": 89367894448,
+        "timestamp": "2026-09-14T06:56:53.299Z",
+        "t": 89369013298,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2829,8 +2829,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.449Z",
-        "t": 89367894448,
+        "timestamp": "2026-09-14T06:56:53.299Z",
+        "t": 89369013298,
         "canId": 2017,
         "canIdHex": "0x7E1",
         "direction": "tx",
@@ -2842,8 +2842,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.449Z",
-        "t": 89367894448,
+        "timestamp": "2026-09-14T06:56:53.299Z",
+        "t": 89369013298,
         "canId": 2025,
         "canIdHex": "0x7E9",
         "direction": "rx",
@@ -2855,8 +2855,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.449Z",
-        "t": 89367894448,
+        "timestamp": "2026-09-14T06:56:53.299Z",
+        "t": 89369013298,
         "canId": 2017,
         "canIdHex": "0x7E1",
         "direction": "tx",
@@ -2868,8 +2868,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-14T06:38:14.449Z",
-        "t": 89367894448,
+        "timestamp": "2026-09-14T06:56:53.299Z",
+        "t": 89369013298,
         "canId": 2025,
         "canIdHex": "0x7E9",
         "direction": "rx",

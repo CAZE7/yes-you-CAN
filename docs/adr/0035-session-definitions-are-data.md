@@ -1,4 +1,4 @@
-# ADR 0032 — Sitzungsdefinitionen sind Daten, die Zustandsmaschine ist ein Modul
+# ADR 32 — Sitzungsdefinitionen sind Daten, die Zustandsmaschine ist ein Modul
 
 - Status: akzeptiert (2026-09-14)
 - Kontext: ISO 14229-1 §10.2 (DiagnosticSessionControl, Sitzungsübergänge), ISO 14229-2 §7 (S3Server), AGENTS 9/12 (UDS-Semantik), Master-Backlog P0 #9

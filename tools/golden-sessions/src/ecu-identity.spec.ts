@@ -12,7 +12,7 @@ test("stableEcuId prefers the definition id and falls back to the name", () => {
 
 test("stableEcuId ignores the per-run identifier, which is gone on the next run", () => {
   // A discovered ECU carries `id: "ecu_…"`; an expectation keyed on it would fail on
-  // every second run (ADR 0033: a golden session is reproducible or it is noise).
+  // every second run (ADR 0036 §4: a golden session is reproducible or it is noise).
   assert.equal(
     stableEcuId({ id: "ecu_7f3a91", definitionEcuId: "abs", name: "Brake Control Unit" }),
     "abs",

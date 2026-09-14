@@ -10,7 +10,7 @@
  * but nothing in CI called it, so a spec with a type error or a lint violation
  * could merge green. Workflow files cannot be changed with the current GitHub App
  * installation (`refusing to allow a GitHub App to create or update workflow …`,
- * re-measured 2026-09-14, see AGENTS 0.E E10/E17), so the gates are carried into
+ * re-measured 2026-09-14, see AGENTS 0.E E10/E20), so the gates are carried into
  * the test run instead: the `architecture` project runs them here. Measured cost
  * on a warm tree: Biome 0.82 s, `tsconfig.typecheck.json` 0.83 s,
  * `tsconfig.frontend.json` 0.31 s — ≈2 s on a ~21 s suite, and zero on the fast
@@ -20,7 +20,7 @@
  *
  *  1. One linter. ESLint next to Biome would be a second vocabulary for the same
  *     question, and the repository's answer to "too few lints" is *harder rules*
- *     (ADR 0026), not more linters.
+ *     (ADR 0029), not more linters.
  *  2. A rule is either an error or it is on the record with a reason. `warn` in
  *     Biome does not fail `biome check`; it is a decision not to gate, written in
  *     the syntax of a decision to gate. Every `off`/`warn` entry here names the
@@ -33,7 +33,7 @@
  *     workspace, and every relaxation is listed with the measurement that keeps it
  *     open.
  *  5. No build orchestrator. Turborepo/Nx is not a *guardrail*, it is build
- *     complexity ahead of need (ADR 0026) — the test fails if one appears without
+ *     complexity ahead of need (ADR 0029) — the test fails if one appears without
  *     the decision being revisited.
  */
 
@@ -50,7 +50,7 @@ const readJson = (file: string): Record<string, unknown> =>
 /* ------------------------------------------------------------------ 1. linter */
 
 /**
- * One linter: Biome (ADR 0016 §1, ADR 0026 §1). ESLint, oxlint or tslint beside
+ * One linter: Biome (ADR 0016 §1, ADR 0029 §1). ESLint, oxlint or tslint beside
  * it would re-introduce exactly the problem the strictness change addresses —
  * rule *volume* instead of rule *sharpness* — and give every rule two homes.
  */
@@ -79,7 +79,7 @@ test("Biome is the only linter in the workspace", () => {
   assert.deepEqual(
     offenders,
     [],
-    "a second linter was added — the answer to weak rules is harder rules (ADR 0026 §1):\n" +
+    "a second linter was added — the answer to weak rules is harder rules (ADR 0029 §1):\n" +
       offenders.join("\n"),
   );
 });
@@ -248,7 +248,7 @@ test("every rule that is not an error carries a measured reason", () => {
     unjustified,
     [],
     "a rule was softened without a reason on the record — either make it an error or " +
-      "justify it in JUSTIFIED_RULES with the finding that keeps it open (ADR 0026 §2):\n" +
+      "justify it in JUSTIFIED_RULES with the finding that keeps it open (ADR 0029 §2):\n" +
       unjustified.join("\n"),
   );
 
@@ -280,7 +280,7 @@ test("every non-error rule is a real exemption, not an unnoticed default", () =>
     assert.ok(
       JUSTIFIED_SCOPES.some((allowed) => scopeKey(allowed.scope) === scopeKey(entry.scope)),
       `override scope [${entry.scope.join(", ")}] relaxes ${entry.rule} but is not listed as a ` +
-        "non-production scope — production code has no exemption path (ADR 0026 §3)",
+        "non-production scope — production code has no exemption path (ADR 0029 §3)",
     );
     assert.equal(
       entry.value,
@@ -539,7 +539,7 @@ test(
       failures,
       [],
       "a guardrail is red — this test exists because CI cannot run `npm run ci` directly " +
-        `(AGENTS 0.E E10/E17):\n\n${failures.join("\n\n")}`,
+        `(AGENTS 0.E E10/E20):\n\n${failures.join("\n\n")}`,
     );
   },
 );
@@ -553,7 +553,7 @@ test("CI still runs the gate carrier on both Node versions", () => {
   assert.match(
     workflow,
     /run: npm test\b/,
-    "CI must run `npm test` — since ADR 0026 that is where the lint and typecheck gates live, " +
+    "CI must run `npm test` — since ADR 0029 that is where the lint and typecheck gates live, " +
       "so removing it would silently remove them",
   );
   assert.match(
@@ -578,7 +578,7 @@ test("no build orchestrator is introduced without revisiting the decision", () =
   assert.deepEqual(
     orchestrators,
     [],
-    "a build orchestrator appeared: the measured need comes first (ADR 0026 §5) — `tsc -b` over 25 " +
+    "a build orchestrator appeared: the measured need comes first (ADR 0029 §5) — `tsc -b` over 25 " +
       "projects plus a 21 s suite is not a bottleneck, and Turborepo/Nx would add a caching layer " +
       "whose invalidation bugs are exactly the class of bug this repository gates against",
   );

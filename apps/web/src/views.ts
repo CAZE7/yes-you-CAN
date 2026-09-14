@@ -21,7 +21,9 @@
 
 import type { AdapterDescription, AdapterProbe, AdapterSelection } from "@vdp/adapter-host";
 import type { AnalysisResult } from "@vdp/ai";
-import type { DtcKnowledgeView } from "./dtc-knowledge-view.js";
+import type { DtcView } from "./dtc-view.js";
+import type { EcuView } from "./ecu-view.js";
+import type { MarkerView, SampleView, TraceView } from "./trace-view.js";
 import type { VehicleResolutionView } from "./vehicle-view.js";
 
 // The view shapes nested inside the payloads above are part of the same
@@ -34,53 +36,20 @@ export type {
   AdapterSelection,
 } from "@vdp/adapter-host";
 export type { DtcCheckView, DtcKnowledgeView, DtcPatternView } from "./dtc-knowledge-view.js";
+/**
+ * The rows the projections own (`dtc-view.ts`, `ecu-view.ts`, `trace-view.ts`;
+ * 0.E E15) are re-exported here: a projection *is* a wire type, and the front end
+ * imports the whole contract from one module so that `tsconfig.frontend.json` has
+ * exactly one mapping to point at (ADR 0030 §2).
+ */
+export type { DtcView } from "./dtc-view.js";
+export type { EcuView, FreezeFrameView } from "./ecu-view.js";
+export type { MarkerView, SampleView, TraceView } from "./trace-view.js";
 export type {
   VehicleCandidateView,
   VehicleEvidenceView,
   VehicleResolutionView,
 } from "./vehicle-view.js";
-
-export interface EcuView {
-  id: string;
-  name: string;
-  txId: string;
-  rxId: string;
-  extended: boolean;
-  reachable: boolean;
-  identification: Array<{ label: string; value: string }>;
-  services: string[];
-  sessionType: number;
-  p2Ms: number;
-  dtcCount: number;
-  lastError?: string;
-}
-
-/**
- * Freeze frame of a fault code, as shown in the UI (AGENTS 20).
- *
- * Decoded values and raw bytes both travel to the front end so an operator can
- * see that a value came from a byte range, not from a guess.
- */
-export interface FreezeFrameView {
-  code: string;
-  recordNumber: number;
-  documented: boolean;
-  notes: string[];
-  unassignedHex: string;
-  fields: Array<{
-    did: string;
-    name: string;
-    rawHex: string;
-    values: Array<{
-      signal: string;
-      name: string;
-      value: string;
-      unit?: string;
-      rawHex: string;
-      outOfRange: boolean;
-    }>;
-  }>;
-}
 
 /**
  * Vehicle preconditions for a write, as asserted by the operator (AGENTS 26).
@@ -130,87 +99,6 @@ export interface DtcClearPrecheck {
    */
   unproven: string[];
   warnings: string[];
-}
-
-export interface DtcView {
-  code: string;
-  raw: string;
-  /** Response id of the ECU that reported the code, so the UI can address it. */
-  rxId: string;
-  /** Description from the definition package, or the raw protocol fallback. */
-  description: string;
-  severity: string;
-  ecu: string;
-  status: string;
-  confirmed: boolean;
-  pending: boolean;
-  testFailed: boolean;
-  /** Next diagnostic step from the definition package, when one is documented. */
-  hint?: string;
-  /** First scan in this session that saw the code (AGENTS 20). */
-  firstSeen?: string;
-  /** Most recent scan that saw the code (AGENTS 20). */
-  lastSeen?: string;
-  /** True when the code appeared for the first time in the latest scan. */
-  isNew?: boolean;
-  /** Signals the definition package relates to this code (AGENTS 20). */
-  relatedSignals?: Array<{ id: string; name: string }>;
-  /**
-   * Whether reading a freeze frame for this code is meaningful: the ECU returned
-   * a snapshot record before, or the definition documents a layout.
-   */
-  freezeFrame?: boolean;
-  /** Provenance of the description — never present invented knowledge (AGENTS 24). */
-  provenance?: string;
-  /**
-   * What the resolved vehicle's variant knowledge adds to this code (AGENTS 20,
-   * 23): the scope that says where the wording came from, the documented failure
-   * patterns with their measurement checks, and what is missing or assumed.
-   * Absent when no vehicle is resolved or nothing is documented — the UI then
-   * shows the manufacturer-wide wording and says that it does.
-   */
-  knowledge?: DtcKnowledgeView;
-}
-
-export interface SampleView {
-  signal: string;
-  name: string;
-  /** Formatted for display — the UI shows this string verbatim. */
-  value: string;
-  /**
-   * Numeric value for the graphs, `null` for textual/enum signals.
-   * Charts must never parse a formatted string back into a number: the decimal
-   * separator and the precision belong to the presentation layer (AGENTS 14).
-   */
-  numeric: number | null;
-  /** Undecoded value next to the decoded one (AGENTS 34.7). */
-  rawValue: number | string | boolean;
-  rawHex: string;
-  unit?: string;
-  outOfRange: boolean;
-  t: number;
-  timestamp: string;
-}
-
-/** Marker on the shared time axis (AGENTS 16 "Event-Marker", AGENTS 20 DTC events). */
-export interface MarkerView {
-  id: string;
-  t: number;
-  timestamp: string;
-  label: string;
-  kind: "dtc" | "action" | "note" | "user" | "anomaly";
-  detail?: string;
-}
-
-export interface TraceView {
-  t: number;
-  timestamp: string;
-  canId: string;
-  direction: "tx" | "rx";
-  dlc: number;
-  data: string;
-  channel: string;
-  extended: boolean;
 }
 
 export interface HistoryView {

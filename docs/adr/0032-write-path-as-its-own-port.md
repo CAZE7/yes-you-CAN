@@ -1,4 +1,4 @@
-# ADR 0029 — Der Schreibpfad ist ein eigener Port, keine Methode am Lesepfad
+# ADR 29 — Der Schreibpfad ist ein eigener Port, keine Methode am Lesepfad
 
 - Status: akzeptiert (2026-09-14)
 - Kontext: AGENTS 20 („Clear DTCs mit expliziter Bestätigung"), AGENTS 25/26 (Safety-Kette, „jede Stufe ein Ergebnis mit Gründen"), Master-Backlog P0 #3, #4, #5, #7

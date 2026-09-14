@@ -45,15 +45,7 @@ import {
   startMeasurements,
 } from "@vdp/application";
 import { type DefinitionPackage, genericPackage, simulatorPackage } from "@vdp/definitions";
-import type {
-  DtcClearPrecheckInfo,
-  DtcInfo,
-  EcuSummary,
-  FreezeFrameInfo,
-  MarkerInfo,
-  MeasurementReading,
-  VehicleResolutionRef,
-} from "@vdp/domain";
+import type { DtcClearPrecheckInfo, VehicleResolutionRef } from "@vdp/domain";
 import type { DtcRecord } from "@vdp/protocols-uds";
 import { type DiagnosticRuntime, createDiagnosticRuntime } from "@vdp/runtime";
 import {
@@ -66,7 +58,6 @@ import {
 import { DEFAULT_VIN, VirtualVehicle } from "@vdp/simulators";
 import {
   FileSystemSessionRepository,
-  type RawTraceEntry,
   SessionLogger,
   type SessionRepository,
   type StoredSessionSummary,
@@ -84,8 +75,6 @@ import {
   createWebAdapterCatalog,
   isApplicationManaged,
 } from "./adapters.js";
-import { toDtcKnowledgeView } from "./dtc-knowledge-view.js";
-import { type VehicleResolutionView, toVehicleResolutionView } from "./vehicle-view.js";
 import type {
   AppState,
   BackendEvent,
@@ -96,9 +85,8 @@ import type {
   EcuView,
   FreezeFrameView,
   HistoryView,
-  MarkerView,
   SampleView,
-  TraceView,
+  VehicleResolutionView,
   VehicleStateView,
 } from "./views.js";
 
@@ -123,6 +111,12 @@ export type {
   TraceView,
   VehicleStateView,
 } from "./views.js";
+
+import { analysisDtcOf, analysisVehicleOf } from "./analysis-input.js";
+import { toDtcView } from "./dtc-view.js";
+import { toEcuView, toFreezeFrameView } from "./ecu-view.js";
+import { formatCanId, toMarkerView, toSampleView, toTraceView } from "./trace-view.js";
+import { toVehicleResolutionView } from "./vehicle-view.js";
 
 export interface BackendOptions {
   logger?: Logger;
@@ -613,7 +607,7 @@ export class DemoBackend {
     // The runtime already enriched the codes with the definition package
     // (description, severity, first/last seen, related signals); the backend
     // only maps them to the view shape the UI consumes (AGENTS 13/20).
-    this.dtcs = infos.map((info) => this.toDtcView(info));
+    this.dtcs = infos.map((info) => toDtcView(info, this.ecus));
     for (const view of this.dtcs) this.emit("dtc", view);
     this.sessionLogger.log("dtc", "scan complete", { count: this.dtcs.length });
     this.log.info("DTC scan complete", { count: this.dtcs.length });
@@ -772,11 +766,17 @@ export class DemoBackend {
 
   async analyze(): Promise<AnalysisResult> {
     const runtime = this.requireRuntime();
-    // No odometer reading is an absent input, not a present zero: the heuristic
-    // provider must not read "unknown mileage" as "0 km" (AGENTS 22).
-    const mileageKm = this.session()?.mileageKm;
+    const session = this.session();
+    // Which car, and how firmly it was determined: without these two the provider
+    // answers about an unnamed vehicle while its output reads like a variant
+    // statement (AGENTS 22, ADR 0026).
+    const vehicle = analysisVehicleOf(runtime.vehicle.identity(), session?.determination);
     const input: AnalysisInput = {
-      ...(mileageKm !== undefined ? { mileageKm } : {}),
+      ...(vehicle !== undefined ? { vehicle } : {}),
+      // No odometer reading is an absent input, not a present zero: the heuristic
+      // provider must not read "unknown mileage" as "0 km" (AGENTS 22).
+      ...(session?.mileageKm !== undefined ? { mileageKm: session.mileageKm } : {}),
+
       signals: runtime.measurements.statistics().map((stat) => ({
         signal: stat.signalId,
         name: stat.name,
@@ -788,12 +788,7 @@ export class DemoBackend {
         delta: stat.delta ?? 0,
         outOfRangeCount: stat.outOfRangeCount,
       })),
-      dtcs: this.dtcs.map((dtc) => ({
-        code: dtc.code,
-        description: dtc.description,
-        severity: dtc.severity,
-        ecu: dtc.ecu,
-      })),
+      dtcs: this.dtcs.map(analysisDtcOf),
       anomalies: runtime.measurements.anomalies().map((anomaly) => ({
         signal: anomaly.signalId,
         reason: anomaly.reason,
@@ -845,7 +840,9 @@ export class DemoBackend {
   state(): AppState {
     const runtime = this.runtime;
     const session = this.session();
-    const identity = session?.vehicle;
+    // The read model, not the raw identity: it is the only place that knows both
+    // what was measured and what the resolution concluded (ADR 0026).
+    const identity = runtime?.vehicle.identity();
     const trace = this.sessionLogger.snapshot().trace.slice(-200);
     return {
       connected: this.connected,
@@ -939,32 +936,6 @@ export class DemoBackend {
     return this.runtime?.session.data();
   }
 
-  /** DTC table row from the runtime read model (AGENTS 13/20). */
-  private toDtcView(info: DtcInfo): DtcView {
-    const ecu = this.ecus.find((view) => view.id === info.ecuId);
-    return {
-      code: info.code,
-      raw: info.raw,
-      rxId: ecu?.rxId ?? info.ecuId,
-      // A code without a definition stays honest: the raw failure type is shown
-      // instead of an invented description (AGENTS 24).
-      description: info.description ?? `Fehlertyp 0x${info.failureType}`,
-      severity: info.severity ?? "info",
-      ...(info.hint ? { hint: info.hint } : {}),
-      ecu: info.ecuName,
-      status: `0x${info.status.toString(16).toUpperCase().padStart(2, "0")}`,
-      confirmed: info.confirmed,
-      pending: info.pending,
-      testFailed: info.testFailed,
-      ...(info.firstSeen ? { firstSeen: info.firstSeen } : {}),
-      ...(info.lastSeen ? { lastSeen: info.lastSeen } : {}),
-      ...(info.firstSeenInThisScan ? { isNew: true } : {}),
-      ...(info.relatedSignals ? { relatedSignals: [...info.relatedSignals] } : {}),
-      ...(info.knowledge ? { knowledge: toDtcKnowledgeView(info.knowledge) } : {}),
-      freezeFrame: info.hasFreezeFrame,
-    };
-  }
-
   /** ECU reference as the runtime understands it: session id or "0x…" address. */
   private ecuRef(rxId: number): string {
     return `0x${rxId.toString(16)}`;
@@ -980,99 +951,6 @@ export class DemoBackend {
     await this.teardown();
     this.log.info("backend stopped", { mode: this.mode });
   }
-}
-
-function toEcuView(summary: EcuSummary): EcuView {
-  return {
-    id: summary.ecuId,
-    name: summary.name,
-    txId: formatCanId(summary.txId),
-    rxId: formatCanId(summary.rxId),
-    extended: summary.extended,
-    reachable: summary.reachable,
-    identification: summary.identification.map((entry) => ({
-      label: entry.label,
-      value: entry.value,
-    })),
-    services: summary.supportedServices.map((sid) => `0x${sid.toString(16).toUpperCase()}`),
-    sessionType: summary.sessionType,
-    p2Ms: summary.p2Ms,
-    dtcCount: summary.dtcCount,
-    ...(summary.lastError ? { lastError: summary.lastError } : {}),
-  };
-}
-
-function toFreezeFrameView(info: FreezeFrameInfo): FreezeFrameView {
-  return {
-    code: info.code,
-    recordNumber: info.recordNumber,
-    documented: info.documented,
-    notes: [...info.notes],
-    unassignedHex: info.unassignedHex,
-    fields: info.fields.map((field) => ({
-      did: `0x${field.did.toString(16).toUpperCase()}`,
-      name: field.name,
-      rawHex: field.rawHex,
-      values: field.values.map((value) => ({
-        signal: value.signalId,
-        name: value.name,
-        value: formatValue(value.value),
-        ...(value.unit ? { unit: value.unit } : {}),
-        rawHex: value.rawHex,
-        outOfRange: value.outOfRange,
-      })),
-    })),
-  };
-}
-
-function toSampleView(reading: MeasurementReading): SampleView {
-  return {
-    signal: reading.signalId,
-    name: reading.name ?? reading.signalId,
-    value: formatValue(reading.value),
-    numeric:
-      typeof reading.value === "number" && Number.isFinite(reading.value) ? reading.value : null,
-    rawValue: reading.rawValue,
-    rawHex: reading.rawHex,
-    ...(reading.unit ? { unit: reading.unit } : {}),
-    outOfRange: reading.outOfRange,
-    t: reading.t,
-    timestamp: reading.timestamp,
-  };
-}
-
-function toMarkerView(marker: MarkerInfo): MarkerView {
-  return {
-    id: marker.markerId,
-    t: marker.t,
-    timestamp: marker.timestamp,
-    label: marker.label,
-    kind: marker.kind,
-    ...(marker.detail ? { detail: marker.detail } : {}),
-  };
-}
-
-function toTraceView(entry: RawTraceEntry): TraceView {
-  return {
-    t: entry.t,
-    timestamp: entry.timestamp,
-    canId: entry.canIdHex,
-    direction: entry.direction,
-    dlc: entry.dlc,
-    data: entry.payloadHex,
-    channel: entry.channel,
-    extended: entry.extended,
-  };
-}
-
-/** CAN identifier as it is displayed and sent back by the UI (e.g. `0x7E8`). */
-function formatCanId(id: number): string {
-  return `0x${id.toString(16).toUpperCase()}`;
-}
-
-function formatValue(value: number | string | boolean): string {
-  if (typeof value === "number") return Number.isInteger(value) ? String(value) : value.toFixed(2);
-  return String(value);
 }
 
 function describe(

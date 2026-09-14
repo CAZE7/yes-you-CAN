@@ -30,7 +30,7 @@ export function createIdentityFromVin(
   const analysis = analyseVin(vin);
   // An unknown model year is an absent field, not a field holding `undefined`:
   // the identity is embedded into reports and stored sessions, where the two
-  // spellings survive differently through JSON (AGENTS 4, ADR 0026 §3).
+  // spellings survive differently through JSON (AGENTS 4, ADR 26 §3).
   const modelYear =
     extra.modelYear ?? (analysis.wellFormed ? guessModelYear(analysis.modelYearChar) : null);
   return {

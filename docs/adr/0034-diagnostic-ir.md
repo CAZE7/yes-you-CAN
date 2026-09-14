@@ -1,7 +1,7 @@
-# ADR 0031 — Diagnostische Zwischenstufe: Beobachtungen mit Beleg
+# ADR 31 — Diagnostische Zwischenstufe: Beobachtungen mit Beleg
 
 - Status: akzeptiert (2026-09-14)
-- Kontext: AGENTS 14/17 (Roh und dekodiert bleiben getrennt), AGENTS 20 (DTC-Zustand), AGENTS 24 (Datenherkunft), AGENTS 26/ADR 0030 (fehlende Evidenz ist ein Fehlschlag), Master-Backlog P0 #6
+- Kontext: AGENTS 14/17 (Roh und dekodiert bleiben getrennt), AGENTS 20 (DTC-Zustand), AGENTS 24 (Datenherkunft), AGENTS 26/ADR 30 (fehlende Evidenz ist ein Fehlschlag), Master-Backlog P0 #6
 - Betrifft: `packages/diagnostic-ir/` (neu), `packages/core/src/measurements/{decoder,live}.ts`, `packages/core/src/diagnostics/measurement-access.ts`, `tools/architecture/dependency-rules.json`, `vitest.config.ts`
 
 ## Problem
@@ -20,7 +20,7 @@ braucht:
    Signal fehlte einfach. Ein ausgefallener Sensor und ein ausgefallenes Kabel
    sahen damit gleich aus — nämlich nach nichts.
 
-Regel 2 ist im Kern dieselbe Aussage, die ADR 0030 für die Safety-Kette
+Regel 2 ist im Kern dieselbe Aussage, die ADR 30 für die Safety-Kette
 festgehalten hat: *fehlende Evidenz ist ein Fehlschlag, kein Schweigen.* Auf der
 Datenebene fehlte sie.
 

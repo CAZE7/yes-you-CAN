@@ -1,4 +1,4 @@
-# ADR 0027 — Das Browser-Frontend wird gegen den Wire-Contract typgeprüft
+# ADR 27 — Das Browser-Frontend wird gegen den Wire-Contract typgeprüft
 
 **Status:** accepted · **Datum:** 2026-09-14 · **Betrifft:** `apps/web`, `tsconfig.frontend.json`,
 `tests/architecture/guardrails.test.ts` · **Löst ein:** E19 (AGENTS 0.E)
@@ -56,6 +56,6 @@ verlöre genau die Grenze, die es sichern soll.
 - Zwei neue Dateien (`views.ts` 350, `api.js` 142 Zeilen) und vier getippte Module ersetzen keine
   Logik — die Schicht bleibt Rendering über View-Projektionen (Roadmap-Schritt 9).
 - Kosten: `tsconfig.frontend.json` prüft 8 Dateien in ~0,3 s und läuft im Architekturtest mit
-  (ADR 0026 §4).
+  (ADR 26 §4).
 - Grenze: Das Frontend bleibt ohne Browser-Tests ungetestet (E15) — der Typecheck ist die
   Untergrenze, keine Alternative zu einem DOM-Test.

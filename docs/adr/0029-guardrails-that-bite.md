@@ -1,6 +1,6 @@
 # 0026 — Guardrails, die beißen: Fehler statt Warnungen, Entscheidungen auf dem Rekord, Gates im Testlauf
 
-Status: accepted · Datum: 2026-09-14 · Bezug: ADR 0016 §1, ADR 0015, ADR 0017, AGENTS 34.19, 34.21, 34.24, 35; Backlog 0.E E10/E17
+Status: accepted · Datum: 2026-09-14 · Bezug: ADR 0016 §1, ADR 0015, ADR 0017, AGENTS 34.19, 34.21, 34.24, 35; Backlog 0.E E10/E20
 
 ## Kontext
 
@@ -121,7 +121,7 @@ bewusst neu getroffen werden.
   Guardrail-Test ist der Grund, warum die nächste Abschwächung nicht mehr
   unbemerkt passieren kann — und er hat beim Schreiben sofort zwei Format- und
   eine `noUnusedTemplateLiteral`-Verletzung in seinem eigenen PR gefunden.
-- **Was offen bleibt:** E10 (Workflow-Recht), E17 (Workflow führt `npm test`,
+- **Was offen bleibt:** E10 (Workflow-Recht), E20 (Workflow führt `npm test`,
   nicht `npm run ci` — durch §4 heute gleichwertig, aber die Gleichwertigkeit
   hängt an einem Test), E18/E19 (die zwei gemessenen Strictness-Lücken), E11/E16
   (Dateien knapp über ihren Coverage-Gates).

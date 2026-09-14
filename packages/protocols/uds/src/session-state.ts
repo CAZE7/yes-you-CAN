@@ -314,7 +314,7 @@ export function defaultSessionDefinition(): SessionDefinition {
 
 /**
  * The extended diagnostic session: the session a write is performed in
- * (AGENTS 29 / ADR 0029 — no write happens in the default session).
+ * (AGENTS 29 / ADR 29 — no write happens in the default session).
  */
 export function extendedSessionDefinition(): SessionDefinition {
   return {

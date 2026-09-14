@@ -336,7 +336,7 @@ function isPrimitive(value: unknown): boolean {
  * Pretty-print JSON the way the repository's formatter does.
  *
  * The fixtures are generated *and* committed, and `biome check .` runs over the
- * whole tree (ADR 0026 §3: no exemption path for production files). A writer whose
+ * whole tree (ADR 26 §3: no exemption path for production files). A writer whose
  * output the formatter would immediately rewrite leaves two bad options — an ignore
  * rule for the fixtures, or a formatting step nobody runs — so it prints the shape
  * the gate expects: objects always expanded, arrays of primitives inline while they

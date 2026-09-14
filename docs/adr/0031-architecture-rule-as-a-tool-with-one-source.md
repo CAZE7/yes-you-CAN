@@ -1,4 +1,4 @@
-# ADR 0028 — Die Architekturregel ist ein Werkzeug mit einer Quelle, keine Prosa mit einem Testanhängsel
+# ADR 28 — Die Architekturregel ist ein Werkzeug mit einer Quelle, keine Prosa mit einem Testanhängsel
 
 - Status: akzeptiert (2026-09-14)
 - Kontext: AGENTS 28 („Der Dependency Graph sollte eine harte Regel bekommen"), AGENTS 34.21 („Messung vor Behauptung"), Master-Backlog P0 #2 und P1 #22
@@ -49,7 +49,7 @@ ist von einem Test ohne Regel nicht zu unterscheiden — und er sieht genauso gr
    Duplizierung, die dieser ADR auflöst, nur mit einer Abhängigkeit mehr. Die hier gebrauchte
    Regel ist klein, projektspezifisch und in einer JSON vollständig beschrieben; ein Werkzeug von
    ~330 Zeilen, das der Architekturtest selbst gegen Fixture-Bäume fährt, ist dem Paket an dieser
-   Stelle überlegen. Die Entscheidung ist der ESLint-Entscheidung aus ADR 0026 verwandt: **kein
+   Stelle überlegen. Die Entscheidung ist der ESLint-Entscheidung aus ADR 26 verwandt: **kein
    zweites Vokabular für dieselbe Frage.** Sobald eine Regel entsteht, die Datei-Ebenen,
    Zyklen über Laufzeitpfade oder Type-only-Kanten braucht, ist dependency-cruiser neu zu
    bewerten — dann mit diesem Text als Grundlage.

@@ -12,7 +12,7 @@
  *
  * Why not dependency-cruiser: it would be a second rule vocabulary for a rule
  * that is already written down, and its configuration would restate the allow
- * list — the same duplication this tool exists to remove (ADR 0028). The scan
+ * list — the same duplication this tool exists to remove (ADR 0031). The scan
  * below is deliberately small enough to be read in one sitting.
  *
  * Usage:
