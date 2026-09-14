@@ -107,12 +107,12 @@
       "why": "Persistence and export formats below the runtime."
     },
     "@vdp/reports": {
-      "mayImport": ["@vdp/core"],
-      "why": "Report rendering prints what the core produced."
+      "mayImport": ["@vdp/core", "@vdp/diagnostic-ir"],
+      "why": "Report rendering prints what the core produced — and reads the diagnostic IR directly, because a section that shows an unproven statement has to use the IR's own evidence words instead of restating them (P0 #6, ADR 0037)."
     },
     "@vdp/ai": {
-      "mayImport": ["@vdp/shared"],
-      "why": "Provider abstraction stays orthogonal to diagnostics."
+      "mayImport": ["@vdp/shared", "@vdp/diagnostic-ir"],
+      "why": "Provider abstraction stays orthogonal to diagnostics: it may read observations and their evidence — the diagnostic IR, which names no transport, no protocol and no write — and nothing above it. That is the machine-checked form of „an analysis provider never touches the vehicle“ (AGENTS 22, P0 #16/#39, ADR 0038)."
     },
     "@vdp/simulators": {
       "mayImport": [
@@ -151,6 +151,7 @@
         "@vdp/domain",
         "@vdp/application",
         "@vdp/runtime",
+        "@vdp/diagnostic-ir",
         "@vdp/definitions",
         "@vdp/protocols-uds",
         "@vdp/transport-can",
@@ -160,7 +161,7 @@
         "@vdp/simulators",
         "@vdp/adapter-host"
       ],
-      "why": "The workbench speaks to the vehicle exclusively through the runtime (command/query bus)."
+      "why": "The workbench speaks to the vehicle exclusively through the runtime (command/query bus). It reads the diagnostic IR to hand the evidence set to an analysis provider: restating evidence vocabulary in the app would put a second copy of the claim's source where the IR already says it (P0 #6/#39, ADR 0037/0038)."
     }
   },
   "rules": {

@@ -1,14 +1,23 @@
 import assert from "node:assert/strict";
+import {
+  type EvidenceItem,
+  type EvidenceSet,
+  type Hypothesis,
+  proven,
+  unproven,
+} from "@vdp/diagnostic-ir";
 import { createLogger } from "@vdp/shared";
 import { test } from "vitest";
 import { type FixturePatch, patched } from "../../../tests/helpers/fixture.js";
 import {
+  ANALYSIS_PROMPT_VERSION,
   AnalysisError,
   type AnalysisInput,
   AnalysisService,
   HeuristicAnalysisProvider,
   HttpAnalysisProvider,
   type HttpClient,
+  analysisInstruction,
   redactVin,
 } from "./index.js";
 
@@ -789,4 +798,251 @@ test("sample thresholds are configuration, not constants", async () => {
     lenientResult.findings.map((finding) => finding.id).join(" | "),
   );
   assert.ok(lenientResult.findings.some((finding) => finding.id === "spread-engine.rpm"));
+});
+
+/* ------------------------------------------------- evidence, citations, versions */
+
+const AT = "2026-09-14T09:00:00.000Z";
+
+const EVIDENCE_ITEMS: EvidenceItem[] = [
+  {
+    id: "dtc:P0420@engine",
+    kind: "dtc" as const,
+    subject: "P0420",
+    statement: "Catalyst efficiency below threshold (Engine, severity major)",
+    at: AT,
+    ecuId: "engine",
+    evidence: proven({ origin: "ecu-response", at: AT, raw: "04202A" }),
+  },
+  {
+    id: "gap:dtc-undocumented:U0121",
+    kind: "gap" as const,
+    subject: "U0121",
+    statement: "no description is documented for this code",
+    at: AT,
+    evidence: unproven("no description is documented for this code", { at: AT }),
+  },
+];
+
+function evidenceSet(items = EVIDENCE_ITEMS): EvidenceSet {
+  return { kind: "evidence", sessionId: "session_a", collectedAt: AT, items, conflicts: [] };
+}
+
+function hypothesis(overrides: Partial<Hypothesis> = {}): Hypothesis {
+  return {
+    id: "catalyst-aged",
+    code: "P0420",
+    claim: "Catalyst ageing",
+    likelihood: "common",
+    outcome: "confirmed",
+    confidence: 0.85,
+    evidence: ["dtc:P0420@engine"],
+    checks: [
+      {
+        test: {
+          signal: "engine.fuel_trim_long_term",
+          expect: "stays neutral",
+          min: -5,
+          max: 5,
+          measurable: true,
+        },
+        outcome: "confirmed",
+      },
+    ],
+    reason: "confirmed on 12 reading(s) between 08:00 and 09:00",
+    ...overrides,
+  };
+}
+
+test("a ranked pattern becomes a finding that cites the evidence behind it", async () => {
+  const provider = new HeuristicAnalysisProvider();
+  const result = await provider.analyze(
+    sampleInput({
+      evidence: evidenceSet(),
+      hypotheses: [hypothesis()],
+      dtcs: [
+        {
+          code: "P0420",
+          description: "Catalyst efficiency below threshold",
+          severity: "major",
+          ecu: "Engine",
+          evidence: { proven: true, line: `definition · ${AT}`, itemId: "dtc:P0420@engine" },
+        },
+      ],
+    }),
+  );
+  const pattern = result.findings.find(
+    (finding) => finding.id === "pattern-catalyst-aged-confirmed",
+  );
+  assert.ok(pattern, result.findings.map((finding) => finding.id).join(", "));
+  assert.deepEqual(pattern.basedOn, ["dtc:P0420@engine"]);
+  assert.equal(pattern.severity, "major", "a confirmed pattern inherits the code's severity");
+  assert.match(pattern.detail, /confidence 0\.85/);
+  assert.match(pattern.detail, /package prior: common/);
+
+  const code = result.findings.find((finding) => finding.id === "dtc-P0420");
+  assert.deepEqual(code?.basedOn, ["dtc:P0420@engine"], "the code cites its own item");
+});
+
+test("an untested pattern is reported at `info`, and its next test becomes the recommendation", async () => {
+  const provider = new HeuristicAnalysisProvider();
+  const result = await provider.analyze(
+    sampleInput({
+      evidence: evidenceSet(),
+      hypotheses: [
+        hypothesis({
+          outcome: "untested",
+          confidence: 0.3,
+          nextTest: {
+            signal: "engine.fuel_trim_long_term",
+            name: "Long term fuel trim",
+            expect: "stays neutral",
+            min: -5,
+            max: 5,
+            windowMs: 5000,
+            measurable: true,
+          },
+        }),
+      ],
+    }),
+  );
+  const [pattern] = result.findings.filter((finding) => finding.id.startsWith("pattern-"));
+  assert.equal(pattern?.severity, "info", "nothing was measured, so nothing about the car follows");
+  assert.ok(
+    result.recommendations.some((line) =>
+      line.includes("Long term fuel trim · stays neutral · -5…5 within 5 s"),
+    ),
+    result.recommendations.join(" | "),
+  );
+});
+
+test("the answer names the prompt, the platform and the definitions it was produced under", async () => {
+  const provider = new HeuristicAnalysisProvider();
+  const result = await provider.analyze(
+    sampleInput({
+      evidence: evidenceSet(),
+      versions: {
+        promptVersion: ANALYSIS_PROMPT_VERSION,
+        runtimeVersion: "9.9.9",
+        definitionVersion: "generic@1.4.0",
+        packageVersions: ["generic@1.4.0"],
+      },
+    }),
+  );
+  assert.deepEqual(result.provenance, {
+    promptVersion: ANALYSIS_PROMPT_VERSION,
+    runtimeVersion: "9.9.9",
+    definitionVersion: "generic@1.4.0",
+    packageVersions: ["generic@1.4.0"],
+    provider: "heuristic",
+    // No per-finding citation was asked for, so the answer rests on the whole set.
+    evidence: ["dtc:P0420@engine", "gap:dtc-undocumented:U0121"],
+  });
+});
+
+test("an answer without an evidence set says that nothing can be traced", async () => {
+  const provider = new HeuristicAnalysisProvider();
+  const result = await provider.analyze(sampleInput({ evidence: undefined }));
+  assert.ok(
+    result.warnings?.some((warning) => warning.includes("No evidence set was supplied")),
+    result.warnings?.join(" | ") ?? "the answer came back without any warning",
+  );
+  assert.deepEqual(result.provenance?.evidence, []);
+  assert.equal(
+    result.provenance?.promptVersion,
+    "not provided",
+    "missing versions are named as missing, not filled with a plausible string",
+  );
+});
+
+test("the prompt version is inside the instruction the gateway is asked with", () => {
+  assert.match(analysisInstruction(), new RegExp(`prompt ${ANALYSIS_PROMPT_VERSION} ·`));
+  assert.match(analysisInstruction(), /basedOn/);
+});
+
+test("a gateway citation is kept only if the input offered that item", async () => {
+  const client: HttpClient = {
+    async fetch() {
+      return {
+        ok: true,
+        status: 200,
+        async text() {
+          return JSON.stringify({
+            summary: "s",
+            findings: [
+              {
+                id: "f",
+                severity: "minor",
+                title: "t",
+                detail: "d",
+                basedOn: ["dtc:P0420@engine", "dtc:INVENTED@x"],
+              },
+            ],
+            recommendations: [],
+            confidence: 0.5,
+            // A gateway that reports its own versions is making a claim, not a fact.
+            provenance: { promptVersion: "prompt from the gateway", runtimeVersion: "0.0.1" },
+          });
+        },
+      };
+    },
+  };
+  const provider = new HttpAnalysisProvider({
+    endpoint: "https://example.test/v1",
+    httpClient: client,
+  });
+  const result = await provider.analyze(
+    sampleInput({
+      evidence: evidenceSet(),
+      versions: { promptVersion: "2026-09-14.1", runtimeVersion: "9.9.9" },
+    }),
+  );
+  assert.deepEqual(result.findings[0]?.basedOn, ["dtc:P0420@engine"]);
+  assert.equal(
+    "basedOn" in (result.findings[1] ?? {}),
+    false,
+    "a scalar citation list is dropped whole - the item is never rewritten to suit the answer",
+  );
+  assert.equal(result.provenance?.promptVersion, "2026-09-14.1");
+  assert.equal(result.provenance?.runtimeVersion, "9.9.9");
+  assert.equal(result.provenance?.provider, "http");
+});
+
+test("an unproven claim caps the answer, an open question only names itself", async () => {
+  const provider = new HeuristicAnalysisProvider();
+  // A gap is an absence: reported, and it does not touch the confidence.
+  const withGap = await provider.analyze(sampleInput({ evidence: evidenceSet() }));
+  assert.ok(
+    withGap.warnings?.some((warning) =>
+      warning.includes("1 question(s) stay open in this session: U0121"),
+    ),
+    withGap.warnings?.join(" | ") ?? "no warnings",
+  );
+  // A claim whose source is missing is a different thing: it caps what may be said.
+  const unprovenClaim: EvidenceItem = {
+    id: "dtc:U0121@abs",
+    kind: "dtc",
+    subject: "U0121",
+    statement: "failure type 0x00, status 0x09 (ABS, severity info)",
+    at: AT,
+    ecuId: "abs",
+    evidence: unproven("no description, hint, severity or related signal is documented", {
+      at: AT,
+      ecuId: "abs",
+    }),
+  };
+  const withClaim = await provider.analyze(
+    sampleInput({ evidence: evidenceSet([...EVIDENCE_ITEMS, unprovenClaim]) }),
+  );
+  assert.ok(
+    withClaim.warnings?.some((warning) =>
+      warning.includes("1 statement(s) in this session are unproven: U0121"),
+    ),
+    withClaim.warnings?.join(" | ") ?? "no warnings",
+  );
+  assert.equal(
+    withClaim.confidence,
+    Math.min(withGap.confidence, 0.3),
+    "the cap is the same one a missing determination gets: 0.3",
+  );
 });

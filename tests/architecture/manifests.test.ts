@@ -110,3 +110,31 @@ test("entry points describe sources that exist and agree with each other", () =>
     assert.equal(entry.types, manifest.types, `${rel}: exports must name the same types`);
   }
 });
+
+/**
+ * The version an analysis cites as `runtimeVersion` (P0 #42).
+ *
+ * `@vdp/runtime` declares `PLATFORM_VERSION` as a constant, which is a copy — and a
+ * copy needs the check that keeps it true. Two assertions, both cheap: the whole
+ * workspace moves as one version, and the constant names exactly that version. A
+ * build stamp does not exist here (no bundler, no codegen), so the workspace version
+ * is the honest floor of "which software answered"; an answer that cited a version
+ * nothing else carries would be less reproducible than no version at all.
+ */
+test("every workspace package carries the root version", () => {
+  const drifted = packages
+    .filter((entry) => entry.manifest.version !== rootManifest.version)
+    .map((entry) => `${entry.manifest.name}: ${entry.manifest.version}`);
+  assert.deepEqual(drifted, [], `packages that drifted from ${rootManifest.version}`);
+});
+
+test("PLATFORM_VERSION is the version the workspace actually has", () => {
+  const source = readFileSync(join(repoRoot, "packages/runtime/src/version.ts"), "utf8");
+  const declared = /export const PLATFORM_VERSION = "([^"]+)";/.exec(source);
+  assert.ok(declared, "version.ts must declare the constant the analysis cites");
+  assert.equal(
+    declared?.[1],
+    rootManifest.version,
+    "the constant is a copy of the root version — this test is what keeps it true",
+  );
+});

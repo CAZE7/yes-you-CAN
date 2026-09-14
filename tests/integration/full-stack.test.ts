@@ -12,6 +12,8 @@ import {
   runDtcClear,
 } from "@vdp/core";
 import { genericPackage } from "@vdp/definitions";
+import { itemById, itemsOf, unprovenItems } from "@vdp/diagnostic-ir";
+import { EvidenceService } from "@vdp/runtime";
 import { MemorySink, createLogger, fromHex, toHex } from "@vdp/shared";
 import { VirtualVehicle } from "@vdp/simulators";
 import { afterAll, beforeAll, test } from "vitest";
@@ -350,6 +352,44 @@ test("CSV and JSON exports contain raw and decoded values (AGENTS 17)", () => {
   const parsed = JSON.parse(json) as { format: string; measurements: unknown[]; dtcs: unknown[] };
   assert.equal(parsed.format, "vdp.session");
   assert.ok(parsed.measurements.length > 0);
+});
+
+test("the evidence service cites the session instead of restating it (P0 #39, ADR 0038)", async () => {
+  const session = engine.vehicleSession;
+  assert.ok(session, "the earlier tests connected the engine");
+  const perEcu = await engine.scanDtcs(0xff);
+  // The scan is stored the way the read path stores it, so the evidence set reads a
+  // real record of this session rather than a fixture invented next to it.
+  const scanner = new DtcScanner({ definitions: [genericPackage] });
+  const enriched = perEcu.flatMap((entry) =>
+    scanner.enrich(entry.dtcs, entry.ecu.name, entry.ecu.id),
+  );
+  if (session.data.dtcSnapshots.length === 0 && enriched.length > 0) {
+    session.addDtcSnapshot(enriched, "evidence test");
+  }
+
+  const evidence = new EvidenceService(engine);
+  const snapshot = evidence.snapshot();
+  assert.equal(snapshot.evidence.sessionId, session.id);
+  const dtcItems = itemsOf(snapshot.evidence, "dtc");
+  assert.ok(dtcItems.length > 0, "the stored fault memory is cited");
+  assert.ok(
+    dtcItems.every((item) => item.evidence.kind === "proven"),
+    "a scan of this platform always leaves an evidence line on the record",
+  );
+  assert.ok(
+    itemsOf(snapshot.evidence, "signal").length > 0,
+    "the recorded signals are items of their own",
+  );
+  for (const hypothesis of snapshot.hypotheses) {
+    for (const id of hypothesis.evidence) {
+      assert.ok(itemById(snapshot.evidence, id), `dangling citation ${id} on ${hypothesis.id}`);
+    }
+  }
+  // Every open question of the session is an item, so an analysis cannot miss it.
+  for (const gap of unprovenItems(snapshot.evidence)) {
+    assert.ok(gap.statement.length > 0, `an unproven item without a reason: ${gap.id}`);
+  }
 });
 
 test("raw CAN trace is recorded independently of decoding (AGENTS 18)", async () => {

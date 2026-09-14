@@ -15,6 +15,20 @@
  * (#41) into findings.
  */
 
+export {
+  type EvidenceConflict,
+  evidenceItemId,
+  type EvidenceItem,
+  type EvidenceKind,
+  type EvidenceSet,
+  type Hypothesis,
+  type HypothesisCheck,
+  type HypothesisOutcome,
+  type HypothesisTest,
+  itemById,
+  itemsOf,
+  unprovenItems,
+} from "./evidence.js";
 export type {
   Evidence,
   ObservationOrigin,
@@ -40,25 +54,24 @@ export type {
   DtcEnrichmentInput,
   DtcObservation,
   DtcObservationInput,
+  DtcSeverity,
   DtcState,
   DtcStatusBits,
   RelatedSignal,
 } from "./dtc.js";
-export {
-  compareDtcObservations,
-  dtcEnrichment,
-  dtcObservation,
-} from "./dtc.js";
+export { compareDtcObservations, dtcEnrichment, dtcKey, dtcObservation } from "./dtc.js";
 
 export type {
+  AdapterObservation,
   EcuObservation,
   EcuObservationInput,
   EcuProtocol,
   EcuTelemetry,
   SessionObservation,
   SessionObservationInput,
+  TransportObservation,
 } from "./session.js";
 export { ecuObservation, reachableEcus, sessionObservation, unreachableEcus } from "./session.js";
 
-export type { MeasurementWindow, WindowOptions } from "./window.js";
-export { measurementWindow } from "./window.js";
+export type { MeasurementWindow, WindowOptions, WindowPoint } from "./window.js";
+export { measurementWindow, summariseWindow } from "./window.js";

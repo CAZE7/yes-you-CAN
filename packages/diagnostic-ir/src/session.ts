@@ -100,11 +100,35 @@ export function ecuObservation(input: EcuObservationInput): EcuObservation {
   };
 }
 
+/** Which device the tester talked through — the "how was this measured" half. */
+export interface AdapterObservation {
+  kind: string;
+  /** Stable id of the adapter instance, when the host has one. */
+  id?: string;
+  name?: string;
+  /** Firmware and serial: a session recorded on old firmware decodes differently. */
+  firmware?: string;
+  serial?: string;
+  channels: readonly string[];
+}
+
+/** How the frames were carried, as far as the diagnostic layer can see it. */
+export interface TransportObservation {
+  kind: string;
+  channel: string;
+  /** Maximum ISO-TP payload in bytes the transport negotiated. */
+  mtu?: number;
+  /** Tester/request and ECU/response identifiers, when one ECU was addressed. */
+  txId?: number;
+  rxId?: number;
+  /** True when 29-bit identifiers are in use. */
+  extended?: boolean;
+}
+
 export interface SessionObservationInput {
   sessionId: string;
-  /** Adapter the session runs on, e.g. `{ kind: "virtual", channels: ["vcan0"] }`. */
-  adapter: { kind: string; channels: readonly string[]; [key: string]: unknown };
-  transport: { kind: string; channel: string; mtu?: number };
+  adapter: AdapterObservation;
+  transport: TransportObservation;
   startedAt?: string;
   endedAt?: string;
   ecus?: EcuObservation[];
@@ -114,8 +138,8 @@ export interface SessionObservationInput {
 export interface SessionObservation {
   kind: "session";
   sessionId: string;
-  adapter: SessionObservationInput["adapter"];
-  transport: SessionObservationInput["transport"];
+  adapter: AdapterObservation;
+  transport: TransportObservation;
   startedAt: string;
   endedAt?: string;
   ecus: EcuObservation[];
@@ -128,8 +152,8 @@ export function sessionObservation(input: SessionObservationInput): SessionObser
   return {
     kind: "session",
     sessionId: input.sessionId,
-    adapter: input.adapter,
-    transport: input.transport,
+    adapter: { ...input.adapter, channels: [...input.adapter.channels] },
+    transport: { ...input.transport },
     startedAt,
     ...(input.endedAt !== undefined ? { endedAt: input.endedAt } : {}),
     ecus: ecus.map((ecu) => ({ ...ecu })),

@@ -600,3 +600,59 @@ test("no build orchestrator is introduced without revisiting the decision", () =
     );
   }
 });
+
+/**
+ * An analysis provider cannot reach the vehicle (AGENTS 22; master backlog P0 #16,
+ * ADR 0038). "AI never calls CAN.write()/UDS.send()" is a *policy*, and a policy that
+ * lives in prose is a wish. The rule file is still the only source of the module
+ * graph (`dependencies.test.ts` proves the tool enforces it, including negative
+ * fixtures); this test adds the consequence the file cannot express on its own:
+ * the packages an analysis may read must not be able to reach the write chain —
+ * not directly, and not through three hops.
+ *
+ * It is deliberately computed from `dependency-rules.json` instead of listing the
+ * forbidden names, so the day someone widens `@vdp/ai`'s allowlist the test fails
+ * with the reason, and the day someone widens a *middle* package the same happens.
+ */
+test("the read-only layers stay read-only: no path from ai or the IR to a write", () => {
+  const rules = JSON.parse(
+    readFileSync(join(root, "tools/architecture/dependency-rules.json"), "utf8"),
+  ) as { packages: Record<string, { mayImport: string[] }> };
+  const WRITE_CAPABLE = "@vdp/core";
+  const edges = new Map<string, ReadonlySet<string>>(
+    Object.entries(rules.packages).map(([name, entry]) => [name, new Set(entry.mayImport)]),
+  );
+  const reaching = (target: string): Set<string> => {
+    const found = new Set<string>([target]);
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (const [name, imports] of edges) {
+        if (found.has(name)) continue;
+        if (Array.from(imports).some((target2) => found.has(target2))) {
+          found.add(name);
+          grew = true;
+        }
+      }
+    }
+    return found;
+  };
+  const canWrite = reaching(WRITE_CAPABLE);
+  // The four layers an answer is built from. `@vdp/core` is the first package that
+  // *may* write (it owns the WritePort, ADR 0032), so "cannot reach core" is the
+  // machine-checkable form of "cannot touch the vehicle". `@vdp/application` is
+  // deliberately not in this list: forwarding a write intent to the chain is its job.
+  for (const reader of ["@vdp/ai", "@vdp/diagnostic-ir", "@vdp/domain", "@vdp/shared"]) {
+    assert.ok(
+      !canWrite.has(reader) || reader === WRITE_CAPABLE,
+      `${reader} can reach ${WRITE_CAPABLE} through the rules — an analysis or a ` +
+        "projection that can reach the write chain can bypass the safety chain",
+    );
+  }
+  // The AI's allowlist is exactly what an analysis needs and nothing more.
+  assert.deepEqual(
+    Array.from(edges.get("@vdp/ai") ?? []).sort(),
+    ["@vdp/diagnostic-ir", "@vdp/shared"],
+    "widening @vdp/ai is a decision about the safety chain, not a convenience",
+  );
+});

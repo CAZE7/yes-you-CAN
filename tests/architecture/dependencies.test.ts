@@ -209,9 +209,12 @@ test("the production graph matches the documented structure snapshot", () => {
     .join("\n");
   assert.match(snapshot, /@vdp\/domain: @vdp\/shared/);
   assert.match(snapshot, /@vdp\/application: @vdp\/domain/);
+  // `@vdp/diagnostic-ir` joined the runtime's imports with the evidence service
+  // (ADR 0038): the composition root serves the IR shapes to the workbench and to a
+  // report, and a projection invented on the way out would be a second vocabulary.
   assert.match(
     snapshot,
-    /@vdp\/runtime: @vdp\/application @vdp\/core @vdp\/definitions @vdp\/domain @vdp\/protocols-uds @vdp\/shared @vdp\/transport-can @vdp\/transport-doip/,
+    /@vdp\/runtime: @vdp\/application @vdp\/core @vdp\/definitions @vdp\/diagnostic-ir @vdp\/domain @vdp\/protocols-uds @vdp\/shared @vdp\/transport-can @vdp\/transport-doip/,
   );
   assert.match(snapshot, /@vdp\/protocols-uds: @vdp\/shared/);
   // DoIP stays low-level: it must not pull in the protocol layer itself.

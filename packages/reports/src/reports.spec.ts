@@ -640,3 +640,122 @@ test("the PDF fold covers the characters quoted text actually contains (ADR 0021
   assert.ok(text.includes("measure first: Catalyst temperature"), "the row reaches the PDF");
   assert.ok(!text.includes("?"), "no question mark survives in a report of this data");
 });
+
+/**
+ * The section a reader only notices when it is wrong: what this session cannot
+ * prove (P0 #6, ADR 0037). A report without it reads as "0 anomalies, 0 open
+ * findings" for a car whose ABS never answered.
+ */
+test("observations and gaps name what the session cannot prove", () => {
+  const data = sampleSession();
+  data.dtcSnapshots.push({
+    id: "dtc_1",
+    takenAt: "2026-09-10T12:04:00.000Z",
+    records: [
+      {
+        code: "U0121",
+        raw: "051200",
+        failureType: "00",
+        status: 0x09,
+        statusBits: {
+          testFailed: false,
+          testFailedThisOperationCycle: false,
+          pendingDtc: false,
+          confirmedDtc: true,
+          testNotCompletedSinceLastClear: false,
+          testFailedSinceLastClear: false,
+          testNotCompletedThisOperationCycle: false,
+          warningIndicatorRequested: false,
+        },
+        severity: "info",
+        ecuId: "ecu_engine",
+        ecuName: "Engine Control Unit",
+        evidence: "not proven (engine): no description, hint, severity or related signal",
+      },
+    ],
+  });
+  data.ecus.push({
+    id: "ecu_abs",
+    name: "ABS Module",
+    protocol: "uds",
+    txId: 0x7c0,
+    rxId: 0x7c8,
+    extended: false,
+    identification: [],
+    supportedServices: [],
+    sessionType: 1,
+    timing: { p2Ms: 50, p2StarMs: 5000 },
+    reachable: false,
+    lastError: "session request timed out",
+  });
+  const section = buildReport({ session: data }).sections.find(
+    (entry) => entry.heading === "Observations & gaps",
+  );
+  assert.ok(section, "the section is part of every report");
+  const reachability = section.rows.find((row) => row.label === "ECU reachability");
+  assert.equal(reachability?.value, "1 of 2 answered — ABS Module: session request timed out");
+  assert.match(
+    section.rows.find((row) => row.label === "Reproducibility")?.value ?? "",
+    /session session_report · .* definition not recorded/,
+  );
+  const questions = section.table?.rows ?? [];
+  assert.deepEqual(
+    questions.map((row) => row[0]),
+    ["ECU unreachable", "code undocumented", "no scan to compare with", "no signal recorded"],
+    "every open question is one row, in the order the session holds them",
+  );
+  assert.equal(
+    questions[1]?.[2],
+    "not proven (engine): no description, hint, severity or related signal",
+  );
+});
+
+test("a session that measured everything says so without pretending to be certain", () => {
+  const data = sampleSession();
+  data.measurements.push({ signalId: "engine.rpm", name: "Engine speed", samples: 120 });
+  data.dtcSnapshots.push(
+    {
+      id: "dtc_1",
+      takenAt: "2026-09-10T12:04:00.000Z",
+      records: [
+        {
+          code: "P0420",
+          raw: "042000",
+          failureType: "00",
+          status: 0x28,
+          statusBits: {
+            testFailed: false,
+            testFailedThisOperationCycle: false,
+            pendingDtc: false,
+            confirmedDtc: true,
+            testNotCompletedSinceLastClear: false,
+            testFailedSinceLastClear: true,
+            testNotCompletedThisOperationCycle: false,
+            warningIndicatorRequested: false,
+          },
+          severity: "major",
+          ecuId: "ecu_engine",
+          ecuName: "Engine Control Unit",
+          description: "Catalyst efficiency below threshold",
+        },
+      ],
+    },
+    {
+      id: "dtc_2",
+      takenAt: "2026-09-10T12:06:00.000Z",
+      records: [...(data.dtcSnapshots[0]?.records ?? [])],
+    },
+  );
+  const section = buildReport({ session: data }).sections.find(
+    (entry) => entry.heading === "Observations & gaps",
+  );
+  assert.equal(
+    section?.rows.find((row) => row.label === "Open questions")?.value,
+    "none — every ECU answered, every stored code is documented, signals were recorded",
+  );
+  assert.equal(
+    section?.table,
+    undefined,
+    "no gaps means no table, not a table with one reassuring row",
+  );
+});

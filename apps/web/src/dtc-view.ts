@@ -81,6 +81,10 @@ export function toDtcView(info: DtcInfo, ecus: readonly { id: string; rxId: stri
     ...(info.firstSeenInThisScan ? { isNew: true } : {}),
     ...(info.relatedSignals ? { relatedSignals: [...info.relatedSignals] } : {}),
     ...(info.knowledge ? { knowledge: toDtcKnowledgeView(info.knowledge) } : {}),
+    // The IR's own sentence, unchanged: "where does this description come from" is
+    // answered by the scan that made the claim, not by a label invented here
+    // (AGENTS 24). Absent for a code the platform never enriched.
+    ...(info.evidence !== undefined ? { provenance: info.evidence } : {}),
     freezeFrame: info.hasFreezeFrame,
   };
 }

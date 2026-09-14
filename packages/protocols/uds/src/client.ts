@@ -480,6 +480,17 @@ export class UdsClient {
 
 /** [0x59, sub, availabilityMask, (DTC(3) + status(1))*] → DtcRecord[] */
 function parseDtcList(response: Uint8Array, startIndex: number): DtcRecord[] {
+  // A body that does not divide into whole records is a **broken answer**, not an
+  // empty fault memory: reading it as `[]` would report "no faults stored" for a
+  // frame that was cut off on the bus, which is the one mistake a technician cannot
+  // afford (ADR 0033: missing evidence is a failure, not a result).
+  const body = response.length - startIndex;
+  if (body < 0 || body % 4 !== 0) {
+    throw new ProtocolError(
+      `malformed DTC list: ${response.length} byte(s); expected ${startIndex} header byte(s) plus whole 4-byte records`,
+      { response: toHex(response), startIndex },
+    );
+  }
   const records: DtcRecord[] = [];
   for (let offset = startIndex; offset + 3 < response.length; offset += 4) {
     const high = response[offset] ?? 0;

@@ -33,6 +33,17 @@ export interface DtcStatusBits {
   warningIndicatorRequested: boolean;
 }
 
+/**
+ * How urgent a code is for the operator (the IR's own words for it).
+ *
+ * Two parties can answer this: the reader that classified the status byte, and a
+ * definition package that documents the code. Neither may be silently preferred —
+ * a projection therefore resolves `enrichment.severity ?? observation.severity`,
+ * and an observation without a classification keeps it absent instead of
+ * defaulting to something reassuring.
+ */
+export type DtcSeverity = "info" | "minor" | "major" | "critical";
+
 export interface DtcObservation {
   kind: "dtc";
   code: string;
@@ -45,8 +56,12 @@ export interface DtcObservation {
   ecuId: string;
   ecuName: string;
   at: string;
+  /** Classification the reader derived from the response — absent when nobody classified. */
+  severity?: DtcSeverity;
   /** Snapshot (freeze frame) bytes, when the ECU sent them (AGENTS 20). */
   snapshot?: Uint8Array;
+  /** Extra records the ECU sent with the code, when it sent any. */
+  extendedData?: Uint8Array;
   evidence: Evidence;
 }
 
@@ -66,6 +81,8 @@ export interface DtcEnrichment {
   ecuId: string;
   description?: string;
   hint?: string;
+  /** The package's own urgency, when it declares one. */
+  severity?: DtcSeverity;
   relatedSignals?: RelatedSignal[];
   evidence: Evidence;
 }
@@ -91,7 +108,9 @@ export interface DtcObservationInput {
   ecuId: string;
   ecuName: string;
   at?: string;
+  severity?: DtcSeverity;
   snapshot?: Uint8Array;
+  extendedData?: Uint8Array;
   definitionVersion?: string;
 }
 
@@ -108,12 +127,15 @@ export function dtcObservation(input: DtcObservationInput): DtcObservation {
     ecuId: input.ecuId,
     ecuName: input.ecuName,
     at,
+    ...(input.severity !== undefined ? { severity: input.severity } : {}),
     ...(input.snapshot !== undefined ? { snapshot: input.snapshot } : {}),
+    ...(input.extendedData !== undefined ? { extendedData: input.extendedData } : {}),
     evidence: proven({
       origin: "ecu-response",
       at,
       ecuId: input.ecuId,
       serviceId: 0x19,
+      ...(input.raw.length > 0 ? { raw: input.raw } : {}),
       ...(input.definitionVersion !== undefined
         ? { definitionVersion: input.definitionVersion }
         : {}),
@@ -126,6 +148,7 @@ export interface DtcEnrichmentInput {
   ecuId: string;
   description?: string;
   hint?: string;
+  severity?: DtcSeverity;
   relatedSignals?: RelatedSignal[];
   at?: string;
   definitionVersion?: string;
@@ -143,6 +166,7 @@ export function dtcEnrichment(input: DtcEnrichmentInput): DtcEnrichment {
   const documented =
     input.description !== undefined ||
     input.hint !== undefined ||
+    input.severity !== undefined ||
     (input.relatedSignals !== undefined && input.relatedSignals.length > 0);
   return {
     kind: "dtc-enrichment",
@@ -150,6 +174,7 @@ export function dtcEnrichment(input: DtcEnrichmentInput): DtcEnrichment {
     ecuId: input.ecuId,
     ...(input.description !== undefined ? { description: input.description } : {}),
     ...(input.hint !== undefined ? { hint: input.hint } : {}),
+    ...(input.severity !== undefined ? { severity: input.severity } : {}),
     ...(input.relatedSignals !== undefined ? { relatedSignals: input.relatedSignals } : {}),
     evidence: documented
       ? proven({
@@ -158,9 +183,11 @@ export function dtcEnrichment(input: DtcEnrichmentInput): DtcEnrichment {
           ...(input.definitionVersion !== undefined
             ? { definitionVersion: input.definitionVersion }
             : {}),
+          // The hint is the part a reader acts on, so the evidence line ends with
+          // it — a proven provenance without a sentence nobody would read.
           ...(input.hint !== undefined ? { note: input.hint } : {}),
         })
-      : unproven("no description, hint or related signal is documented for this code", {
+      : unproven("no description, hint, severity or related signal is documented for this code", {
           at,
           ecuId: input.ecuId,
         }),
@@ -178,30 +205,42 @@ export interface DtcComparison {
   unchanged: DtcObservation[];
 }
 
-/** Codes of a set, in a stable order — the key a comparison works with. */
-function byCode(observations: readonly DtcObservation[]): Map<string, DtcObservation> {
+/**
+ * The key a comparison works with: the code **within its ECU**.
+ *
+ * `P0700` from the engine and `P0700` from the ABS are two observations, and a
+ * scan over several ECUs is the normal case, not the exception. Keying on the bare
+ * code would report "removed" and "added" for the same code moving between ECUs —
+ * so the identity of a fault-memory entry is the pair, everywhere in the platform.
+ */
+function byEcuAndCode(observations: readonly DtcObservation[]): Map<string, DtcObservation> {
   const map = new Map<string, DtcObservation>();
-  for (const observation of observations) map.set(observation.code, observation);
+  for (const observation of observations) map.set(dtcKey(observation), observation);
   return map;
 }
 
+/** Identity of one fault-memory entry: ECU and code, code normalised. */
+export function dtcKey(observation: Pick<DtcObservation, "ecuId" | "code">): string {
+  return `${observation.ecuId}:${observation.code.trim().toUpperCase()}`;
+}
+
 /**
- * Compare two fault-memory observations of the same ECU.
+ * Compare two fault-memory observations, whatever set of ECUs they cover.
  *
- * This is the IR's own comparison (the clear operation used to carry it): what
- * survived a clear, what appeared, what changed its status. A code that is still
- * failing legitimately stays — the comparison says *that* it stayed, not that the
- * write failed (AGENTS 25).
+ * This is the platform's only DTC comparison (the clear operation used to carry
+ * its own): what survived a clear, what appeared, what changed its status. A code
+ * that is still failing legitimately stays — the comparison says *that* it
+ * stayed, not that the write failed (AGENTS 25).
  */
 export function compareDtcObservations(
   before: readonly DtcObservation[],
   after: readonly DtcObservation[],
 ): DtcComparison {
-  const beforeByCode = byCode(before);
-  const afterByCode = byCode(after);
+  const beforeByKey = byEcuAndCode(before);
+  const afterByKey = byEcuAndCode(after);
   const comparison: DtcComparison = { added: [], removed: [], changed: [], unchanged: [] };
-  for (const [code, previous] of beforeByCode) {
-    const current = afterByCode.get(code);
+  for (const [key, previous] of beforeByKey) {
+    const current = afterByKey.get(key);
     if (!current) {
       comparison.removed.push(previous);
       continue;
@@ -209,8 +248,8 @@ export function compareDtcObservations(
     if (current.status === previous.status) comparison.unchanged.push(current);
     else comparison.changed.push(current);
   }
-  for (const [code, current] of afterByCode) {
-    if (!beforeByCode.has(code)) comparison.added.push(current);
+  for (const [key, current] of afterByKey) {
+    if (!beforeByKey.has(key)) comparison.added.push(current);
   }
   return comparison;
 }

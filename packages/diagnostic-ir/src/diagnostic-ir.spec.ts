@@ -14,13 +14,19 @@
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
 import {
+  type DtcObservation,
+  type EvidenceSet,
   compareDtcObservations,
   describeEvidence,
   dtcEnrichment,
+  dtcKey,
   dtcObservation,
   ecuObservation,
+  evidenceItemId,
   gaps,
   isProven,
+  itemById,
+  itemsOf,
   measurementWindow,
   proven,
   reachableEcus,
@@ -28,7 +34,9 @@ import {
   sessionObservation,
   signalGap,
   signalReading,
+  summariseWindow,
   unproven,
+  unprovenItems,
   unreachableEcus,
 } from "./index.js";
 
@@ -209,7 +217,12 @@ describe("fault-memory observations", () => {
     const undocumented = dtcEnrichment({ code: "P0999", ecuId: "ecu_1", at: AT });
     assert.equal(undocumented.evidence.kind, "unproven");
     assert.equal("description" in undocumented, false);
-    assert.match(described(undocumented.evidence), /no description, hint or related signal/);
+    // The reason lists every field that would have made the claim proven — since
+    // P0 #6 (ADR 0037) that includes the severity a package may declare on its own.
+    assert.match(
+      described(undocumented.evidence),
+      /no description, hint, severity or related signal/,
+    );
   });
 
   test("a snapshot record and a definition version travel with the observation", () => {
@@ -242,6 +255,62 @@ describe("fault-memory observations", () => {
     assert.equal(withVersion.evidence.provenance.definitionVersion, "3.1.0");
   });
 
+  test("a classification and the bytes beside it travel with the observation", () => {
+    const observation = dtcObservation({
+      code: "P0420",
+      raw: "04202A",
+      failureType: "2A",
+      status: 0x2f,
+      statusBits: statusBits(true),
+      ecuId: "ecu_1",
+      ecuName: "Engine control unit",
+      at: AT,
+      severity: "major",
+      snapshot: new Uint8Array([0x0c, 0x30]),
+      extendedData: new Uint8Array([0x01]),
+    });
+    assert.equal(observation.severity, "major");
+    assert.deepEqual(Array.from(observation.snapshot ?? []), [0x0c, 0x30]);
+    assert.deepEqual(Array.from(observation.extendedData ?? []), [0x01]);
+    // The raw DTC value belongs to the provenance as much as to the record: an
+    // audit that knows the code but not the bytes cannot re-derive the claim.
+    if (isProven(observation.evidence)) {
+      assert.equal(observation.evidence.provenance.raw, "04202A");
+    }
+
+    const bare = dtcObservation({
+      code: "P0420",
+      raw: "",
+      failureType: "2A",
+      status: 0x2f,
+      statusBits: statusBits(true),
+      ecuId: "ecu_1",
+      ecuName: "Engine",
+      at: AT,
+    });
+    assert.equal("severity" in bare, false, "an unclassified code stays unclassified");
+    assert.equal("snapshot" in bare, false);
+    assert.equal("extendedData" in bare, false);
+    if (isProven(bare.evidence)) {
+      assert.equal(
+        "raw" in bare.evidence.provenance,
+        false,
+        "no bytes, no raw entry - an empty string would read as a claim",
+      );
+    }
+  });
+
+  test("a severity the package declares on its own is documentation", () => {
+    const severityOnly = dtcEnrichment({
+      code: "P0420",
+      ecuId: "ecu_1",
+      severity: "minor",
+      at: AT,
+    });
+    assert.ok(isProven(severityOnly.evidence), "saying how bad it is, is saying something");
+    assert.equal(severityOnly.severity, "minor");
+  });
+
   test("knowledge counts as documented as soon as one part of it exists", () => {
     const hintOnly = dtcEnrichment({
       code: "P0420",
@@ -264,6 +333,49 @@ describe("fault-memory observations", () => {
       "an empty list documents nothing - it is not a note that everything is fine",
     );
     assert.equal("relatedSignals" in emptyRelated, true, "the empty list is kept as read");
+  });
+
+  test("the same code on two ECUs is two identities", () => {
+    // A scan of several ECUs is the normal case. Keying on the bare code would
+    // turn "the transmission also reports P0700" into one disappearance and one
+    // appearance of a code that never moved (P0 #6, ADR 0037).
+    const forEcu = (ecuId: string, name: string, status: number): DtcObservation =>
+      dtcObservation({
+        code: "P0700",
+        raw: "047000",
+        failureType: "00",
+        status,
+        statusBits: statusBits(status === 0x2f),
+        ecuId,
+        ecuName: name,
+        at: AT,
+      });
+    const before = [forEcu("engine", "Engine", 0x2f), forEcu("gearbox", "Gearbox", 0x2f)];
+    const after = [forEcu("engine", "Engine", 0x2f)];
+    const comparison = compareDtcObservations(before, after);
+    assert.deepEqual(comparison.changed, []);
+    assert.equal(comparison.unchanged.length, 1);
+    assert.deepEqual(
+      comparison.removed.map((entry) => entry.ecuId),
+      ["gearbox"],
+    );
+
+    assert.equal(dtcKey({ ecuId: "engine", code: " p0420 " }), "engine:P0420");
+    assert.deepEqual(
+      compareDtcObservations(
+        [forEcu("engine", "Engine", 0x2f)],
+        [
+          {
+            ...forEcu("engine", "Engine", 0x2f),
+            code: "P0700 ".padEnd(6, " "),
+            raw: "047000",
+            statusBits: statusBits(true),
+          },
+        ],
+      ).unchanged.length,
+      1,
+      "identity is the code within its ECU - surrounding space and case are spelling, not another fault",
+    );
   });
 
   test("a comparison names what stayed, changed, appeared and disappeared", () => {
@@ -557,6 +669,117 @@ describe("measurement windows", () => {
     assert.equal(window.samples, 1);
     assert.equal(window.conclusive, true);
     assert.equal("mean" in window, false);
+  });
+});
+
+describe("evidence items and windows", () => {
+  const set: EvidenceSet = {
+    kind: "evidence",
+    sessionId: "session_1",
+    collectedAt: AT,
+    items: [
+      {
+        id: evidenceItemId("dtc", " p0420 ", "engine"),
+        kind: "dtc",
+        subject: "P0420",
+        statement: "catalyst efficiency below threshold",
+        at: AT,
+        ecuId: "engine",
+        evidence: proven({ origin: "ecu-response", at: AT }),
+      },
+      {
+        id: evidenceItemId("gap", "no-measurements:signals"),
+        kind: "gap",
+        subject: "signals",
+        statement: "no signal was recorded",
+        at: AT,
+        evidence: unproven("no signal was recorded", { at: AT }),
+      },
+    ],
+    conflicts: [],
+  };
+
+  test("an item id is a key, not a sentence", () => {
+    assert.equal(
+      evidenceItemId("dtc", " p0420 ", "engine"),
+      "dtc:p0420@engine",
+      "surrounding space is trimmed, the subject is not otherwise rewritten — the collector's words are its own",
+    );
+    assert.equal(evidenceItemId("signal", "engine.rpm"), "signal:engine.rpm");
+  });
+
+  test("a set answers the three questions a consumer asks", () => {
+    assert.deepEqual(
+      itemsOf(set, "dtc").map((item) => item.id),
+      ["dtc:p0420@engine"],
+    );
+    assert.equal(itemById(set, "nope"), undefined);
+    assert.deepEqual(
+      unprovenItems(set).map((item) => item.subject),
+      ["signals"],
+    );
+  });
+
+  test("the window computation is one place, whichever shape comes in", () => {
+    const readings = [
+      signalReading({
+        signalId: "engine.rpm",
+        ecuId: "engine",
+        did: 0xf40c,
+        raw: new Uint8Array([0x02]),
+        rawHex: "02",
+        rawValue: 2,
+        value: 2000,
+        unit: "1/min",
+        outOfRange: false,
+        at: AT,
+      }),
+      signalReading({
+        signalId: "engine.load",
+        ecuId: "engine",
+        did: 0xf40d,
+        raw: new Uint8Array([0x05]),
+        rawHex: "05",
+        rawValue: 5,
+        value: 50,
+        outOfRange: false,
+        at: AT,
+      }),
+    ];
+    const viaReadings = measurementWindow(readings, [], {
+      signalId: "engine.rpm",
+      from: "2026-09-14T09:00:00.000Z",
+      to: "2026-09-14T11:00:00.000Z",
+    });
+    const viaPoints = summariseWindow([{ at: AT, value: 2000 }], [], {
+      signalId: "engine.rpm",
+      from: "2026-09-14T09:00:00.000Z",
+      to: "2026-09-14T11:00:00.000Z",
+      unit: "1/min",
+    });
+    assert.deepEqual(viaReadings, viaPoints, "readings are points with more history around them");
+    assert.equal(viaReadings.unit, "1/min");
+  });
+
+  test("a window counts what it cannot average, and says so", () => {
+    const window = summariseWindow(
+      [
+        { at: "2026-09-14T09:30:00.000Z", value: "engaging" },
+        { at: "2026-09-14T10:30:00.000Z", value: 3_000 },
+        { at: "2026-09-14T12:30:00.000Z", value: 9_000 },
+      ],
+      [signalGap({ signalId: "engine.rpm", ecuId: "engine", reason: "no answer", at: AT })],
+      {
+        signalId: "engine.rpm",
+        from: "2026-09-14T09:00:00.000Z",
+        to: "2026-09-14T11:00:00.000Z",
+      },
+    );
+    assert.equal(window.samples, 2, "the outside point is out of the span, the enum is in it");
+    assert.equal(window.min, 3_000, "only numbers contribute");
+    assert.equal(window.max, 3_000);
+    assert.equal(window.conclusive, false, "a gap in the span stops the window from judging");
+    assert.equal(window.gaps.length, 1);
   });
 });
 

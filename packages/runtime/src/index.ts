@@ -12,10 +12,16 @@ export type { DiagnosticRuntime, RuntimeOptions } from "./runtime.js";
 export { DoipEcuLinkFactory, createDoipEcuLinkFactory } from "./transport.js";
 export type { DoipEcuLinkFactoryOptions } from "./transport.js";
 
+export { EvidenceService } from "./evidence-service.js";
+export type { EvidenceSnapshot } from "./evidence-service.js";
+
 export { EventAuditRecorder } from "./event-recorder.js";
 export type { AuditEntry } from "./event-recorder.js";
 
 export { capabilitiesFromServices, UDS_SERVICE_CAPABILITIES } from "./capability-map.js";
+
+/** The version an analysis cites as `runtimeVersion` (P0 #42). */
+export { PLATFORM_VERSION } from "./version.js";
 
 export { PackageDefinitionProvider } from "./definition-service.js";
 

@@ -43,6 +43,7 @@ import { type Logger, createLogger } from "@vdp/shared";
 import type { CanBus } from "@vdp/transport-can";
 import { PackageDefinitionProvider } from "./definition-service.js";
 import { EventAuditRecorder } from "./event-recorder.js";
+import { EvidenceService } from "./evidence-service.js";
 import { registerRuntimeHandlers } from "./handlers.js";
 import {
   DtcService,
@@ -92,6 +93,11 @@ export interface DiagnosticRuntime {
   readonly ecus: EcuService;
   readonly dtc: DtcService;
   readonly measurements: MeasurementService;
+  /**
+   * Evidence and hypotheses of the current session (AGENTS 22, master backlog
+   * P0 #39/#40). Read-only by construction: nothing here can reach a vehicle.
+   */
+  readonly evidence: EvidenceService;
   readonly session: SessionService;
   readonly safety: SafetyService;
   readonly definitions: PackageDefinitionProvider;
@@ -140,6 +146,9 @@ export function createDiagnosticRuntime(options: RuntimeOptions): DiagnosticRunt
   const definitions = new PackageDefinitionProvider(options.definitions ?? []);
   const vehicle = new VehicleService(engine, ecus, events, log, definitions);
   const measurements = new MeasurementService(engine, events, log);
+  // Read-only evidence view of the running session (P0 #39): the workbench, a
+  // report and an analysis provider must cite one and the same set.
+  const evidence = new EvidenceService(engine);
   const session = new SessionService(engine, options.sessionStore);
   const safety = new SafetyService(engine);
 
@@ -158,6 +167,7 @@ export function createDiagnosticRuntime(options: RuntimeOptions): DiagnosticRunt
     ecus,
     dtc,
     measurements,
+    evidence,
     session,
     safety,
     definitions,

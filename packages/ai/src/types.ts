@@ -4,7 +4,15 @@
  * The provider is swappable: a local heuristic provider ships in the box, and an
  * HTTP provider forwards to any model gateway. Nothing else in the platform may
  * depend on a specific provider.
+ *
+ * What a provider may *read* is the diagnostic IR: the evidence set and the ranked
+ * hypotheses are the whole factual input, and neither names a request, a DID to
+ * write or a service to call (AGENTS 22, master backlog P0 #16 — an analysis
+ * proposes, the write chain decides). `@vdp/ai` may import `@vdp/shared` and
+ * `@vdp/diagnostic-ir` and nothing else, which the dependency rule enforces.
  */
+
+import type { EvidenceSet, Hypothesis } from "@vdp/diagnostic-ir";
 
 export interface AnalysisSignalSummary {
   signal: string;
@@ -35,6 +43,21 @@ export interface AnalysisCheck {
   measurable?: boolean;
 }
 
+/**
+ * What backs one statement about a code, in the shape an analysis can act on.
+ *
+ * `proven` is a boolean instead of a rule over the text, because "the package
+ * documented this" versus "nobody knows this code" changes what may be claimed — and
+ * because an answer built by reading the wording would be a second parser of a
+ * sentence the IR already owns. `line` is that sentence, quoted unchanged.
+ */
+export interface AnalysisEvidence {
+  proven: boolean;
+  line: string;
+  /** The id in `AnalysisInput.evidence` this claim corresponds to, when it has one. */
+  itemId?: string;
+}
+
 export interface AnalysisDtc {
   code: string;
   description?: string;
@@ -52,6 +75,40 @@ export interface AnalysisDtc {
   conditions?: string;
   /** The first documented check, most specific first. */
   measure?: AnalysisCheck;
+  /** The IR's own verdict on how well the wording above is sourced (P0 #39). */
+  evidence?: AnalysisEvidence;
+}
+
+/**
+ * The versions an answer was produced under (P0 #42, AGENTS 13).
+ *
+ * Three plus one field, because those are what can make the same session answer
+ * differently: the prompt wording, the platform build, the definition package the
+ * codes were interpreted with, and the knowledge versions behind a variant statement.
+ * The *transport* is deliberately absent: a different cable changes what was
+ * measured, and what was measured is in the evidence set.
+ */
+export interface AnalysisVersions {
+  promptVersion: string;
+  runtimeVersion: string;
+  /** `oem@version` of the definition package the session was recorded with. */
+  definitionVersion?: string;
+  /** Every definition package that was loaded, as `oem@version`. */
+  packageVersions?: readonly string[];
+}
+
+/**
+ * What an answer rests on — the part a reader checks before acting on it.
+ *
+ * `evidence` are item ids of the set that was handed in. A finding without citations
+ * is allowed (an observation about the recording as a whole), but a *provider that
+ * cites* can be checked: opening the id in the set shows the statement behind it.
+ */
+export interface AnalysisProvenance extends AnalysisVersions {
+  provider: string;
+  model?: string;
+  /** Item ids of the evidence the answer was built from — empty means "from none". */
+  evidence: readonly string[];
 }
 
 export interface AnalysisInput {
@@ -84,6 +141,15 @@ export interface AnalysisInput {
   anomalies: ReadonlyArray<{ signal: string; reason: string; value?: number }>;
   notes: readonly string[];
   question?: string;
+  /**
+   * The session's evidence set (P0 #39). Absent means the caller has none: an
+   * answer then says so, because reasoning without a source list is reasoning an
+   * auditor cannot follow.
+   */
+  evidence?: EvidenceSet;
+  /** Documented patterns, judged against the recording (P0 #40). */
+  hypotheses?: readonly Hypothesis[];
+  versions?: AnalysisVersions;
 }
 
 export interface AnalysisFinding {
@@ -93,6 +159,12 @@ export interface AnalysisFinding {
   detail: string;
   relatedSignals?: string[];
   relatedDtcs?: string[];
+  /**
+   * Evidence item ids this finding rests on (see {@link AnalysisProvenance}).
+   * Unknown ids are dropped by the provider that parses an outside answer — a
+   * citation to something that does not exist is not a citation.
+   */
+  basedOn?: readonly string[];
 }
 
 export interface AnalysisResult {
@@ -107,6 +179,8 @@ export interface AnalysisResult {
   source: "heuristic" | "model" | "cache";
   generatedAt: string;
   warnings?: string[];
+  /** Versions and citations, so the same question can be asked again (P0 #42). */
+  provenance?: AnalysisProvenance;
 }
 
 export interface AnalysisProvider {

@@ -9,10 +9,13 @@
  */
 
 import assert from "node:assert/strict";
+import { type EvidenceItem, type Hypothesis, proven, unproven } from "@vdp/diagnostic-ir";
 import type { VehicleSummary } from "@vdp/domain";
+import type { EvidenceSnapshot } from "@vdp/runtime";
 import type { VehicleSessionData } from "@vdp/storage";
 import { describe, test } from "vitest";
 import { type FixturePatch, patched } from "../../../tests/helpers/fixture.js";
+import { buildAnalysisInput } from "../src/analysis-input.js";
 import { type AnalysisDtcSource, analysisDtcOf, analysisVehicleOf } from "../src/analysis-input.js";
 
 type Determination = VehicleSessionData["determination"];
@@ -213,3 +216,205 @@ describe("analysisDtcOf", () => {
     assert.equal(dtc.measure, undefined);
   });
 });
+
+/**
+ * The whole provider input, assembled once (P0 #39/#42, ADR 0038).
+ *
+ * `analyze()` used to build this in the backend, field by field, with no evidence in
+ * it. The rules that matter are the ones a projection can get wrong: a row that has
+ * no item must not claim a source, and a statistic without numbers must not become a
+ * confident zero.
+ */
+describe("buildAnalysisInput", () => {
+  const AT = "2026-09-14T09:00:00.000Z";
+
+  function session(fields: FixturePatch<VehicleSessionData> = {}): VehicleSessionData {
+    return patched(
+      {
+        schemaVersion: 1,
+        id: "session_web",
+        startedAt: AT,
+        adapter: { id: "virtual", kind: "virtual", name: "Virtual CAN", channels: ["vcan0"] },
+        transport: { kind: "virtual", channel: "vcan0", mtu: 8 },
+        ecus: [
+          {
+            id: "engine",
+            name: "Engine",
+            protocol: "uds",
+            txId: 0x7e0,
+            rxId: 0x7e8,
+            extended: false,
+            identification: [],
+            supportedServices: [0x19],
+            sessionType: 1,
+            timing: { p2Ms: 50, p2StarMs: 5_000 },
+            reachable: true,
+          },
+        ],
+        dtcSnapshots: [],
+        measurements: [],
+        actions: [],
+        notes: [{ id: "n1", timestamp: AT, text: "rough idle under load" }],
+        tags: [],
+        mileageKm: 90_000,
+      },
+      fields,
+    ) as VehicleSessionData;
+  }
+
+  function evidence(
+    items: readonly EvidenceItem[],
+    hypotheses: readonly Hypothesis[] = [],
+  ): EvidenceSnapshot {
+    return {
+      evidence: {
+        kind: "evidence",
+        sessionId: "session_web",
+        collectedAt: AT,
+        items: [...items],
+        conflicts: [],
+      },
+      hypotheses: [...hypotheses],
+    };
+  }
+
+  const dtcItem: EvidenceItem = {
+    id: "dtc:P0420@engine",
+    kind: "dtc",
+    subject: "P0420",
+    statement: "Catalyst efficiency below threshold (Engine, severity major)",
+    at: AT,
+    ecuId: "engine",
+    evidence: proven({ origin: "definition", at: AT, definitionVersion: "1.4.0" }),
+  };
+
+  test("the evidence set, the hypotheses and the versions reach the provider", () => {
+    const set = evidence([dtcItem]);
+    const input = buildAnalysisInput({
+      session: session(),
+      identity: { vin: "1HGCM82633A004352", brand: "Honda" } as VehicleSummary,
+      dtcs: [dtcRow({})],
+      statistics: [],
+      anomalies: [],
+      evidence: set,
+      versions: { promptVersion: "2026-09-14.1", runtimeVersion: "0.1.0" },
+    });
+    assert.equal(input.evidence, set.evidence);
+    assert.deepEqual(input.hypotheses, []);
+    assert.deepEqual(input.versions, { promptVersion: "2026-09-14.1", runtimeVersion: "0.1.0" });
+    assert.deepEqual(input.notes, ["rough idle under load"]);
+    assert.equal(input.mileageKm, 90_000);
+    // The VIN stays out of the vehicle block unless a caller puts it in: the HTTP
+    // provider forwards this object off the box (AGENTS 27).
+    assert.equal(input.vehicle?.vin, undefined);
+  });
+
+  test("a code is linked to its item by code and by the ECU the row shows", () => {
+    const input = buildAnalysisInput({
+      session: session(),
+      identity: undefined,
+      dtcs: [dtcRow({}), dtcRow({ code: "U0121", ecu: "ABS" })],
+      statistics: [],
+      anomalies: [],
+      evidence: evidence([dtcItem]),
+      versions: { promptVersion: "p", runtimeVersion: "r" },
+    });
+    assert.deepEqual(input.dtcs[0]?.evidence, {
+      proven: true,
+      line: `definition · ${AT} · def 1.4.0`,
+      itemId: "dtc:P0420@engine",
+    });
+    assert.equal(
+      "evidence" in (input.dtcs[1] ?? {}),
+      false,
+      "the ABS row has no item in this set - an absent source stays absent",
+    );
+  });
+
+  test("an unproven item reaches the provider as unproven, with its sentence", () => {
+    const gap: EvidenceItem = {
+      ...dtcItem,
+      evidence: unproven("no description is documented for this code", { at: AT }),
+    };
+    const input = buildAnalysisInput({
+      session: session(),
+      identity: undefined,
+      dtcs: [dtcRow({ description: "Fehlertyp 0x00" })],
+      statistics: [],
+      anomalies: [],
+      evidence: evidence([gap]),
+      versions: { promptVersion: "p", runtimeVersion: "r" },
+    });
+    assert.equal(input.dtcs[0]?.evidence?.proven, false);
+    assert.match(input.dtcs[0]?.evidence?.line ?? "", /^not proven: no description is documented/);
+    assert.equal(
+      input.dtcs[0]?.evidence?.itemId,
+      "dtc:P0420@engine",
+      "the citation survives an unproven statement",
+    );
+  });
+
+  test("a session that never resolved nothing still answers, with empty parts", () => {
+    const input = buildAnalysisInput({
+      session: undefined,
+      identity: undefined,
+      dtcs: [],
+      statistics: [],
+      anomalies: [],
+      evidence: evidence([]),
+      versions: { promptVersion: "p", runtimeVersion: "r" },
+    });
+    assert.equal(input.vehicle, undefined);
+    assert.equal("mileageKm" in input, false, "no session is not a session with 0 km");
+    assert.deepEqual(input.signals, []);
+    assert.deepEqual(input.notes, []);
+  });
+
+  test("statistics keep their sample count when their numbers are absent", () => {
+    const input = buildAnalysisInput({
+      session: session({ mileageKm: undefined }),
+      identity: undefined,
+      dtcs: [],
+      statistics: [
+        {
+          signalId: "engine.rpm",
+          name: "Engine speed",
+          samples: 0,
+          min: null,
+          max: null,
+          average: null,
+          delta: null,
+          first: null,
+          last: null,
+          outOfRangeCount: 0,
+        },
+      ],
+      anomalies: [{ signalId: "engine.rpm", reason: "no value in the window" }],
+      evidence: evidence([]),
+      versions: { promptVersion: "p", runtimeVersion: "r" },
+    });
+    assert.deepEqual(input.signals[0], {
+      signal: "engine.rpm",
+      name: "Engine speed",
+      samples: 0,
+      min: 0,
+      max: 0,
+      average: 0,
+      delta: 0,
+      outOfRangeCount: 0,
+    });
+    assert.deepEqual(input.anomalies, [{ signal: "engine.rpm", reason: "no value in the window" }]);
+  });
+});
+
+function dtcRow(fields: FixturePatch<AnalysisDtcSource>): AnalysisDtcSource {
+  return patched(
+    {
+      code: "P0420",
+      description: "Catalyst efficiency below threshold",
+      severity: "major",
+      ecu: "Engine",
+    },
+    fields,
+  );
+}

@@ -90,6 +90,13 @@ export interface DtcInfo {
    * Absent when no vehicle is resolved or nothing is documented for the code.
    */
   knowledge?: DtcKnowledgeInfo;
+  /**
+   * One line saying what backs `description`, `hint` and `severity` — proven (with
+   * the definition version) or not proven (with the reason). The scan carries it
+   * out of the diagnostic IR (P0 #6, ADR 0037) so that a reader can tell "no
+   * fault known to us" from "no fault present" without opening another view.
+   */
+  evidence?: string;
 }
 
 /**

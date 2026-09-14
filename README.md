@@ -3,7 +3,7 @@
 [![CI](https://github.com/CAZE7/yes-you-CAN/actions/workflows/ci.yml/badge.svg)](https://github.com/CAZE7/yes-you-CAN/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](./package.json)
-[![Tests](https://img.shields.io/badge/tests-1646%20passed-brightgreen)](#tests)
+[![Tests](https://img.shields.io/badge/tests-1731%20passed-brightgreen)](#tests)
 [![TypeScript](https://img.shields.io/badge/TypeScript-7%20%2F%20tsgo-blue)](./tsconfig.base.json)
 
 Fahrzeugdiagnose-Plattform: CAN und DoIP lesen, Steuergeräte identifizieren, das
@@ -94,12 +94,13 @@ Verwechslung, gegen die die Fahrzeugachse existiert.
 | `@vdp/protocols-oem` | OEM-Erweiterungspunkte + Registry |
 | `@vdp/definitions` | versioniertes Schema (v3: Fahrzeuge, Motoren, Getriebe, VIN-Matching, **DTC-Wissen pro Variante**), Validator, Migration v1→v2→v3, WMI-Referenz (ISO 3780), Resolver mit Belegen, Wissensauflösung nach Spezifität, Pakete mit Provenance (ADR 0023, 0024) |
 | `@vdp/charts` | DOM-freie, getestete Graphen-Mathematik: Viewport, Cursor, Decimierung, Statistik (ADR 0011) |
+| `@vdp/diagnostic-ir` | die eine Zwischenstufe zwischen Rohform und Projektion: Beobachtungen mit Beleg, Fenster, Belege und Hypothesen der Analyse (ADR 0034, 0037, 0038) |
 | `@vdp/core` | Engine, ECU-Explorer, DTC-System (variantenbewusst: `setVehicle` schichtet Wissen über die Paketbeschreibung), Recorder, Logger, Safety |
 | `@vdp/runtime` | `createDiagnosticRuntime`: Services, Command-Handler, Domänen-Events — headless (ADR 0014) |
 | `@vdp/adapters-*` | ELM327, CANable (slcan), SocketCAN, generisch |
 | `@vdp/storage` | Session-Repository, Migrationen, ZIP-Export |
-| `@vdp/reports` | HTML- und PDF-Report (eigener PDF-Writer) |
-| `@vdp/ai` | austauschbare Analyse-Provider mit VIN-Redaktion; der Input trägt Fahrzeugbestimmung und Variantenwissen (§22, ADR 0026) |
+| `@vdp/reports` | HTML- und PDF-Report (eigener PDF-Writer), inklusive Sektion „Observations & gaps“ (ADR 0037) |
+| `@vdp/ai` | austauschbare Analyse-Provider mit VIN-Redaktion; der Input ist die Diagnostic IR (Belege, Hypothesen, Fahrzeugbestimmung) und jede Antwort nennt Versionen und zitiert Beleg-Ids (§22, ADR 0026, 0038) |
 | `@vdp/simulators` | virtuelles Fahrzeug + virtuelles CAN-Netz |
 | `@vdp/trace-analyzer` | Offline-Trace-Analyse |
 | `@vdp/definition-importer` | DBC/CSV/JSON → validiertes Definition-Paket |
@@ -182,12 +183,12 @@ Zeitraum aus, Doppelklick zeigt die gesamte Aufnahme.
 
 ## Tests
 
-1646 Tests / 111 Dateien in 32,3 s, Vitest 5 mit Projektkonfiguration (ADR 0010,
+1731 Tests / 115 Dateien in 37,5 s, Vitest 5 mit Projektkonfiguration (ADR 0010,
 Schritt 1 — ersetzt ADR 0008). Der `architecture`-Lauf prüft die Struktur *und*
 führt die Quality-Gates aus (ADR 0029). Unit-Specs liegen co-lokatiert neben dem
 Code (`src/*.spec.ts`); Property-Tests laufen mit fast-check, Coverage-Gates mit
 `npm run test:coverage` (global 90 % lines / 80 % branches als
-Projekt-Durchschnitt, Ist 94,45 Statements / 87,18 Zweige / 96,27 Funktionen / 95,79 Zeilen — seit ADR 0027 wird die ganze
+Projekt-Durchschnitt, Ist 94,62 Statements / 87,52 Zweige / 96,44 Funktionen / 95,90 Zeilen — seit ADR 0027 wird die ganze
 Fläche gemessen: `packages/**/src`, `apps/web/src/**` und `tools/**`, weil die
 Workbench-Schicht vorher in keiner Zahl vorkam; per-file-Gates für
 `shared`/`core`/`protocols`/`adapters`/`transport`/`storage`/`charts`/`reports`/`ai` (95/85 seit 2026-09-14)/`diagnostic-ir` (95/85 seit ADR 0034)/`definitions`
@@ -230,7 +231,7 @@ nicht — der laufende Test schon.
 | `POST /api/vehicle/resolve` | Fahrzeug bestimmen: Kandidaten mit Belegen und Widersprüchen (read-only) |
 | `POST /api/dtc/scan` | Fehlerspeicher lesen |
 | `POST /api/live/start` \| `/stop` | Live-Messung |
-| `POST /api/analyze` | Analyse (lokaler Regel-Provider) — nennt, über welches Auto sie spricht |
+| `POST /api/analyze` | Analyse (lokaler Regel-Provider) — nennt, über welches Auto sie spricht, auf welcher Fassung sie beruht und welche Belege sie gelesen hat |
 | `POST /api/session/save` | Session persistieren |
 | `GET /api/sessions` | gespeicherte Sessions |
 | `GET /api/export/*` | CSV, JSON, HTML, PDF |

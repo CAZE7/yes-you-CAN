@@ -8,6 +8,7 @@ import { waitFor } from "../../../tests/helpers/wait.js";
 import type { DtcView } from "../src/backend.js";
 import { WebServer } from "../src/server.js";
 import type { VehicleResolutionView } from "../src/vehicle-view.js";
+import type { AnalysisView } from "../src/views.js";
 
 const logger = createLogger("web", { level: "ERROR" });
 
@@ -261,15 +262,9 @@ test("analysis returns a labelled result from the local provider", async () => {
     await json(base, "/api/dtc/scan", { method: "POST" });
     const result = await json(base, "/api/analyze", { method: "POST" });
     assert.equal(result.status, 200);
-    const analysis = result.body as {
-      provider: string;
-      source: string;
-      confidence: number;
-      findings: Array<{ id: string; detail: string }>;
-      recommendations: string[];
-      summary: string;
-      warnings?: string[];
-    };
+    // Typed against the wire contract, not a copy of it (ADR 0030): a response shape
+    // restated in a test is a second source that can silently lag the provider type.
+    const analysis = result.body as AnalysisView;
     assert.equal(analysis.provider, "heuristic");
     assert.equal(analysis.source, "heuristic");
     assert.ok(analysis.findings.length > 0);
@@ -279,10 +274,34 @@ test("analysis returns a labelled result from the local provider", async () => {
     // The point of ADR 0026 on this path: the analysis knows which car it is
     // answering about, including which definition the session matched.
     assert.match(analysis.summary, /on Virtual Simulator vehicle 2003 \(virtual-vehicle\)/);
-    assert.equal(analysis.confidence, 0.4);
+    // The confidence moved 0.4 → 0.3 with the evidence path (P0 #39, ADR 0038): the
+    // demo session stores C1234 with no documented wording, and a claim without a
+    // source now caps what the heuristic may assert — the same ceiling a missing
+    // vehicle determination gets. The number is lower because the answer is honest,
+    // not because the car changed.
+    assert.equal(analysis.confidence, 0.3);
     assert.deepEqual(analysis.warnings, [
       "Heuristic analysis is rule based — it is a hint, not a diagnosis.",
+      "3 question(s) stay open in this session: C1234, fault memory, signals.",
+      "1 statement(s) in this session are unproven: C1234 — say so in the answer.",
     ]);
+
+    // Versions and citations (P0 #42): the answer says which prompt, which build and
+    // which definition produced it, and cites the evidence items it read.
+    assert.equal(analysis.provenance?.promptVersion, "2026-09-14.1");
+    assert.equal(analysis.provenance?.runtimeVersion, "0.1.0");
+    assert.equal(analysis.provenance?.definitionVersion, "simulator@1.0.0");
+    assert.ok((analysis.provenance?.evidence.length ?? 0) > 0);
+    const cited = analysis.findings.find((finding) => finding.id === "dtc-P0420")?.basedOn ?? [];
+    assert.ok(
+      cited.every((id) => analysis.provenance?.evidence.includes(id)),
+      `a finding must cite items the answer lists: ${cited.join(", ")}`,
+    );
+    assert.ok(
+      analysis.recommendations.some((entry) => entry.startsWith("next test for P0420:")),
+      analysis.recommendations.join(" | "),
+      "the documented window of a pattern is what the next test names (roadmap step 16)",
+    );
 
     // And it says which of its sentences the variant documents: a measuring step the
     // package actually defines, plus the label for wording that is only manufacturer-wide.

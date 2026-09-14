@@ -177,6 +177,7 @@ export function toDtcInfo(dtc: EnrichedDtc): DtcInfo {
       ? { relatedSignals: dtc.relatedSignals.map((signal) => ({ ...signal })) }
       : {}),
     ...(dtc.knowledge !== undefined ? { knowledge: toDtcKnowledge(dtc.knowledge) } : {}),
+    ...(dtc.evidence !== undefined ? { evidence: dtc.evidence } : {}),
   };
 }
 
