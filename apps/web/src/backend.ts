@@ -45,15 +45,7 @@ import {
   startMeasurements,
 } from "@vdp/application";
 import { type DefinitionPackage, genericPackage, simulatorPackage } from "@vdp/definitions";
-import type {
-  DtcClearPrecheckInfo,
-  DtcInfo,
-  EcuSummary,
-  FreezeFrameInfo,
-  MarkerInfo,
-  MeasurementReading,
-  VehicleResolutionRef,
-} from "@vdp/domain";
+import type { DtcClearPrecheckInfo, VehicleResolutionRef } from "@vdp/domain";
 import type { DtcRecord } from "@vdp/protocols-uds";
 import { type DiagnosticRuntime, createDiagnosticRuntime } from "@vdp/runtime";
 import {
@@ -66,7 +58,6 @@ import {
 import { DEFAULT_VIN, VirtualVehicle } from "@vdp/simulators";
 import {
   FileSystemSessionRepository,
-  type RawTraceEntry,
   SessionLogger,
   type SessionRepository,
   type StoredSessionSummary,
@@ -85,50 +76,18 @@ import {
   isApplicationManaged,
 } from "./adapters.js";
 import { analysisDtcOf, analysisVehicleOf } from "./analysis-input.js";
-import { type DtcKnowledgeView, toDtcKnowledgeView } from "./dtc-knowledge-view.js";
+import { type DtcView, toDtcView } from "./dtc-view.js";
+import { type EcuView, type FreezeFrameView, toEcuView, toFreezeFrameView } from "./ecu-view.js";
+import {
+  type MarkerView,
+  type SampleView,
+  type TraceView,
+  formatCanId,
+  toMarkerView,
+  toSampleView,
+  toTraceView,
+} from "./trace-view.js";
 import { type VehicleResolutionView, toVehicleResolutionView } from "./vehicle-view.js";
-
-export interface EcuView {
-  id: string;
-  name: string;
-  txId: string;
-  rxId: string;
-  extended: boolean;
-  reachable: boolean;
-  identification: Array<{ label: string; value: string }>;
-  services: string[];
-  sessionType: number;
-  p2Ms: number;
-  dtcCount: number;
-  lastError?: string;
-}
-
-/**
- * Freeze frame of a fault code, as shown in the UI (AGENTS 20).
- *
- * Decoded values and raw bytes both travel to the front end so an operator can
- * see that a value came from a byte range, not from a guess.
- */
-export interface FreezeFrameView {
-  code: string;
-  recordNumber: number;
-  documented: boolean;
-  notes: string[];
-  unassignedHex: string;
-  fields: Array<{
-    did: string;
-    name: string;
-    rawHex: string;
-    values: Array<{
-      signal: string;
-      name: string;
-      value: string;
-      unit?: string;
-      rawHex: string;
-      outOfRange: boolean;
-    }>;
-  }>;
-}
 
 /**
  * Vehicle preconditions for a write, as asserted by the operator (AGENTS 26).
@@ -175,87 +134,6 @@ export interface DtcClearPrecheck {
   warnings: string[];
 }
 
-export interface DtcView {
-  code: string;
-  raw: string;
-  /** Response id of the ECU that reported the code, so the UI can address it. */
-  rxId: string;
-  /** Description from the definition package, or the raw protocol fallback. */
-  description: string;
-  severity: string;
-  ecu: string;
-  status: string;
-  confirmed: boolean;
-  pending: boolean;
-  testFailed: boolean;
-  /** Next diagnostic step from the definition package, when one is documented. */
-  hint?: string;
-  /** First scan in this session that saw the code (AGENTS 20). */
-  firstSeen?: string;
-  /** Most recent scan that saw the code (AGENTS 20). */
-  lastSeen?: string;
-  /** True when the code appeared for the first time in the latest scan. */
-  isNew?: boolean;
-  /** Signals the definition package relates to this code (AGENTS 20). */
-  relatedSignals?: Array<{ id: string; name: string }>;
-  /**
-   * Whether reading a freeze frame for this code is meaningful: the ECU returned
-   * a snapshot record before, or the definition documents a layout.
-   */
-  freezeFrame?: boolean;
-  /** Provenance of the description — never present invented knowledge (AGENTS 24). */
-  provenance?: string;
-  /**
-   * What the resolved vehicle's variant knowledge adds to this code (AGENTS 20,
-   * 23): the scope that says where the wording came from, the documented failure
-   * patterns with their measurement checks, and what is missing or assumed.
-   * Absent when no vehicle is resolved or nothing is documented — the UI then
-   * shows the manufacturer-wide wording and says that it does.
-   */
-  knowledge?: DtcKnowledgeView;
-}
-
-export interface SampleView {
-  signal: string;
-  name: string;
-  /** Formatted for display — the UI shows this string verbatim. */
-  value: string;
-  /**
-   * Numeric value for the graphs, `null` for textual/enum signals.
-   * Charts must never parse a formatted string back into a number: the decimal
-   * separator and the precision belong to the presentation layer (AGENTS 14).
-   */
-  numeric: number | null;
-  /** Undecoded value next to the decoded one (AGENTS 34.7). */
-  rawValue: number | string | boolean;
-  rawHex: string;
-  unit?: string;
-  outOfRange: boolean;
-  t: number;
-  timestamp: string;
-}
-
-/** Marker on the shared time axis (AGENTS 16 "Event-Marker", AGENTS 20 DTC events). */
-export interface MarkerView {
-  id: string;
-  t: number;
-  timestamp: string;
-  label: string;
-  kind: "dtc" | "action" | "note" | "user" | "anomaly";
-  detail?: string;
-}
-
-export interface TraceView {
-  t: number;
-  timestamp: string;
-  canId: string;
-  direction: "tx" | "rx";
-  dlc: number;
-  data: string;
-  channel: string;
-  extended: boolean;
-}
-
 export interface HistoryView {
   /** Wall clock at recording start, so the UI can convert relative times. */
   startedAt: number;
@@ -282,6 +160,15 @@ export interface SignalStatisticsView {
   last: number | null;
   outOfRangeCount: number;
 }
+
+/**
+ * View types the server and the tests read from this module. They live in
+ * `ecu-view.ts`, `dtc-view.ts` and `trace-view.ts` now (0.E E15) and are re-exported
+ * so the outward API of the backend is unchanged by the move (ADR 0014).
+ */
+export type { DtcView } from "./dtc-view.js";
+export type { EcuView, FreezeFrameView } from "./ecu-view.js";
+export type { MarkerView, SampleView, TraceView } from "./trace-view.js";
 
 export interface AppState {
   connected: boolean;
@@ -836,7 +723,7 @@ export class DemoBackend {
     // The runtime already enriched the codes with the definition package
     // (description, severity, first/last seen, related signals); the backend
     // only maps them to the view shape the UI consumes (AGENTS 13/20).
-    this.dtcs = infos.map((info) => this.toDtcView(info));
+    this.dtcs = infos.map((info) => toDtcView(info, this.ecus));
     for (const view of this.dtcs) this.emit("dtc", view);
     this.sessionLogger.log("dtc", "scan complete", { count: this.dtcs.length });
     this.log.info("DTC scan complete", { count: this.dtcs.length });
@@ -1160,32 +1047,6 @@ export class DemoBackend {
     return this.runtime?.session.data();
   }
 
-  /** DTC table row from the runtime read model (AGENTS 13/20). */
-  private toDtcView(info: DtcInfo): DtcView {
-    const ecu = this.ecus.find((view) => view.id === info.ecuId);
-    return {
-      code: info.code,
-      raw: info.raw,
-      rxId: ecu?.rxId ?? info.ecuId,
-      // A code without a definition stays honest: the raw failure type is shown
-      // instead of an invented description (AGENTS 24).
-      description: info.description ?? `Fehlertyp 0x${info.failureType}`,
-      severity: info.severity ?? "info",
-      ...(info.hint ? { hint: info.hint } : {}),
-      ecu: info.ecuName,
-      status: `0x${info.status.toString(16).toUpperCase().padStart(2, "0")}`,
-      confirmed: info.confirmed,
-      pending: info.pending,
-      testFailed: info.testFailed,
-      ...(info.firstSeen ? { firstSeen: info.firstSeen } : {}),
-      ...(info.lastSeen ? { lastSeen: info.lastSeen } : {}),
-      ...(info.firstSeenInThisScan ? { isNew: true } : {}),
-      ...(info.relatedSignals ? { relatedSignals: [...info.relatedSignals] } : {}),
-      ...(info.knowledge ? { knowledge: toDtcKnowledgeView(info.knowledge) } : {}),
-      freezeFrame: info.hasFreezeFrame,
-    };
-  }
-
   /** ECU reference as the runtime understands it: session id or "0x…" address. */
   private ecuRef(rxId: number): string {
     return `0x${rxId.toString(16)}`;
@@ -1201,99 +1062,6 @@ export class DemoBackend {
     await this.teardown();
     this.log.info("backend stopped", { mode: this.mode });
   }
-}
-
-function toEcuView(summary: EcuSummary): EcuView {
-  return {
-    id: summary.ecuId,
-    name: summary.name,
-    txId: formatCanId(summary.txId),
-    rxId: formatCanId(summary.rxId),
-    extended: summary.extended,
-    reachable: summary.reachable,
-    identification: summary.identification.map((entry) => ({
-      label: entry.label,
-      value: entry.value,
-    })),
-    services: summary.supportedServices.map((sid) => `0x${sid.toString(16).toUpperCase()}`),
-    sessionType: summary.sessionType,
-    p2Ms: summary.p2Ms,
-    dtcCount: summary.dtcCount,
-    ...(summary.lastError ? { lastError: summary.lastError } : {}),
-  };
-}
-
-function toFreezeFrameView(info: FreezeFrameInfo): FreezeFrameView {
-  return {
-    code: info.code,
-    recordNumber: info.recordNumber,
-    documented: info.documented,
-    notes: [...info.notes],
-    unassignedHex: info.unassignedHex,
-    fields: info.fields.map((field) => ({
-      did: `0x${field.did.toString(16).toUpperCase()}`,
-      name: field.name,
-      rawHex: field.rawHex,
-      values: field.values.map((value) => ({
-        signal: value.signalId,
-        name: value.name,
-        value: formatValue(value.value),
-        ...(value.unit ? { unit: value.unit } : {}),
-        rawHex: value.rawHex,
-        outOfRange: value.outOfRange,
-      })),
-    })),
-  };
-}
-
-function toSampleView(reading: MeasurementReading): SampleView {
-  return {
-    signal: reading.signalId,
-    name: reading.name ?? reading.signalId,
-    value: formatValue(reading.value),
-    numeric:
-      typeof reading.value === "number" && Number.isFinite(reading.value) ? reading.value : null,
-    rawValue: reading.rawValue,
-    rawHex: reading.rawHex,
-    ...(reading.unit ? { unit: reading.unit } : {}),
-    outOfRange: reading.outOfRange,
-    t: reading.t,
-    timestamp: reading.timestamp,
-  };
-}
-
-function toMarkerView(marker: MarkerInfo): MarkerView {
-  return {
-    id: marker.markerId,
-    t: marker.t,
-    timestamp: marker.timestamp,
-    label: marker.label,
-    kind: marker.kind,
-    ...(marker.detail ? { detail: marker.detail } : {}),
-  };
-}
-
-function toTraceView(entry: RawTraceEntry): TraceView {
-  return {
-    t: entry.t,
-    timestamp: entry.timestamp,
-    canId: entry.canIdHex,
-    direction: entry.direction,
-    dlc: entry.dlc,
-    data: entry.payloadHex,
-    channel: entry.channel,
-    extended: entry.extended,
-  };
-}
-
-/** CAN identifier as it is displayed and sent back by the UI (e.g. `0x7E8`). */
-function formatCanId(id: number): string {
-  return `0x${id.toString(16).toUpperCase()}`;
-}
-
-function formatValue(value: number | string | boolean): string {
-  if (typeof value === "number") return Number.isInteger(value) ? String(value) : value.toFixed(2);
-  return String(value);
 }
 
 function describe(
