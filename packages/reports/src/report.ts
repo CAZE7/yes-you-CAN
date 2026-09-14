@@ -7,8 +7,14 @@
  * PDF (workshop handout) — content and presentation stay separate.
  */
 
-import { type VehicleSessionData, describeVehicle, maskVin } from "@vdp/core";
-import type { SignalStatistics } from "@vdp/core";
+import {
+  type DtcVariantKnowledge,
+  type SignalStatistics,
+  type VehicleDetermination,
+  type VehicleSessionData,
+  describeVehicle,
+  maskVin,
+} from "@vdp/core";
 import { PdfDocument } from "./pdf.js";
 
 export interface ReportAnomaly {
@@ -55,7 +61,12 @@ export function buildReport(input: ReportInput): ReportDocument {
   const dtcs = input.dtcs ?? [];
   const statistics = input.statistics ?? [];
   const anomalies = input.anomalies ?? [];
-  const recommendations = input.recommendations ?? defaultRecommendations(dtcs, anomalies);
+  // Variant knowledge is looked up in the session record rather than handed in: a
+  // stored scan is the one place that says which variant a description was written
+  // for, so a report built from a reopened session keeps that statement (ADR 0026).
+  const knowledge = knowledgeIndex(session);
+  const recommendations =
+    input.recommendations ?? defaultRecommendations(dtcs, anomalies, knowledge);
 
   return {
     title: "Vehicle Diagnostic Report",
@@ -68,7 +79,8 @@ export function buildReport(input: ReportInput): ReportDocument {
       vehicleSection(input),
       transportSection(session),
       ecuOverviewSection(session),
-      dtcSummarySection(dtcs),
+      dtcSummarySection(dtcs, knowledge),
+      variantKnowledgeSection(dtcs, knowledge, session.determination),
       measurementsSection(statistics),
       anomalySection(anomalies),
       actionSection(session),
@@ -107,6 +119,7 @@ function vehicleSection(input: ReportInput): ReportSection {
       },
       { label: "Session started", value: session.startedAt },
       { label: "Session ended", value: session.endedAt ?? "still open" },
+      ...determinationRows(session.determination),
       ...(input.workshop ? [{ label: "Workshop", value: input.workshop }] : []),
       ...(input.technician ? [{ label: "Technician", value: input.technician }] : []),
     ],
@@ -156,7 +169,10 @@ function ecuOverviewSection(session: VehicleSessionData): ReportSection {
 }
 
 /** Fault counts per severity plus the code list (AGENTS 20/21). */
-function dtcSummarySection(dtcs: readonly ReportDtc[]): ReportSection {
+function dtcSummarySection(
+  dtcs: readonly ReportDtc[],
+  knowledge: Map<string, DtcVariantKnowledge>,
+): ReportSection {
   const severityCount = (severity: string): number =>
     dtcs.filter((dtc) => dtc.severity === severity).length;
   return {
@@ -169,10 +185,214 @@ function dtcSummarySection(dtcs: readonly ReportDtc[]): ReportSection {
       { label: "Info", value: String(severityCount("info")) },
     ],
     table: {
-      columns: ["Code", "Severity", "ECU", "Description"],
-      rows: dtcs.map((dtc) => [dtc.code, dtc.severity, dtc.ecu, dtc.description ?? "—"]),
+      // "Knowledge" is the scope of the wording, so a reader can tell a variant
+      // statement from a manufacturer-wide one without opening another section.
+      columns: ["Code", "Severity", "ECU", "Description", "Knowledge"],
+      rows: dtcs.map((dtc) => [
+        dtc.code,
+        dtc.severity,
+        dtc.ecu,
+        dtc.description ?? "—",
+        knowledgeFor(knowledge, dtc)?.scope ?? "—",
+      ]),
     },
   };
+}
+
+/**
+ * Which vehicle this report speaks about, and how far the evidence reached
+ * (AGENTS 11.1, ADR 0026).
+ *
+ * Three states are kept apart on purpose: never determined, determined as
+ * unresolved (a provider answered "nothing matched", with its reason) and matched
+ * (with score, contradictions and provenance). Collapsing them would let a missing
+ * lookup read as a proven negative.
+ */
+function determinationRows(
+  determination: VehicleDetermination | undefined,
+): Array<{ label: string; value: string }> {
+  if (determination === undefined) {
+    return [{ label: "Vehicle determination", value: "not resolved in this session" }];
+  }
+  const match = determination.match;
+  if (match === undefined) {
+    return [
+      {
+        label: "Vehicle determination",
+        value: `unresolved: ${determination.reason ?? "no candidate had positive evidence"}`,
+      },
+      { label: "Resolved at", value: determination.resolvedAt },
+    ];
+  }
+  const percent = Math.round(match.score * 100);
+  const powertrain = [
+    match.engineIds.length > 0 ? `engine ${match.engineIds.join("/")}` : undefined,
+    match.gearboxIds.length > 0 ? `gearbox ${match.gearboxIds.join("/")}` : undefined,
+  ]
+    .filter((part): part is string => part !== undefined)
+    .join(", ");
+  const coverage = `${match.ecus.matched} of ${match.ecus.expected} declared ECUs answered`;
+  return [
+    {
+      label: "Vehicle determination",
+      value: `${match.brand} ${match.model} — ${match.vehicleId} (package ${match.oem} v${match.packageVersion})`,
+    },
+    {
+      label: "Evidence",
+      value:
+        `${percent} % of the evaluated criteria confirmed` +
+        (match.conflicts.length > 0
+          ? ` · ${match.conflicts.length} contradiction(s) kept visible: ${match.conflicts
+              .map((entry) => entry.kind)
+              .join(", ")}`
+          : " · no contradictions"),
+    },
+    {
+      label: "Criteria",
+      value: match.evidence.map((entry) => `${entry.kind} (${entry.weight})`).join(", "),
+    },
+    {
+      label: "Data trust",
+      value: `${Math.round(match.trust * 100)} %${match.provenanceType ? ` · provenance ${match.provenanceType}` : ""}`,
+    },
+    { label: "Powertrain", value: powertrain.length > 0 ? powertrain : "not narrowed" },
+    {
+      label: "ECU coverage",
+      value:
+        match.ecus.missing.length > 0
+          ? `${coverage}; missing: ${match.ecus.missing.join(", ")}`
+          : coverage,
+    },
+    {
+      label: "Other candidates",
+      value:
+        determination.alternatives.length > 0
+          ? determination.alternatives
+              .map((alt) => `${alt.vehicleId} (${Math.round(alt.score * 100)} %)`)
+              .join(", ")
+          : "none — no second candidate had positive evidence",
+    },
+    { label: "Resolved at", value: determination.resolvedAt },
+  ];
+}
+
+/** Where a description came from, said in the report's own words (AGENTS 24). */
+function scopeSentence(knowledge: DtcVariantKnowledge): string {
+  switch (knowledge.scope) {
+    case "vehicle-engine":
+      return "documented for this vehicle's engine";
+    case "vehicle-gearbox":
+      return "documented for this vehicle's gearbox";
+    case "vehicle":
+      return "documented for this vehicle";
+    default:
+      return "manufacturer-wide wording only — nothing variant-specific is documented";
+  }
+}
+
+/**
+ * One check as a sentence: what to look at, what it must show, and for how long.
+ *
+ * `min`/`max` alone are written as bounds (`≥ 90`, `≤ 5`), both together as a range
+ * (`45…55`). Deliberately no infinity sign: a report is also printed as a PDF, and
+ * every character outside Latin-1 that has no fold in `pdf.ts` becomes a question
+ * mark on paper (ADR 0021, AGENTS 24).
+ */
+function windowOf(check: DtcVariantKnowledge["patterns"][number]["checks"][number]): string {
+  const bounds =
+    check.min !== undefined && check.max !== undefined
+      ? `${check.min}…${check.max}`
+      : check.min !== undefined
+        ? `≥ ${check.min}`
+        : check.max !== undefined
+          ? `≤ ${check.max}`
+          : undefined;
+  return [
+    check.signalName || check.signal,
+    check.expect,
+    bounds,
+    check.windowMs !== undefined ? `${check.windowMs / 1000} s` : undefined,
+  ]
+    .filter((part): part is string => part !== undefined && part !== "")
+    .join(" · ");
+}
+
+/** One fault-memory read, indexed by code and by the ECU that reported it. */
+function knowledgeIndex(session: VehicleSessionData): Map<string, DtcVariantKnowledge> {
+  const index = new Map<string, DtcVariantKnowledge>();
+  for (const record of session.dtcSnapshots.at(-1)?.records ?? []) {
+    if (record.knowledge === undefined) continue;
+    const code = record.code.trim().toUpperCase();
+    index.set(`${code}|${record.ecuName ?? ""}`, record.knowledge);
+    if (!index.has(`${code}|`)) index.set(`${code}|`, record.knowledge);
+  }
+  return index;
+}
+
+function knowledgeFor(
+  index: Map<string, DtcVariantKnowledge>,
+  dtc: ReportDtc,
+): DtcVariantKnowledge | undefined {
+  const code = dtc.code.trim().toUpperCase();
+  return index.get(`${code}|${dtc.ecu}`) ?? index.get(`${code}|`);
+}
+
+/**
+ * What the resolved variant documents about each code (§20.1, §23).
+ *
+ * One row per code that has a statement, in the order a technician works: what the
+ * scope of the wording is, when the code sets, which cause is documented first, what
+ * to measure to decide it, and what is still open. A repair sentence stays labelled as
+ * a hint (§24), and a check without a numeric window says that a person has to judge.
+ */
+function variantKnowledgeSection(
+  dtcs: readonly ReportDtc[],
+  index: Map<string, DtcVariantKnowledge>,
+  determination: VehicleDetermination | undefined,
+): ReportSection {
+  const rows: Array<{ label: string; value: string }> = [];
+  let documented = 0;
+  for (const dtc of dtcs) {
+    const knowledge = knowledgeFor(index, dtc);
+    if (knowledge === undefined) continue;
+    documented += 1;
+    const parts: string[] = [scopeSentence(knowledge)];
+    if (knowledge.conditions !== undefined) parts.push(`sets when: ${knowledge.conditions}`);
+    const pattern = knowledge.patterns[0];
+    if (pattern !== undefined) {
+      parts.push(
+        `documented cause (${pattern.likelihood ?? "no likelihood stated"}): ${pattern.name}`,
+      );
+      if (pattern.explanation !== undefined) parts.push(pattern.explanation);
+      const measurable = pattern.checks.find((check) => check.measurable);
+      const manual = pattern.checks.find((check) => !check.measurable);
+      if (measurable !== undefined) parts.push(`measure first: ${windowOf(measurable)}`);
+      else if (manual !== undefined)
+        parts.push(`no numeric window — judge by hand: ${manual.signalName || manual.signal}`);
+      else parts.push("no measurement this package can evaluate for it");
+      if (pattern.repair !== undefined) parts.push(`repair hint (unverified): ${pattern.repair}`);
+    }
+    if (knowledge.provenanceType !== undefined) {
+      parts.push(`source: ${knowledge.provenanceSource ?? knowledge.provenanceType}`);
+    }
+    if (knowledge.notes.length > 0) parts.push(`open: ${knowledge.notes.join("; ")}`);
+    rows.push({ label: `${dtc.code} · ${dtc.ecu}`, value: parts.join(" · ") });
+  }
+  if (rows.length === 0) {
+    const reason =
+      dtcs.length === 0
+        ? "this report lists no fault codes"
+        : determination?.match === undefined
+          ? "no vehicle was determined, so only manufacturer-wide wording is available"
+          : "the resolved vehicle documents nothing about these codes";
+    rows.push({ label: "Variant knowledge", value: `none — ${reason}` });
+    return { heading: "Variant knowledge", rows };
+  }
+  rows.unshift({
+    label: "Documented for",
+    value: `${documented} of ${dtcs.length} listed code(s); codes without a row here have no statement in this package`,
+  });
+  return { heading: "Variant knowledge", rows };
 }
 
 /** Min/max/average/delta per recorded signal (AGENTS 16 statistics). */
@@ -248,10 +468,17 @@ function recommendationSection(recommendations: readonly string[]): ReportSectio
 function defaultRecommendations(
   dtcs: readonly ReportDtc[],
   anomalies: readonly ReportAnomaly[],
+  knowledge: Map<string, DtcVariantKnowledge>,
 ): string[] {
   const recommendations: string[] = [];
   for (const dtc of dtcs.filter((d) => d.severity === "critical").slice(0, 5)) {
-    recommendations.push(`${dtc.code} (${dtc.ecu}): ${dtc.hint ?? "inspect before further use"}`);
+    // The documented first step wins over the generic one, but only where the
+    // package actually states it: an invented order would be a diagnosis.
+    const step = firstStep(knowledgeFor(knowledge, dtc));
+    const advice = [dtc.hint, step].filter((part): part is string => part !== undefined);
+    recommendations.push(
+      `${dtc.code} (${dtc.ecu}): ${advice.length > 0 ? advice.join(" — ") : "inspect before further use"}`,
+    );
   }
   for (const anomaly of anomalies.slice(0, 5)) {
     recommendations.push(`${anomaly.signal}: ${anomaly.reason}`);
@@ -261,6 +488,22 @@ function defaultRecommendations(
       "No critical findings. Repeat the measurement under load if a fault is intermittent.",
     );
   return recommendations;
+}
+
+/**
+ * The measuring step a package documents for one code, if it documents any.
+ *
+ * `undefined` is the honest answer for a code nobody described for this variant —
+ * the caller then keeps the generic wording instead of inventing a sequence.
+ */
+function firstStep(knowledge: DtcVariantKnowledge | undefined): string | undefined {
+  const pattern = knowledge?.patterns[0];
+  if (pattern === undefined) return undefined;
+  const measurable = pattern.checks.find((check) => check.measurable);
+  if (measurable !== undefined) return `measure first: ${windowOf(measurable)}`;
+  // A pattern without an evaluable check still says what a person should do; that is
+  // a step, but not a measurement, and the text has to keep the difference.
+  return `before measuring: ${pattern.name}`;
 }
 
 function formatNumber(value: number | null): string {

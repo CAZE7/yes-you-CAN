@@ -206,3 +206,45 @@ test("a scanned fault carries the knowledge of the resolved variant", async () =
     "the manufacturer-wide wording stays, and says that it is",
   );
 });
+
+test("the session stores the determination that decided it", async () => {
+  // The resolution used to end in the workbench's memory: a stored session knew the
+  // VIN and nothing else, so a report or an analysis could not say which car — with
+  // which evidence — this was (AGENTS 11.1, ADR 0026). Compared against the query's
+  // own answer, because the earlier tests in this file re-resolve with other inputs
+  // and the session always records the *latest* attempt.
+  const resolution = await runtime.commands.query(resolveVehicle());
+  const data = runtime.session.data();
+  assert.ok(data, "connect leaves a session behind");
+  const determination = data.determination;
+  assert.ok(determination, "resolving records");
+
+  assert.equal(determination.match?.vehicleId, resolution.best?.vehicleId);
+  assert.equal(determination.match?.score, resolution.best?.score);
+  assert.equal(determination.match?.oem, "simulator");
+  assert.equal(determination.match?.packageVersion, "1.0.0");
+  assert.equal(determination.match?.trust, 1);
+  assert.equal(determination.match?.provenanceType, "own");
+  assert.deepEqual(determination.match?.engineIds, ["sim-petrol"]);
+  assert.deepEqual(determination.match?.gearboxIds, ["sim-automatic"]);
+  assert.deepEqual(determination.match?.ecus, { expected: 3, matched: 3, missing: [] });
+  assert.deepEqual(determination.unexplained, []);
+  assert.match(determination.resolvedAt, /^\d{4}-\d{2}-\d{2}T/);
+  assert.ok(
+    (determination.match?.evidence ?? []).some((entry) => entry.kind === "part-number"),
+    "the evidence that decided the match is readable in the session",
+  );
+
+  // The measured identity stays what the bus answered: brand and model are the
+  // conclusion, and a conclusion must not creep back in as a premise (§11.1 rule 7).
+  assert.equal(data.vehicle?.vin, SIMULATOR_VIN);
+  assert.equal(data.vehicle?.brand, undefined);
+});
+
+test("the read model names the car the resolution concluded", async () => {
+  const summary = runtime.session.current();
+  assert.ok(summary, "the session has a summary");
+  assert.equal(summary.vehicle?.vehicleId, "virtual-vehicle");
+  assert.equal(summary.vehicle?.brand, "Virtual");
+  assert.match(summary.vehicle?.description ?? "", /Virtual Simulator vehicle/);
+});

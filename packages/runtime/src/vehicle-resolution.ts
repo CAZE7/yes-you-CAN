@@ -15,12 +15,18 @@
  */
 
 import type { ResolveVehicleHints } from "@vdp/application";
-import type { DtcVehicleContext } from "@vdp/core";
+import type {
+  DtcVehicleContext,
+  VehicleDetermination,
+  VehicleDeterminationEvidence,
+} from "@vdp/core";
 import type {
   EcuSummary,
   IdentificationFactRef,
   ResolveVehicleQuery,
   VehicleCandidateRef,
+  VehicleEvidenceRef,
+  VehicleResolutionRef,
   VehicleSummary,
 } from "@vdp/domain";
 
@@ -132,4 +138,66 @@ export function dtcVehicleContextOf(
   if (candidate.engineIds.length > 0) context.engineIds = [...candidate.engineIds];
   if (candidate.gearboxIds.length > 0) context.gearboxIds = [...candidate.gearboxIds];
   return context;
+}
+
+/** Copy one evidence entry into the shape a session stores (§11.1 rule 2). */
+function evidenceOf(entries: readonly VehicleEvidenceRef[]): VehicleDeterminationEvidence[] {
+  return entries.map((entry) => ({
+    kind: entry.kind,
+    observed: entry.observed,
+    expected: entry.expected,
+    weight: entry.weight,
+    reason: entry.reason,
+  }));
+}
+
+/**
+ * The resolution as a session record (ADR 0026).
+ *
+ * Only what the resolver actually produced is carried over: the winner with its
+ * evidence, the runner-ups reduced to id and score, the provider's own notes, and
+ * — for an unresolved car — the reason the provider gave. Nothing is invented here,
+ * because a session that claims a car it could not determine is exactly the failure
+ * mode §11.1 rule 3 exists to prevent. `resolvedAt` is added by the session, which
+ * owns the timestamp of the record.
+ */
+export function vehicleDeterminationOf(
+  resolution: VehicleResolutionRef,
+): Omit<VehicleDetermination, "resolvedAt"> {
+  const best = resolution.best;
+  const reason = best === undefined ? resolution.notes[0] : undefined;
+  return {
+    ...(best === undefined
+      ? {}
+      : {
+          match: {
+            oem: best.oem,
+            packageVersion: best.packageVersion,
+            vehicleId: best.vehicleId,
+            brand: best.brand,
+            model: best.model,
+            ...(best.platform !== undefined ? { platform: best.platform } : {}),
+            score: best.score,
+            trust: best.trust,
+            ...(best.provenanceType !== undefined ? { provenanceType: best.provenanceType } : {}),
+            engineIds: [...best.engineIds],
+            gearboxIds: [...best.gearboxIds],
+            ecus: {
+              expected: best.expectedEcus,
+              matched: best.matchedEcus,
+              missing: [...best.missingEcus],
+            },
+            evidence: evidenceOf(best.evidence),
+            conflicts: evidenceOf(best.conflicts),
+          },
+        }),
+    ...(reason === undefined ? {} : { reason }),
+    notes: [...resolution.notes],
+    unexplained: [...resolution.unexplained],
+    alternatives: resolution.candidates.slice(1).map((candidate) => ({
+      vehicleId: candidate.vehicleId,
+      oem: candidate.oem,
+      score: candidate.score,
+    })),
+  };
 }

@@ -9,7 +9,9 @@
 import type { DtcRecord } from "@vdp/protocols-uds";
 import { createId, nowIso } from "@vdp/shared";
 import type { AdapterInfo, TransportInfo } from "@vdp/transport-can";
+import type { EnrichedDtc } from "../dtc/scanner.js";
 import type { VehicleIdentity } from "../vehicle/identity.js";
+import type { VehicleDetermination } from "./types.js";
 
 export const SESSION_SCHEMA_VERSION = 1;
 
@@ -88,6 +90,34 @@ export interface MeasurementReference {
   samples: number;
 }
 
+/**
+ * What one fault scan stored, per code.
+ *
+ * The protocol fields are always present; the enrichment the DTC system adds
+ * (AGENTS 20) is optional, because a stored file is a file another build wrote and
+ * nothing in it may become a requirement old sessions cannot meet (AGENTS 34.14).
+ * `firstSeenInThisScan` is deliberately absent: that flag answers "new in the scan
+ * that is running", which is a property of a live scan. Inside a stored snapshot it
+ * would read as "new in this session" after a reload, so it never reaches the file
+ * and stays only on the read model the workbench renders.
+ */
+export type StoredDtcRecord = DtcRecord &
+  Partial<Omit<EnrichedDtc, keyof DtcRecord | "firstSeenInThisScan">>;
+
+/**
+ * What a snapshot write accepts: the stored shape plus the live-scan mark, which
+ * {@link VehicleSession.addDtcSnapshot} drops.
+ */
+export type ScannedDtcRecord = StoredDtcRecord & Pick<EnrichedDtc, "firstSeenInThisScan">;
+
+/** One fault-memory read, kept as the scan produced it (AGENTS 20). */
+export interface DtcSnapshot {
+  id: string;
+  takenAt: string;
+  label?: string;
+  records: StoredDtcRecord[];
+}
+
 export interface VehicleSessionData {
   schemaVersion: number;
   id: string;
@@ -95,11 +125,17 @@ export interface VehicleSessionData {
   endedAt?: string;
   title?: string;
   vehicle?: VehicleIdentity;
+  /**
+   * Which vehicle this session was determined to be, with the evidence that
+   * decided it (AGENTS 11.1). Written once per resolution, by the runtime — the
+   * only place that holds both the resolution and the session.
+   */
+  determination?: VehicleDetermination;
   adapter: AdapterInfo;
   transport: TransportInfo;
   definitionPackage?: { oem: string; version: string };
   ecus: EcuSession[];
-  dtcSnapshots: Array<{ id: string; takenAt: string; label?: string; records: DtcRecord[] }>;
+  dtcSnapshots: DtcSnapshot[];
   measurements: MeasurementReference[];
   actions: DiagnosticAction[];
   notes: SessionNote[];
@@ -254,18 +290,44 @@ export class VehicleSession {
     return note;
   }
 
-  addDtcSnapshot(
-    records: DtcRecord[],
-    label?: string,
-  ): { id: string; takenAt: string; records: DtcRecord[] } {
-    const snapshot = {
+  addDtcSnapshot(records: readonly ScannedDtcRecord[], label?: string): DtcSnapshot {
+    const snapshot: DtcSnapshot = {
       id: createId("dtc"),
       takenAt: nowIso(),
       ...(label ? { label } : {}),
-      records,
+      // Copy per record and drop the live-scan mark here, rather than storing it
+      // and hoping no reader mistakes it for a session-scoped fact. A copy is also
+      // what keeps a future `EnrichedDtc` field from being forgotten in a list.
+      records: records.map((record) => {
+        const stored = { ...record };
+        delete stored.firstSeenInThisScan;
+        return stored;
+      }),
     };
     this.data.dtcSnapshots.push(snapshot);
     return snapshot;
+  }
+
+  /**
+   * Store which vehicle this session was determined to be (AGENTS 11.1).
+   *
+   * Last resolution wins: an operator who supplies a part number has the session
+   * re-resolve, and the stored record then describes that attempt — `resolvedAt`
+   * is what makes the two distinguishable later.
+   *
+   * {@link VehicleIdentity} is deliberately left alone. The identity holds what was
+   * *read* (VIN, DIDs, the ECUs that answered); the determination holds what was
+   * *concluded*. Merging the conclusion into the measurement would let the next
+   * resolution treat its own answer as declared evidence and confirm itself — the
+   * reader that wants the whole picture composes both (see `toVehicleSummary`).
+   */
+  recordDetermination(
+    determination: Omit<VehicleDetermination, "resolvedAt">,
+    at: string = nowIso(),
+  ): VehicleDetermination {
+    const stored: VehicleDetermination = { resolvedAt: at, ...determination };
+    this.data.determination = stored;
+    return stored;
   }
 
   close(): void {

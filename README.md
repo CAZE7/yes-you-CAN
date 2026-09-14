@@ -3,7 +3,7 @@
 [![CI](https://github.com/CAZE7/yes-you-CAN/actions/workflows/ci.yml/badge.svg)](https://github.com/CAZE7/yes-you-CAN/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](./package.json)
-[![Tests](https://img.shields.io/badge/tests-1300%20passed-brightgreen)](#tests)
+[![Tests](https://img.shields.io/badge/tests-1404%20passed-brightgreen)](#tests)
 [![TypeScript](https://img.shields.io/badge/TypeScript-7%20%2F%20tsgo-blue)](./tsconfig.base.json)
 
 Fahrzeugdiagnose-Plattform: CAN und DoIP lesen, Steuergeräte identifizieren, das
@@ -99,7 +99,7 @@ Verwechslung, gegen die die Fahrzeugachse existiert.
 | `@vdp/adapters-*` | ELM327, CANable (slcan), SocketCAN, generisch |
 | `@vdp/storage` | Session-Repository, Migrationen, ZIP-Export |
 | `@vdp/reports` | HTML- und PDF-Report (eigener PDF-Writer) |
-| `@vdp/ai` | austauschbare Analyse-Provider mit VIN-Redaktion |
+| `@vdp/ai` | austauschbare Analyse-Provider mit VIN-Redaktion; der Input trägt Fahrzeugbestimmung und Variantenwissen (§22, ADR 0026) |
 | `@vdp/simulators` | virtuelles Fahrzeug + virtuelles CAN-Netz |
 | `@vdp/trace-analyzer` | Offline-Trace-Analyse |
 | `@vdp/definition-importer` | DBC/CSV/JSON → validiertes Definition-Paket |
@@ -173,12 +173,17 @@ Zeitraum aus, Doppelklick zeigt die gesamte Aufnahme.
 
 ## Tests
 
-1300 Tests in ~25 s, Vitest 5 mit Projektkonfiguration (ADR 0010, Schritt 1 —
+1404 Tests in ~27 s, Vitest 5 mit Projektkonfiguration (ADR 0010, Schritt 1 —
 ersetzt ADR 0008). Unit-Specs liegen co-lokatiert neben dem Code
 (`src/*.spec.ts`); Property-Tests laufen mit fast-check, Coverage-Gates mit
 `npm run test:coverage` (global 90 % lines / 80 % branches als
-Projekt-Durchschnitt, Ist 97,7 Zeilen / 89,1 Zweige; per-file-Gates für
-`shared`/`core`/`protocols`/`adapters`/`transport`/`storage`/`charts`/`reports`/`ai`/`definitions`;
+Projekt-Durchschnitt, Ist 96,3 Zeilen / 88,0 Zweige — seit ADR 0027 wird die ganze
+Fläche gemessen: `packages/**/src`, `apps/web/src/**` und `tools/**`, weil die
+Workbench-Schicht vorher in keiner Zahl vorkam; per-file-Gates für
+`shared`/`core`/`protocols`/`adapters`/`transport`/`storage`/`charts`/`reports`/`ai` (95/85 seit 2026-09-14)/`definitions`,
+und seit ADR 0027 eine **Bodenschwelle** 69/54 für `apps/web/src/**`; `tools/**` ist
+gemessen, aber ohne Gate (dort steht `flaky-reporter.ts` bei 0 %, weil kein CI-Job ihn
+aufrufen kann — 0.E E10);
 Hardware-Module `serial`/`binding` ausgenommen — maßgeblich ist
 `vitest.config.ts`, ADR 0017, 0020, 0022 und 0023). Test-Zeit ist ein Budget: Discovery läuft in Tests mit explizitem
 `windowMs`/`probeDelayMs`, und statt fester Sleeps wird auf Bedingungen
@@ -214,7 +219,7 @@ nicht — der laufende Test schon.
 | `POST /api/vehicle/resolve` | Fahrzeug bestimmen: Kandidaten mit Belegen und Widersprüchen (read-only) |
 | `POST /api/dtc/scan` | Fehlerspeicher lesen |
 | `POST /api/live/start` \| `/stop` | Live-Messung |
-| `POST /api/analyze` | Analyse (lokaler Regel-Provider) |
+| `POST /api/analyze` | Analyse (lokaler Regel-Provider) — nennt, über welches Auto sie spricht |
 | `POST /api/session/save` | Session persistieren |
 | `GET /api/sessions` | gespeicherte Sessions |
 | `GET /api/export/*` | CSV, JSON, HTML, PDF |

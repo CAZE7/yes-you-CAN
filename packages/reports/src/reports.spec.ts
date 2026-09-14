@@ -1,5 +1,10 @@
 import assert from "node:assert/strict";
-import { type VehicleSessionData, createSession } from "@vdp/core";
+import {
+  type DtcVariantKnowledge,
+  type VehicleDetermination,
+  type VehicleSessionData,
+  createSession,
+} from "@vdp/core";
 import type { AdapterInfo, TransportInfo } from "@vdp/transport-can";
 import { test } from "vitest";
 import { PdfDocument, buildReport, renderHtml, renderPdf, sanitize } from "./index.js";
@@ -288,4 +293,350 @@ test("long reports paginate instead of overflowing the page", () => {
   const text = new TextDecoder("latin1").decode(bytes);
   const count = Number(/\/Count (\d+)/.exec(text)?.[1] ?? "0");
   assert.ok(count >= 2, `expected pagination, got ${count} page(s)`);
+});
+
+/**
+ * Variant knowledge in the report (AGENTS 20.1, 21, 23, ADR 0026).
+ *
+ * The report used to print `code (ecu): inspect before further use` while the
+ * package next to it documented the cause, its order and the window it is measurable
+ * in — because the call site dropped the hint and no reader looked at the scan record
+ * at all. These tests pin both halves, and pin the difference between "nothing
+ * documented" and "not looked up".
+ */
+
+const BITS = {
+  testFailed: true,
+  testFailedThisOperationCycle: true,
+  pendingDtc: false,
+  confirmedDtc: true,
+  testNotCompletedSinceLastClear: false,
+  testFailedSinceLastClear: true,
+  testNotCompletedThisOperationCycle: false,
+  warningIndicatorRequested: false,
+};
+
+function sessionWithKnowledge(
+  knowledge: DtcVariantKnowledge | undefined,
+  code = "P0420",
+  ecu = "Engine Control Unit",
+): VehicleSessionData {
+  const session = sampleSession();
+  session.dtcSnapshots.push({
+    id: "dtc_1",
+    takenAt: "2026-09-10T12:00:00.000Z",
+    label: "scan",
+    records: [
+      {
+        code,
+        raw: "042000",
+        failureType: "00",
+        status: 0x24,
+        statusBits: BITS,
+        severity: "major",
+        description: "Catalyst efficiency below threshold",
+        ecuName: ecu,
+        ecuId: "ecu_engine",
+        ...(knowledge === undefined ? {} : { knowledge }),
+      },
+    ],
+  });
+  return session;
+}
+
+type KnowledgePattern = DtcVariantKnowledge["patterns"][number];
+type KnowledgeCheck = KnowledgePattern["checks"][number];
+
+const LOAD_CHECK: KnowledgeCheck = {
+  signal: "engine.load",
+  signalName: "Engine load",
+  expect: "steady",
+  measurable: false,
+};
+
+const CAT_PATTERN: KnowledgePattern = {
+  id: "aged-catalyst",
+  name: "Ageing substrate loses storage capacity",
+  explanation: "conversion drops at constant load while the trim stays inside limits",
+  likelihood: "common",
+  repair: "replace the catalytic converter",
+  scope: "vehicle-engine",
+  checks: [
+    {
+      signal: "cat.temp",
+      signalName: "Catalyst temperature",
+      expect: "above 600 while driving",
+      min: 600,
+      windowMs: 5000,
+      measurable: true,
+    },
+    LOAD_CHECK,
+  ],
+};
+
+const CAT_KNOWLEDGE: DtcVariantKnowledge = {
+  scope: "vehicle-engine",
+  vehicleId: "virtual-vehicle",
+  conditions: "after three warm drives",
+  patterns: [CAT_PATTERN],
+  provenanceType: "own",
+  provenanceSource: "simulator package",
+  notes: ["no fuel-trim signal is defined in this package"],
+};
+
+test("the variant knowledge section quotes what the scan record carried", () => {
+  const document = buildReport({
+    session: sessionWithKnowledge(CAT_KNOWLEDGE),
+    dtcs: [{ code: "P0420", severity: "major", ecu: "Engine Control Unit" }],
+  });
+  const section = document.sections.find((entry) => entry.heading === "Variant knowledge");
+  assert.ok(section, "the section is part of the report order");
+  const row = section.rows.find((entry) => entry.label === "P0420 · Engine Control Unit");
+  assert.ok(row, JSON.stringify(section.rows));
+  assert.match(row.value, /documented for this vehicle's engine/);
+  assert.match(row.value, /sets when: after three warm drives/);
+  assert.match(row.value, /documented cause \(common\): Ageing substrate loses storage capacity/);
+  assert.match(row.value, /conversion drops at constant load/);
+  assert.match(
+    row.value,
+    /measure first: Catalyst temperature · above 600 while driving · ≥ 600 · 5 s/,
+  );
+  assert.match(row.value, /repair hint \(unverified\): replace the catalytic converter/);
+  assert.match(row.value, /source: simulator package/);
+  assert.match(row.value, /open: no fuel-trim signal is defined in this package/);
+  assert.equal(
+    section.rows.find((entry) => entry.label === "Documented for")?.value,
+    "1 of 1 listed code(s); codes without a row here have no statement in this package",
+  );
+});
+
+test("a pattern without an evaluable check says so instead of pretending a measurement", () => {
+  const manual: DtcVariantKnowledge = {
+    scope: "vehicle-gearbox",
+    patterns: [{ ...CAT_PATTERN, checks: [LOAD_CHECK] }],
+    notes: [],
+  };
+  const document = buildReport({
+    session: sessionWithKnowledge(manual),
+    dtcs: [{ code: "P0420", severity: "major", ecu: "Engine Control Unit" }],
+  });
+  const section = document.sections.find((entry) => entry.heading === "Variant knowledge");
+  assert.match(section?.rows[1]?.value ?? "", /no numeric window — judge by hand: Engine load/);
+
+  const blind: DtcVariantKnowledge = {
+    scope: "vehicle",
+    patterns: [{ ...CAT_PATTERN, checks: [] }],
+    notes: [],
+  };
+  const blindSection = buildReport({
+    session: sessionWithKnowledge(blind),
+    dtcs: [{ code: "P0420", severity: "major", ecu: "Engine Control Unit" }],
+  }).sections.find((entry) => entry.heading === "Variant knowledge");
+  assert.match(
+    blindSection?.rows[1]?.value ?? "",
+    /no measurement this package can evaluate for it/,
+  );
+});
+
+test("manufacturer-wide wording is labelled as such, not as variant knowledge", () => {
+  const packageWide: DtcVariantKnowledge = {
+    scope: "package",
+    patterns: [],
+    notes: ["nothing variant-specific documented"],
+  };
+  const document = buildReport({
+    session: sessionWithKnowledge(packageWide, "U0121"),
+    dtcs: [{ code: "U0121", severity: "critical", ecu: "Engine Control Unit" }],
+  });
+  const section = document.sections.find((entry) => entry.heading === "Variant knowledge");
+  const row = section?.rows.find((entry) => entry.label.startsWith("U0121"));
+  assert.ok(row);
+  assert.match(row.value, /manufacturer-wide wording only/);
+  assert.match(row.value, /open: nothing variant-specific documented/);
+  assert.equal(
+    document.sections.find((entry) => entry.heading === "DTC summary")?.table?.rows[0]?.[4],
+    "package",
+    "the summary table names the scope of the wording it shows",
+  );
+});
+
+test("the empty states stay distinguishable", () => {
+  const rowsOf = (document: ReturnType<typeof buildReport>) =>
+    document.sections.find((entry) => entry.heading === "Variant knowledge")?.rows ?? [];
+
+  assert.match(
+    rowsOf(buildReport({ session: sampleSession() }))[0]?.value ?? "",
+    /this report lists no fault codes/,
+  );
+  assert.match(
+    rowsOf(
+      buildReport({
+        session: sampleSession(),
+        dtcs: [{ code: "P0420", severity: "major", ecu: "Engine" }],
+      }),
+    )[0]?.value ?? "",
+    /no vehicle was determined, so only manufacturer-wide wording is available/,
+  );
+
+  const resolved = sessionWithKnowledge(undefined);
+  resolved.determination = {
+    resolvedAt: "2026-09-10T11:00:00.000Z",
+    match: {
+      oem: "simulator",
+      packageVersion: "1.0.0",
+      vehicleId: "virtual-vehicle",
+      brand: "Virtual",
+      model: "Simulator vehicle",
+      score: 1,
+      trust: 1,
+      engineIds: [],
+      gearboxIds: [],
+      ecus: { expected: 3, matched: 3, missing: [] },
+      evidence: [],
+      conflicts: [],
+    },
+    notes: [],
+    unexplained: [],
+    alternatives: [],
+  };
+  assert.match(
+    rowsOf(
+      buildReport({
+        session: resolved,
+        dtcs: [{ code: "P0420", severity: "major", ecu: "Engine" }],
+      }),
+    )[0]?.value ?? "",
+    /the resolved vehicle documents nothing about these codes/,
+  );
+});
+
+test("the vehicle section says what was determined, and how far the evidence reached", () => {
+  const determination: VehicleDetermination = {
+    resolvedAt: "2026-09-10T11:00:00.000Z",
+    match: {
+      oem: "simulator",
+      packageVersion: "1.0.0",
+      vehicleId: "virtual-vehicle",
+      brand: "Virtual",
+      model: "Simulator vehicle",
+      platform: "SIM-1",
+      score: 0.8,
+      trust: 0.6,
+      provenanceType: "reverse-engineered",
+      engineIds: ["sim-petrol"],
+      gearboxIds: [],
+      ecus: { expected: 3, matched: 2, missing: ["gearbox"] },
+      evidence: [
+        {
+          kind: "part-number",
+          observed: "A",
+          expected: "A",
+          weight: 4,
+          reason: "part number matches",
+        },
+      ],
+      conflicts: [
+        {
+          kind: "vin-wmi",
+          observed: "WVW",
+          expected: "1HG",
+          weight: 3,
+          reason: "another manufacturer",
+        },
+      ],
+    },
+    notes: [],
+    unexplained: ["0x77b answered no definition"],
+    alternatives: [{ vehicleId: "other", oem: "simulator", score: 0.3 }],
+  };
+  const session = sampleSession();
+  session.determination = determination;
+  const rows = buildReport({ session }).sections.find((e) => e.heading === "Vehicle")?.rows ?? [];
+  const value = (label: string) => rows.find((row) => row.label === label)?.value ?? "";
+  assert.match(value("Vehicle determination"), /Virtual Simulator vehicle — virtual-vehicle/);
+  assert.match(value("Evidence"), /80 % of the evaluated criteria confirmed/);
+  assert.match(value("Evidence"), /1 contradiction\(s\) kept visible: vin-wmi/);
+  assert.match(value("Criteria"), /part-number \(4\)/);
+  assert.match(value("Data trust"), /60 % · provenance reverse-engineered/);
+  assert.match(value("Powertrain"), /engine sim-petrol/);
+  assert.match(value("ECU coverage"), /2 of 3 declared ECUs answered; missing: gearbox/);
+  assert.match(value("Other candidates"), /other \(30 %\)/);
+  assert.equal(value("Resolved at"), "2026-09-10T11:00:00.000Z");
+
+  const unresolved = sampleSession();
+  unresolved.determination = {
+    resolvedAt: "2026-09-10T11:00:00.000Z",
+    reason: "no package declares vehicle definitions",
+    notes: [],
+    unexplained: [],
+    alternatives: [],
+  };
+  assert.match(
+    buildReport({ session: unresolved }).sections.find((e) => e.heading === "Vehicle")?.rows[7]
+      ?.value ?? "",
+    /unresolved: no package declares vehicle definitions/,
+  );
+  assert.match(
+    buildReport({ session: sampleSession() }).sections.find((e) => e.heading === "Vehicle")?.rows[7]
+      ?.value ?? "",
+    /not resolved in this session/,
+    "never asked and asked-without-result are different statements",
+  );
+});
+
+test("recommendations quote the documented step, and keep the generic line where nothing is documented", () => {
+  const values = (session: VehicleSessionData, hint?: string) =>
+    buildReport({
+      session,
+      dtcs: [
+        {
+          code: "P0420",
+          severity: "critical",
+          ecu: "Engine Control Unit",
+          ...(hint === undefined ? {} : { hint }),
+        },
+      ],
+    })
+      .sections.find((entry) => entry.heading === "Recommendations")
+      ?.rows.map((row) => row.value) ?? [];
+
+  const both = values(sessionWithKnowledge(CAT_KNOWLEDGE), "Rule out leaks first.");
+  assert.match(both[0] ?? "", /Rule out leaks first\./);
+  assert.match(both[0] ?? "", /measure first: Catalyst temperature/);
+
+  const onlyPattern = values(
+    sessionWithKnowledge({
+      ...CAT_KNOWLEDGE,
+      patterns: [{ ...CAT_PATTERN, checks: [] }],
+    }),
+  );
+  assert.match(onlyPattern[0] ?? "", /before measuring: Ageing substrate loses storage capacity/);
+  assert.ok(
+    !(onlyPattern[0] ?? "").includes("inspect before further use"),
+    "a documented cause is not the generic line",
+  );
+
+  const nothing = values(sessionWithKnowledge(undefined));
+  assert.match(nothing[0] ?? "", /inspect before further use/);
+});
+
+test("the PDF fold covers the characters quoted text actually contains (ADR 0021)", () => {
+  // Measured before these cases existed: a report line "45…55 km/h — Kühlung" was
+  // written as "45?55 km/h ? Kühlung", and every absent value printed "?" instead of
+  // the em dash the HTML shows.
+  assert.equal(sanitize("…"), "...");
+  assert.equal(sanitize("—"), "-");
+  assert.equal(sanitize("–"), "-");
+  assert.equal(sanitize("−"), "-");
+  assert.equal(sanitize("45…55 km/h · ≥ 60 °C — Kühlung"), "45...55 km/h · >= 60 °C - Kühlung");
+
+  const bytes = renderPdf(
+    buildReport({
+      session: sessionWithKnowledge(CAT_KNOWLEDGE),
+      dtcs: [{ code: "P0420", severity: "critical", ecu: "Engine Control Unit" }],
+    }),
+  );
+  const text = asLatin1(bytes);
+  assert.ok(text.includes("measure first: Catalyst temperature"), "the row reaches the PDF");
+  assert.ok(!text.includes("?"), "no question mark survives in a report of this data");
 });

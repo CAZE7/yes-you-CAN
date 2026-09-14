@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { AdapterUnsupportedError, fromHex, toHex } from "@vdp/shared";
 import { createFrame } from "@vdp/transport-can";
-import { test } from "vitest";
+import { describe, test } from "vitest";
 import {
   Elm327Adapter,
   MemoryByteStream,
+  assertCanSupport,
   formatIdentifier,
   formatSendPayload,
   isElmError,
@@ -145,4 +146,119 @@ test("a missing prompt surfaces as a transport timeout", async () => {
   stream.responder = () => null; // never answers
   const adapter = new Elm327Adapter({ stream, commandTimeoutMs: 30 });
   await assert.rejects(adapter.open(), /timed out/);
+});
+
+/**
+ * The two thin protocol helpers (0.E E16).
+ *
+ * `parseFrameLine` is a chain of guards, and every guard that never fires in a test is
+ * a line that can be broken without anyone noticing — the frame is either parsed or it
+ * is not, and "not" is five different answers. `MemoryByteStream` is the double every
+ * adapter test runs on, so its own edges (writing while closed, a responder that stays
+ * silent, the unsubscribe function) belong in a test rather than in the middle of an
+ * adapter scenario.
+ */
+
+describe("parseFrameLine guard chain", () => {
+  test("each rejection says which shape it rejected, by being the only thing that fails", () => {
+    const cases: Array<[string, string]> = [
+      ["", "no tokens at all"],
+      ["7E8", "one token is not a frame"],
+      ["XYZ 02 3E 80", "a non-hex token is not a frame"],
+      ["7E88 02 3E 80", "four identifier digits are neither 11-bit nor 29-bit"],
+      ["7E8 2 3E 80", "the length field must be two hex digits"],
+      ["7E8 08 3E", "fewer bytes than the declared length are a truncated frame"],
+    ];
+    for (const [line, why] of cases) {
+      assert.equal(
+        parseFrameLine(line, "vcan0"),
+        null,
+        `${why} — line was ${JSON.stringify(line)}`,
+      );
+    }
+  });
+
+  test("both identifier widths and an explicit timestamp reach the frame", () => {
+    const std = parseFrameLine("7E8 03 41 0C 1F", "vcan0");
+    assert.equal(std?.id, 0x7e8);
+    assert.equal(std?.extended, false);
+    assert.equal(std?.dlc, 3);
+    assert.equal(std?.payload.length, 3);
+
+    const ext = parseFrameLine("18DAF110 02 3E 80", "vcan0", 1_234);
+    assert.equal(ext?.id, 0x18daf110);
+    assert.equal(ext?.extended, true);
+    assert.equal(ext?.timestamp, 1_234, "a caller that names the instant gets it back verbatim");
+
+    const now = parseFrameLine("7E8 01 00", "vcan0");
+    assert.ok(typeof now?.timestamp === "number" && now.timestamp > 0, "default timestamp is real");
+  });
+
+  test("a frame that declares no data is valid, not truncated", () => {
+    const empty = parseFrameLine("7E8 00", "vcan0");
+    assert.ok(empty, "DLC 0 exists in CAN");
+    assert.equal(empty.payload.length, 0);
+  });
+});
+
+describe("isElmError", () => {
+  test("empty and unrelated lines are not errors", () => {
+    assert.equal(isElmError(""), null, "whitespace-only noise is dropped, not flagged");
+    assert.equal(isElmError("   "), null);
+    assert.equal(isElmError("BUS INIT: ...OK"), null);
+  });
+
+  test("exact matches and prefixes are both recognised, lower case included", () => {
+    assert.equal(isElmError("STOPPED"), "STOPPED");
+    assert.equal(isElmError("?"), "?");
+    assert.equal(isElmError(" unable to connect "), "UNABLE TO CONNECT");
+    // The prefix arm matters: the device appends a reason to the short code.
+    assert.equal(isElmError("<DATA ERROR: bad checksum"), "<DATA ERROR");
+    assert.equal(isElmError("FB ERROR from bus"), "FB ERROR");
+  });
+});
+
+describe("assertCanSupport", () => {
+  test("CAN-FD is refused by name, and the refusal is typed", () => {
+    assert.throws(() => assertCanSupport(true), AdapterUnsupportedError);
+    assert.equal(assertCanSupport(false), undefined, "classical CAN is supported");
+  });
+});
+
+describe("MemoryByteStream edges", () => {
+  test("isOpen and describe report the state the tests drive", async () => {
+    const stream = new MemoryByteStream();
+    assert.equal(stream.isOpen(), false);
+    stream.open();
+    assert.equal(stream.isOpen(), true);
+    assert.equal(stream.describe(), "MemoryByteStream");
+    await stream.close();
+    assert.equal(stream.isOpen(), false, "a closed stream says so");
+  });
+
+  test("writing into a closed stream fails, but the bytes are still on record", async () => {
+    const stream = new MemoryByteStream();
+    await assert.rejects(() => stream.write("ATZ\r"), /stream is closed/);
+    assert.deepEqual(stream.written, ["ATZ\r"], "nothing vanishes between the push and the throw");
+  });
+
+  test("a responder that says nothing stays silent, and unloading stops delivery", async () => {
+    const stream = new MemoryByteStream();
+    stream.open();
+    const seen: string[] = [];
+    const unsubscribe = stream.onData((chunk) => seen.push(chunk));
+    stream.responder = () => null;
+    await stream.write("ATRV\r");
+    assert.deepEqual(seen, [], "no canned answer means no answer, not an empty one");
+
+    stream.responder = (command) => (command === "ATZ\r" ? "> " : null);
+    await stream.write("ATZ\r");
+    assert.deepEqual(seen, ["> "]);
+    unsubscribe();
+    await stream.write("ATZ\r");
+    assert.equal(seen.length, 1, "the subscription is gone");
+
+    await stream.close();
+    assert.equal(stream.isOpen(), false);
+  });
 });

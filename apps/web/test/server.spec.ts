@@ -264,15 +264,38 @@ test("analysis returns a labelled result from the local provider", async () => {
     const analysis = result.body as {
       provider: string;
       source: string;
-      findings: unknown[];
+      confidence: number;
+      findings: Array<{ id: string; detail: string }>;
       recommendations: string[];
       summary: string;
+      warnings?: string[];
     };
     assert.equal(analysis.provider, "heuristic");
     assert.equal(analysis.source, "heuristic");
     assert.ok(analysis.findings.length > 0);
     assert.ok(analysis.recommendations.length > 0);
     assert.ok(analysis.summary.length > 0);
+
+    // The point of ADR 0026 on this path: the analysis knows which car it is
+    // answering about, including which definition the session matched.
+    assert.match(analysis.summary, /on Virtual Simulator vehicle 2003 \(virtual-vehicle\)/);
+    assert.equal(analysis.confidence, 0.4);
+    assert.deepEqual(analysis.warnings, [
+      "Heuristic analysis is rule based — it is a hint, not a diagnosis.",
+    ]);
+
+    // And it says which of its sentences the variant documents: a measuring step the
+    // package actually defines, plus the label for wording that is only manufacturer-wide.
+    const withWindow = analysis.recommendations.filter((entry) =>
+      /measure first: .* · \d+(\.\d+)? s$/.test(entry),
+    );
+    assert.ok(withWindow.length > 0, analysis.recommendations.join(" | "));
+    const undocumented = analysis.findings.find((finding) => finding.id === "dtc-U0121");
+    assert.match(undocumented?.detail ?? "", /manufacturer-wide wording only/);
+
+    // A VIN never rides along to a provider (AGENTS 27) — this object may be posted
+    // to a model gateway by configuration alone.
+    assert.ok(!JSON.stringify(analysis).includes("1HGCM82633A004352"));
   });
 });
 

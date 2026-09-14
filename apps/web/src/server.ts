@@ -369,11 +369,15 @@ export class WebServer {
       const state = this.backend.state();
       const document = buildReport({
         session: this.backend.sessionData(),
+        // `hint` is the documented next step from the definition package; dropping
+        // it here is what made every recommendation fall back to the generic line
+        // while the fault list next to it carried the advice (ADR 0026).
         dtcs: state.dtcs.map((dtc) => ({
           code: dtc.code,
           description: dtc.description,
           severity: dtc.severity,
           ecu: dtc.ecu,
+          ...(dtc.hint !== undefined ? { hint: dtc.hint } : {}),
         })),
         statistics: state.statistics,
         anomalies: state.anomalies,

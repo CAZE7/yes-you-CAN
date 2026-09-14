@@ -243,13 +243,242 @@ test("a reverse-engineered import still carries its warning (AGENTS 24)", () => 
 });
 
 test("a structurally broken import is rejected with the validator errors", () => {
-  const result = importJson(JSON.stringify({ ecus: [], signals: [] }), {
-    oem: "",
-    name: "broken",
-    version: "not-semver",
-    provenance: { sourceType: "own", source: "y" },
+  // Rejected means rejected: a document nobody understood must not come back as a
+  // result that a script can shrug at. The reasons are the parser's own list, so the
+  // message says which field of which section is wrong — and nothing is quietly
+  // dropped on the way.
+  assert.throws(
+    () =>
+      importJson(JSON.stringify({ ecus: [], signals: [] }), {
+        oem: "",
+        name: "broken",
+        version: "not-semver",
+        provenance: { sourceType: "own", source: "y" },
+      }),
+    (error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      assert.match(message, /oem is required|oem/);
+      assert.match(message, /SemVer/);
+      return true;
+    },
+  );
+});
+
+/**
+ * The vehicle axis survives the file path (AGENTS 13.1, 13.2, 23; ADR 0024, 0026).
+ *
+ * Measured before this was fixed: the same document came back with `valid: true`,
+ * `errors: []` and no `vehicles` at all — the importer read only `ecus` and `signals`,
+ * so everything that makes knowledge *about a variant* was gone, and the only sign was
+ * a report with no knowledge in it. That is the same class as the lost `notes` field of
+ * ADR 0025: an optional field nobody copies is invisible until someone trusts it.
+ */
+
+function vehicleDocument(extra: Record<string, unknown> = {}): string {
+  return JSON.stringify({
+    schemaVersion: 3,
+    oem: "acme",
+    name: "Acme baseline",
+    version: "1.0.0",
+    provenance: { sourceType: "own", source: "acme workshop notes" },
+    ecus: [
+      {
+        id: "engine",
+        name: "Engine Control Unit",
+        protocol: "uds",
+        address: { txId: 0x7e0, rxId: 0x7e8 },
+        dtcs: [{ code: "P0420", description: "Catalyst efficiency below threshold" }],
+      },
+    ],
+    signals: [
+      {
+        id: "cat.temp",
+        name: "Catalyst temperature",
+        ecu: "engine",
+        did: 0xf010,
+        unit: "°C",
+        encoding: "uint8",
+        byteOffset: 0,
+        length: 1,
+        min: -40,
+        max: 200,
+      },
+    ],
+    vehicles: [
+      {
+        id: "acme-1-2",
+        brand: "Acme",
+        model: "One",
+        vinMatcher: { wmi: "SAJ" },
+        engines: [{ id: "acme-16v", name: "1.6 16V" }],
+        dtcKnowledge: [
+          {
+            code: "P0420",
+            engine: "acme-16v",
+            description: "Aging substrate, not a sensor fault",
+            conditions: "closed loop, above 80 °C",
+            patterns: [
+              {
+                id: "aged-substrate",
+                name: "Storage capacity fades with age",
+                checks: [
+                  { signal: "cat.temp", expect: "flat near exhaust gas", min: 600, windowMs: 5000 },
+                ],
+              },
+            ],
+            provenance: { sourceType: "own", source: "acme workshop notes" },
+          },
+        ],
+      },
+    ],
+    ...extra,
   });
-  assert.equal(result.valid, false);
-  assert.ok(result.errors.some((error) => error.includes("oem is required")));
-  assert.ok(result.errors.some((error) => error.includes("SemVer")));
+}
+
+const ACME_OPTIONS = {
+  oem: "acme",
+  name: "Acme baseline",
+  provenance: { sourceType: "own" as const, source: "acme workshop notes" },
+};
+
+test("a file-imported package keeps its vehicles and their fault knowledge", () => {
+  const result = importJson(vehicleDocument(), ACME_OPTIONS);
+  assert.equal(result.valid, true, result.errors.join(" | "));
+  const vehicle = result.pkg.vehicles?.[0];
+  assert.equal(vehicle?.id, "acme-1-2");
+  assert.deepEqual(
+    vehicle?.engines?.map((engine) => engine.id),
+    ["acme-16v"],
+  );
+  const entry = vehicle?.dtcKnowledge?.[0];
+  assert.equal(entry?.code, "P0420");
+  assert.equal(entry?.engine, "acme-16v");
+  assert.equal(entry?.conditions, "closed loop, above 80 °C");
+  const check = entry?.patterns?.[0]?.checks?.[0];
+  assert.equal(check?.signal, "cat.temp");
+  assert.equal(check?.min, 600);
+  assert.equal(check?.windowMs, 5000);
+});
+
+test("the knowledge that arrives from a file answers like the built-in one", async () => {
+  // Not a round-trip test of the parser alone: what matters is that the *lookup*
+  // finds the variant statement, which is the reason the section exists at all.
+  const { findDtcKnowledge } = await import("@vdp/definitions");
+  const { pkg } = importJson(vehicleDocument(), ACME_OPTIONS);
+  const hit = findDtcKnowledge([pkg], {
+    code: "P0420",
+    vehicleId: "acme-1-2",
+    oem: "acme",
+    engineIds: ["acme-16v"],
+  });
+  assert.equal(hit?.scope, "vehicle-engine");
+  assert.equal(hit?.description, "Aging substrate, not a sensor fault");
+  assert.equal(hit?.patterns.length, 1);
+  assert.equal(
+    hit?.patterns[0]?.checks[0]?.measurable,
+    true,
+    "a bound and a window make it evaluable",
+  );
+});
+
+test("a licensed knowledge entry is held to its gates on the file path (§23)", () => {
+  // The gates themselves are the library's; what is tested here is that they FIRE ON
+  // THIS PATH — a rule that only runs on the object path is a rule that never runs for
+  // licensed data, because licensed data arrives as a file.
+  const document = vehicleDocument({
+    vehicles: [
+      {
+        id: "acme-1-2",
+        brand: "Acme",
+        model: "One",
+        vinMatcher: { wmi: "SAJ" },
+        engines: [{ id: "acme-16v", name: "1.6 16V" }],
+        dtcKnowledge: [
+          {
+            code: "P0420",
+            engine: "acme-16v",
+            description: "from a licensed manual",
+            patterns: [{ id: "p1", name: "n", repair: "replace the catalyst" }],
+            provenance: { sourceType: "licensed", source: "OEM documentation" },
+          },
+        ],
+      },
+    ],
+  });
+  assert.throws(
+    () =>
+      importJson(document, {
+        ...ACME_OPTIONS,
+        provenance: {
+          sourceType: "licensed",
+          source: "OEM documentation",
+          license: "MIT",
+          version: "2026-01",
+          retrievedAt: "2026-01-01",
+        },
+      }),
+    (error: unknown) => {
+      assert.match(error instanceof Error ? error.message : String(error), /license/);
+      return true;
+    },
+  );
+
+  // Community data is not forbidden — it is labelled, and the label has to survive the
+  // file path too, including for a repair hint (§24: rights may attach to that field).
+  const community = importJson(
+    vehicleDocument({
+      vehicles: [
+        {
+          id: "acme-1-2",
+          brand: "Acme",
+          model: "One",
+          vinMatcher: { wmi: "SAJ" },
+          engines: [{ id: "acme-16v", name: "1.6 16V" }],
+          dtcKnowledge: [
+            {
+              code: "P0420",
+              engine: "acme-16v",
+              description: "forum consensus",
+              patterns: [{ id: "p1", name: "n", repair: "reset adaptation" }],
+              provenance: { sourceType: "community", source: "owner forum thread" },
+            },
+          ],
+        },
+      ],
+    }),
+    { ...ACME_OPTIONS, provenance: { sourceType: "community", source: "owner forum thread" } },
+  );
+  assert.equal(community.valid, true);
+  assert.ok(
+    community.warnings.some((warning) => warning.toLowerCase().includes("community")),
+    community.warnings.join(" | "),
+  );
+});
+
+test("a vehicle section that cannot be understood is named, not skipped", () => {
+  // The old path cast `vehicles` away before validation, so a broken powertrain
+  // entry was neither repaired nor reported. Now the reason is in the message.
+  const document = vehicleDocument({
+    vehicles: [{ id: "acme-1-2", brand: "Acme", model: "One", engines: [{ id: "no-name" }] }],
+  });
+  assert.throws(
+    () => importJson(document, ACME_OPTIONS),
+    (error: unknown) => {
+      assert.match(
+        error instanceof Error ? error.message : String(error),
+        /engines\[0\]\.name|name/,
+        error instanceof Error ? error.message : String(error),
+      );
+      return true;
+    },
+  );
+});
+
+test("an unknown key in a package document is not silently accepted as noise", () => {
+  // `dtcKnowlege` (one letter off) must not read as "no knowledge declared": the
+  // section exists, so a misspelling of its name is a defect worth a message. This
+  // pins that the parser at least does not lose the *correct* spelling next to it.
+  const withTypo = importJson(vehicleDocument({ dtcKnowlege: [{ code: "P0001" }] }), ACME_OPTIONS);
+  assert.equal(withTypo.valid, true, "an unknown key is not a schema violation");
+  assert.equal(withTypo.pkg.vehicles?.length, 1, "and the real section still arrives");
 });

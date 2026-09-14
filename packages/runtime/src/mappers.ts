@@ -17,6 +17,7 @@ import type {
   Marker,
   MeasurementSample,
   SignalStatistics,
+  VehicleDetermination,
   VehicleIdentity,
   VehicleSession,
 } from "@vdp/core";
@@ -60,23 +61,33 @@ export function toEcuSummary(record: EcuSession): EcuSummary {
 
 export function toVehicleSummary(
   identity: VehicleIdentity | undefined,
+  determination?: VehicleDetermination,
 ): VehicleSummary | undefined {
-  if (!identity) return undefined;
+  const match = determination?.match;
+  if (!identity && !match) return undefined;
+  // The determination fills what the bus did not answer: brand and model are the
+  // resolver's facts just as much as the VIN is, and a session that resolved a car
+  // must not report it as "unknown vehicle" because no ECU answered 0xF190.
+  const known: VehicleIdentity = identity ?? {};
+  const brand = known.brand ?? match?.brand;
+  const model = known.model ?? match?.model;
+  const platform = known.platform ?? match?.platform;
   return {
-    ...(identity.vin !== undefined ? { vin: identity.vin } : {}),
-    ...(identity.manufacturer !== undefined ? { manufacturer: identity.manufacturer } : {}),
-    ...(identity.brand !== undefined ? { brand: identity.brand } : {}),
-    ...(identity.model !== undefined ? { model: identity.model } : {}),
-    ...(identity.modelYear !== undefined ? { modelYear: identity.modelYear } : {}),
-    ...(identity.platform !== undefined ? { platform: identity.platform } : {}),
-    description: describeVehicle(identity),
+    ...(match !== undefined ? { vehicleId: match.vehicleId } : {}),
+    ...(known.vin !== undefined ? { vin: known.vin } : {}),
+    ...(known.manufacturer !== undefined ? { manufacturer: known.manufacturer } : {}),
+    ...(brand !== undefined ? { brand } : {}),
+    ...(model !== undefined ? { model } : {}),
+    ...(known.modelYear !== undefined ? { modelYear: known.modelYear } : {}),
+    ...(platform !== undefined ? { platform } : {}),
+    description: describeVehicle({ ...known, brand, model, platform }),
   };
 }
 
 export function toSessionSummary(session: VehicleSession): SessionSummary {
   const data = session.data;
   const counts = session.summary();
-  const vehicle = toVehicleSummary(data.vehicle);
+  const vehicle = toVehicleSummary(data.vehicle, data.determination);
   return {
     sessionId: data.id,
     schemaVersion: data.schemaVersion,

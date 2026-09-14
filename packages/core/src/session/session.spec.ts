@@ -226,3 +226,75 @@ describe("VehicleSession live view", () => {
     assert.equal(session.startedAt, data.startedAt);
   });
 });
+
+describe("recordDetermination", () => {
+  const match = {
+    oem: "simulator",
+    packageVersion: "1.0.0",
+    vehicleId: "virtual-vehicle",
+    brand: "Virtual",
+    model: "Simulator vehicle",
+    score: 0.75,
+    trust: 1,
+    engineIds: ["sim-petrol"],
+    gearboxIds: [],
+    ecus: { expected: 3, matched: 2, missing: ["gearbox"] },
+    evidence: [
+      {
+        kind: "part-number",
+        observed: "ENGINE-f187",
+        expected: "ENGINE-f187",
+        weight: 4,
+        reason: "part number read from the engine matches",
+      },
+    ],
+    conflicts: [],
+  };
+
+  test("stores the record, and a later resolution replaces it", () => {
+    const session = startedSession();
+    const stored = session.recordDetermination(
+      { match, notes: [], unexplained: [], alternatives: [] },
+      "2026-09-13T00:00:00.000Z",
+    );
+    assert.equal(stored.resolvedAt, "2026-09-13T00:00:00.000Z");
+    assert.equal(session.data.determination?.match?.vehicleId, "virtual-vehicle");
+
+    session.recordDetermination(
+      {
+        reason: "no package declares vehicles",
+        notes: ["no package declares vehicles"],
+        unexplained: [],
+        alternatives: [],
+      },
+      "2026-09-13T00:05:00.000Z",
+    );
+    const after = session.data.determination;
+    assert.ok(after);
+    assert.equal(after.resolvedAt, "2026-09-13T00:05:00.000Z");
+    assert.equal(after.match, undefined, "the newer attempt is what the session now says");
+    assert.equal(after.reason, "no package declares vehicles");
+  });
+
+  test("the timestamp is a real ISO instant when the caller gives none", () => {
+    const session = startedSession();
+    const stored = session.recordDetermination({ notes: [], unexplained: [], alternatives: [] });
+    assert.match(stored.resolvedAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+  });
+
+  test("a session that never resolved has no determination key", () => {
+    // Optional data stays absent rather than present-and-empty: a reader must be
+    // able to tell "never asked" from "asked and found nothing" (AGENTS 24).
+    assert.equal("determination" in createSession({ adapter, transport }), false);
+  });
+
+  test("the determination never rewrites the measured identity", () => {
+    const session = startedSession();
+    session.data.vehicle = { vin: "1HGCM82633A004352" };
+    session.recordDetermination(
+      { match, notes: [], unexplained: [], alternatives: [] },
+      "2026-09-13T00:00:00.000Z",
+    );
+    assert.deepEqual(Object.keys(session.data.vehicle ?? {}).sort(), ["vin"]);
+  });
+});

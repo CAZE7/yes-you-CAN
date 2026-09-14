@@ -68,7 +68,11 @@ import {
   toSignalStatisticsInfo,
   toVehicleSummary,
 } from "./mappers.js";
-import { dtcVehicleContextOf, resolveVehicleQuery } from "./vehicle-resolution.js";
+import {
+  dtcVehicleContextOf,
+  resolveVehicleQuery,
+  vehicleDeterminationOf,
+} from "./vehicle-resolution.js";
 
 export function unknownEcu(ecuId: string): Error {
   return new Error(`unknown ECU "${ecuId}" — connect first or check the id`);
@@ -240,7 +244,8 @@ export class VehicleService {
   }
 
   identity(): VehicleSummary | undefined {
-    return toVehicleSummary(this.engine.vehicleSession?.data.vehicle);
+    const data = this.engine.vehicleSession?.data;
+    return data === undefined ? undefined : toVehicleSummary(data.vehicle, data.determination);
   }
 
   /**
@@ -253,8 +258,13 @@ export class VehicleService {
    * hypotheses, and an empty one is a legitimate answer.
    */
   resolve(hints?: ResolveVehicleHints): VehicleResolutionRef {
+    const data = this.engine.vehicleSession?.data;
     const query = resolveVehicleQuery({
-      identity: this.identity(),
+      // Declared evidence is what the bus answered and what the operator claims —
+      // never what a previous resolution concluded. Handing the determination back
+      // in here would let a candidate confirm itself through `declared-brand` and
+      // `declared-model`, and the score would rise without one new fact on the bus.
+      identity: data === undefined ? undefined : toVehicleSummary(data.vehicle),
       ecus: this.ecus.list(),
       ...(hints !== undefined ? { hints } : {}),
     });
@@ -262,6 +272,11 @@ export class VehicleService {
     // From here on the DTC system enriches with what this variant documents
     // (AGENTS 20/23); an unresolved car keeps the manufacturer-wide wording.
     this.engine.setVehicleContext(dtcVehicleContextOf(resolution.best));
+    // The same answer is written into the session, so the stored file, the report
+    // and the analysis all know which car this was and how far the evidence
+    // reached (AGENTS 11.1, ADR 0026). An unresolved attempt is recorded too — a
+    // session that never asked is different from one that asked and found nothing.
+    this.engine.vehicleSession?.recordDetermination(vehicleDeterminationOf(resolution));
     this.log.info("vehicle resolved", {
       candidates: resolution.candidates.length,
       best: resolution.best?.vehicleId,
