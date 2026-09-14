@@ -24,9 +24,11 @@ import {
   type DefinitionPackage,
   type EcuDefinition,
 } from "@vdp/definitions";
+import { describeEvidence, isProven } from "@vdp/diagnostic-ir";
 import { type DtcRecord, decodeDtcStatus, dtcSeverity } from "@vdp/protocols-uds";
+import fc from "fast-check";
 import { describe, expect, test } from "vitest";
-import { DtcScanner, type EnrichedDtc } from "./scanner.js";
+import { DtcScanner, type EnrichedDtc, toEnrichedDtc } from "./scanner.js";
 
 function record(code: string, status = 0x08): DtcRecord {
   const statusBits = decodeDtcStatus(status);
@@ -438,21 +440,34 @@ describe("DtcScanner.compare — before/after a repair or a clear", () => {
     );
   });
 
-  test("code case is part of the key, exactly as the ECU reported it", () => {
-    // The comparison must not decide that "p0420" and "P0420" are the same fault:
-    // a record is matched with the code the ECU sent, so a scan that changed
-    // spelling shows up as removed+added, which is loud on purpose.
+  test("identity is normalised, the reported spelling survives", () => {
+    // P0 #6 (ADR 0037): one identity rule for the whole DTC path. The tracker,
+    // the knowledge lookup and the comparison all use `ECU + code` normalised —
+    // "p0420" and "P0420" are the same three bytes of ISO 14229-1, so they are
+    // the same fault. The *text* the ECU produced is what a record shows, which
+    // is where a spelling change stays visible instead of being compared away.
     const scanner = scannerOf();
     const result = scanner.compare([enriched("P0420")], [enriched("p0420")]);
+    assert.deepEqual(result.removed, []);
+    assert.deepEqual(result.added, []);
+    assert.deepEqual(result.changed, []);
+    assert.equal(result.unchanged.length, 1);
+    assert.equal(
+      result.unchanged[0]?.code,
+      "p0420",
+      "the after-side keeps the spelling it was reported with",
+    );
+
+    const different = scanner.compare([enriched("P0420")], [enriched("P0421")]);
     assert.deepEqual(
-      result.removed.map((dtc) => dtc.code),
+      different.removed.map((dtc) => dtc.code),
       ["P0420"],
+      "a genuinely different code is still loud",
     );
     assert.deepEqual(
-      result.added.map((dtc) => dtc.code),
-      ["p0420"],
+      different.added.map((dtc) => dtc.code),
+      ["P0421"],
     );
-    assert.deepEqual(result.unchanged, []);
   });
 
   test("a duplicated code on one ECU collapses in the maps and repeats in the lists", () => {
@@ -743,4 +758,126 @@ test("a comparison keeps the variant knowledge of the scan it came from", () => 
   const comparison = scanner.compare(before, after);
   assert.equal(comparison.changed.length, 1);
   assert.equal(after[0]?.knowledge?.scope, "vehicle-engine");
+});
+
+/* ---------------------------------------------------- the IR underneath (P0 #6) */
+
+describe("DtcScanner.observe — the IR the projection is made of", () => {
+  test("the ECU's answer and the package's claim are two halves with two proofs", () => {
+    const scanner = scannerOf(FULL_PACKAGE);
+    const [scan] = scanner.observe(
+      [
+        {
+          ...record("P0420", 0x2f),
+          snapshot: new Uint8Array([0x0c, 0x30]),
+          extendedData: new Uint8Array([0x01, 0x02]),
+        },
+      ],
+      "Engine Control Unit",
+      "engine",
+      { oem: "test", ecu: "engine" },
+    );
+    assert.ok(scan);
+    const { observation, enrichment } = scan.state;
+    assert.equal(observation.kind, "dtc");
+    assert.equal(observation.ecuId, "engine");
+    assert.equal(observation.status, 0x2f);
+    assert.deepEqual(Array.from(observation.snapshot ?? []), [0x0c, 0x30]);
+    assert.deepEqual(Array.from(observation.extendedData ?? []), [0x01, 0x02]);
+    assert.ok(isProven(observation.evidence), "the ECU answered, so the record is proven");
+    assert.equal(observation.evidence.provenance.serviceId, 0x19);
+    // Which definition the claim was made under travels with the claim (AGENTS 13).
+    assert.equal(observation.evidence.provenance.definitionVersion, "1.0.0");
+    assert.ok(enrichment);
+    assert.equal(enrichment.description, "Catalyst efficiency below threshold");
+    assert.equal(enrichment.severity, "major");
+    assert.ok(isProven(enrichment.evidence));
+    assert.equal(enrichment.evidence.provenance.origin, "definition");
+  });
+
+  test("an undocumented code keeps the observation and loses the claim, visibly", () => {
+    const scanner = scannerOf(FULL_PACKAGE);
+    const [scan] = scanner.observe([record("C9999")], "Gateway", "gateway");
+    assert.ok(scan);
+    assert.equal(scan.state.observation.code, "C9999");
+    assert.equal(scan.knowledge, undefined);
+    const enrichment = scan.state.enrichment;
+    assert.ok(enrichment, "an undocumented code still gets an enrichment - with unproven evidence");
+    assert.equal(enrichment.evidence.kind, "unproven");
+    assert.match(describeEvidence(enrichment.evidence), /no description/);
+    assert.equal(scan.state.firstSeenInThisScan, true);
+  });
+
+  test("two entry points, one code path: enrich is the projection of observe", () => {
+    const records = [record("P0420", 0x2f), record("P0171"), record("C9999")];
+    const projected = scannerOf(FULL_PACKAGE);
+    const observed = scannerOf(FULL_PACKAGE);
+    assert.deepEqual(
+      projected.enrich(records, "Engine Control Unit", "engine", { oem: "test", ecu: "engine" }),
+      observed
+        .observe(records, "Engine Control Unit", "engine", {
+          oem: "test",
+          ecu: "engine",
+        })
+        .map(toEnrichedDtc),
+    );
+  });
+
+  test("the projection carries one line of provenance so a stored record keeps its source", () => {
+    const scanner = scannerOf(FULL_PACKAGE);
+    const [documented, undocumented] = scanner.enrich(
+      [record("P0420", 0x2f), record("C9999")],
+      "Engine Control Unit",
+      "engine",
+      { oem: "test", ecu: "engine" },
+    );
+    assert.match(documented?.evidence ?? "", /^definition · /);
+    assert.match(documented?.evidence ?? "", /def 1\.0\.0/);
+    assert.match(undocumented?.evidence ?? "", /^not proven \(engine\): /);
+    assert.match(undocumented?.evidence ?? "", /no description, hint, severity or related signal/);
+  });
+
+  test("a claim about urgency wins over the byte rule, and the byte rule is never restated", () => {
+    const scanner = scannerOf(FULL_PACKAGE);
+    const [dtc] = scanner.enrich([record("P0420")], "Engine Control Unit", "engine", {
+      oem: "test",
+      ecu: "engine",
+    });
+    assert.equal(dtc?.severity, "major", "the package declares it major, the status byte does not");
+    const [bare] = scanner.enrich([record("C9999", 0x08)], "Gateway", "gateway");
+    assert.equal(
+      bare?.severity,
+      dtcSeverity(decodeDtcStatus(0x08)),
+      "without a claim the projection repeats the protocol's own rule",
+    );
+  });
+
+  test("the projection cannot disagree with the bytes it came from (property)", () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 0, max: 0xff }), (status) => {
+        const bits = decodeDtcStatus(status);
+        const scanner = scannerOf(FULL_PACKAGE);
+        const [dtc] = scanner.enrich(
+          [
+            {
+              code: "C9999",
+              raw: "9999FF",
+              failureType: "FF",
+              status,
+              statusBits: bits,
+              severity: "major",
+            },
+          ],
+          "Gateway",
+          "gateway",
+        );
+        // `severity: "major"` is what the protocol computed for these bytes; the
+        // projection must not quietly re-derive a different answer.
+        assert.equal(dtc?.severity, "major");
+        assert.equal(dtc?.status, status);
+        assert.equal(dtc?.statusBits.testFailed, bits.testFailed);
+      }),
+      { numRuns: 64 },
+    );
+  });
 });

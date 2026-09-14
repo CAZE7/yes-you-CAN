@@ -9,12 +9,16 @@
 
 import {
   type DtcVariantKnowledge,
+  type SessionGap,
   type SignalStatistics,
   type VehicleDetermination,
   type VehicleSessionData,
   describeVehicle,
   maskVin,
+  sessionGapsOf,
+  sessionObservationOf,
 } from "@vdp/core";
+import { unreachableEcus } from "@vdp/diagnostic-ir";
 import { PdfDocument } from "./pdf.js";
 
 export interface ReportAnomaly {
@@ -83,6 +87,7 @@ export function buildReport(input: ReportInput): ReportDocument {
       variantKnowledgeSection(dtcs, knowledge, session.determination),
       measurementsSection(statistics),
       anomalySection(anomalies),
+      observationsSection(session),
       actionSection(session),
       noteSection(session),
       recommendationSection(recommendations),
@@ -427,6 +432,79 @@ function anomalySection(anomalies: readonly ReportAnomaly[]): ReportSection {
         : anomalies.map((anomaly) => ({ label: anomaly.signal, value: anomaly.reason })),
   };
 }
+
+/**
+ * What the session can prove — and what it cannot (AGENTS 24, P0 #6/ADR 0037).
+ *
+ * The section is a projection of the diagnostic IR, not a summary of the sections
+ * above it: reachability comes from the ECU observations, the open questions from
+ * `sessionGapsOf`. That matters because the two disagree in exactly one direction —
+ * a report of "0 anomalies, 0 failures" reads as a healthy car, while the
+ * observation says the ABS never answered and half the codes are undocumented.
+ * A handout that cannot tell those apart sends the technician to the wrong part.
+ *
+ * "No open questions" therefore never means "nothing is wrong"; it means every
+ * statement in this report has a source. Absence of measurement stays visible.
+ */
+function observationsSection(session: VehicleSessionData): ReportSection {
+  const observation = sessionObservationOf(session);
+  const unreachable = unreachableEcus(observation);
+  const gaps = sessionGapsOf(session);
+  const rows: ReportSection["rows"] = [
+    {
+      label: "Measured with",
+      value:
+        `${observation.adapter.kind} adapter · ${observation.transport.kind} on ` +
+        `${observation.transport.channel || "no channel"} (MTU ${observation.transport.mtu ?? "—"})`,
+    },
+    {
+      label: "Reproducibility",
+      value:
+        `session ${observation.sessionId} · ${observation.startedAt} → ` +
+        `${observation.endedAt ?? "open"} · definition ` +
+        `${session.definitionPackage ? `${session.definitionPackage.oem} ${session.definitionPackage.version}` : "not recorded"}`,
+    },
+    {
+      label: "ECU reachability",
+      value:
+        unreachable.length === 0
+          ? `${observation.ecus.length} of ${observation.ecus.length} answered`
+          : `${observation.ecus.length - unreachable.length} of ${observation.ecus.length} answered — ${unreachable
+              .map((ecu) => `${ecu.name}: ${ecu.lastError ?? "no reason recorded"}`)
+              .join("; ")}`,
+    },
+    {
+      label: "Fault memory",
+      value:
+        session.dtcSnapshots.length === 0
+          ? "no scan stored in this session"
+          : `${session.dtcSnapshots.length} scan(s), last at ${session.dtcSnapshots.at(-1)?.takenAt ?? "unknown"}`,
+    },
+    {
+      label: "Open questions",
+      value:
+        gaps.length === 0
+          ? "none — every ECU answered, every stored code is documented, signals were recorded"
+          : `${gaps.length} (see the list below)`,
+    },
+  ];
+  const section: ReportSection = { heading: "Observations & gaps", rows };
+  if (gaps.length > 0) {
+    section.table = {
+      columns: ["Open question", "About", "What the session says"],
+      rows: gaps.map((gap) => [GAP_LABELS[gap.kind], gap.subject, gap.detail]),
+    };
+  }
+  return section;
+}
+
+/** The gap kinds in an operator's words — the machine key stays in the data. */
+const GAP_LABELS: Record<SessionGap["kind"], string> = {
+  "ecu-unreachable": "ECU unreachable",
+  "dtc-undocumented": "code undocumented",
+  "no-scan-history": "no scan to compare with",
+  "no-measurements": "no signal recorded",
+};
 
 /** Audit log of everything this session wrote (AGENTS 25). */
 function actionSection(session: VehicleSessionData): ReportSection {

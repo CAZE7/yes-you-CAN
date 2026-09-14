@@ -1,8 +1,20 @@
 /**
- * DTC system (AGENTS 20).
+ * DTC system (AGENTS 20; master backlog P0 #6).
  *
  * Adds the pieces the raw UDS layer does not have: description enrichment from
  * definition packages, severity, snapshots and before/after comparison.
+ *
+ * The data flow is `records → observation → projection`, never
+ * `records → projection` with the observation left implicit:
+ *
+ *   {@link DtcScanner.observe}  protocol record → IR (`DtcState`: what the ECU
+ *                                said, what the definition says, what the history
+ *                                says — each with its own evidence)
+ *   {@link toEnrichedDtc}        IR → the flat record the session, the runtime and
+ *                                the reports have always spoken
+ *   {@link DtcScanner.enrich}    `observe` + projection, the compatibility entry
+ *                                point — two entry points, one code path (the same
+ *                                shape `SignalDecoder.observe/decode` uses)
  *
  * Enrichment has two layers, and they stay distinguishable:
  *  - what a code means for a manufacturer (`EcuDefinition.dtcs`) — always
@@ -21,7 +33,17 @@ import {
   type DtcKnowledgeScope,
   findDtcKnowledge,
 } from "@vdp/definitions";
-import type { DtcRecord } from "@vdp/protocols-uds";
+import {
+  type DtcObservation,
+  type DtcState,
+  type Evidence,
+  compareDtcObservations,
+  describeEvidence,
+  dtcEnrichment,
+  dtcKey,
+  dtcObservation,
+} from "@vdp/diagnostic-ir";
+import { type DtcRecord, dtcSeverity } from "@vdp/protocols-uds";
 
 /** The resolved vehicle a scan belongs to (AGENTS 11 → AGENTS 20). */
 export interface DtcVehicleContext {
@@ -94,6 +116,68 @@ export interface EnrichedDtc extends DtcRecord {
    * vehicle is bound or when nothing is documented for this code.
    */
   knowledge?: DtcVariantKnowledge;
+  /**
+   * One line naming what backs description, hint and severity — the IR's
+   * {@link describeEvidence} of the enrichment, so "the package documented it"
+   * and "nobody knows this code" are different answers with different words
+   * (§24). A projection carries it on purpose: a stored session then still says
+   * where its own statements came from (AGENTS 17, P0 #6).
+   */
+  evidence?: string;
+  /**
+   * The same proof as {@link evidence}, as data: the IR's `Evidence` of the
+   * enrichment that produced `description`, `hint` and the package `severity`.
+   *
+   * A string answers a person; this answers a program that must not re-read the
+   * sentence to decide whether it may build on the wording (P0 #39, ADR 0038). It is
+   * absent on a record that came from a build which named none — which is an answer
+   * of its own ("we cannot tell"), not a missing field to guess about.
+   */
+  enrichmentEvidence?: Evidence;
+}
+
+/**
+ * One scanned code as the platform holds it: the IR state, and the variant claim
+ * behind the wording when a resolved vehicle produced one.
+ *
+ * The second half is deliberately *not* part of the IR: `patterns[]`, `checks[]`
+ * and their numeric windows are a definition package's vocabulary with its own
+ * schema version (AGENTS 23, ADR 0025), while the IR is the transport- and
+ * protocol-free middle. They travel side by side, they do not merge into a third
+ * shape — the projection {@link toEnrichedDtc} is where the two meet.
+ */
+export interface DtcScan {
+  state: DtcState;
+  knowledge?: DtcVariantKnowledge;
+}
+
+/** Any fault-memory record the platform can hold: protocol, enriched or stored. */
+export type DtcRecordLike = DtcRecord &
+  Partial<Pick<EnrichedDtc, "ecuId" | "ecuName" | "lastSeen">>;
+
+/**
+ * Project any fault-memory record into an IR observation.
+ *
+ * This is the one place that turns `code`/`status`/`raw` into an observation, so a
+ * live scan, a session reloaded from disk and a replay cannot drift apart in what
+ * "the same code" means. A stored record that predates the ECU axis keeps no ECU
+ * identity — the empty string says exactly that, instead of inventing one (§24).
+ */
+export function dtcObservationOf(record: DtcRecordLike, timestamp?: string): DtcObservation {
+  const at = timestamp ?? record.lastSeen;
+  return dtcObservation({
+    code: record.code,
+    raw: record.raw,
+    failureType: record.failureType,
+    status: record.status,
+    statusBits: record.statusBits,
+    ecuId: record.ecuId ?? "",
+    ecuName: record.ecuName ?? "",
+    ...(at !== undefined ? { at } : {}),
+    ...(record.severity !== undefined ? { severity: record.severity } : {}),
+    ...(record.snapshot !== undefined ? { snapshot: record.snapshot } : {}),
+    ...(record.extendedData !== undefined ? { extendedData: record.extendedData } : {}),
+  });
 }
 
 /** What the tracker knows about one code of one ECU. */
@@ -115,8 +199,9 @@ export interface DtcOccurrence {
 export class DtcTracker {
   private readonly seen = new Map<string, DtcOccurrence>();
 
+  /** Identity of one code within one ECU — the IR's key, not a second one. */
   private static key(ecuId: string, code: string): string {
-    return `${ecuId}:${code.toUpperCase()}`;
+    return dtcKey({ ecuId, code });
   }
 
   /** Register one scan of one ECU; returns the per-code bookkeeping. */
@@ -162,12 +247,58 @@ export class DtcTracker {
   }
 }
 
+/**
+ * The flat view of one before/after comparison.
+ *
+ * The *decision* — which entries are the same fault, which status counts as a
+ * change — is the IR's (`compareDtcObservations`, P0 #6) and is never made here;
+ * this type only carries the records of both sides through so that a caller can
+ * read timestamps, descriptions and snapshots off the entries it handed in.
+ */
 export interface DtcComparison {
   added: EnrichedDtc[];
   removed: EnrichedDtc[];
   /** Same code, different status bits. */
   changed: Array<{ code: string; before: number; after: number; ecuName: string }>;
   unchanged: EnrichedDtc[];
+}
+
+/**
+ * Project one IR scan onto the flat record the session and the reports speak.
+ *
+ * Lossless in both directions of the fields it carries: `severity` resolves to
+ * the definition's claim first and to the reader's classification of the status
+ * byte second — the same rule the protocol applies to the bytes, so a projection
+ * can never disagree with the record it came from (AGENTS 20). Absent statements
+ * stay absent: no empty description, no default severity (§24).
+ */
+export function toEnrichedDtc(scan: DtcScan): EnrichedDtc {
+  const { observation, enrichment, firstSeen, lastSeen, firstSeenInThisScan } = scan.state;
+  const severity = observation.severity ?? dtcSeverity(observation.statusBits);
+  return {
+    code: observation.code,
+    raw: observation.raw,
+    failureType: observation.failureType,
+    status: observation.status,
+    statusBits: observation.statusBits,
+    severity: enrichment?.severity ?? severity,
+    ...(enrichment?.description !== undefined ? { description: enrichment.description } : {}),
+    ...(enrichment?.hint !== undefined ? { hint: enrichment.hint } : {}),
+    ...(enrichment?.relatedSignals !== undefined && enrichment.relatedSignals.length > 0
+      ? { relatedSignals: enrichment.relatedSignals.map((signal) => ({ ...signal })) }
+      : {}),
+    ecuName: observation.ecuName,
+    ecuId: observation.ecuId,
+    ...(scan.knowledge !== undefined ? { knowledge: scan.knowledge } : {}),
+    ...(enrichment !== undefined
+      ? { evidence: describeEvidence(enrichment.evidence), enrichmentEvidence: enrichment.evidence }
+      : {}),
+    ...(observation.snapshot !== undefined ? { snapshot: observation.snapshot } : {}),
+    ...(observation.extendedData !== undefined ? { extendedData: observation.extendedData } : {}),
+    ...(firstSeen !== undefined ? { firstSeen } : {}),
+    ...(lastSeen !== undefined ? { lastSeen } : {}),
+    ...(firstSeenInThisScan !== undefined ? { firstSeenInThisScan } : {}),
+  };
 }
 
 export interface DtcScannerOptions {
@@ -295,12 +426,22 @@ export class DtcScanner {
     return knowledge;
   }
 
-  enrich(
+  /**
+   * Read one ECU's fault memory into the diagnostic IR.
+   *
+   * The result is a {@link DtcScan} per code: the IR state (what the ECU said,
+   * what the definition says, what the history says) and, when a resolved vehicle
+   * narrowed it down, the variant claim that applies. Nothing is flattened here —
+   * {@link DtcScanner.enrich} is the projection, so a caller that wants to decide
+   * what an absent statement means (report, evidence engine, replay check) reads
+   * this instead.
+   */
+  observe(
     records: readonly DtcRecord[],
     ecuName: string,
     ecuId: string,
     definition?: DtcDefinitionRef,
-  ): EnrichedDtc[] {
+  ): DtcScan[] {
     const timestamp = this.clock().toISOString();
     // Register the whole scan first, so "first seen in this scan" is decided once
     // for all codes of the ECU instead of depending on the response order.
@@ -309,28 +450,49 @@ export class DtcScanner {
       records.map((record) => record.code),
       timestamp,
     );
+    // The version the knowledge claims are made under (AGENTS 13): the package
+    // whose ECU definition this scan was matched against, when one was.
+    const definitionVersion = this.definitionVersionOf(definition);
     return records.map((record) => {
+      const observation = dtcObservation({
+        code: record.code,
+        raw: record.raw,
+        failureType: record.failureType,
+        status: record.status,
+        statusBits: record.statusBits,
+        ecuId,
+        ecuName,
+        at: timestamp,
+        severity: record.severity,
+        ...(record.snapshot !== undefined ? { snapshot: record.snapshot } : {}),
+        ...(record.extendedData !== undefined ? { extendedData: record.extendedData } : {}),
+        ...(definitionVersion !== undefined ? { definitionVersion } : {}),
+      });
       const info = this.descriptions.get(record.code);
-      const occurrence = occurrences.get(`${ecuId}:${record.code.toUpperCase()}`);
       const hit = this.knowledgeFor(record.code, definition);
       // Variant wording wins over the package wording; whatever the variant does
       // not declare keeps the package's answer (AGENTS 20).
       const description = hit?.description ?? info?.description;
       const hint = hit?.hint ?? info?.hint;
+      const severity = hit?.severity ?? info?.severity;
       const related = hit
         ? hit.relatedSignals
             .filter((id) => this.signalNames.has(id))
             .map((id) => ({ id, name: this.signalNames.get(id) ?? id }))
         : info?.relatedSignals;
-      return {
-        ...record,
-        ...(description ? { description } : {}),
-        ...(hint ? { hint } : {}),
-        ...(related && related.length > 0 ? { relatedSignals: related } : {}),
-        severity: hit?.severity ?? info?.severity ?? record.severity,
-        ecuName,
-        ecuId,
-        ...(hit ? { knowledge: this.variantKnowledgeOf(hit) } : {}),
+      const occurrence = occurrences.get(dtcKey({ ecuId, code: record.code }));
+      const state: DtcState = {
+        observation,
+        enrichment: dtcEnrichment({
+          code: record.code,
+          ecuId,
+          ...(description ? { description } : {}),
+          ...(hint ? { hint } : {}),
+          ...(severity ? { severity } : {}),
+          ...(related && related.length > 0 ? { relatedSignals: related } : {}),
+          at: timestamp,
+          ...(definitionVersion !== undefined ? { definitionVersion } : {}),
+        }),
         ...(occurrence
           ? {
               firstSeen: occurrence.firstSeen,
@@ -339,7 +501,27 @@ export class DtcScanner {
             }
           : {}),
       };
+      return { state, ...(hit ? { knowledge: this.variantKnowledgeOf(hit) } : {}) };
     });
+  }
+
+  /** The version of the package a definition reference points into, when known. */
+  private definitionVersionOf(definition: DtcDefinitionRef | undefined): string | undefined {
+    if (definition?.oem === undefined) return undefined;
+    return this.packages.find((pkg) => pkg.oem === definition.oem)?.version;
+  }
+
+  /**
+   * Enrich a scan for callers that speak {@link EnrichedDtc}: the IR observation
+   * plus its projection, in one pass ({@link DtcScanner.observe} does the work).
+   */
+  enrich(
+    records: readonly DtcRecord[],
+    ecuName: string,
+    ecuId: string,
+    definition?: DtcDefinitionRef,
+  ): EnrichedDtc[] {
+    return this.observe(records, ecuName, ecuId, definition).map(toEnrichedDtc);
   }
 
   /** Definition of a code, including the layout of its freeze frame (AGENTS 20). */
@@ -352,31 +534,57 @@ export class DtcScanner {
   }
 
   /** Before/after comparison for "Clear DTCs" verification (AGENTS 20). */
+  /**
+   * Before/after comparison for "Clear DTCs" verification (AGENTS 20).
+   *
+   * The classification is delegated to the IR ({@link compareDtcObservations}):
+   * one identity rule per fault code — ECU plus code, case and whitespace
+   * normalised — for the history, the comparison and the replay check alike.
+   * A scan that repeats one code classifies every repeat against the last
+   * record of the other side, which is what the IR's key map does.
+   */
   compare(before: readonly EnrichedDtc[], after: readonly EnrichedDtc[]): DtcComparison {
-    const key = (dtc: EnrichedDtc): string => `${dtc.ecuId}:${dtc.code}`;
-    const beforeMap = new Map(before.map((dtc) => [key(dtc), dtc]));
-    const afterMap = new Map(after.map((dtc) => [key(dtc), dtc]));
+    const beforeObservations = before.map((dtc) => dtcObservationOf(dtc));
+    const afterObservations = after.map((dtc) => dtcObservationOf(dtc));
+    const comparison = compareDtcObservations(beforeObservations, afterObservations);
+    const keys = (list: readonly DtcObservation[]): Set<string> =>
+      new Set(list.map((observation) => dtcKey(observation)));
+    const addedKeys = keys(comparison.added);
+    const removedKeys = keys(comparison.removed);
+    const changedKeys = keys(comparison.changed);
+    const unchangedKeys = keys(comparison.unchanged);
+    const previousByEcuAndCode = new Map(
+      beforeObservations.map((observation) => [dtcKey(observation), observation]),
+    );
 
-    const added = after.filter((dtc) => !beforeMap.has(key(dtc)));
-    const removed = before.filter((dtc) => !afterMap.has(key(dtc)));
     const changed: DtcComparison["changed"] = [];
     const unchanged: EnrichedDtc[] = [];
-
     for (const dtc of after) {
-      const previous = beforeMap.get(key(dtc));
-      if (!previous) continue;
-      if (previous.status !== dtc.status) {
-        changed.push({
-          code: dtc.code,
-          before: previous.status,
-          after: dtc.status,
-          ecuName: dtc.ecuName,
-        });
-      } else {
-        unchanged.push(dtc);
+      const key = dtcKey(dtc);
+      if (addedKeys.has(key)) continue;
+      if (changedKeys.has(key)) {
+        // A change always has both sides — the IR derived it from a pair. The
+        // guard is defensive, so a missing "before" is skipped rather than
+        // reported as a change against an invented value (§24).
+        const previous = previousByEcuAndCode.get(key);
+        if (previous !== undefined) {
+          changed.push({
+            code: dtc.code,
+            before: previous.status,
+            after: dtc.status,
+            ecuName: dtc.ecuName,
+          });
+        }
+        continue;
       }
+      if (unchangedKeys.has(key)) unchanged.push(dtc);
     }
-    return { added, removed, changed, unchanged };
+    return {
+      added: after.filter((dtc) => addedKeys.has(dtcKey(dtc))),
+      removed: before.filter((dtc) => removedKeys.has(dtcKey(dtc))),
+      changed,
+      unchanged,
+    };
   }
 
   /** Group by severity for reports (AGENTS 21 "DTC Summary"). */

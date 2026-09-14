@@ -15,6 +15,8 @@
  * provider layer that is meant to be swappable.
  */
 
+import { type HypothesisTest, itemsOf } from "@vdp/diagnostic-ir";
+import { citableIds, knownCitations, provenanceOf } from "./provenance.js";
 import type {
   AnalysisDtc,
   AnalysisFinding,
@@ -51,6 +53,8 @@ export class HeuristicAnalysisProvider implements AnalysisProvider {
         title: `${dtc.code} stored in ${dtc.ecu}`,
         detail: detailOf(dtc),
         ...(dtc.code ? { relatedDtcs: [dtc.code] } : {}),
+        // A code cites the evidence item that carries it; no item, no citation.
+        ...(dtc.evidence?.itemId === undefined ? {} : { basedOn: [dtc.evidence.itemId] }),
       });
       if (dtc.severity === "critical" || dtc.severity === "major") {
         recommendations.push(dtcRecommendation(dtc));
@@ -100,6 +104,30 @@ export class HeuristicAnalysisProvider implements AnalysisProvider {
       }
     }
 
+    for (const hypothesis of input.hypotheses ?? []) {
+      const cited = knownCitations(hypothesis.evidence, citableIds(input)) ?? [];
+      findings.push({
+        id: `pattern-${hypothesis.id}-${hypothesis.outcome}`,
+        // A confirmed pattern inherits the code's severity; anything else is a
+        // statement about the *search*, not about this car (see module note).
+        severity:
+          hypothesis.outcome === "confirmed"
+            ? severityOf(dtcSeverityOf(input, hypothesis.code))
+            : "info",
+        title: `${hypothesis.claim} — ${hypothesis.outcome}`,
+        detail: `${hypothesis.reason} · confidence ${hypothesis.confidence}${
+          hypothesis.likelihood === undefined ? "" : ` · package prior: ${hypothesis.likelihood}`
+        }`,
+        relatedDtcs: [hypothesis.code],
+        ...(cited.length > 0 ? { basedOn: cited } : {}),
+      });
+      if (hypothesis.nextTest !== undefined) {
+        recommendations.push(
+          `next test for ${hypothesis.code}: ${testClause(hypothesis.nextTest)}`,
+        );
+      }
+    }
+
     if (findings.length === 0) {
       findings.push({
         id: "no-findings",
@@ -117,6 +145,9 @@ export class HeuristicAnalysisProvider implements AnalysisProvider {
 
     const vehicle = vehicleOf(input);
     const caveats = caveatsOf(input);
+    // What the session leaves open, named in the answer. Not a caveat: an open
+    // question is not a claim without a source (see `caveatsOf`).
+    const openQuestions = input.evidence === undefined ? [] : itemsOf(input.evidence, "gap");
     // Confidence is a ceiling, never a reward: knowing the variant cannot raise it
     // above what the rules alone justify, but not knowing it lowers what may be
     // claimed at all (§22: keine Scheinsicherheit).
@@ -131,7 +162,26 @@ export class HeuristicAnalysisProvider implements AnalysisProvider {
       confidence,
       source: "heuristic",
       generatedAt: new Date().toISOString(),
-      warnings: ["Heuristic analysis is rule based — it is a hint, not a diagnosis.", ...caveats],
+      warnings: [
+        "Heuristic analysis is rule based — it is a hint, not a diagnosis.",
+        // The ceiling the numbers cannot lift: an answer without an evidence set has
+        // nothing to cite, so say it out loud instead of answering comfortably.
+        ...(input.evidence === undefined
+          ? [
+              "No evidence set was supplied — statements here cannot be traced back to an observation.",
+            ]
+          : []),
+        ...(openQuestions.length === 0
+          ? []
+          : [
+              `${openQuestions.length} question(s) stay open in this session: ${openQuestions
+                .slice(0, 3)
+                .map((item) => item.subject)
+                .join(", ")}${openQuestions.length > 3 ? " …" : ""}.`,
+            ]),
+        ...caveats,
+      ],
+      provenance: provenanceOf(input, { provider: this.id }),
     };
   }
 }
@@ -183,6 +233,23 @@ function caveatsOf(input: AnalysisInput): string[] {
   if (vehicle?.score !== undefined && vehicle.score < 0.6) {
     caveats.push(
       `The vehicle match rests on ${Math.round(vehicle.score * 100)} % of the evaluated criteria — treat variant-specific statements as hypotheses.`,
+    );
+  }
+  // Only *claims* that lack a source belong here. An open question (an ECU that never
+  // answered, a scan nobody compared) is an absence, not an assertion: it is
+  // reported, and it must not cap the confidence of every session that has one —
+  // which is every session.
+  const claims = (input.evidence?.items ?? []).filter(
+    (item) => item.kind !== "gap" && item.evidence.kind === "unproven",
+  );
+  if (claims.length > 0) {
+    caveats.push(
+      `${claims.length} statement(s) in this session are unproven: ` +
+        `${claims
+          .slice(0, 3)
+          .map((item) => item.subject)
+          .join(", ")}` +
+        `${claims.length > 3 ? " …" : ""} — say so in the answer.`,
     );
   }
   if (
@@ -242,6 +309,29 @@ function measureClause(check: AnalysisDtc["measure"]): string | undefined {
   return check.measurable === true
     ? `measure first: ${parts}`
     : `documented check, a person judges it: ${parts}`;
+}
+
+/** The severity the input records for a code — "" when no code carries one. */
+function dtcSeverityOf(input: AnalysisInput, code: string): string {
+  return input.dtcs.find((dtc) => dtc.code === code)?.severity ?? "";
+}
+
+/** A check in one line, with the number that decides it — or the note that none does. */
+function testClause(test: HypothesisTest): string {
+  const bounds =
+    test.min !== undefined && test.max !== undefined
+      ? `${test.min}…${test.max}`
+      : test.min !== undefined
+        ? `>= ${test.min}`
+        : test.max !== undefined
+          ? `<= ${test.max}`
+          : undefined;
+  const parts = [test.name ?? test.signal, test.expect, bounds].filter(
+    (part): part is string => part !== undefined && part !== "",
+  );
+  return test.measurable
+    ? `${parts.join(" · ")}${test.windowMs === undefined ? "" : ` within ${test.windowMs / 1000} s`}`
+    : `${parts.join(" · ")} (no numeric bound - a person judges this one)`;
 }
 
 function severityOf(severity: string): AnalysisFinding["severity"] {

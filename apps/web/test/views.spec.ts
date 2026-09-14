@@ -288,3 +288,28 @@ describe("toSampleView, toMarkerView and toTraceView", () => {
     });
   });
 });
+
+describe("toDtcView — provenance of the description (P0 #6)", () => {
+  test("the IR's evidence line reaches the row unchanged", () => {
+    const view = toDtcView(
+      dtc({
+        evidence: "definition · 2026-09-14T09:00:00.000Z · engine · def 1.0.0",
+      }),
+      ECUS,
+    );
+    assert.equal(
+      view.provenance,
+      "definition · 2026-09-14T09:00:00.000Z · engine · def 1.0.0",
+      "the row quotes the scan; it does not label the source in its own words (AGENTS 24)",
+    );
+  });
+
+  test("a record that was never enriched stays without a provenance line", () => {
+    const view = toDtcView(dtc({ evidence: undefined }), ECUS);
+    assert.equal(
+      "provenance" in view,
+      false,
+      "no evidence is not the same as 'nothing documented' - the field is absent",
+    );
+  });
+});

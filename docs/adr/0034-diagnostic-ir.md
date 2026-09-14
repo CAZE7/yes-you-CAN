@@ -65,6 +65,13 @@ Datenebene fehlte sie.
    und #41 (Evidence Engine). Kein Umbau ohne Verbraucher — der nächste Schritt
    steht im Master-Backlog.
 
+> **Nachtrag (2026-09-14, ADR 0038):** die hier angekündigten Fortsetzungen sind
+> erledigt — Backlog-Zeilen **#39 (Evidence Engine)** und **#40 (Hypothesis Engine)**;
+> die Nummern in diesem Text (#41/#42) stammen aus dem Stand des Backlogs an dem Tag,
+> an dem die ADR geschrieben wurde. Widersprüche *zwischen* zwei Belegen sind damit
+> **nicht** gemeint: `conflictsOf` meldet nur den Fall „undokumentierter Code bei
+> dokumentiertem Muster", ein allgemeiner Beleg-Widerspruch bleibt offen.
+
 ## Konsequenzen
 
 - Eine Live-Session kann jetzt sagen, **welche** Werte warum fehlen: `PollRoundResult.gaps`

@@ -602,6 +602,13 @@ function showDtcDetails(dtc) {
         ? `Nächster Schritt: ${dtc.hint}`
         : "Kein Hinweis im Definition-Paket dokumentiert",
     }),
+    // Herkunft der Aussage (P0 #6, ADR 0037): der Satz stammt aus dem Diagnostic IR
+    // und wird hier nur beschriftet. Die Workbench erfindet kein eigenes
+    // Provenanz-Vokabular und prüft auch nicht den Wortlaut auf "not proven" —
+    // der Satz sagt das selbst (AGENTS 24).
+    ...(dtc.provenance
+      ? [el("li", { class: "info", text: `Belegt durch: ${dtc.provenance}` })]
+      : []),
   ]);
   const related = dtc.relatedSignals ?? [];
   if (related.length > 0) {
@@ -861,11 +868,32 @@ function renderAnalysis(result) {
     `${result.provider} · Quelle: ${result.source} · Konfidenz ${Math.round(result.confidence * 100)} %`;
   const host = must("#analysis-out");
   host.replaceChildren(el("p", { text: result.summary }));
+  // Woher die Antwort kommt (P0 #42, ADR 0038): Versionen und Belege stehen im
+  // Ergebnis selbst — die Workbench erfindet keine eigene Herkunftszeile, sie zeigt
+  // die des Providers. Fehlt sie (ein Provider ohne Provenienz), fehlt sie sichtbar.
+  const provenance = result.provenance;
+  if (provenance) {
+    const versions = [
+      `Prompt ${provenance.promptVersion}`,
+      `Plattform ${provenance.runtimeVersion}`,
+      provenance.definitionVersion ? `Definition ${provenance.definitionVersion}` : "",
+      `${provenance.evidence.length} ${provenance.evidence.length === 1 ? "Beleg" : "Belege"}`,
+    ]
+      .filter((part) => part !== "")
+      .join(" · ");
+    host.append(el("p", { class: "muted small", text: versions }));
+  }
   for (const finding of result.findings) {
+    const cited = finding.basedOn ?? [];
     host.append(
       el("div", { class: `finding sev-${finding.severity}` }, [
         el("h4", { text: `${finding.severity.toUpperCase()} · ${finding.title}` }),
         el("p", { text: finding.detail }),
+        el("p", {
+          class: "muted small",
+          // A finding without citations says so: silence here would read as "of course".
+          text: cited.length > 0 ? `gestützt auf: ${cited.join(", ")}` : "ohne einzelnen Beleg",
+        }),
       ]),
     );
   }

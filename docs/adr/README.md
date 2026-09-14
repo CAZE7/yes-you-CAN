@@ -42,3 +42,6 @@ er wird durch einen neuen ersetzt, der den alten als `superseded` markiert.
 | [0034](0034-diagnostic-ir.md) | Diagnostische Zwischenstufe: Beobachtungen mit Beleg | accepted |
 | [0035](0035-session-definitions-are-data.md) | Sitzungsdefinitionen sind Daten, die Zustandsmaschine ist ein Modul | accepted |
 | [0036](0036-golden-sessions.md) | Eine goldene Sitzung ist Aufzeichnung, Erwartung und Lauf | accepted |
+| [0037](0037-diagnostic-ir-dtc-and-session-path.md) | Diagnostic IR, zweite Etappe: Fehlerspeicher und Sitzung laufen durch sie, eine Identitätsregel | accepted |
+| [0038](0038-evidence-engine-and-ai-input.md) | Evidence Engine: die Analyse liest nur Belege, und jede Antwort nennt Fassung und Zitate | accepted |
+| [0039](0039-fault-injection-at-the-link-seam.md) | Fault-Injection auf dem Draht; eine abgeschnittene Antwort ist ein Fehler, kein leerer Speicher | accepted |

@@ -11,6 +11,8 @@
  */
 
 import { type Logger, createLogger, messageOf } from "@vdp/shared";
+import { analysisInstruction } from "./prompt.js";
+import { citableIds, knownCitations, provenanceOf } from "./provenance.js";
 import {
   AnalysisError,
   type AnalysisFinding,
@@ -62,9 +64,9 @@ export class HttpAnalysisProvider implements AnalysisProvider {
     const body = JSON.stringify({
       ...(this.options.model ? { model: this.options.model } : {}),
       input: payload,
-      instruction:
-        "You are assisting a vehicle diagnostics technician. Answer from the supplied measurements and fault codes only. " +
-        "State uncertainty explicitly and never invent measured values.",
+      // One instruction, one place: `prompt.ts` carries the version, and the version
+      // is inside the text so that a stored answer names the wording it got.
+      instruction: analysisInstruction(),
     });
 
     const controller = new AbortController();
@@ -98,7 +100,7 @@ export class HttpAnalysisProvider implements AnalysisProvider {
       const text = await response.text();
       // No cast: a gateway answer is external input (AGENTS 24) and `normalise`
       // checks it field by field.
-      return normalise(JSON.parse(text), this.options.model);
+      return normalise(JSON.parse(text), this.options, input);
     } catch (error) {
       if (error instanceof AnalysisError) throw error;
       throw new AnalysisError(`analysis request failed: ${messageOf(error)}`, {
@@ -143,10 +145,11 @@ function isTimestamp(value: unknown): value is string {
  * One finding with safe defaults: a gateway that forgets `detail` or invents a
  * severity must break neither the report nor the view that renders it.
  */
-function toFinding(raw: unknown, index: number): AnalysisFinding {
+function toFinding(raw: unknown, index: number, citable: ReadonlySet<string>): AnalysisFinding {
   const record = asRecord(raw);
   const relatedSignals = asArray(record.relatedSignals).filter(isText);
   const relatedDtcs = asArray(record.relatedDtcs).filter(isText);
+  const basedOn = knownCitations(record.basedOn, citable);
   return {
     id: isText(record.id) ? record.id : `finding-${index}`,
     severity: SEVERITIES.includes(String(record.severity))
@@ -156,6 +159,7 @@ function toFinding(raw: unknown, index: number): AnalysisFinding {
     detail: isText(record.detail) ? record.detail : "",
     ...(Array.isArray(record.relatedSignals) ? { relatedSignals } : {}),
     ...(Array.isArray(record.relatedDtcs) ? { relatedDtcs } : {}),
+    ...(basedOn !== undefined ? { basedOn } : {}),
   };
 }
 
@@ -167,13 +171,19 @@ function toFinding(raw: unknown, index: number): AnalysisFinding {
  * the report renders a list. Every field is checked now; an unusable answer
  * degrades to an empty result instead of poisoning the session.
  */
-function normalise(answer: unknown, model: string | undefined): AnalysisResult {
+function normalise(
+  answer: unknown,
+  options: { model?: string; endpoint: string },
+  input: AnalysisInput,
+): AnalysisResult {
   const result = asRecord(answer);
+  const model = options.model;
+  const citable = citableIds(input);
   return {
     provider: isText(result.provider) ? result.provider : "http",
     ...(model ? { model } : {}),
     summary: isText(result.summary) ? result.summary : "",
-    findings: asArray(result.findings).map(toFinding),
+    findings: asArray(result.findings).map((raw, index) => toFinding(raw, index, citable)),
     recommendations: asArray(result.recommendations).filter(isText),
     confidence: clamp(result.confidence ?? 0.3),
     source: "model",
@@ -181,6 +191,9 @@ function normalise(answer: unknown, model: string | undefined): AnalysisResult {
     ...(Array.isArray(result.warnings)
       ? { warnings: asArray(result.warnings).filter(isText) }
       : {}),
+    // From the request, never from the answer: a gateway that reports its own prompt
+    // version is making a claim (see `provenance.ts`).
+    provenance: provenanceOf(input, { provider: "http", ...(model ? { model } : {}) }),
   };
 }
 

@@ -26,7 +26,7 @@ import {
   validateSelection,
 } from "@vdp/adapter-host";
 import {
-  type AnalysisInput,
+  ANALYSIS_PROMPT_VERSION,
   type AnalysisResult,
   AnalysisService,
   HeuristicAnalysisProvider,
@@ -47,7 +47,7 @@ import {
 import { type DefinitionPackage, genericPackage, simulatorPackage } from "@vdp/definitions";
 import type { DtcClearPrecheckInfo, VehicleResolutionRef } from "@vdp/domain";
 import type { DtcRecord } from "@vdp/protocols-uds";
-import { type DiagnosticRuntime, createDiagnosticRuntime } from "@vdp/runtime";
+import { type DiagnosticRuntime, PLATFORM_VERSION, createDiagnosticRuntime } from "@vdp/runtime";
 import {
   AdapterUnsupportedError,
   type Logger,
@@ -112,7 +112,7 @@ export type {
   VehicleStateView,
 } from "./views.js";
 
-import { analysisDtcOf, analysisVehicleOf } from "./analysis-input.js";
+import { buildAnalysisInput } from "./analysis-input.js";
 import { toDtcView } from "./dtc-view.js";
 import { toEcuView, toFreezeFrameView } from "./ecu-view.js";
 import { formatCanId, toMarkerView, toSampleView, toTraceView } from "./trace-view.js";
@@ -767,35 +767,29 @@ export class DemoBackend {
   async analyze(): Promise<AnalysisResult> {
     const runtime = this.requireRuntime();
     const session = this.session();
-    // Which car, and how firmly it was determined: without these two the provider
-    // answers about an unnamed vehicle while its output reads like a variant
-    // statement (AGENTS 22, ADR 0026).
-    const vehicle = analysisVehicleOf(runtime.vehicle.identity(), session?.determination);
-    const input: AnalysisInput = {
-      ...(vehicle !== undefined ? { vehicle } : {}),
-      // No odometer reading is an absent input, not a present zero: the heuristic
-      // provider must not read "unknown mileage" as "0 km" (AGENTS 22).
-      ...(session?.mileageKm !== undefined ? { mileageKm: session.mileageKm } : {}),
-
-      signals: runtime.measurements.statistics().map((stat) => ({
-        signal: stat.signalId,
-        name: stat.name,
-        ...(stat.unit ? { unit: stat.unit } : {}),
-        samples: stat.samples,
-        min: stat.min ?? 0,
-        max: stat.max ?? 0,
-        average: stat.average ?? 0,
-        delta: stat.delta ?? 0,
-        outOfRangeCount: stat.outOfRangeCount,
-      })),
-      dtcs: this.dtcs.map(analysisDtcOf),
-      anomalies: runtime.measurements.anomalies().map((anomaly) => ({
-        signal: anomaly.signalId,
-        reason: anomaly.reason,
-        ...(anomaly.value !== undefined ? { value: anomaly.value } : {}),
-      })),
-      notes: (this.session()?.notes ?? []).map((note) => note.text),
-    };
+    // One assembly, one place: `analysis-input.ts` projects the provider's input from
+    // the read models plus the runtime's evidence snapshot, so an answer can cite the
+    // items it rests on (AGENTS 22, P0 #39/#42).
+    const input = buildAnalysisInput({
+      session,
+      identity: runtime.vehicle.identity(),
+      dtcs: this.dtcs,
+      statistics: runtime.measurements.statistics(),
+      anomalies: runtime.measurements.anomalies(),
+      evidence: runtime.evidence.snapshot(),
+      versions: {
+        promptVersion: ANALYSIS_PROMPT_VERSION,
+        runtimeVersion: PLATFORM_VERSION,
+        ...(session?.definitionPackage !== undefined
+          ? {
+              definitionVersion: `${session.definitionPackage.oem}@${session.definitionPackage.version}`,
+            }
+          : {}),
+        packageVersions: runtime.definitions
+          .listPackages()
+          .map((pkg) => `${pkg.oem}@${pkg.version}`),
+      },
+    });
     const result = await this.analysisService.analyze({ input });
     this.emit("analysis", result);
     return result;
