@@ -183,12 +183,17 @@ export default defineConfig({
     ],
     coverage: {
       provider: 'v8',
-      include: ['packages/**/src/**/*.ts'],
+      // The measurement covers the whole tree that has behaviour, not only `packages`:
+      // apps/web (server, backend, mappers to the screen) and tools (importer,
+      // simulators, trace analyzer, flaky reporter) are product code too. Their 77 web
+      // tests ran without ever appearing in a coverage number (ADR 0027).
+      include: ['packages/**/src/**/*.ts', 'apps/web/src/**/*.ts', 'tools/**/*.ts'],
       exclude: [
-        // Barrel files re-export only; they carry no behaviour to cover.
-        'packages/**/src/index.ts',
+        // Barrel files re-export only; they carry no behaviour to cover. Scoped to
+        // `**/src/` so a tool's entry point outside a src directory stays visible.
+        '**/src/index.ts',
         // Type-only modules have no executable lines.
-        'packages/**/src/**/types.ts',
+        '**/src/**/types.ts',
         '**/*.d.ts',
         // Hardware-bound modules: require OS serial / socketcan / vcan; covered
         // by integration/hardware suites, not by unit thresholds.
@@ -264,6 +269,22 @@ export default defineConfig({
         // SUPPORTED_SCHEMA_VERSIONS without a migration step, so no input can
         // reach it — that is the point of the line, and it says so in a comment.
         'packages/definitions/**/src/**': { lines: 85, branches: 80, perFile: true },
+        // New on 2026-09-14 with the measurement scope widened to the whole tree
+        // (ADR 0027). This is a FLOOR, not a target: measured per file — server.ts
+        // 69,63 lines / 65,53 branches, backend.ts 89,61/73,22, adapters.ts
+        // 73,68/54,54 (functions 60), paths.ts 100/91,66, vehicle-view.ts 100/87,5,
+        // dtc-knowledge-view.ts and analysis-input.ts 100/100 and 100/97,4. The gate
+        // sits one point under the weakest measured value per column, so it cannot be
+        // satisfied by moving code around and it fails the moment coverage slips — the
+        // web layer used to be invisible to this file entirely, which is how its two
+        // thin files stayed thin. Closing the gap is 0.E E17, not a gate to dream up.
+        'apps/web/src/**': { lines: 69, branches: 54, perFile: true },
+        // `tools/**` is measured now (definition-importer 97,9/95,3 lines, simulators
+        // 94,9/82,0, trace-analyzer 97,8/75,3) but deliberately has NO per-file gate:
+        // `tools/test-reporters/flaky-reporter.ts` measures 0 % — lines 29-101, no
+        // test — because nothing can run it (E10: the hardened CI workflows are not
+        // pushable, so the flaky reporter has no host). Excluding it would raise the
+        // number by deleting the finding, so it stays visible at 0 % and named in 0.E.
         // Raised 75/70 → 90/75 on 2026-09-12: `group.ts` was the reason the old
         // gate existed (77.0/77.6, one refactor away from red) and is now at
         // 99.1/91.3; the weakest chart file is viewport.ts at 92.5/77.1.

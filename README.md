@@ -177,8 +177,13 @@ Zeitraum aus, Doppelklick zeigt die gesamte Aufnahme.
 ersetzt ADR 0008). Unit-Specs liegen co-lokatiert neben dem Code
 (`src/*.spec.ts`); Property-Tests laufen mit fast-check, Coverage-Gates mit
 `npm run test:coverage` (global 90 % lines / 80 % branches als
-Projekt-Durchschnitt, Ist 97,9 Zeilen / 89,7 Zweige; per-file-Gates für
-`shared`/`core`/`protocols`/`adapters`/`transport`/`storage`/`charts`/`reports`/`ai` (95/85 seit 2026-09-14)/`definitions`;
+Projekt-Durchschnitt, Ist 95,9 Zeilen / 87,4 Zweige — seit ADR 0027 wird die ganze
+Fläche gemessen: `packages/**/src`, `apps/web/src/**` und `tools/**`, weil die
+Workbench-Schicht vorher in keiner Zahl vorkam; per-file-Gates für
+`shared`/`core`/`protocols`/`adapters`/`transport`/`storage`/`charts`/`reports`/`ai` (95/85 seit 2026-09-14)/`definitions`,
+und seit ADR 0027 eine **Bodenschwelle** 69/54 für `apps/web/src/**`; `tools/**` ist
+gemessen, aber ohne Gate (dort steht `flaky-reporter.ts` bei 0 %, weil kein CI-Job ihn
+aufrufen kann — 0.E E10);
 Hardware-Module `serial`/`binding` ausgenommen — maßgeblich ist
 `vitest.config.ts`, ADR 0017, 0020, 0022 und 0023). Test-Zeit ist ein Budget: Discovery läuft in Tests mit explizitem
 `windowMs`/`probeDelayMs`, und statt fester Sleeps wird auf Bedingungen
