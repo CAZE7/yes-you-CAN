@@ -13,6 +13,7 @@
 import assert from "node:assert/strict";
 import type { DtcCheckInfo, DtcKnowledgeInfo, DtcPatternInfo } from "@vdp/domain";
 import { describe, test } from "vitest";
+import { type FixturePatch, patched } from "../../../tests/helpers/fixture.js";
 import {
   checkWindow,
   knowledgeScopeLabel,
@@ -22,37 +23,43 @@ import {
   toDtcPatternView,
 } from "../src/dtc-knowledge-view.js";
 
-function check(fields: Partial<DtcCheckInfo> = {}): DtcCheckInfo {
-  return {
-    signalId: "engine.long_term_fuel_trim",
-    name: "Long term fuel trim",
-    expect: "neutral",
-    measurable: true,
-    ...fields,
-  };
+function check(fields: FixturePatch<DtcCheckInfo> = {}): DtcCheckInfo {
+  return patched(
+    {
+      signalId: "engine.long_term_fuel_trim",
+      name: "Long term fuel trim",
+      expect: "neutral",
+      measurable: true,
+    },
+    fields,
+  );
 }
 
-function pattern(fields: Partial<DtcPatternInfo> = {}): DtcPatternInfo {
-  return {
-    id: "catalyst-aged",
-    name: "Aged catalyst",
-    scope: "vehicle-engine",
-    checks: [check()],
-    ...fields,
-  };
+function pattern(fields: FixturePatch<DtcPatternInfo> = {}): DtcPatternInfo {
+  return patched(
+    {
+      id: "catalyst-aged",
+      name: "Aged catalyst",
+      scope: "vehicle-engine",
+      checks: [check()],
+    },
+    fields,
+  );
 }
 
-function knowledge(fields: Partial<DtcKnowledgeInfo> = {}): DtcKnowledgeInfo {
-  return {
-    scope: "vehicle-engine",
-    vehicleId: "virtual-vehicle",
-    conditions: "only in closed loop above 80 °C",
-    patterns: [pattern()],
-    provenanceType: "licensed",
-    provenanceSource: "workshop manual",
-    notes: [],
-    ...fields,
-  };
+function knowledge(fields: FixturePatch<DtcKnowledgeInfo> = {}): DtcKnowledgeInfo {
+  return patched(
+    {
+      scope: "vehicle-engine",
+      vehicleId: "virtual-vehicle",
+      conditions: "only in closed loop above 80 °C",
+      patterns: [pattern()],
+      provenanceType: "licensed",
+      provenanceSource: "workshop manual",
+      notes: [],
+    },
+    fields,
+  );
 }
 
 describe("scope labels", () => {

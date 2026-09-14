@@ -100,7 +100,7 @@ export class EcuDiagnosticSession {
   private readonly signalsByEcu: SignalDefinition[];
   private readonly decoder: SignalDecoder;
   private readonly log: Logger;
-  private readonly definitionEcu?: EcuDefinition;
+  private readonly definitionEcu: EcuDefinition | undefined;
 
   constructor(
     link: UdsLink,

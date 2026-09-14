@@ -18,12 +18,12 @@ import {
 } from "@vdp/definitions";
 import { genericPackage } from "@vdp/definitions/generic";
 import {
-  SESSION,
   type ServerDid,
   type ServerDtc,
   UdsServer,
   type UdsServerLink,
   type UdsServerOptions,
+  simulatorSessions,
   xorSeedKeyAlgorithm,
 } from "@vdp/protocols-uds";
 import { type Logger, createLogger, messageOf, toHex } from "@vdp/shared";
@@ -213,7 +213,10 @@ export class VirtualVehicle {
       logger: this.log,
       dids: this.buildDids(definition, signals),
       dtcs: this.dtcListOf(definition),
-      sessions: [SESSION.DEFAULT, SESSION.EXTENDED, SESSION.PROGRAMMING],
+      // Explicit session definitions: the programming session is reachable only
+      // from the extended session (ISO 14229-1 §10.2), so the simulator refuses
+      // exactly the transition a real ECU refuses.
+      sessionDefinitions: simulatorSessions(),
       ...(definition.timing ? { timing: definition.timing } : {}),
       ...(this.pendingResponseServices.length > 0
         ? { pendingResponseServices: this.pendingResponseServices }

@@ -153,7 +153,7 @@ export default defineConfig({
       ...(junitFile ? (['junit'] as const) : []),
       './tools/test-reporters/flaky-reporter.ts',
     ],
-    outputFile: junitFile ? { junit: junitFile } : undefined,
+    ...(junitFile ? { outputFile: { junit: junitFile } } : {}),
     projects: [
       project({
         name: 'unit',
@@ -305,6 +305,10 @@ export default defineConfig({
         // gate existed (77.0/77.6, one refactor away from red) and is now at
         // 99.1/91.3; the weakest chart file is viewport.ts at 92.5/77.1.
         'packages/charts/**/src/**': { lines: 90, branches: 75, perFile: true },
+        // New 2026-09-14 with the diagnostic IR (P0 #6): builders and evidence
+        // helpers are pure data transformation, so they are gated like shared —
+        // every branch of "value, or the reason there is none" is a test case.
+        'packages/diagnostic-ir/**/src/**': { lines: 95, branches: 85, perFile: true },
       },
     },
   },

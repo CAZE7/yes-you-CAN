@@ -2,245 +2,140 @@
  * Architecture tests (target architecture §28/§29: "Der Dependency Graph
  * sollte eine harte Regel bekommen", "Architekturtests schreiben").
  *
- * Unit tests prove behaviour; these tests prove *structure*. They scan every
- * workspace package's production sources, build the real import graph and
- * fail on any edge that is not explicitly allowed. That keeps the rules
- * enforceable in CI — today and in five years:
+ * Unit tests prove behaviour; these tests prove *structure*. They no longer
+ * carry the graph themselves — that was the duplication master backlog P0 #2
+ * named: one copy in this file, one in the heads of the reviewers, and a rule
+ * that only ever fired when somebody remembered to look. The rule now lives in
+ * `tools/architecture/dependency-rules.json` and is enforced by
+ * `tools/architecture/check-dependencies.mjs`, which runs in the CI path
+ * (`npm run check:deps`, part of `npm run ci`) *before* the suite.
  *
- *  - domain/application stay protocol-, transport- and I/O-free,
- *  - protocols never import adapters,
- *  - no package imports the UI,
- *  - every new package must declare its place in the graph consciously.
+ * What is left here is the part a tool cannot do for itself: that the tool is
+ * wired in, that its graph is the real one, that the rules are the ones
+ * documented, and that it actually bites. The last point is why the fixture
+ * checks below exist — this suite was green for months while containing the
+ * prefix `@vdp/adapters`, which matches none of the real `@vdp/adapter-*`
+ * packages. A rule that cannot fail is not a rule (§34.21).
  */
 
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { join, relative } from "node:path";
+import { spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "vitest";
-import { discoverWorkspaceDirs, repoRoot as root } from "./workspace.js";
+import { repoRoot as root } from "./workspace.js";
 
-interface PackageNode {
+const TOOL = join(root, "tools/architecture/check-dependencies.mjs");
+const RULES_FILE = join(root, "tools/architecture/dependency-rules.json");
+
+interface RulePackage {
+  mayImport: readonly string[];
+  why: string;
+}
+
+interface Rules {
+  packages: Record<string, RulePackage>;
+  rules: {
+    nodeBuiltins: { allowedIn: readonly string[]; why: string };
+    ui: { package: string; why: string };
+    layerRules: ReadonlyArray<{ from: string; forbidden: readonly string[]; why: string }>;
+    portableLayers: ReadonlyArray<{
+      packages: readonly string[];
+      forbidden: readonly string[];
+      why: string;
+    }>;
+  };
+}
+
+interface GraphPackage {
   name: string;
   dir: string;
-  vdpDeps: Set<string>;
-  nodeBuiltins: Set<string>;
+  imports: string[];
+  nodeBuiltins: string[];
 }
 
-function discoverPackages(): PackageNode[] {
-  const found = new Map<string, PackageNode>();
-
-  for (const dir of discoverWorkspaceDirs()) {
-    const manifest = JSON.parse(readFileSync(join(dir, "package.json"), "utf8")) as {
-      name?: string;
-    };
-    if (!manifest.name) continue;
-    const node: PackageNode = {
-      name: manifest.name,
-      dir,
-      vdpDeps: new Set(),
-      nodeBuiltins: new Set(),
-    };
-    const src = join(dir, "src");
-    if (existsSync(src)) {
-      for (const file of listTsFiles(src)) {
-        // Co-located specs are tests, not production structure.
-        if (file.endsWith(".spec.ts")) continue;
-        scanImports(readFileSync(file, "utf8"), node);
-      }
-    }
-    found.set(node.name, node);
-  }
-  return Array.from(found.values()).sort((a, b) => a.name.localeCompare(b.name));
+interface ToolRun {
+  status: number | null;
+  stdout: string;
+  stderr: string;
 }
 
-function listTsFiles(dir: string): string[] {
-  const result: string[] = [];
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const full = join(dir, entry.name);
-    if (entry.isDirectory()) result.push(...listTsFiles(full));
-    else if (entry.name.endsWith(".ts")) result.push(full);
-  }
-  return result;
+const rules = JSON.parse(readFileSync(RULES_FILE, "utf8")) as Rules;
+
+/** Run the rule tool; never throws, so a failure can be asserted on. */
+function runTool(args: readonly string[] = []): ToolRun {
+  const result = spawnSync(process.execPath, [TOOL, ...args], { encoding: "utf8" });
+  return { status: result.status, stdout: result.stdout, stderr: result.stderr };
 }
 
-const VDP_IMPORT = /from\s+['"](@vdp\/[^'"]+)['"]/g;
-const NODE_IMPORT = /from\s+['"]node:([^'"]+)['"]/g;
-const DYNAMIC_VDP_IMPORT = /import\(\s*['"](@vdp\/[^'"]+)['"]/g;
+const run = runTool(["--json"]);
+assert.equal(
+  run.status,
+  0,
+  `the dependency rule must pass on this tree:\n${run.stdout}\n${run.stderr}`,
+);
+const graph = (JSON.parse(run.stdout) as { packages: GraphPackage[] }).packages;
+const byName = new Map(graph.map((pkg) => [pkg.name, pkg]));
 
-function scanImports(source: string, node: PackageNode): void {
-  for (const match of source.matchAll(VDP_IMPORT)) {
-    const specifier = match[1] as string;
-    node.vdpDeps.add(baseName(specifier));
+test("the rule tool runs in the CI path, not only in this test", () => {
+  const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as {
+    scripts?: Record<string, string>;
+  };
+  const scripts = manifest.scripts ?? {};
+  assert.equal(
+    scripts["check:deps"],
+    "node tools/architecture/check-dependencies.mjs",
+    "the rule needs a script of its own",
+  );
+  const ci = scripts.ci ?? "";
+  assert.ok(
+    ci.includes("check:deps"),
+    "`npm run ci` must run the dependency rule before the tests",
+  );
+  assert.ok(ci.includes("check"), "the linter stays part of the same gate");
+});
+
+test("the rule lives in exactly one file", () => {
+  // The stated edges are the tool's input; nothing else may restate them.
+  const restated = readFileSync(TOOL, "utf8");
+  assert.doesNotMatch(
+    restated,
+    /"@vdp\/shared":\s*\[/,
+    "the tool must read the graph instead of carrying a second copy",
+  );
+  assert.ok(
+    readFileSync(RULES_FILE, "utf8").includes('"@vdp/core"'),
+    "the graph itself stays in dependency-rules.json",
+  );
+  for (const [name, entry] of Object.entries(rules.packages)) {
+    assert.ok(entry.why.trim().length > 0, `${name} must say why it sits where it sits`);
   }
-  for (const match of source.matchAll(DYNAMIC_VDP_IMPORT)) {
-    const specifier = match[1] as string;
-    node.vdpDeps.add(baseName(specifier));
-  }
-  for (const match of source.matchAll(NODE_IMPORT)) {
-    node.nodeBuiltins.add(match[1] as string);
-  }
-}
-
-/** `@vdp/definitions/generic` → `@vdp/definitions`. */
-function baseName(specifier: string): string {
-  const parts = specifier.split("/");
-  return `${parts[0]}/${parts[1]}`;
-}
-
-/**
- * The allowed dependency graph — the hard rule (target architecture §28).
- *
- * Every workspace package MUST appear here; a new package without an entry
- * fails the suite, forcing a conscious placement decision. Edges point from
- * the importing package to what it may import. Nothing above may import
- * something below its own foundation:
- *
- *   shared → domain → application → protocols/definitions →
- *   transports → adapters → core → runtime/storage/reports/ai → apps/tools
- */
-const ALLOWED_VDP_DEPS: Record<string, readonly string[]> = {
-  // Foundation: no dependencies at all.
-  "@vdp/shared": [],
-  "@vdp/charts": [],
-  "@vdp/protocols-oem": [],
-
-  // Domain contracts: shared primitives only — never protocols, transports or I/O.
-  "@vdp/domain": ["@vdp/shared"],
-
-  // Application layer: commands/queries/actions speak domain only.
-  "@vdp/application": ["@vdp/domain"],
-
-  // Definitions are data + validation; no diagnostic logic.
-  "@vdp/definitions": ["@vdp/shared"],
-
-  // Transports: frame/segmentation layer, no protocols above them.
-  "@vdp/transport-can": ["@vdp/shared"],
-  "@vdp/transport-iso-tp": ["@vdp/shared", "@vdp/transport-can"],
-  "@vdp/transport-doip": ["@vdp/shared", "@vdp/transport-can"],
-
-  // Protocols: speak through transport links, never touch adapters or the core.
-  "@vdp/protocols-uds": ["@vdp/shared"],
-  "@vdp/protocols-kwp2000": ["@vdp/shared", "@vdp/protocols-uds"],
-
-  // Adapters implement the CAN bus contract; hardware specifics stay here.
-  "@vdp/adapter-generic-can": ["@vdp/shared", "@vdp/transport-can"],
-  "@vdp/adapter-elm327": ["@vdp/shared", "@vdp/transport-can"],
-  "@vdp/adapter-canable": ["@vdp/shared", "@vdp/transport-can", "@vdp/adapter-elm327"],
-  "@vdp/adapter-socketcan": ["@vdp/shared", "@vdp/transport-can"],
-  "@vdp/adapter-host": [
-    "@vdp/shared",
-    "@vdp/transport-can",
-    "@vdp/adapter-canable",
-    "@vdp/adapter-elm327",
-    "@vdp/adapter-socketcan",
-  ],
-
-  // The (still monolithic) diagnostic core: protocols + transports + definitions.
-  "@vdp/core": [
-    "@vdp/shared",
-    "@vdp/definitions",
-    "@vdp/protocols-uds",
-    "@vdp/protocols-oem",
-    "@vdp/transport-can",
-    "@vdp/transport-iso-tp",
-  ],
-
-  // Runtime: composition root over core + application/domain contracts.
-  // The runtime is the composition root: it wires the transport seam, so it may
-  // reach the concrete transports (CAN, DoIP) and the UDS link adapter. Domain
-  // and application stay protocol/transport free.
-  "@vdp/runtime": [
-    "@vdp/shared",
-    "@vdp/domain",
-    "@vdp/application",
-    "@vdp/core",
-    "@vdp/definitions",
-    "@vdp/protocols-uds",
-    "@vdp/transport-can",
-    "@vdp/transport-doip",
-  ],
-
-  // Infrastructure above the core.
-  "@vdp/storage": ["@vdp/shared", "@vdp/core"],
-  "@vdp/reports": ["@vdp/core"],
-  "@vdp/ai": ["@vdp/shared"],
-
-  // Tools and apps sit on top of everything.
-  "@vdp/simulators": [
-    "@vdp/shared",
-    "@vdp/core",
-    "@vdp/definitions",
-    "@vdp/protocols-uds",
-    "@vdp/transport-can",
-    "@vdp/transport-iso-tp",
-  ],
-  "@vdp/trace-analyzer": [
-    "@vdp/shared",
-    "@vdp/definitions",
-    "@vdp/protocols-uds",
-    "@vdp/transport-can",
-  ],
-  "@vdp/definition-importer": ["@vdp/shared", "@vdp/definitions"],
-  // The web app speaks to the vehicle exclusively through the diagnostic
-  // runtime (command/query bus) and is free of core imports: persistence and
-  // export formats (session logger, raw trace, session data) come through the
-  // storage seam until the implementations move down (roadmap steps 10–13).
-  "@vdp/web": [
-    "@vdp/shared",
-    "@vdp/domain",
-    "@vdp/application",
-    "@vdp/runtime",
-    "@vdp/definitions",
-    "@vdp/protocols-uds",
-    "@vdp/transport-can",
-    "@vdp/storage",
-    "@vdp/reports",
-    "@vdp/ai",
-    "@vdp/simulators",
-    "@vdp/adapter-host",
-  ],
-};
-
-/**
- * Packages that must stay free of Node builtins: everything that is meant to
- * run headless/portable (domain, application, protocols, transports, core,
- * runtime). File system and sockets belong to storage, host adapters and apps.
- */
-const NODE_BUILTINS_ALLOWED: readonly string[] = ["@vdp/adapter-host", "@vdp/storage", "@vdp/web"];
-
-const packages = discoverPackages();
+});
 
 test("every workspace package has a declared place in the dependency graph", () => {
-  const missing = packages.filter((pkg) => !(pkg.name in ALLOWED_VDP_DEPS)).map((pkg) => pkg.name);
-  assert.deepEqual(
-    missing,
-    [],
-    `new packages must be placed in the architecture graph (tests/architecture): ${missing.join(", ")}`,
-  );
-  const stale = Object.keys(ALLOWED_VDP_DEPS).filter(
-    (name) => !packages.some((pkg) => pkg.name === name),
-  );
+  const unplaced = graph.filter((pkg) => !(pkg.name in rules.packages)).map((pkg) => pkg.name);
+  assert.deepEqual(unplaced, [], "new packages must be placed consciously (dependency-rules.json)");
+  const stale = Object.keys(rules.packages).filter((name) => !byName.has(name));
   assert.deepEqual(stale, [], `rules for packages that no longer exist: ${stale.join(", ")}`);
+  assert.ok(graph.length >= 25, `all workspace packages are scanned (found ${graph.length})`);
 });
 
 test("all imports follow the allowed dependency graph (target architecture §28)", () => {
   const violations: string[] = [];
-  for (const pkg of packages) {
-    const allowed = new Set(ALLOWED_VDP_DEPS[pkg.name] ?? []);
-    for (const dep of pkg.vdpDeps) {
+  for (const pkg of graph) {
+    const allowed = new Set(rules.packages[pkg.name]?.mayImport ?? []);
+    for (const dep of pkg.imports) {
       if (dep === pkg.name) continue;
-      if (!allowed.has(dep)) {
-        violations.push(`${pkg.name} → ${dep}  (${relative(root, pkg.dir)})`);
-      }
+      if (!allowed.has(dep)) violations.push(`${pkg.name} → ${dep}  (${pkg.dir})`);
     }
   }
   assert.deepEqual(violations, [], "forbidden dependency edges found:\n" + violations.join("\n"));
 });
 
 test("no package imports the UI", () => {
-  const offenders = packages.filter(
-    (pkg) => pkg.name !== "@vdp/web" && pkg.vdpDeps.has("@vdp/web"),
-  );
+  const ui = rules.rules.ui.package;
+  const offenders = graph.filter((pkg) => pkg.name !== ui && pkg.imports.includes(ui));
   assert.deepEqual(
     offenders.map((pkg) => pkg.name),
     [],
@@ -249,32 +144,27 @@ test("no package imports the UI", () => {
 });
 
 test("portable layers stay free of Node builtins (§28: domain ❌ fs, protocols ❌ I/O)", () => {
-  const allowed = new Set(NODE_BUILTINS_ALLOWED);
+  const allowed = new Set(rules.rules.nodeBuiltins.allowedIn);
   const violations: string[] = [];
-  for (const pkg of packages) {
+  for (const pkg of graph) {
     if (allowed.has(pkg.name)) continue;
-    for (const builtin of pkg.nodeBuiltins) {
-      violations.push(`${pkg.name} imports node:${builtin}`);
-    }
+    for (const builtin of pkg.nodeBuiltins) violations.push(`${pkg.name} imports node:${builtin}`);
   }
   assert.deepEqual(violations, [], "Node builtins in portable layers:\n" + violations.join("\n"));
 });
 
 test("domain and application are protocol- and transport-free (§1, §3)", () => {
-  const forbiddenPrefixes = [
-    "@vdp/protocols",
-    "@vdp/transport",
-    "@vdp/adapters",
-    "@vdp/core",
-    "@vdp/runtime",
-    "@vdp/storage",
-  ];
+  const rule = rules.rules.portableLayers.find((candidate) =>
+    candidate.packages.includes("@vdp/domain"),
+  );
+  assert.ok(rule, "the portability rule for domain/application must be declared");
   const violations: string[] = [];
-  for (const pkg of packages) {
-    if (pkg.name !== "@vdp/domain" && pkg.name !== "@vdp/application") continue;
-    for (const dep of pkg.vdpDeps) {
-      if (forbiddenPrefixes.some((prefix) => dep.startsWith(prefix))) {
-        violations.push(`${pkg.name} → ${dep}`);
+  for (const name of rule.packages) {
+    const pkg = byName.get(name);
+    assert.ok(pkg, `${name} must exist`);
+    for (const dep of pkg.imports) {
+      if (rule.forbidden.some((prefix) => dep === prefix || dep.startsWith(`${prefix}-`))) {
+        violations.push(`${name} → ${dep}`);
       }
     }
   }
@@ -286,33 +176,36 @@ test("domain and application are protocol- and transport-free (§1, §3)", () =>
 });
 
 test("protocols never import adapters, transports never import protocols (§28)", () => {
+  // The rule that used to be dead: its prefix was `@vdp/adapters`, while the
+  // packages are called `@vdp/adapter-*`. Asserted here against the *real*
+  // package list so a prefix that matches nothing fails instead of passing.
   const violations: string[] = [];
-  for (const pkg of packages) {
-    if (pkg.name.startsWith("@vdp/protocols")) {
-      for (const dep of pkg.vdpDeps) {
-        if (dep.startsWith("@vdp/adapters")) violations.push(`${pkg.name} → ${dep}`);
-      }
-    }
-    if (pkg.name.startsWith("@vdp/transport")) {
-      for (const dep of pkg.vdpDeps) {
-        if (dep.startsWith("@vdp/protocols")) violations.push(`${pkg.name} → ${dep}`);
-      }
-    }
-    if (pkg.name.startsWith("@vdp/adapters")) {
-      for (const dep of pkg.vdpDeps) {
-        if (dep.startsWith("@vdp/protocols") || dep.startsWith("@vdp/core"))
-          violations.push(`${pkg.name} → ${dep}`);
+  for (const rule of rules.rules.layerRules) {
+    const subjects = graph.filter(
+      (pkg) => pkg.name === rule.from || pkg.name.startsWith(`${rule.from}-`),
+    );
+    assert.ok(
+      subjects.length > 0,
+      `layer rule "${rule.from}" matches no package — it could never fire`,
+    );
+    for (const pkg of subjects) {
+      for (const dep of pkg.imports) {
+        if (rule.forbidden.some((prefix) => dep === prefix || dep.startsWith(`${prefix}-`))) {
+          violations.push(`${pkg.name} → ${dep} (${rule.why})`);
+        }
       }
     }
   }
   assert.deepEqual(violations, [], "layer violations:\n" + violations.join("\n"));
+  const adapters = graph.filter((pkg) => pkg.name.startsWith("@vdp/adapter"));
+  assert.ok(adapters.length >= 5, `the adapter packages are found (${adapters.length})`);
 });
 
 test("the production graph matches the documented structure snapshot", () => {
   // This snapshot is the *current* truthful graph. When an edge changes, the
   // diff forces a review: intentional architecture move or accident?
-  const snapshot = packages
-    .map((pkg) => `${pkg.name}: ${Array.from(pkg.vdpDeps).sort().join(" ") || "(none)"}`)
+  const snapshot = graph
+    .map((pkg) => `${pkg.name}: ${[...pkg.imports].sort().join(" ") || "(none)"}`)
     .join("\n");
   assert.match(snapshot, /@vdp\/domain: @vdp\/shared/);
   assert.match(snapshot, /@vdp\/application: @vdp\/domain/);
@@ -323,4 +216,96 @@ test("the production graph matches the documented structure snapshot", () => {
   assert.match(snapshot, /@vdp\/protocols-uds: @vdp\/shared/);
   // DoIP stays low-level: it must not pull in the protocol layer itself.
   assert.doesNotMatch(snapshot, /@vdp\/transport-doip:.*protocols/);
+});
+
+test("a forbidden edge makes the tool fail, an allowed one keeps it quiet (§34.21)", () => {
+  const workspace = mkdtempSync(join(tmpdir(), "vdp-deps-"));
+  try {
+    const rulesFile = join(workspace, "rules.json");
+    const write = (name: string): void => {
+      const dir = join(workspace, "packages", name);
+      mkdirSync(join(dir, "src"), { recursive: true });
+      writeFileSync(join(dir, "package.json"), JSON.stringify({ name: `@vdp/${name}` }));
+      writeFileSync(join(dir, "src/index.ts"), 'import "@vdp/alpha";\n');
+    };
+    write("alpha");
+    write("beta");
+    writeFileSync(
+      rulesFile,
+      JSON.stringify({
+        schemaVersion: 1,
+        packages: {
+          "@vdp/alpha": { mayImport: [], why: "fixture leaf" },
+          "@vdp/beta": { mayImport: [], why: "fixture consumer without the edge" },
+        },
+        rules: { nodeBuiltins: { allowedIn: [], why: "fixture" } },
+      }),
+    );
+
+    const forbidden = runTool(["--root", workspace, "--rules", rulesFile, "--json"]);
+    assert.equal(forbidden.status, 1, "a forbidden edge must fail the tool");
+    const reported = JSON.parse(forbidden.stdout) as { violations: Array<{ message: string }> };
+    assert.ok(
+      reported.violations.some((violation) => violation.message.includes("@vdp/beta → @vdp/alpha")),
+      `the violation names both ends:\n${forbidden.stdout}`,
+    );
+
+    // Same tree, edge allowed: the tool is quiet and says so.
+    writeFileSync(
+      rulesFile,
+      JSON.stringify({
+        schemaVersion: 1,
+        packages: {
+          "@vdp/alpha": { mayImport: [], why: "fixture leaf" },
+          "@vdp/beta": { mayImport: ["@vdp/alpha"], why: "fixture consumer" },
+        },
+        rules: { nodeBuiltins: { allowedIn: [], why: "fixture" } },
+      }),
+    );
+    const allowed = runTool(["--root", workspace, "--rules", rulesFile]);
+    assert.equal(allowed.status, 0, `an allowed edge must pass:\n${allowed.stdout}`);
+
+    // A rule that matches no package is itself a violation, not a silent pass.
+    writeFileSync(
+      rulesFile,
+      JSON.stringify({
+        schemaVersion: 1,
+        packages: {
+          "@vdp/alpha": { mayImport: [], why: "fixture leaf" },
+          "@vdp/beta": { mayImport: [], why: "fixture consumer" },
+        },
+        rules: {
+          nodeBuiltins: { allowedIn: [], why: "fixture" },
+          layerRules: [{ from: "@vdp/adapters", forbidden: ["@vdp/nothing"], why: "typo" }],
+        },
+      }),
+    );
+    const blind = runTool(["--root", workspace, "--rules", rulesFile, "--json"]);
+    assert.equal(blind.status, 1, "a prefix that matches no package must fail");
+    const blindViolations = JSON.parse(blind.stdout) as { violations: Array<{ rule: string }> };
+    assert.ok(
+      blindViolations.violations.some((violation) => violation.rule === "blind-prefix"),
+      `the tool reports the blind rule:\n${blind.stdout}`,
+    );
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test("a malformed rules file is an error, never a silent pass", () => {
+  const workspace = mkdtempSync(join(tmpdir(), "vdp-deps-broken-"));
+  try {
+    const rulesFile = join(workspace, "rules.json");
+    writeFileSync(rulesFile, "{ not json");
+    const run = runTool(["--root", workspace, "--rules", rulesFile]);
+    assert.equal(run.status, 2, "a rules file nothing can read is a usage error");
+    assert.match(run.stderr, /not valid JSON/);
+
+    writeFileSync(rulesFile, JSON.stringify({ packages: { "@vdp/x": { mayImport: [] } } }));
+    const typo = runTool(["--root", workspace, "--rules", rulesFile]);
+    assert.equal(typo.status, 2, "a missing reason must not pass as a rule");
+    assert.match(typo.stderr, /has no "why"/);
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
 });

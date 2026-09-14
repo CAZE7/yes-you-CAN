@@ -219,7 +219,7 @@ function collectCandidates(
       candidates.push({
         txId: ecu.address.txId,
         rxId: ecu.address.rxId,
-        extended: ecu.address.extended,
+        ...(ecu.address.extended !== undefined ? { extended: ecu.address.extended } : {}),
       });
     }
   }

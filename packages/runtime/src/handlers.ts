@@ -129,9 +129,13 @@ export function registerRuntimeHandlers(bus: CommandBus, services: RuntimeServic
   );
   bus.registerQuery(QueryKinds.GetAvailableActions, (query) => {
     const { ecuId } = query as GetAvailableActionsQuery;
+    // An unknown ECU id is not a context property holding nothing, it is the
+    // absence of a context property — `actions.available` treats the two alike
+    // today, and the type keeps it that way on purpose.
+    const ecu = ecuId !== undefined ? ecus.get(ecuId) : undefined;
     const context: DiagnosticContext = {
       connected: session.current() !== undefined,
-      ...(ecuId !== undefined ? { ecu: ecus.get(ecuId) } : {}),
+      ...(ecu !== undefined ? { ecu } : {}),
     };
     return actions.available(context);
   });

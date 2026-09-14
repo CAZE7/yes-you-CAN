@@ -15,6 +15,7 @@ import { VirtualVehicle } from "@vdp/simulators";
 import { ReplayTransport, recordingFromSessionJson } from "@vdp/transport-can";
 import { IsoTpConnection } from "@vdp/transport-iso-tp";
 import { test } from "vitest";
+import { settle } from "../helpers/wait.js";
 
 const logger = createLogger("replay", { level: "ERROR" });
 const VIN = "1HGCM82633A004352";
@@ -284,4 +285,75 @@ test("replay delivers frames to subscribers with direction rx", async () => {
     "replayed frames are received, never transmitted",
   );
   await bus.close();
+});
+
+test("a paced replay delivers a pending response and the real answer as two messages", async () => {
+  // Split ISO-TP frames mean the recorded pacing is part of the answer: an ECU that
+  // sends "response pending" (NRC 0x78) and the real response 30 ms later sends two
+  // messages, and the tester only asks for the second one after it processed the
+  // first. Delivered as one burst — or awaited until the whole exchange is through —
+  // the second message arrives before anyone listens for it and is lost.
+  const recording = recordingFromSessionJson(
+    JSON.stringify({
+      format: "vdp.session",
+      trace: [
+        { t: 0, canId: 0x7e0, direction: "tx", payload: "0322F190" },
+        { t: 1, canId: 0x7e8, direction: "rx", payload: "037F2278AAAAAAAA" },
+        { t: 31, canId: 0x7e8, direction: "rx", payload: "0362F190AAAAAAAA" },
+      ],
+    }),
+  );
+  const bus = new ReplayTransport(recording, { logger, pace: true });
+  await bus.open();
+  const connection = new IsoTpConnection(bus, { txId: 0x7e0, rxId: 0x7e8 }, logger);
+  connection.open();
+
+  const started = Date.now();
+  const first = await connection.request(new Uint8Array([0x22, 0xf1, 0x90]), 1000);
+  assert.deepEqual(Array.from(first.subarray(0, 3)), [0x7f, 0x22, 0x78]);
+  assert.ok(
+    Date.now() - started < 25,
+    "a paced send must not block until the whole answer has been emitted",
+  );
+
+  const second = await connection.receive(500);
+  assert.deepEqual(
+    Array.from(second ?? []),
+    [0x62, 0xf1, 0x90],
+    "the final response after NRC 0x78 must reach the caller that waits for it",
+  );
+  assert.ok(Date.now() - started >= 25, "the second message arrives at its recorded offset");
+  assert.deepEqual(bus.deviations, []);
+  await bus.close();
+});
+
+test("closing a paced replay cancels the responses that are still scheduled", async () => {
+  const recording = recordingFromSessionJson(
+    JSON.stringify({
+      format: "vdp.session",
+      trace: [
+        { t: 0, canId: 0x7e0, direction: "tx", payload: "0322F190" },
+        { t: 500, canId: 0x7e8, direction: "rx", payload: "0362F190AAAAAAAA" },
+      ],
+    }),
+  );
+  const bus = new ReplayTransport(recording, { logger, pace: true });
+  await bus.open();
+  const seen: number[] = [];
+  bus.subscribe((frame) => seen.push(frame.id));
+  await bus.send({
+    timestamp: 0,
+    id: 0x7e0,
+    extended: false,
+    fd: false,
+    dlc: 4,
+    payload: new Uint8Array([0x22, 0xf1, 0x90, 0x00]),
+    channel: "replay0",
+    direction: "tx",
+  });
+  await bus.close();
+  // Absence has no condition to poll for: the scheduled response sat 500 ms in the
+  // future, so a quiet period well below that proves the close cancelled it.
+  await settle(50, "the scheduled response must stay cancelled after close()");
+  assert.deepEqual(seen, [], "a closed replay must not emit into a listener that is gone");
 });

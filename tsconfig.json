@@ -8,6 +8,9 @@
       "path": "packages/domain"
     },
     {
+      "path": "packages/diagnostic-ir"
+    },
+    {
       "path": "packages/application"
     },
     {
@@ -66,6 +69,9 @@
     },
     {
       "path": "tools/simulators"
+    },
+    {
+      "path": "tools/golden-sessions"
     },
     {
       "path": "tools/trace-analyzer"

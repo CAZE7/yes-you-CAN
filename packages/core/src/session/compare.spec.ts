@@ -9,26 +9,29 @@
 import assert from "node:assert/strict";
 import type { DtcRecord } from "@vdp/protocols-uds";
 import { describe, expect, test } from "vitest";
+import { type FixturePatch, patched } from "../../../../tests/helpers/fixture.js";
 import type { MeasurementSample } from "../measurements/types.js";
 import { type SessionComparisonSide, compareSessions } from "./compare.js";
 
 function sample(
   signal: string,
   value: number | string,
-  overrides: Partial<MeasurementSample> = {},
+  overrides: FixturePatch<MeasurementSample> = {},
 ): MeasurementSample {
-  return {
-    timestamp: "2026-09-11T08:00:00.000Z",
-    t: 0,
-    signal,
-    // String values model textual signals (door states etc.) — the wire type is
-    // numeric, so the cast lives here and not at every call site.
-    value: value as number,
-    rawValue: value as number,
-    rawHex: "00",
-    outOfRange: false,
-    ...overrides,
-  };
+  return patched(
+    {
+      timestamp: "2026-09-11T08:00:00.000Z",
+      t: 0,
+      signal,
+      // String values model textual signals (door states etc.) — the wire type
+      // is numeric, so the cast lives here and not at every call site.
+      value: value as number,
+      rawValue: value as number,
+      rawHex: "00",
+      outOfRange: false,
+    },
+    overrides,
+  );
 }
 
 const ALL_STATUS_BITS = {
@@ -53,18 +56,20 @@ function dtc(code: string, status: number): DtcRecord {
   };
 }
 
-function side(overrides: Partial<SessionComparisonSide> = {}): SessionComparisonSide {
-  return {
-    id: "s1",
-    label: "vorher",
-    vehicle: "Golf 8",
-    vin: "1HGCM82633A004352",
-    adapter: "ELM327",
-    definitionPackage: { oem: "generic", version: "1.0.0" },
-    dtcs: [],
-    samples: [],
-    ...overrides,
-  };
+function side(overrides: FixturePatch<SessionComparisonSide> = {}): SessionComparisonSide {
+  return patched(
+    {
+      id: "s1",
+      label: "vorher",
+      vehicle: "Golf 8",
+      vin: "1HGCM82633A004352",
+      adapter: "ELM327",
+      definitionPackage: { oem: "generic", version: "1.0.0" },
+      dtcs: [],
+      samples: [],
+    },
+    overrides,
+  );
 }
 
 describe("metadata comparison", () => {

@@ -205,6 +205,19 @@ export interface SessionSummary {
 }
 
 /** Outcome of a fault-memory clear — including the verification re-read. */
+/**
+ * One stage of a write operation as the domain sees it (AGENTS 26).
+ *
+ * Deliberately plain data: "which stage, ok/failed/skipped, why". A caller (UI,
+ * report, AI) can explain a refusal from this without knowing how the write is
+ * implemented — and without a string match on an error message.
+ */
+export interface WriteStageInfo {
+  stage: string;
+  state: "ok" | "failed" | "skipped";
+  reasons: string[];
+}
+
 export interface ClearDtcOutcome {
   ok: boolean;
   /** True when the re-read confirmed the codes are gone. */
@@ -225,6 +238,10 @@ export interface ClearDtcOutcome {
   stillFailingCodes: string[];
   /** Codes whose status did not change at all — the ECU ignored the clear. */
   unchangedCodes: string[];
+  /** The stages of the write with their reasons (prepare → confirm → execute → verify). */
+  stages?: WriteStageInfo[];
+  /** Identifier of the transaction the audit log refers to. */
+  transactionId?: string;
   /** Failed preconditions or warnings produced by the safety chain. */
   reasons: string[];
   clearedAt?: string;
@@ -340,6 +357,13 @@ export interface DtcClearPrecheckInfo {
   ecuId: string;
   ecuName: string;
   ok: boolean;
+  /** Every blocking reason — violated preconditions and unproven ones (AGENTS 26). */
   failed: string[];
+  /**
+   * The subset of `failed` that is missing evidence rather than a violation
+   * ("battery voltage unknown" vs. "battery voltage too low"). The UI tells the
+   * operator what to measure instead of what is wrong (P0 #5).
+   */
+  unproven: string[];
   warnings: string[];
 }

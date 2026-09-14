@@ -71,6 +71,7 @@ export type {
   SignalStatisticsInfo,
   VehicleStateReading,
   VehicleSummary,
+  WriteStageInfo,
 } from "./model.js";
 
 // Domain events (§10)

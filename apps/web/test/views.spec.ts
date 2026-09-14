@@ -13,6 +13,7 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
+import { type FixturePatch, patched, without } from "../../../tests/helpers/fixture.js";
 import { type DtcView, toDtcView } from "../src/dtc-view.js";
 import { type EcuView, toEcuView, toFreezeFrameView } from "../src/ecu-view.js";
 import {
@@ -30,22 +31,24 @@ type FreezeInput = Parameters<typeof toFreezeFrameView>[0];
 type ReadingInput = Parameters<typeof toSampleView>[0];
 type TraceInput = Parameters<typeof toTraceView>[0];
 
-function dtc(fields: Partial<DtcInput> = {}): DtcInput {
-  return {
-    code: "P0420",
-    raw: "042000",
-    ecuId: "ecu_1",
-    ecuName: "Engine Control Unit",
-    status: 0x24,
-    failureType: "00",
-    confirmed: true,
-    pending: false,
-    testFailed: true,
-    hasFreezeFrame: true,
-    severity: "major",
-    description: "Catalyst efficiency below threshold",
-    ...fields,
-  };
+function dtc(fields: FixturePatch<DtcInput> = {}): DtcInput {
+  return patched(
+    {
+      code: "P0420",
+      raw: "042000",
+      ecuId: "ecu_1",
+      ecuName: "Engine Control Unit",
+      status: 0x24,
+      failureType: "00",
+      confirmed: true,
+      pending: false,
+      testFailed: true,
+      hasFreezeFrame: true,
+      severity: "major",
+      description: "Catalyst efficiency below threshold",
+    },
+    fields,
+  );
 }
 
 /** The one ECU row the fault mapper looks at: session id in, response id out. */
@@ -220,7 +223,7 @@ describe("toSampleView, toMarkerView and toTraceView", () => {
     assert.equal(sample.value, "812.50");
     assert.equal(sample.rawValue, 3_250, "raw and decoded travel side by side (AGENTS 34.7)");
 
-    const text = toSampleView({ ...reading, name: undefined, value: "closed loop" });
+    const text = toSampleView(without({ ...reading, value: "closed loop" }, "name"));
     assert.equal(text.numeric, null, "a textual signal has no number to plot");
     assert.equal(text.name, "engine.rpm", "an unnamed signal falls back to its id");
     assert.equal(text.value, "closed loop");

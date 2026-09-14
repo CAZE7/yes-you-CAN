@@ -163,7 +163,7 @@ function toCandidateRef(candidate: VehicleCandidate): VehicleCandidateRef {
     vehicleId: candidate.vehicleId,
     brand: candidate.brand,
     model: candidate.model,
-    platform: candidate.platform,
+    ...(candidate.platform !== undefined ? { platform: candidate.platform } : {}),
     provenanceType: candidate.provenance.sourceType,
     engineIds: [...candidate.engineIds],
     gearboxIds: [...candidate.gearboxIds],

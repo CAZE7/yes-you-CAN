@@ -6,6 +6,7 @@
  * hardware — that is the whole point of having it.
  */
 
+import { AdapterUnsupportedError, TransportError } from "@vdp/shared";
 import type {
   AdapterCapabilities,
   AdapterInfo,
@@ -116,7 +117,20 @@ export class VirtualCanBus implements CanBus {
   }
 
   async send(frame: CanFrame): Promise<void> {
-    if (!this.opened) throw new Error(`virtual bus ${this.info.id} is not open`);
+    if (!this.opened) {
+      throw new TransportError(`virtual bus ${this.info.id} is not open`, {
+        adapterId: this.info.id,
+      });
+    }
+    // A bus that advertises `canFd: false` must not carry FD frames either: ISO-TP
+    // decides from these capabilities, and a wire that quietly accepts what the
+    // adapter says it cannot do hides exactly the mistake a real bus would fail on.
+    if (frame.fd && !this.capabilities.canFd) {
+      throw new AdapterUnsupportedError(
+        `virtual bus ${this.info.id} does not advertise CAN-FD (AGENTS 4)`,
+        { adapterId: this.info.id },
+      );
+    }
     this.txCount++;
     const withDirection: CanFrame = {
       ...frame,

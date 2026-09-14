@@ -6,6 +6,8 @@
  * testable without hardware (AGENTS 31/32) and portable across apps (AGENTS 28).
  */
 
+import { TransportError } from "@vdp/shared";
+
 export interface ByteStream {
   write(data: string): Promise<void>;
   /** Subscribe to incoming chunks; returns an unsubscribe function. */
@@ -26,7 +28,9 @@ export class MemoryByteStream implements ByteStream {
 
   async write(data: string): Promise<void> {
     this.written.push(data);
-    if (!this.opened) throw new Error("stream is closed");
+    // Same failure class as the host stream: an adapter must not have to know
+    // which ByteStream it drives to interpret "the stream is gone".
+    if (!this.opened) throw new TransportError("stream is closed");
     const reply = this.responder?.(data);
     if (reply) this.emit(reply);
   }

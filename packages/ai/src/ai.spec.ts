@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createLogger } from "@vdp/shared";
 import { test } from "vitest";
+import { type FixturePatch, patched } from "../../../tests/helpers/fixture.js";
 import {
   AnalysisError,
   type AnalysisInput,
@@ -13,8 +14,17 @@ import {
 
 const logger = createLogger("ai", { level: "ERROR" });
 
-function sampleInput(overrides: Partial<AnalysisInput> = {}): AnalysisInput {
-  return {
+/**
+ * The fixture input every analysis test starts from.
+ *
+ * The patch type is {@link FixturePatch}: an `undefined` in it **removes** the key
+ * from the result instead of blanking it, which is what `{ vehicle: undefined }`
+ * means here — an input about no car at all, not one whose `vehicle` holds
+ * `undefined` (ADR 0029 §3; `dropUndefined` only removes, it does not restore a
+ * default that was overridden away).
+ */
+function sampleInput(patch: FixturePatch<AnalysisInput> = {}): AnalysisInput {
+  const defaults: AnalysisInput = {
     vehicle: { brand: "Honda", model: "Accord", modelYear: 2003, vin: "1HGCM82633A004352" },
     mileageKm: 187_450,
     signals: [
@@ -62,8 +72,8 @@ function sampleInput(overrides: Partial<AnalysisInput> = {}): AnalysisInput {
     ],
     anomalies: [{ signal: "engine.rpm", reason: "delta 3420 far above median" }],
     notes: ["Rough idle when cold."],
-    ...overrides,
   };
+  return patched(defaults, patch);
 }
 
 test("the heuristic provider reports DTCs, ranges and spreads with evidence", async () => {
@@ -253,7 +263,14 @@ const fakeResponse = (body: unknown, status = 200) => ({
 });
 
 test("the default HTTP client posts to the endpoint and parses the answer", async () => {
-  let seen: { url?: string; method?: string; body?: string; signal?: AbortSignal } = {};
+  // The recorder keeps whatever the built-in client passed on, including
+  // "nothing" — so the fields are `| undefined`, not optional (E18).
+  let seen: {
+    url?: string;
+    method: string | undefined;
+    body: string | undefined;
+    signal: AbortSignal | undefined;
+  } = { method: undefined, body: undefined, signal: undefined };
   await withFetch(
     async (url: unknown, init: unknown) => {
       const call = (init ?? {}) as { method?: string; body?: string; signal?: AbortSignal };

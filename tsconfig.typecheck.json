@@ -35,6 +35,7 @@
       "@vdp/ai": ["./packages/ai/src/index.ts"],
       "@vdp/charts": ["./packages/charts/src/index.ts"],
       "@vdp/simulators": ["./tools/simulators/src/index.ts"],
+      "@vdp/golden-sessions": ["./tools/golden-sessions/src/index.ts"],
       "@vdp/trace-analyzer": ["./tools/trace-analyzer/src/index.ts"],
       "@vdp/definition-importer": ["./tools/definition-importer/src/index.ts"],
       "@vdp/web": ["./apps/web/src/server.ts"]

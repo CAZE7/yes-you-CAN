@@ -12,11 +12,12 @@ import assert from "node:assert/strict";
 import type { VehicleSummary } from "@vdp/domain";
 import type { VehicleSessionData } from "@vdp/storage";
 import { describe, test } from "vitest";
+import { type FixturePatch, patched } from "../../../tests/helpers/fixture.js";
 import { type AnalysisDtcSource, analysisDtcOf, analysisVehicleOf } from "../src/analysis-input.js";
 
 type Determination = VehicleSessionData["determination"];
 
-function determination(overrides: Partial<NonNullable<Determination>> = {}): Determination {
+function determination(patch: FixturePatch<NonNullable<Determination>> = {}): Determination {
   const match = {
     oem: "simulator",
     packageVersion: "1.0.0",
@@ -32,14 +33,18 @@ function determination(overrides: Partial<NonNullable<Determination>> = {}): Det
     evidence: [],
     conflicts: [],
   };
-  return {
-    resolvedAt: "2026-09-14T00:00:00.000Z",
-    match,
-    notes: [],
-    unexplained: [],
-    alternatives: [],
-    ...overrides,
-  };
+  // An `undefined` in the patch means "this field never came" — the determination
+  // of a car that resolved nothing has no `match` key at all (ADR 0029 §3).
+  return patched(
+    {
+      resolvedAt: "2026-09-14T00:00:00.000Z",
+      match,
+      notes: [],
+      unexplained: [],
+      alternatives: [],
+    },
+    patch,
+  );
 }
 
 const MATCH_WEAK = {

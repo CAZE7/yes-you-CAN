@@ -5,10 +5,11 @@ import { fromHex, toHex } from "@vdp/shared";
 import { test } from "vitest";
 import {
   type ClearableEcu,
-  DtcClearService,
   DtcScanner,
   SafetyManager,
+  createWritePort,
   decodeFreezeFrame,
+  runDtcClear,
 } from "../index.js";
 
 const index = indexPackage(genericPackage);
@@ -100,6 +101,13 @@ test("a documented code without a freeze frame layout stays raw", () => {
 
 /* --------------------------------------------------- clearing fault memory */
 
+/**
+ * The clear path itself (stages, permit, verification, refusals) is covered in
+ * `../writes/writes.spec.ts` — one suite per behaviour, not two. What stays here
+ * is the *contract* the write side relies on: an ECU that is already in a
+ * writable session needs no session switch at all.
+ */
+
 class FakeEcu implements ClearableEcu {
   id = "ecu-engine";
   name = "Engine Control Unit";
@@ -117,9 +125,6 @@ class FakeEcu implements ClearableEcu {
 
   async clearDiagnosticInformation(): Promise<void> {
     this.cleared++;
-    // Real behaviour: the clear resets the status bits, and a fault that is still
-    // present immediately sets testFailed again. Anything else disappears from a
-    // status-mask read (a record with status 0x00 is filtered out by mask 0xFF).
     this.codes = this.codes
       .map((record) => ({ ...record, status: (record.status & 0x01) === 0 ? 0x00 : 0x03 }))
       .filter((record) => record.status !== 0x00);
@@ -146,165 +151,35 @@ function record(code: string, status: number): DtcRecord {
   };
 }
 
-function service(
-  options: { vehicleState?: Parameters<typeof DtcClearService.prototype.clear>[1] } = {},
-) {
-  void options;
-  const safety = new SafetyManager({ logger: undefined });
-  const scanner = new DtcScanner({ definitions: [genericPackage] });
-  return {
+test("an ECU without a session switch is cleared while it stays writable (fail-safe contract)", async () => {
+  // `prepareWrite` is optional on purpose: an ECU that must not switch sessions
+  // on its own can still be written while it already is in the right one. The
+  // operation must not require the switch.
+  const safety = new SafetyManager();
+  const writes = createWritePort({
     safety,
-    scanner,
-    service: new DtcClearService({ safety, scanner }),
-  };
-}
-
-const READY_STATE = {
-  stationary: true,
-  ignitionOn: true,
-  batteryVoltage: 12.6,
-  parkingBrake: true,
-};
-
-test("clearing fault memory needs the operator confirmation", async () => {
-  const { service: clearer } = service();
-  const ecu = new FakeEcu([record("P0420", 0x2f)]);
-  await assert.rejects(
-    () =>
-      clearer.clear(ecu, {
-        userConfirmed: false,
-        vehicleState: READY_STATE,
-        definitionVersion: "1.0.0",
-      }),
-    /refused/,
-  );
-  assert.equal(ecu.cleared, 0, "a refused clear must not touch the ECU");
-  assert.match(
-    clearer.evaluate(ecu, { userConfirmed: false, vehicleState: READY_STATE }).failed.join("; "),
-    /confirmation/,
-  );
-});
-
-test("clearing fault memory needs a safe vehicle state", async () => {
-  const { service: clearer } = service();
-  const ecu = new FakeEcu([record("P0420", 0x2f)]);
-  await assert.rejects(
-    () =>
-      clearer.clear(ecu, {
-        userConfirmed: true,
-        definitionVersion: "1.0.0",
-        vehicleState: {
-          stationary: false,
-          ignitionOn: true,
-          batteryVoltage: 11.2,
-          parkingBrake: false,
-        },
-      }),
-    (error: unknown) => {
-      const failed = ((error as { failedPreconditions?: string[] }).failedPreconditions ?? []).join(
-        "; ",
-      );
-      assert.match(failed, /not stationary/);
-      assert.match(failed, /below the required/);
-      return true;
-    },
-  );
-  assert.equal(ecu.cleared, 0);
-});
-
-test("a clear in the default session is refused (ISO 14229-1 §11.3 gating)", async () => {
-  const { service: clearer } = service();
-  const ecu = new FakeEcu([record("P0420", 0x2f)]);
-  ecu.sessionType = 0x01;
-  await assert.rejects(
-    () =>
-      clearer.clear(ecu, {
-        userConfirmed: true,
-        vehicleState: READY_STATE,
-        definitionVersion: "1.0.0",
-      }),
-    (error: unknown) => {
-      assert.match(
-        JSON.stringify((error as { failedPreconditions?: string[] }).failedPreconditions),
-        /default diagnostic session/,
-      );
-      return true;
-    },
-  );
-  assert.equal(ecu.cleared, 0);
-});
-
-test("a confirmed clear records a backup, verifies by re-reading and reports what survived", async () => {
-  const { service: clearer } = service();
-  const ecu = new FakeEcu([record("P0420", 0x2f), record("P0300", 0x08)]);
-  const snapshots: Array<{ label: string; count: number }> = [];
-  const actions: string[] = [];
-
-  const result = await clearer.clear(ecu, {
-    userConfirmed: true,
-    vehicleState: READY_STATE,
-    definitionVersion: "1.0.0",
-    recordSnapshot: (records, label) => snapshots.push({ label, count: records.length }),
-    recordAction: (action) => actions.push(action.kind),
+    scanner: new DtcScanner({ definitions: [genericPackage] }),
   });
+  const ecu = new FakeEcu([record("P0300", 0x08)]);
 
-  assert.equal(result.cleared, true);
+  const result = await runDtcClear(
+    writes,
+    { target: ecu, userConfirmed: true },
+    {
+      ecuId: ecu.id,
+      ecuName: ecu.name,
+      sessionType: ecu.sessionType,
+      definitionVersion: "1.0.0",
+      vehicleState: {
+        stationary: true,
+        ignitionOn: true,
+        batteryVoltage: 12.6,
+        parkingBrake: true,
+      },
+    },
+  );
+
+  assert.equal(result.ok, true);
   assert.equal(ecu.cleared, 1);
-  assert.equal(result.before.length, 2);
-  assert.deepEqual(snapshots, [{ label: "before clear (Engine Control Unit)", count: 2 }]);
-  assert.deepEqual(actions, ["clear-dtc"]);
-  assert.equal(result.permit.risk, "medium");
-
-  // P0300 was confirmed but not currently failing → gone. P0420 is still failing
-  // → it stays with a reset status. Both outcomes have to be visible.
-  assert.deepEqual(
-    result.comparison.removed.map((dtc) => dtc.code),
-    ["P0300"],
-  );
-  assert.deepEqual(
-    result.comparison.changed.map((entry) => entry.code),
-    ["P0420"],
-  );
-  assert.equal(result.comparison.unchanged.length, 0);
-  assert.equal(result.verified, true);
-});
-
-test("an ECU that ignores the clear is reported as unverified, not as success", async () => {
-  const { service: clearer } = service();
-  const ecu = new FakeEcu([record("P0420", 0x2f), record("P0171", 0x08)]);
-  // An ECU that answers positively without doing anything is the failure mode
-  // this verification step exists for.
-  ecu.clearDiagnosticInformation = async () => {
-    ecu.cleared++;
-  };
-
-  const result = await clearer.clear(ecu, {
-    userConfirmed: true,
-    vehicleState: READY_STATE,
-    definitionVersion: "1.0.0",
-  });
-  assert.equal(result.cleared, true, "the request itself succeeded");
-  assert.equal(result.verified, false, "but the re-read does not confirm it");
-  assert.equal(result.comparison.unchanged.length, 2);
-});
-
-test("a failed write is audited and rethrown instead of being swallowed", async () => {
-  const { service: clearer, safety } = service();
-  const ecu = new FakeEcu([record("P0420", 0x2f)]);
-  ecu.clearDiagnosticInformation = async () => {
-    throw new Error("transport lost");
-  };
-  await assert.rejects(
-    () =>
-      clearer.clear(ecu, {
-        userConfirmed: true,
-        vehicleState: READY_STATE,
-        definitionVersion: "1.0.0",
-      }),
-    /transport lost/,
-  );
-  assert.ok(
-    safety.audit.some((entry) => entry.action === "write-failed"),
-    "the audit log has to record the failure",
-  );
+  assert.equal(result.value?.verified, true);
 });

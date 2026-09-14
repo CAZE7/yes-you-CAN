@@ -6,26 +6,45 @@
  * trace data as raw (AGENTS 5, 34.3, 18).
  */
 
+import * as api from "/api.js";
+import { button, child, el, input, kv, messageOf, must, row, select } from "/dom.js";
 import { GraphBoard } from "/graphs.js";
 import { renderVehicleResolution } from "/vehicle.js";
 
-/** Shared error message extraction — `catch` bindings are `unknown`. */
-const messageOf = (error) => (error instanceof Error ? error.message : String(error));
+/** @typedef {import("../src/views.js").AppState} AppState */
+/** @typedef {import("../src/views.js").DtcClearPrecheck} DtcClearPrecheck */
+/** @typedef {import("../src/views.js").DtcView} DtcView */
+/** @typedef {import("../src/views.js").DtcKnowledgeView} DtcKnowledgeView */
+/** @typedef {import("../src/views.js").DtcPatternView} DtcPatternView */
+/** @typedef {import("../src/views.js").EcuView} EcuView */
+/** @typedef {import("../src/views.js").SampleView} SampleView */
+/** @typedef {import("../src/views.js").SignalStatisticsView} SignalStatisticsView */
+/** @typedef {import("../src/views.js").TraceView} TraceView */
 
+/**
+ * The little bit of state the front end keeps on its own.
+ *
+ * Everything else arrives with `AppState` — this object only holds what the
+ * backend does not need to know: the checkbox selection the operator made, the
+ * samples of the running session and the confirmed preconditions.
+ */
 const state = {
   connected: false,
   live: false,
-  /** @type {any[]} */
+  /** @type {SampleView[]} */
   samples: [],
-  /** @type {any[]} */
+  /** @type {TraceView[]} */
   trace: [],
-  selectedSignals: /** @type {Set<string>} */ (new Set()),
-  /** @type {any[]} */
+  /** @type {Set<string>} */
+  selectedSignals: new Set(),
+  /** @type {AppState["actions"]} */
   actions: [],
-  /** @type {any[]} */
+  /** @type {DtcView[]} */
   dtcs: [],
-  clearPrecheck: /** @type {any} */ (null),
-  ecusCache: /** @type {any[] | undefined} */ (undefined),
+  /** @type {DtcClearPrecheck | null} */
+  clearPrecheck: null,
+  /** @type {EcuView[] | undefined} */
+  ecusCache: undefined,
 };
 
 /**
@@ -35,63 +54,16 @@ const state = {
  */
 const board = new GraphBoard();
 
-const $ = (selector) => document.querySelector(selector);
-const el = (tag, attrs = {}, children = []) => {
-  const node = document.createElement(tag);
-  for (const [key, value] of Object.entries(attrs)) {
-    if (key === "class") node.className = value;
-    else if (key === "text") node.textContent = value;
-    else if (key.startsWith("on")) node.addEventListener(key.slice(2), value);
-    else node.setAttribute(key, value);
-  }
-  for (const child of Array.isArray(children) ? children : [children]) {
-    if (child == null) continue;
-    node.append(typeof child === "string" ? document.createTextNode(child) : child);
-  }
-  return node;
-};
-
-function row(cells, mono = []) {
-  const tr = el("tr");
-  cells.forEach((value, index) => {
-    tr.append(
-      el("td", {
-        class: mono.includes(index) ? "mono" : "",
-        text: value == null ? "—" : String(value),
-      }),
-    );
-  });
-  return tr;
-}
-
-function kv(target, entries) {
-  const node = $(target);
-  node.replaceChildren();
-  for (const [label, value] of entries) {
-    node.append(
-      el("dt", { text: label }),
-      el("dd", { text: value == null || value === "" ? "—" : String(value) }),
-    );
-  }
-}
-
-async function api(path, options = {}) {
-  const response = await fetch(path, {
-    headers: { "content-type": "application/json" },
-    ...options,
-  });
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`${path} → ${response.status} ${text}`);
-  }
-  const type = response.headers.get("content-type") ?? "";
-  return type.includes("json") ? response.json() : response.text();
-}
-
+/**
+ * Report a failure on the page instead of only in the console (rule 34.25: never
+ * swallow an error silently).
+ *
+ * @param {unknown} error
+ */
 function logError(error) {
   console.error(error);
-  const line = $("#vehicle-line");
-  line.textContent = `Fehler: ${error.message}`;
+  const line = must("#vehicle-line");
+  line.textContent = `Fehler: ${messageOf(error)}`;
   line.classList.add("out-of-range");
 }
 
@@ -119,7 +91,7 @@ for (const rawTab of document.querySelectorAll(".tab")) {
 /** Load the recorded history so the graphs can zoom into the past, not just the live window. */
 async function loadHistory() {
   try {
-    board.setHistory(await api("/api/history"));
+    board.setHistory(await api.fetchHistory());
   } catch (error) {
     // No session yet — the graphs simply stay empty until the first samples arrive.
     if (!/500|not started/.test(messageOf(error))) console.warn("history not available", error);
@@ -128,12 +100,18 @@ async function loadHistory() {
 
 /* ----------------------------------------------------------------- state */
 
+/**
+ * Connection, adapter, session and vehicle header of the workbench.
+ *
+ * @param {AppState} data
+ */
 function renderConnection(data) {
-  $("#conn-state").textContent = data.connected ? (data.live ? "live" : "verbunden") : "offline";
-  $("#conn-state").className =
-    `pill ${data.connected ? (data.live ? "pill-live" : "pill-online") : "pill-offline"}`;
-  $("#vehicle-line").classList.remove("out-of-range");
-  $("#vehicle-line").textContent = data.connected
+  const connection = must("#conn-state");
+  connection.textContent = data.connected ? (data.live ? "live" : "verbunden") : "offline";
+  connection.className = `pill ${data.connected ? (data.live ? "pill-live" : "pill-online") : "pill-offline"}`;
+  const vehicleLine = must("#vehicle-line");
+  vehicleLine.classList.remove("out-of-range");
+  vehicleLine.textContent = data.connected
     ? `${data.vehicle} · ${data.vin ?? "VIN unbekannt"}`
     : "kein Fahrzeug verbunden";
 
@@ -166,13 +144,14 @@ function renderConnection(data) {
     ["Messwerte", data.samples.length],
   ]);
 
-  $("#btn-live-start").disabled = !data.connected || data.live;
-  $("#btn-live-stop").disabled = !data.live;
-  $("#live-state").textContent = data.live ? "läuft" : "gestoppt";
+  button("#btn-live-start").disabled = !data.connected || data.live;
+  button("#btn-live-stop").disabled = !data.live;
+  must("#live-state").textContent = data.live ? "läuft" : "gestoppt";
 }
 
+/** @param {EcuView[]} ecus */
 function renderEcus(ecus) {
-  const body = $("#ecu-rows");
+  const body = must("#ecu-rows");
   body.replaceChildren();
   for (const ecu of ecus) {
     const identification = ecu.identification
@@ -195,8 +174,9 @@ function renderEcus(ecus) {
   }
 }
 
+/** @param {DtcView[]} dtcs */
 function renderDtcs(dtcs) {
-  const body = $("#dtc-rows");
+  const body = must("#dtc-rows");
   body.replaceChildren();
   state.dtcs = dtcs;
   for (const dtc of dtcs) {
@@ -240,11 +220,10 @@ function renderDtcs(dtcs) {
     body.lastElementChild?.append(actions);
   }
   renderClearEcuOptions(dtcs);
-  const counts = dtcs.reduce((acc, dtc) => {
-    acc[dtc.severity] = (acc[dtc.severity] ?? 0) + 1;
-    return acc;
-  }, {});
-  $("#dtc-summary").textContent =
+  /** @type {Record<string, number>} */
+  const counts = {};
+  for (const dtc of dtcs) counts[dtc.severity] = (counts[dtc.severity] ?? 0) + 1;
+  must("#dtc-summary").textContent =
     dtcs.length === 0
       ? "keine Einträge"
       : `${dtcs.length} Einträge · ${Object.entries(counts)
@@ -252,16 +231,19 @@ function renderDtcs(dtcs) {
           .join(", ")}`;
 }
 
+/** @param {AppState["signals"]} signals */
 function renderSignals(signals) {
-  const picker = $("#signal-picker");
+  const picker = must("#signal-picker");
   picker.replaceChildren();
   for (const signal of signals) {
     const id = `sig-${signal.id}`;
-    const checkbox = el("input", {
-      type: "checkbox",
-      id,
-      checked: signal.critical ? "checked" : "",
-    });
+    const checkbox = /** @type {HTMLInputElement} */ (
+      el("input", {
+        type: "checkbox",
+        id,
+        checked: signal.critical ? "checked" : "",
+      })
+    );
     if (signal.critical) state.selectedSignals.add(signal.id);
     checkbox.addEventListener("change", () => {
       if (checkbox.checked) state.selectedSignals.add(signal.id);
@@ -277,12 +259,18 @@ function renderSignals(signals) {
   board.setSignals(signals);
 }
 
+/** @param {SampleView[]} samples */
 function renderLiveCards(samples) {
-  const host = $("#live-cards");
+  const host = must("#live-cards");
+  /** @type {Map<string, SampleView>} */
   const bySignal = new Map();
   for (const sample of samples) bySignal.set(sample.signal, sample);
+  /** @type {Map<string | undefined, HTMLElement>} */
   const existing = new Map();
-  for (const card of host.children) existing.set(card.dataset.signal, card);
+  for (const card of host.children) {
+    const node = /** @type {HTMLElement} */ (card);
+    existing.set(node.dataset.signal, node);
+  }
   for (const [signal, sample] of bySignal) {
     let card = existing.get(signal);
     if (!card) {
@@ -296,16 +284,20 @@ function renderLiveCards(samples) {
       );
       host.append(card);
     }
-    const value = card.querySelector(".live-value");
+    const value = child(card, ".live-value");
     value.textContent = sample.value;
     value.className = `live-value${sample.outOfRange ? " out-of-range" : ""}`;
-    card.querySelector(".live-unit").textContent = sample.unit ?? "";
-    card.querySelector(".live-raw").textContent = `raw: ${sample.rawHex} · t=${sample.t} ms`;
+    child(card, ".live-unit").textContent = sample.unit ?? "";
+    child(card, ".live-raw").textContent = `raw: ${sample.rawHex} · t=${sample.t} ms`;
   }
 }
 
+/**
+ * @param {SignalStatisticsView[]} statistics
+ * @param {AppState["anomalies"]} anomalies
+ */
 function renderStatistics(statistics, anomalies) {
-  const body = $("#stat-rows");
+  const body = must("#stat-rows");
   body.replaceChildren();
   for (const stat of statistics) {
     body.append(
@@ -321,7 +313,7 @@ function renderStatistics(statistics, anomalies) {
       ]),
     );
   }
-  const list = $("#anomaly-list");
+  const list = must("#anomaly-list");
   list.replaceChildren();
   if (anomalies.length === 0)
     list.append(el("li", { class: "muted", text: "keine Anomalien im aufgezeichneten Fenster" }));
@@ -329,10 +321,11 @@ function renderStatistics(statistics, anomalies) {
     list.append(el("li", { text: `${anomaly.signal}: ${anomaly.reason}` }));
 }
 
+/** @param {TraceView} entry */
 function appendTrace(entry) {
   state.trace.push(entry);
   if (state.trace.length > 300) state.trace.shift();
-  const body = $("#trace-rows");
+  const body = must("#trace-rows");
   const tr = row(
     [entry.t, entry.timestamp, entry.canId, entry.direction, entry.dlc, entry.data, entry.channel],
     [2, 5],
@@ -342,8 +335,9 @@ function appendTrace(entry) {
   while (body.children.length > 300) body.lastElementChild?.remove();
 }
 
+/** @param {AppState["actions"]} actions */
 function renderActions(actions) {
-  const body = $("#log-rows");
+  const body = must("#log-rows");
   body.replaceChildren();
   for (const action of actions) {
     body.append(
@@ -352,6 +346,7 @@ function renderActions(actions) {
   }
 }
 
+/** @param {AppState} data */
 function applyState(data) {
   state.connected = data.connected;
   state.live = data.live;
@@ -361,9 +356,9 @@ function applyState(data) {
   renderDtcs(data.dtcs);
   renderStatistics(data.statistics, data.anomalies);
   renderActions(data.actions);
-  if (data.signals.length > 0 && $("#signal-picker").children.length === 0)
+  if (data.signals.length > 0 && must("#signal-picker").children.length === 0)
     renderSignals(data.signals);
-  $("#trace-rows").replaceChildren();
+  must("#trace-rows").replaceChildren();
   state.trace = [];
   for (const entry of data.trace) appendTrace(entry);
 }
@@ -378,19 +373,18 @@ function applyState(data) {
  * backend (truncated record, undocumented layout, leftover bytes) are shown as
  * notes instead of being swallowed (AGENTS 5, 18, 34.3).
  */
+/** @param {DtcView} dtc */
 async function showFreezeFrame(dtc) {
-  const panel = $("#dtc-detail");
-  const body = $("#dtc-detail-body");
-  $("#dtc-detail-title").textContent = `${dtc.code} · ${dtc.ecu}`;
+  const panel = must("#dtc-detail");
+  const body = must("#dtc-detail-body");
+  must("#dtc-detail-title").textContent = `${dtc.code} · ${dtc.ecu}`;
   panel.hidden = false;
   body.replaceChildren(el("p", { class: "muted small", text: "Freeze Frame wird gelesen …" }));
 
+  /** @type {import("../src/views.js").FreezeFrameView} */
   let snapshot;
   try {
-    ({ snapshot } = await api("/api/dtc/snapshot", {
-      method: "POST",
-      body: JSON.stringify({ rxId: dtc.rxId, code: dtc.code }),
-    }));
+    ({ snapshot } = await api.readFreezeFrame({ rxId: dtc.rxId, code: dtc.code }));
   } catch (error) {
     body.replaceChildren(
       el("p", { class: "out-of-range", text: `Freeze Frame nicht verfügbar: ${messageOf(error)}` }),
@@ -398,6 +392,7 @@ async function showFreezeFrame(dtc) {
     return;
   }
 
+  /** @type {HTMLElement[]} */
   const nodes = [];
   const list = el("ul", { class: "plain check-list" });
   const documented = snapshot.documented;
@@ -462,6 +457,7 @@ async function showFreezeFrame(dtc) {
 
 /* ------------------------------------------------- DTC-Details (AGENTS 20) */
 
+/** @param {DtcView} dtc */
 function formatSeen(dtc) {
   if (!dtc.firstSeen) return "—";
   const first = new Date(dtc.firstSeen);
@@ -479,6 +475,10 @@ function formatSeen(dtc) {
  *
  * Notes are rendered as warnings. They say what had to be assumed or what cannot
  * be measured — hiding them would turn a hypothesis into a fact (§24).
+ */
+/**
+ * @param {DtcKnowledgeView} [knowledge]
+ * @returns {HTMLElement[]}
  */
 function knowledgeNodes(knowledge) {
   if (!knowledge) return [];
@@ -515,7 +515,12 @@ function knowledgeNodes(knowledge) {
 }
 
 /** One documented failure pattern with the measurements that would confirm it. */
+/**
+ * @param {DtcPatternView} pattern
+ * @returns {HTMLElement}
+ */
 function knowledgePattern(pattern) {
+  /** @type {Array<HTMLElement | null>} */
   const children = [
     el("h5", { class: "knowledge-pattern-name" }, [
       document.createTextNode(pattern.name),
@@ -568,10 +573,12 @@ function knowledgePattern(pattern) {
  * frame. Everything shown here comes from the backend; the front end adds no
  * interpretation of its own (AGENTS 5, 34.3).
  */
+/** @param {DtcView} dtc */
 function showDtcDetails(dtc) {
-  showFreezeFrame(dtc);
-  const panel = $("#dtc-detail");
-  panel.querySelector("h3").firstChild.textContent = `Fehlercode ${dtc.code} `;
+  void showFreezeFrame(dtc);
+  const panel = must("#dtc-detail");
+  const heading = child(panel, "h3").firstChild;
+  if (heading) heading.textContent = `Fehlercode ${dtc.code} `;
   const extra = el("ul", { class: "plain check-list" }, [
     el("li", {
       class: "info",
@@ -605,105 +612,132 @@ function showDtcDetails(dtc) {
       }),
     );
   }
-  panel.querySelector("#dtc-detail-body").prepend(extra, ...knowledgeNodes(dtc.knowledge));
+  const detailBody = child(panel, "#dtc-detail-body");
+  detailBody.prepend(extra, ...knowledgeNodes(dtc.knowledge));
   if (dtc.isNew)
-    panel
-      .querySelector("#dtc-detail-body")
-      .prepend(
-        el("p", { class: "hint", text: "Dieser Code ist im aktuellen Scan neu aufgetreten." }),
-      );
+    detailBody.prepend(
+      el("p", { class: "hint", text: "Dieser Code ist im aktuellen Scan neu aufgetreten." }),
+    );
 }
 
 /** Put a row's ECU into the guarded clear form; the write itself needs the confirmation. */
+/** @param {DtcView} dtc */
 function prepareClear(dtc) {
-  $("#dtc-detail").hidden = true;
-  const select = $("#clear-ecu");
-  if (!Array.from(select.options).some((option) => option.value === dtc.rxId)) {
-    select.append(el("option", { value: dtc.rxId, text: `${dtc.ecu} (${dtc.rxId})` }));
+  must("#dtc-detail").hidden = true;
+  const ecuSelect = select("#clear-ecu");
+  if (!Array.from(ecuSelect.options).some((option) => option.value === dtc.rxId)) {
+    ecuSelect.append(el("option", { value: dtc.rxId, text: `${dtc.ecu} (${dtc.rxId})` }));
   }
-  select.value = dtc.rxId;
-  $("#dtc-clear").scrollIntoView({ behavior: "smooth", block: "nearest" });
-  const status = $("#clear-status");
+  ecuSelect.value = dtc.rxId;
+  must("#dtc-clear").scrollIntoView({ behavior: "smooth", block: "nearest" });
+  const status = must("#clear-status");
   status.replaceChildren(
     el("li", {
       class: "info",
       text: `Vorbereitet: Fehlerspeicher von ${dtc.ecu} — Vorbedingungen prüfen und Löschvorgang bestätigen.`,
     }),
   );
-  $("#clear-result").replaceChildren();
-  $("#clear-confirm").checked = false;
+  must("#clear-result").replaceChildren();
+  input("#clear-confirm").checked = false;
   updateClearButton();
 }
 
 /* ------------------------------------------- Fehlerspeicher löschen (20/26) */
 
+/**
+ * The preconditions as the operator asserts them (AGENTS 26).
+ *
+ * @returns {import("../src/views.js").VehicleStateView}
+ */
 function currentVehicleState() {
-  const voltage = Number.parseFloat($("#clear-voltage").value);
+  const voltage = Number.parseFloat(input("#clear-voltage").value);
   return {
-    stationary: $("#clear-stationary").checked,
-    ignitionOn: $("#clear-ignition").checked,
-    parkingBrake: $("#clear-parking").checked,
+    stationary: input("#clear-stationary").checked,
+    ignitionOn: input("#clear-ignition").checked,
+    parkingBrake: input("#clear-parking").checked,
     ...(Number.isFinite(voltage) ? { batteryVoltage: voltage } : {}),
   };
 }
 
-/** One ECU option per ECU that currently reports a fault code. */
+/**
+ * One ECU option per ECU that currently reports a fault code.
+ *
+ * @param {DtcView[]} dtcs
+ */
 function renderClearEcuOptions(dtcs) {
-  const select = $("#clear-ecu");
-  const previous = select.value;
+  const ecuSelect = select("#clear-ecu");
+  const previous = ecuSelect.value;
+  /** @type {Map<string, string>} */
   const seen = new Map();
   for (const dtc of dtcs) if (dtc.rxId != null) seen.set(dtc.rxId, dtc.ecu);
-  select.replaceChildren(
+  ecuSelect.replaceChildren(
     ...Array.from(seen, ([rxId, name]) => el("option", { value: rxId, text: `${name} (${rxId})` })),
   );
-  if (previous && seen.has(previous)) select.value = previous;
+  if (previous && seen.has(previous)) ecuSelect.value = previous;
 }
 
+/**
+ * @param {HTMLElement} target
+ * @param {DtcClearPrecheck} checks
+ */
 function renderClearChecks(target, checks) {
   target.replaceChildren();
-  for (const entry of checks.failed) target.append(el("li", { class: "fail", text: entry }));
+  // A missing proof is not a violation: "die Spannung ist unbekannt" asks the
+  // operator to measure, "die Spannung ist zu niedrig" asks to charge. Both
+  // block the write (AGENTS 26, P0 #5), so they must not look the same.
+  const unproven = new Set(checks.unproven ?? []);
+  for (const entry of checks.failed) {
+    const cls = unproven.has(entry) ? "unknown" : "fail";
+    target.append(el("li", { class: cls, text: entry }));
+  }
   for (const entry of checks.warnings) target.append(el("li", { class: "warn", text: entry }));
   if (checks.failed.length === 0)
     target.append(el("li", { class: "info", text: "Alle geprüften Vorbedingungen sind erfüllt." }));
 }
 
 function updateClearButton() {
-  const ready = state.clearPrecheck?.ok === true && $("#clear-confirm").checked;
-  $("#btn-clear-execute").disabled = !ready;
+  const ready = state.clearPrecheck?.ok === true && input("#clear-confirm").checked;
+  button("#btn-clear-execute").disabled = !ready;
 }
 
-$("#btn-clear-precheck").addEventListener("click", () => {
-  const rxId = $("#clear-ecu").value;
-  if (!rxId) return logError(new Error("kein Steuergerät ausgewählt"));
-  api("/api/dtc/clear/precheck", {
-    method: "POST",
-    body: JSON.stringify({ rxId, vehicleState: currentVehicleState() }),
-  })
-    .then(({ precheck }) => {
-      state.clearPrecheck = precheck;
-      const status = $("#clear-status");
-      renderClearChecks(status, precheck);
-      // The confirmation stays disabled until the preconditions are met: the backend
-      // refuses a write anyway, and a UI that offers it would be lying (AGENTS 26).
-      $("#clear-confirm").disabled = !precheck.ok;
-      if (!precheck.ok) $("#clear-confirm").checked = false;
-      updateClearButton();
-    })
-    .catch(logError);
+button("#btn-clear-precheck").addEventListener("click", async () => {
+  const rxId = select("#clear-ecu").value;
+  if (!rxId) {
+    logError(new Error("kein Steuergerät ausgewählt"));
+    return;
+  }
+  try {
+    const { precheck } = await api.precheckDtcClear({
+      rxId,
+      vehicleState: currentVehicleState(),
+    });
+    state.clearPrecheck = precheck;
+    renderClearChecks(must("#clear-status"), precheck);
+    // The confirmation stays disabled until the preconditions are met: the backend
+    // refuses a write anyway, and a UI that offers it would be lying (AGENTS 26).
+    input("#clear-confirm").disabled = !precheck.ok;
+    if (!precheck.ok) input("#clear-confirm").checked = false;
+    updateClearButton();
+  } catch (error) {
+    logError(error);
+  }
 });
 
-$("#clear-confirm").addEventListener("change", updateClearButton);
+input("#clear-confirm").addEventListener("change", updateClearButton);
 
-$("#btn-clear-execute").addEventListener("click", () => {
-  const rxId = $("#clear-ecu").value;
-  if (!rxId || !$("#clear-confirm").checked) return;
-  const result = $("#clear-result");
+button("#btn-clear-execute").addEventListener("click", async () => {
+  const rxId = select("#clear-ecu").value;
+  if (!rxId || !input("#clear-confirm").checked) return;
+  const result = must("#clear-result");
   result.replaceChildren(el("li", { class: "info", text: "Löschvorgang läuft …" }));
-  api("/api/dtc/clear", {
-    method: "POST",
-    body: JSON.stringify({ rxId, confirmed: true, vehicleState: currentVehicleState() }),
-  })
-    .then(({ result: cleared }) => {
+  try {
+    const { result: cleared } = await api.clearDtcs({
+      rxId,
+      confirmed: true,
+      vehicleState: currentVehicleState(),
+    });
+    {
+      /** @type {HTMLElement[]} */
       const lines = [
         el("li", {
           class: cleared.verified ? "ok" : "warn",
@@ -736,48 +770,69 @@ $("#btn-clear-execute").addEventListener("click", () => {
         );
       }
       result.replaceChildren(...lines);
-      state.clearPrecheck = null;
-      $("#clear-confirm").checked = false;
-      $("#clear-confirm").disabled = true;
-      updateClearButton();
-      return scan();
-    })
-    .catch((error) => {
-      result.replaceChildren(
-        el("li", { class: "fail", text: `Löschen abgelehnt: ${error.message}` }),
-      );
-    });
+    }
+    state.clearPrecheck = null;
+    input("#clear-confirm").checked = false;
+    input("#clear-confirm").disabled = true;
+    updateClearButton();
+    await scan();
+  } catch (error) {
+    result.replaceChildren(
+      el("li", { class: "fail", text: `Löschen abgelehnt: ${messageOf(error)}` }),
+    );
+  }
 });
 
-$("#btn-dtc-detail-close").addEventListener("click", () => {
-  $("#dtc-detail").hidden = true;
+button("#btn-dtc-detail-close").addEventListener("click", () => {
+  must("#dtc-detail").hidden = true;
 });
 
 /* ------------------------------------------------------------------- SSE */
 
-/** Payload of a named SSE event — `addEventListener` only types it as `Event`. */
-const payloadOf = (event) => JSON.parse(/** @type {MessageEvent} */ (event).data);
+/**
+ * Payload of a named SSE event.
+ *
+ * `EventSource` types every listener argument as `Event`, but a named event
+ * carries its data in a `MessageEvent`. The payload is `unknown` on purpose —
+ * it arrived over the network — and each listener casts it to the wire type it
+ * expects (the same endpoint shapes `views.ts` describes).
+ *
+ * @param {Event} event
+ * @returns {unknown}
+ */
+const payloadOf = (event) => JSON.parse(String(/** @type {MessageEvent} */ (event).data));
 
 function connectStream() {
   const source = new EventSource("/api/stream");
-  source.addEventListener("state", (event) => applyState(payloadOf(event)));
+  source.addEventListener("state", (event) =>
+    applyState(/** @type {AppState} */ (payloadOf(event))),
+  );
   source.addEventListener("sample", (event) => {
-    const sample = payloadOf(event);
+    const sample = /** @type {SampleView} */ (payloadOf(event));
     state.samples.push(sample);
     if (state.samples.length > 4000) state.samples = state.samples.slice(-4000);
     renderLiveCards([sample]);
     board.pushSample(sample);
   });
-  source.addEventListener("trace", (event) => appendTrace(payloadOf(event)));
-  source.addEventListener("marker", (event) => board.addMarker(payloadOf(event)));
-  source.addEventListener("markers", (event) => board.setMarkers(payloadOf(event)));
-  source.addEventListener("dtc", () =>
-    api("/api/state")
-      .then((data) => renderDtcs(data.dtcs))
-      .catch(logError),
+  source.addEventListener("trace", (event) =>
+    appendTrace(/** @type {TraceView} */ (payloadOf(event))),
   );
+  source.addEventListener("marker", (event) =>
+    board.addMarker(/** @type {import("/lib/index.js").Marker} */ (payloadOf(event))),
+  );
+  source.addEventListener("markers", (event) =>
+    board.setMarkers(/** @type {import("/lib/index.js").Marker[]} */ (payloadOf(event))),
+  );
+  source.addEventListener("dtc", async () => {
+    try {
+      const data = await api.fetchState();
+      renderDtcs(data.dtcs);
+    } catch (error) {
+      logError(error);
+    }
+  });
   source.addEventListener("ecu", (event) => {
-    const ecu = payloadOf(event);
+    const ecu = /** @type {EcuView} */ (payloadOf(event));
     const ecus = state.ecusCache ?? [];
     const index = ecus.findIndex((candidate) => candidate.rxId === ecu.rxId);
     if (index >= 0) ecus[index] = ecu;
@@ -785,8 +840,14 @@ function connectStream() {
     state.ecusCache = ecus;
     renderEcus(ecus);
   });
-  source.addEventListener("analysis", (event) => renderAnalysis(payloadOf(event)));
-  source.addEventListener("vehicle", (event) => renderVehicleResolution(payloadOf(event)));
+  source.addEventListener("analysis", (event) =>
+    renderAnalysis(/** @type {import("../src/views.js").AnalysisView} */ (payloadOf(event))),
+  );
+  source.addEventListener("vehicle", (event) =>
+    renderVehicleResolution(
+      /** @type {import("../src/views.js").VehicleResolutionView} */ (payloadOf(event)),
+    ),
+  );
   source.addEventListener("error", (event) => {
     const data = /** @type {MessageEvent} */ (event).data;
     if (data) logError(new Error(JSON.parse(data).message ?? "SSE Fehler"));
@@ -794,10 +855,11 @@ function connectStream() {
   return source;
 }
 
+/** @param {import("../src/views.js").AnalysisView} result */
 function renderAnalysis(result) {
-  $("#analysis-source").textContent =
+  must("#analysis-source").textContent =
     `${result.provider} · Quelle: ${result.source} · Konfidenz ${Math.round(result.confidence * 100)} %`;
-  const host = $("#analysis-out");
+  const host = must("#analysis-out");
   host.replaceChildren(el("p", { text: result.summary }));
   for (const finding of result.findings) {
     host.append(
@@ -827,54 +889,59 @@ function renderAnalysis(result) {
  * (not) usable — no silent fallback to the simulator if a device is missing.
  */
 const adapterState = {
-  selected: /** @type {any} */ (null),
-  entries: /** @type {any[]} */ ([]),
-  describes: /** @type {any[]} */ ([]),
+  /** @type {import("../src/views.js").AdapterSelection | null} */
+  selected: null,
+  /** @type {import("../src/views.js").AdapterDescription[]} */
+  entries: [],
 };
 
+/** @param {import("../src/views.js").AdaptersView} payload */
 function renderAdapters(payload) {
   adapterState.selected = payload.selected;
   adapterState.entries = payload.adapters;
-  const select = $("#adapter-select");
-  select.replaceChildren();
+  const adapterSelect = select("#adapter-select");
+  adapterSelect.replaceChildren();
   for (const entry of payload.adapters) {
-    const option = el("option", { value: entry.id, text: entry.displayName });
+    const option = /** @type {HTMLOptionElement} */ (
+      el("option", { value: entry.id, text: entry.displayName })
+    );
     if (entry.id === payload.selected.id) option.selected = true;
-    select.append(option);
+    adapterSelect.append(option);
   }
   const selected = payload.adapters.find((entry) => entry.id === payload.selected.id);
-  const bitrates = $("#adapter-bitrate");
+  const bitrates = select("#adapter-bitrate");
   bitrates.replaceChildren(el("option", { value: "", text: "Standard" }));
   for (const bitrate of selected?.supportedBitrates ?? [])
     bitrates.append(el("option", { value: bitrate, text: bitrate }));
   bitrates.value = payload.selected.config.bitrate ?? "";
 
-  $("#adapter-device").value =
-    payload.selected.config.device ?? payload.selected.config.channel ?? "";
-  $("#adapter-baud").value = payload.selected.config.baudRate ?? "";
-  $("#adapter-trace").value = payload.selected.config.trace ?? "";
-  $("#adapter-device").placeholder = selected?.requires.channel ? "can0" : "/dev/ttyUSB0";
+  const device = input("#adapter-device");
+  device.value = payload.selected.config.device ?? payload.selected.config.channel ?? "";
+  input("#adapter-baud").value = String(payload.selected.config.baudRate ?? "");
+  input("#adapter-trace").value = payload.selected.config.trace ?? "";
+  device.placeholder = selected?.requires.channel ? "can0" : "/dev/ttyUSB0";
 
-  const probe = $("#adapter-probe");
-  probe.textContent = probe ? `${payload.mode} · ${selected?.probe.detail ?? ""}` : "";
+  const probe = must("#adapter-probe");
+  probe.textContent = `${payload.mode} · ${selected?.probe.detail ?? ""}`;
   probe.classList.toggle("out-of-range", selected?.probe.available === false);
-  const hints = $("#adapter-hints");
+  const hints = must("#adapter-hints");
   hints.replaceChildren();
   for (const hint of selected?.probe.hints ?? []) hints.append(el("li", { text: hint }));
 
-  const body = $("#adapter-rows");
+  const body = must("#adapter-rows");
   body.replaceChildren();
   for (const entry of payload.adapters) {
     const capabilities = Object.entries(entry.capabilities)
       .filter(([, value]) => value === true)
       .map(([key]) => key)
       .join(", ");
+    const channels = entry.capabilities.channels;
     const tr = row([
       entry.displayName,
       entry.kind,
       entry.probe.available ? "ja" : "nein",
       entry.probe.detail,
-      `${capabilities}${entry.capabilities.channels > 1 ? `, ${entry.capabilities.channels} Kanäle` : ""}`,
+      `${capabilities}${channels > 1 ? `, ${channels} Kanäle` : ""}`,
     ]);
     if (entry.probe.available) tr.classList.add("ok-row");
     body.append(tr);
@@ -883,20 +950,26 @@ function renderAdapters(payload) {
 
 async function loadAdapters() {
   try {
-    renderAdapters(await api("/api/adapters"));
+    renderAdapters(await api.fetchAdapters());
   } catch (error) {
     logError(error);
   }
 }
 
+/**
+ * The selection as the form shows it.
+ *
+ * @returns {import("../src/views.js").AdapterSelection}
+ */
 function selectionFromForm() {
-  const id = $("#adapter-select").value;
+  const id = select("#adapter-select").value;
   const entry = adapterState.entries.find((candidate) => candidate.id === id);
+  /** @type {import("../src/views.js").AdapterConfig} */
   const config = {};
-  const device = $("#adapter-device").value.trim();
-  const bitrate = $("#adapter-bitrate").value;
-  const baud = Number.parseInt($("#adapter-baud").value, 10);
-  const trace = $("#adapter-trace").value.trim();
+  const device = input("#adapter-device").value.trim();
+  const bitrate = select("#adapter-bitrate").value;
+  const baud = Number.parseInt(input("#adapter-baud").value, 10);
+  const trace = input("#adapter-trace").value.trim();
   if (device) {
     if (entry?.requires.channel) config.channel = device;
     else config.device = device;
@@ -907,37 +980,39 @@ function selectionFromForm() {
   return { id, config };
 }
 
-$("#adapter-select").addEventListener("change", () => {
-  const id = $("#adapter-select").value;
+select("#adapter-select").addEventListener("change", () => {
+  const id = select("#adapter-select").value;
   const entry = adapterState.entries.find((candidate) => candidate.id === id);
-  $("#adapter-probe").textContent = entry?.description ?? "";
-  if (entry?.defaults?.device) $("#adapter-device").value = entry.defaults.device;
+  must("#adapter-probe").textContent = entry?.description ?? "";
+  if (entry?.defaults?.device) input("#adapter-device").value = entry.defaults.device;
   if (entry?.defaults?.channel && entry.requires.channel)
-    $("#adapter-device").value = entry.defaults.channel;
+    input("#adapter-device").value = entry.defaults.channel;
 });
 
-$("#btn-adapter-apply").addEventListener("click", () => {
-  api("/api/adapter/select", { method: "POST", body: JSON.stringify(selectionFromForm()) })
-    .then(async (result) => {
-      await loadAdapters();
-      // A selection change drops a running connection on purpose: the engine
-      // must never keep talking over a transport the operator just replaced.
-      if (result.reconnectRequired) await api("/api/start", { method: "POST" }).then(applyState);
-      else applyState(await api("/api/state"));
-    })
-    .catch(logError);
+button("#btn-adapter-apply").addEventListener("click", async () => {
+  try {
+    const result = await api.selectAdapter(selectionFromForm());
+    await loadAdapters();
+    // A selection change drops a running connection on purpose: the engine
+    // must never keep talking over a transport the operator just replaced.
+    if (result.reconnectRequired) applyState(await api.startSession());
+    else applyState(await api.fetchState());
+  } catch (error) {
+    logError(error);
+  }
 });
 
 /* ---------------------------------------------------------------- actions */
 
-$("#btn-start").addEventListener("click", () => {
-  api("/api/start", { method: "POST" })
-    .then((data) => {
-      applyState(data);
-      state.ecusCache = data.ecus;
-      return loadHistory();
-    })
-    .catch(logError);
+button("#btn-start").addEventListener("click", async () => {
+  try {
+    const data = await api.startSession();
+    applyState(data);
+    state.ecusCache = data.ecus;
+    await loadHistory();
+  } catch (error) {
+    logError(error);
+  }
 });
 
 /**
@@ -945,64 +1020,84 @@ $("#btn-start").addEventListener("click", () => {
  *
  * Read-only: it weighs what is already known — VIN, identification values, the
  * addresses that answered — against the installed definitions.
+ *
+ * @returns {Promise<void>}
  */
-const resolve = () =>
-  api("/api/vehicle/resolve", { method: "POST" })
-    .then((data) => renderVehicleResolution(data.resolution))
-    .catch(logError);
-$("#btn-resolve").addEventListener("click", resolve);
+async function resolve() {
+  try {
+    const { resolution } = await api.resolveVehicle();
+    renderVehicleResolution(resolution);
+  } catch (error) {
+    logError(error);
+  }
+}
+button("#btn-resolve").addEventListener("click", resolve);
 
-$("#btn-identify").addEventListener("click", () => {
-  api("/api/identify", { method: "POST" })
-    .then((data) => {
-      state.ecusCache = data.ecus;
-      renderEcus(data.ecus);
-      // The identification values are the evidence a resolution weighs, so the
-      // vehicle panel is refreshed with them instead of waiting for a click.
-      return resolve();
-    })
-    .catch(logError);
+button("#btn-identify").addEventListener("click", async () => {
+  try {
+    const { ecus } = await api.identify();
+    state.ecusCache = ecus;
+    renderEcus(ecus);
+    // The identification values are the evidence a resolution weighs, so the
+    // vehicle panel is refreshed with them instead of waiting for a click.
+    await resolve();
+  } catch (error) {
+    logError(error);
+  }
 });
 
-const scan = () =>
-  api("/api/dtc/scan", { method: "POST" })
-    .then((data) => renderDtcs(data.dtcs))
-    .catch(logError);
-$("#btn-scan").addEventListener("click", scan);
-$("#btn-scan-2").addEventListener("click", scan);
+/** @returns {Promise<void>} */
+async function scan() {
+  try {
+    const { dtcs } = await api.scanDtcs();
+    renderDtcs(dtcs);
+  } catch (error) {
+    logError(error);
+  }
+}
+button("#btn-scan").addEventListener("click", scan);
+button("#btn-scan-2").addEventListener("click", scan);
 
-$("#btn-live-start").addEventListener("click", () => {
+button("#btn-live-start").addEventListener("click", async () => {
   const signalIds = Array.from(state.selectedSignals);
-  api("/api/live/start", { method: "POST", body: JSON.stringify({ signalIds }) })
-    .then((data) => {
-      state.live = data.live;
-      $("#live-state").textContent = "läuft";
-      renderConnection({
-        connected: state.connected,
-        live: true,
-        vehicle: $("#vehicle-line").textContent,
-      });
-    })
-    .catch(logError);
+  try {
+    await api.startLive({ signalIds });
+    // The backend owns the session state; the front end asks it instead of
+    // assembling a half-filled `AppState` of its own (which is what this handler
+    // used to do — `renderConnection` then read `data.adapter.name` of a state
+    // that had no adapter in it).
+    applyState(await api.fetchState());
+  } catch (error) {
+    logError(error);
+  }
 });
 
-$("#btn-live-stop").addEventListener("click", () => {
-  api("/api/live/stop", { method: "POST" })
-    .then(() => {
-      state.live = false;
-      $("#live-state").textContent = "gestoppt";
-    })
-    .catch(logError);
+button("#btn-live-stop").addEventListener("click", async () => {
+  try {
+    const { live } = await api.stopLive();
+    state.live = live;
+    must("#live-state").textContent = "gestoppt";
+  } catch (error) {
+    logError(error);
+  }
 });
 
-$("#btn-marker").addEventListener("click", () => {
+button("#btn-marker").addEventListener("click", async () => {
   const label = window.prompt("Marker-Label", "Lastwechsel");
   if (!label) return;
-  api("/api/marker", { method: "POST", body: JSON.stringify({ label }) }).catch(logError);
+  try {
+    await api.addMarker({ label });
+  } catch (error) {
+    logError(error);
+  }
 });
 
-$("#btn-analyze").addEventListener("click", () => {
-  api("/api/analyze", { method: "POST" }).then(renderAnalysis).catch(logError);
+button("#btn-analyze").addEventListener("click", async () => {
+  try {
+    renderAnalysis(await api.analyze());
+  } catch (error) {
+    logError(error);
+  }
 });
 
 connectStream();

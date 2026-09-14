@@ -31,3 +31,14 @@ er wird durch einen neuen ersetzt, der den alten als `superseded` markiert.
 | [0023](0023-vehicle-resolution.md) | Fahrzeugauflösung: Schema v2, Resolver mit Belegen, Attributionsregel | accepted |
 | [0024](0024-dtc-knowledge-per-variant.md) | DTC-Wissen pro Variante: Schema v3, Auflösung nach Spezifität, Ehrlichkeit als Datenmodell | accepted |
 | [0025](0025-knowledge-quality-gates.md) | Was Wissen tragen muss: Provenance-Gates je Quellentyp, Checks ohne Stellvertreter-Signal, bewusste Lücken | accepted |
+| [0026](0026-vehicle-determination-as-session-data.md) | Die Fahrzeugbestimmung ist Sitzungsdatum: Typ, Senke, Leser | accepted |
+| [0027](0027-coverage-scope-web-and-tools.md) | Was gemessen wird: Workbench und Tools in der Coverage | accepted |
+| [0028](0028-gates-after-backtest.md) | Gates nach dem Nachtesten, nicht nach dem Gefühl | accepted |
+| [0029](0029-guardrails-that-bite.md) | Guardrails, die beißen: Fehler statt Warnungen, Entscheidungen auf dem Rekord, Gates im Testlauf | accepted |
+| [0030](0030-frontend-typed-against-the-wire-contract.md) | Das Browser-Frontend wird gegen den Wire-Contract typgeprüft | accepted |
+| [0031](0031-architecture-rule-as-a-tool-with-one-source.md) | Die Architekturregel ist ein Werkzeug mit einer Quelle | accepted |
+| [0032](0032-write-path-as-its-own-port.md) | Der Schreibpfad ist ein eigener Port, keine Methode am Lesepfad | accepted |
+| [0033](0033-missing-evidence-is-a-failure.md) | Fehlende Evidenz ist ein Fehlschlag, keine Warnung | accepted |
+| [0034](0034-diagnostic-ir.md) | Diagnostische Zwischenstufe: Beobachtungen mit Beleg | accepted |
+| [0035](0035-session-definitions-are-data.md) | Sitzungsdefinitionen sind Daten, die Zustandsmaschine ist ein Modul | accepted |
+| [0036](0036-golden-sessions.md) | Eine goldene Sitzung ist Aufzeichnung, Erwartung und Lauf | accepted |

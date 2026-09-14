@@ -5,7 +5,11 @@ import {
   MeasurementRecorder,
   SessionLogger,
   analyseVin,
+  clearableEcuOf,
+  createWritePort,
   deriveTxId,
+  precheckDtcClear,
+  runDtcClear,
 } from "@vdp/core";
 import { genericPackage } from "@vdp/definitions";
 import { MemorySink, createLogger, fromHex, toHex } from "@vdp/shared";
@@ -171,7 +175,7 @@ test("the engine tracks when a fault code was first and last seen (AGENTS 20)", 
   );
 });
 
-test("clearing fault memory runs through the safety chain and is verified by re-reading (AGENTS 20, 25, 26)", async () => {
+test("clearing fault memory runs through the write port and is verified by re-reading (AGENTS 20, 25, 26)", async () => {
   const handle = engine.handleFor(0x7e8);
   assert.ok(handle);
 
@@ -179,45 +183,71 @@ test("clearing fault memory runs through the safety chain and is verified by re-
   const codes = before.flatMap((entry) => entry.dtcs).map((dtc) => dtc.code);
   assert.ok(codes.includes("P0420"));
 
-  // 1. Without confirmation nothing happens.
-  const refusal = engine.evaluateDtcClear(0x7e8, {
+  // The write path is a separate object from the engine's read facade
+  // (master backlog P0 #3): it gets the engine's safety manager, so permits and
+  // audit entries refer to the same vehicle state the operator sees.
+  const writes = createWritePort({ safety: engine.safety, scanner: engine.scanner });
+  const target = clearableEcuOf(handle);
+  const binding = {
+    ecuId: target.id,
+    ecuName: target.name,
+    sessionId: handle.session.id,
+    sessionType: target.sessionType,
+    definitionVersion: "1.0.0",
+    vehicleState: {
+      stationary: true,
+      ignitionOn: true,
+      parkingBrake: true,
+      batteryVoltage: 13.1,
+    },
+  };
+
+  // 1. Without confirmation nothing happens — and the caller learns why.
+  const refusal = precheckDtcClear(writes, { target, userConfirmed: false }, binding, {
     userConfirmed: false,
-    vehicleState: { stationary: true, ignitionOn: true, parkingBrake: true, batteryVoltage: 13.1 },
   });
   assert.equal(refusal.ok, false);
   assert.ok(refusal.failed.some((entry) => /confirmation/i.test(entry)));
 
-  // 2. With confirmation the engine switches the session, writes, and verifies.
-  const result = await engine.clearDtcs(0x7e8, {
-    userConfirmed: true,
-    vehicleState: { stationary: true, ignitionOn: true, parkingBrake: true, batteryVoltage: 13.1 },
-  });
-  assert.equal(result.cleared, true);
-  assert.equal(result.permit.risk, "medium");
-  assert.equal(result.ecuName, "Engine Control Unit");
+  // 2. With confirmation the write runs its stages: session switch, 0x14, re-read.
+  const result = await runDtcClear(writes, { target, userConfirmed: true }, binding);
+  assert.equal(result.ok, true);
+  const cleared = result.value;
+  assert.ok(cleared, "a successful clear carries its result");
+  assert.equal(cleared.cleared, true);
+  assert.equal(cleared.permit.risk, "medium");
+  assert.equal(cleared.ecuName, "Engine Control Unit");
   assert.ok(
-    result.before.some((dtc) => dtc.code === "P0420"),
+    cleared.before.some((dtc) => dtc.code === "P0420"),
     "the before snapshot is part of the result (backup)",
   );
   // The simulator re-sets testFailed for a fault that is still present, so the
   // active code survives with a reset status while the stored-only codes go.
   assert.equal(
-    result.after.every((dtc) => dtc.statusBits.testFailed),
+    cleared.after.every((dtc) => dtc.statusBits.testFailed),
     true,
   );
   assert.ok(
-    result.comparison.removed.length > 0,
+    cleared.comparison.removed.length > 0,
     "stored codes that are not currently failing are removed",
   );
-  assert.equal(result.comparison.unchanged.length, 0, "no code keeps its old status bits");
-  assert.equal(result.verified, true);
+  assert.equal(cleared.comparison.unchanged.length, 0, "no code keeps its old status bits");
+  assert.equal(cleared.verified, true);
 
-  // 3. The audit log knows about the write.
+  // 3. The stages and the transaction are part of the result: the caller can
+  //    explain the write, and the audit log names the same transaction.
+  assert.deepEqual(
+    result.stages.map((stage) => stage.stage),
+    ["prepare", "confirm", "execute", "verify"],
+  );
+  assert.equal(cleared.transactionId, result.transaction.id);
+
+  // 4. The audit log knows about the write.
   const audit = engine.safety.audit.map((entry) => entry.action);
   assert.ok(audit.includes("permit-issued"));
   assert.ok(audit.includes("write-success"));
 
-  // 4. The session switched out of the default session as part of the write.
+  // 5. The session switched out of the default session as part of the write.
   assert.notEqual(handle.session.record.sessionType, 0x01);
 });
 

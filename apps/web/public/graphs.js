@@ -13,7 +13,21 @@
  */
 
 import { SignalChart } from "/chart.js";
+import { $, el, on } from "/dom.js";
 import { ChartGroup, formatClock, formatDuration, formatValue } from "/lib/index.js";
+
+/** @typedef {import("../src/views.js").HistoryView} HistoryView */
+/** @typedef {import("../src/views.js").SampleView} SampleView */
+/** @typedef {import("../src/views.js").SignalInfoView} SignalInfoView */
+/** @typedef {import("/lib/index.js").Marker} Marker */
+
+/**
+ * What a chart needs to know about a signal: identity plus the documented label
+ * and unit. Criticality is an alerting property (`SignalInfoView`), not a drawing
+ * one — a signal can be plotted without ever having been classified.
+ *
+ * @typedef {{ id: string, name?: string, unit?: string }} ChartSignal
+ */
 
 const PALETTE = [
   "#4f9cf9",
@@ -34,25 +48,13 @@ const WINDOW_PRESETS = [
   { label: "5 min", ms: 300_000 },
 ];
 
-const $ = (selector) => document.querySelector(selector);
-
-function el(tag, attrs = {}, children = []) {
-  const node = document.createElement(tag);
-  for (const [key, value] of Object.entries(attrs)) {
-    if (key === "class") node.className = value;
-    else if (key === "text") node.textContent = value;
-    else if (key.startsWith("on")) node.addEventListener(key.slice(2), value);
-    else node.setAttribute(key, value);
-  }
-  const list = Array.isArray(children) ? children : [children];
-  for (const child of list) {
-    if (child == null) continue;
-    node.append(typeof child === "string" ? document.createTextNode(child) : child);
-  }
-  return node;
-}
-
 export class GraphBoard {
+  /**
+   * @param {{ charts?: string, status?: string, readout?: string,
+   *   selection?: string, markers?: string, follow?: string }} [selectors]
+   *   CSS selectors of the panels; defaults match `index.html`, tests and
+   *   embedders can point at their own markup.
+   */
   constructor(selectors = {}) {
     this.host = $(selectors.charts ?? "#charts");
     this.statusHost = $(selectors.status ?? "#graph-status");
@@ -85,7 +87,11 @@ export class GraphBoard {
 
   // ------------------------------------------------------------------- input
 
-  /** Known signals from the definition package (id, name, unit, critical). */
+  /**
+   * Known signals from the definition package (id, name, unit, critical).
+   *
+   * @param {SignalInfoView[]} signals
+   */
   setSignals(signals) {
     for (const signal of signals) {
       this.signalMeta.set(signal.id, signal);
@@ -94,7 +100,11 @@ export class GraphBoard {
     this.renderStatus();
   }
 
-  /** Replace the recording with a server-side history snapshot. */
+  /**
+   * Replace the recording with a server-side history snapshot.
+   *
+   * @param {HistoryView | null} history
+   */
   setHistory(history) {
     if (!history) return;
     if (this.charts.size === 0 && history.samples.length > 0) {
@@ -134,7 +144,11 @@ export class GraphBoard {
     for (const entry of this.charts.values()) entry.chart.draw();
   }
 
-  /** One live sample from the SSE stream. */
+  /**
+   * One live sample from the SSE stream.
+   *
+   * @param {SampleView} sample
+   */
   pushSample(sample) {
     if (sample.numeric === null) return; // textual/enum signals are not plottable
     this.group.push(
@@ -149,17 +163,28 @@ export class GraphBoard {
     this.ensureChart({ id: sample.signal, name: sample.name, unit: sample.unit });
   }
 
+  /** @param {Marker} marker */
   addMarker(marker) {
     this.group.addMarker(marker);
   }
 
-  /** Replace the whole marker list (after a DTC scan). */
+  /**
+   * Replace the whole marker list (after a DTC scan).
+   *
+   * @param {Marker[] | null} markers
+   */
   setMarkers(markers) {
     this.group.setMarkers(markers ?? []);
   }
 
   // ---------------------------------------------------------------- rendering
 
+  /**
+   * The chart card of one signal, created on first use.
+   *
+   * @param {ChartSignal} signal
+   * @returns {{chart: SignalChart, card: HTMLElement, stats: HTMLElement, value: HTMLElement, toggle: HTMLElement} | undefined}
+   */
   ensureChart(signal) {
     if (this.charts.has(signal.id) || !this.host) return this.charts.get(signal.id);
     this.signalMeta.set(signal.id, { ...(this.signalMeta.get(signal.id) ?? {}), ...signal });
@@ -175,7 +200,7 @@ export class GraphBoard {
       color,
     });
 
-    const canvas = el("canvas", { class: "chart" });
+    const canvas = /** @type {HTMLCanvasElement} */ (el("canvas", { class: "chart" }));
     const value = el("span", { class: "chart-value" });
     const stats = el("span", { class: "chart-stats muted small" });
     const toggle = el(
@@ -211,6 +236,7 @@ export class GraphBoard {
     return entry;
   }
 
+  /** @param {import("/lib/index.js").ChartGroupChange} reason */
   onChange(reason) {
     for (const entry of this.charts.values()) {
       const visible = entry.chart.series.visible;
@@ -227,8 +253,8 @@ export class GraphBoard {
   renderReadout() {
     if (!this.readoutHost) return;
     const readout = this.group.readout();
-    const body =
-      this.readoutHost.tBodies[0] ?? this.readoutHost.querySelector("tbody") ?? this.readoutHost;
+    const table = /** @type {HTMLTableElement} */ (this.readoutHost);
+    const body = table.tBodies[0] ?? table.querySelector("tbody") ?? table;
     body.replaceChildren();
     for (const row of readout.rows) {
       const stats = row.stats;
@@ -333,12 +359,6 @@ export class GraphBoard {
   // ------------------------------------------------------------------ toolbar
 
   wireToolbar() {
-    const on = (selector, event, handler) => {
-      const node = $(selector);
-      if (node) node.addEventListener(event, handler);
-      return node;
-    };
-
     on("#graph-follow", "click", () => this.group.setFollow(!this.group.follow));
     on("#graph-fit", "click", () => this.group.fitAll());
     on("#graph-zoom-in", "click", () => this.group.zoomBy(1.5));
@@ -346,15 +366,17 @@ export class GraphBoard {
     on("#graph-clear-selection", "click", () => this.group.clearSelection());
     on("#graph-clear-cursor", "click", () => this.group.setCursor(null));
 
-    const windowSelect = on("#graph-window", "change", (event) => {
-      const value = event.target.value;
-      if (value === "all") {
-        this.group.fitAll();
-        return;
-      }
-      const ms = Number.parseInt(value, 10);
-      if (Number.isFinite(ms)) this.group.setSpan(ms);
-    });
+    const windowSelect = /** @type {HTMLSelectElement | null} */ (
+      on("#graph-window", "change", (event) => {
+        const value = /** @type {HTMLSelectElement} */ (event.target).value;
+        if (value === "all") {
+          this.group.fitAll();
+          return;
+        }
+        const ms = Number.parseInt(value, 10);
+        if (Number.isFinite(ms)) this.group.setSpan(ms);
+      })
+    );
     if (windowSelect && windowSelect.options.length === 0) {
       for (const preset of WINDOW_PRESETS)
         windowSelect.append(el("option", { value: String(preset.ms), text: preset.label }));
@@ -362,16 +384,25 @@ export class GraphBoard {
       windowSelect.value = "20000";
     }
 
-    const decimateSelect = on("#graph-decimate", "change", (event) => {
-      const mode = event.target.value === "lttb" ? "lttb" : "minmax";
-      for (const entry of this.charts.values()) {
-        entry.chart.decimationMode = mode;
-        entry.chart.schedule();
-      }
-    });
+    const decimateSelect = /** @type {HTMLSelectElement | null} */ (
+      on("#graph-decimate", "change", (event) => {
+        const chosen = /** @type {HTMLSelectElement} */ (event.target).value;
+        const mode = chosen === "lttb" ? "lttb" : "minmax";
+        for (const entry of this.charts.values()) {
+          entry.chart.decimationMode = mode;
+          entry.chart.schedule();
+        }
+      })
+    );
     if (decimateSelect) decimateSelect.value = "minmax";
   }
 
+  /**
+   * Series metadata for a signal, as far as the definition package documented it.
+   *
+   * @param {string} signalId
+   * @returns {Partial<import("/lib/index.js").SeriesOptions>}
+   */
   metaFor(signalId) {
     const meta = this.signalMeta.get(signalId);
     if (!meta) return {};

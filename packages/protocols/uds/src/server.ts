@@ -15,12 +15,12 @@ import {
   DTC_REPORT,
   NEGATIVE_RESPONSE_SID,
   RESET_TYPE,
-  SESSION,
   SID,
   SUPPRESS_POSITIVE_RESPONSE,
   positiveResponseSid,
 } from "./services.js";
-import { DEFAULT_UDS_TIMING, type UdsTiming } from "./timing.js";
+import { type SessionDefinition, SessionStateMachine, standardSessions } from "./session-state.js";
+import type { UdsTiming } from "./timing.js";
 
 export interface ServerDid {
   did: number;
@@ -64,7 +64,16 @@ export interface UdsServerOptions {
   dids?: readonly ServerDid[];
   dtcs?: readonly ServerDtc[];
   routines?: readonly ServerRoutine[];
-  sessions?: readonly number[];
+  /**
+   * Sessions the ECU supports, with their services and entry conditions
+   * (ISO 14229-1 §10.2). Default: default + extended (see `standardSessions()`).
+   */
+  sessionDefinitions?: readonly SessionDefinition[];
+  /**
+   * Injectable clock for session timing (S3Server) and security lockout. Defaults
+   * to `Date.now()`; tests pass a controllable clock instead of waiting.
+   */
+  clock?: () => number;
   securityAccess?: ServerSecurityAccess;
   /** Services that answer with NRC 0x78 once before the real response. */
   pendingResponseServices?: readonly number[];
@@ -90,12 +99,12 @@ export class UdsServer {
 
   private readonly options: UdsServerOptions;
   private readonly log: Logger;
-  private readonly timing: UdsTiming;
   private readonly dids = new Map<number, ServerDid>();
   private readonly routines = new Map<number, ServerRoutine>();
+  private readonly handlers: Map<number, (payload: Uint8Array) => Uint8Array | null>;
+  private readonly session: SessionStateMachine;
+  private readonly now: () => number;
   private dtcs: ServerDtc[];
-  private sessions: number[];
-  private activeSession: number = SESSION.DEFAULT;
   private unsubscribe: (() => void) | null = null;
   private securityFailures = 0;
   private lockedOutUntil = 0;
@@ -106,11 +115,38 @@ export class UdsServer {
   ) {
     this.options = options;
     this.log = (options.logger ?? createLogger("uds", { level: "INFO" })).child("uds");
-    this.timing = { ...DEFAULT_UDS_TIMING, ...(options.timing ?? {}) };
+    this.now = options.clock ?? (() => Date.now());
     for (const did of options.dids ?? []) this.dids.set(did.did, did);
     for (const routine of options.routines ?? []) this.routines.set(routine.id, routine);
     this.dtcs = [...(options.dtcs ?? [])];
-    this.sessions = [...(options.sessions ?? [SESSION.DEFAULT, SESSION.EXTENDED])];
+    // The service table is the single source for "what does this ECU implement":
+    // the dispatcher answers 0x11 for anything that is not in here, and the session
+    // machine answers 0x7F for a service that exists but is not allowed right now.
+    this.handlers = new Map<number, (payload: Uint8Array) => Uint8Array | null>([
+      [SID.TESTER_PRESENT, (payload) => this.handleTesterPresent(payload)],
+      [SID.DIAGNOSTIC_SESSION_CONTROL, (payload) => this.handleSessionControl(payload)],
+      [SID.ECU_RESET, (payload) => this.handleEcuReset(payload)],
+      [SID.CLEAR_DIAGNOSTIC_INFORMATION, (payload) => this.handleClearDtc(payload)],
+      [SID.READ_DTC_INFORMATION, (payload) => this.handleReadDtc(payload)],
+      [SID.READ_DATA_BY_IDENTIFIER, (payload) => this.handleReadDataByIdentifier(payload)],
+      [SID.WRITE_DATA_BY_IDENTIFIER, (payload) => this.handleWriteDataByIdentifier(payload)],
+      [SID.ROUTINE_CONTROL, (payload) => this.handleRoutineControl(payload)],
+    ]);
+    // Security access only exists as a service when the ECU has an algorithm to
+    // offer: without one the honest answer is `serviceNotSupported` (0x11) in every
+    // session, not `serviceNotSupportedInActiveSession` (0x7F).
+    const securityAccess = options.securityAccess;
+    if (securityAccess) {
+      this.handlers.set(SID.SECURITY_ACCESS, (payload) =>
+        this.handleSecurityAccess(securityAccess, payload),
+      );
+    }
+    this.session = new SessionStateMachine({
+      sessions: options.sessionDefinitions ?? standardSessions(),
+      implementedServices: [...this.handlers.keys()],
+      ...(options.timing ? { timing: options.timing } : {}),
+      now: this.now,
+    });
   }
 
   get name(): string {
@@ -141,14 +177,32 @@ export class UdsServer {
     else this.dtcs.push({ code, status });
   }
 
+  /** Back to the default session (simulator helper for tests and fixtures). */
   resetSession(): void {
-    this.activeSession = SESSION.DEFAULT;
+    this.session.reset(this.now());
+  }
+
+  /** The session state machine — for tests, tooling and the workbench. */
+  get sessions(): SessionStateMachine {
+    return this.session;
   }
 
   async handle(payload: Uint8Array): Promise<void> {
     if (payload.length === 0) return;
     this.stats.requests++;
     const serviceId = payload[0] as number;
+    // S3Server (ISO 14229-2 §7.4): any request resets the session timer, and a
+    // session that timed out before this request arrived is gone — the request is
+    // answered by the default session, which is what a real ECU does.
+    const now = this.now();
+    const expiry = this.session.tick(now);
+    if (expiry.expired) {
+      this.log.info("session timed out, back to the default session", {
+        ecu: this.name,
+        from: `0x${expiry.from.toString(16)}`,
+      });
+    }
+    this.session.activity(now);
     this.log.raw("server rx", { ecu: this.name, payload: toHex(payload) });
 
     const respond = async (response: Uint8Array): Promise<void> => {
@@ -194,29 +248,25 @@ export class UdsServer {
     }
   }
 
+  /**
+   * Service table plus session policy.
+   *
+   * The two refusals stay distinguishable: a service this ECU does not implement
+   * is `serviceNotSupported` (0x11), a service that exists but is not allowed in
+   * the active session is `serviceNotSupportedInActiveSession` (0x7F).
+   */
   private dispatch(serviceId: number, payload: Uint8Array): Uint8Array | null {
-    switch (serviceId) {
-      case SID.TESTER_PRESENT:
-        return this.handleTesterPresent(payload);
-      case SID.DIAGNOSTIC_SESSION_CONTROL:
-        return this.handleSessionControl(payload);
-      case SID.ECU_RESET:
-        return this.handleEcuReset(payload);
-      case SID.CLEAR_DIAGNOSTIC_INFORMATION:
-        return this.handleClearDtc(payload);
-      case SID.READ_DTC_INFORMATION:
-        return this.handleReadDtc(payload);
-      case SID.READ_DATA_BY_IDENTIFIER:
-        return this.handleReadDataByIdentifier(payload);
-      case SID.WRITE_DATA_BY_IDENTIFIER:
-        return this.handleWriteDataByIdentifier(payload);
-      case SID.SECURITY_ACCESS:
-        return this.handleSecurityAccess(payload);
-      case SID.ROUTINE_CONTROL:
-        return this.handleRoutineControl(payload);
-      default:
-        return negativeResponse(serviceId, NRC.SERVICE_NOT_SUPPORTED);
+    const handler = this.handlers.get(serviceId);
+    if (!handler) return negativeResponse(serviceId, NRC.SERVICE_NOT_SUPPORTED);
+    const refusal = this.session.serviceRefusal(serviceId);
+    if (refusal !== null) {
+      this.log.debug("service refused in the active session", {
+        ecu: this.name,
+        reason: this.session.describeRefusal(serviceId),
+      });
+      return negativeResponse(serviceId, refusal);
     }
+    return handler(payload);
   }
 
   private handleTesterPresent(payload: Uint8Array): Uint8Array | null {
@@ -232,12 +282,27 @@ export class UdsServer {
         NRC.INCORRECT_MESSAGE_LENGTH_OR_INVALID_FORMAT,
       );
     const requested = (payload[1] ?? 0) & 0x7f;
-    if (!this.sessions.includes(requested))
-      return negativeResponse(SID.DIAGNOSTIC_SESSION_CONTROL, NRC.SUB_FUNCTION_NOT_SUPPORTED);
-    this.activeSession = requested;
-    // [0x50, session, P2 (1 ms units), P2* (10 ms units)] — ISO 14229-2.
-    const p2 = this.timing.p2Ms;
-    const p2Star = Math.round(this.timing.p2StarMs / 10);
+    const transition = this.session.request(requested, this.now());
+    if (!transition.ok) {
+      this.log.info("session request refused", {
+        ecu: this.name,
+        reason: transition.reason,
+      });
+      return negativeResponse(
+        SID.DIAGNOSTIC_SESSION_CONTROL,
+        transition.nrc ?? NRC.SUB_FUNCTION_NOT_SUPPORTED,
+      );
+    }
+    if (transition.switched) {
+      this.log.info("session changed", {
+        ecu: this.name,
+        session: this.session.sessionName,
+      });
+    }
+    // [0x50, session, P2 (1 ms units), P2* (10 ms units)] — ISO 14229-2. The
+    // reported timing belongs to the session the ECU is now in.
+    const p2 = this.session.p2Ms;
+    const p2Star = Math.round(this.session.p2StarMs / 10);
     return new Uint8Array([
       positiveResponseSid(SID.DIAGNOSTIC_SESSION_CONTROL),
       requested,
@@ -267,7 +332,7 @@ export class UdsServer {
     ) {
       return negativeResponse(SID.ECU_RESET, NRC.SUB_FUNCTION_NOT_SUPPORTED);
     }
-    this.activeSession = SESSION.DEFAULT;
+    this.session.reset(this.now());
     return new Uint8Array([positiveResponseSid(SID.ECU_RESET), resetType]);
   }
 
@@ -411,7 +476,7 @@ export class UdsServer {
       const did = ((payload[offset] ?? 0) << 8) | (payload[offset + 1] ?? 0);
       const definition = this.dids.get(did);
       if (!definition) continue;
-      if (definition.sessions && !definition.sessions.includes(this.activeSession)) continue;
+      if (definition.sessions && !definition.sessions.includes(this.session.sessionType)) continue;
       const value = definition.value();
       out.push((did >> 8) & 0xff, did & 0xff, ...value);
       matched++;
@@ -427,11 +492,9 @@ export class UdsServer {
         SID.WRITE_DATA_BY_IDENTIFIER,
         NRC.INCORRECT_MESSAGE_LENGTH_OR_INVALID_FORMAT,
       );
-    if (this.activeSession === SESSION.DEFAULT)
-      return negativeResponse(
-        SID.WRITE_DATA_BY_IDENTIFIER,
-        NRC.SERVICE_NOT_SUPPORTED_IN_ACTIVE_SESSION,
-      );
+    // Session gating is not duplicated here: `SessionStateMachine.serviceRefusal`
+    // answers 0x7F before this handler runs, and a second copy would be the kind
+    // of check that drifts away from the first one.
     const did = ((payload[1] ?? 0) << 8) | (payload[2] ?? 0);
     const definition = this.dids.get(did);
     if (!definition)
@@ -447,11 +510,9 @@ export class UdsServer {
     ]);
   }
 
-  private handleSecurityAccess(payload: Uint8Array): Uint8Array {
-    const access = this.options.securityAccess;
-    if (!access) return negativeResponse(SID.SECURITY_ACCESS, NRC.SERVICE_NOT_SUPPORTED);
+  private handleSecurityAccess(access: ServerSecurityAccess, payload: Uint8Array): Uint8Array {
     const level = payload[1] ?? 0;
-    if (Date.now() < this.lockedOutUntil)
+    if (this.now() < this.lockedOutUntil)
       return negativeResponse(SID.SECURITY_ACCESS, NRC.REQUIRED_TIME_DELAY_NOT_EXPIRED);
     if (level % 2 === 1) {
       const seed = access.seed();
@@ -461,7 +522,7 @@ export class UdsServer {
     if (!access.verifyKey(level, key)) {
       this.securityFailures++;
       if (this.securityFailures >= 3 && access.lockoutMs)
-        this.lockedOutUntil = Date.now() + access.lockoutMs;
+        this.lockedOutUntil = this.now() + access.lockoutMs;
       return negativeResponse(
         SID.SECURITY_ACCESS,
         this.securityFailures >= 3 ? NRC.EXCEED_NUMBER_OF_ATTEMPTS : NRC.INVALID_KEY,

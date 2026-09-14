@@ -340,6 +340,12 @@ test("process.exit only at the entry point that owns exit codes", () => {
       file: "apps/web/src/server.ts",
       reason: "CLI entry point — the exit code is its interface (AGENTS 33)",
     },
+    {
+      file: "tools/golden-sessions/src/cli.ts",
+      reason:
+        "the recording entry point: `npm run golden:record` fails the build when a replayed " +
+        "expectation does not hold, so its exit code is its interface (master backlog P0 #10)",
+    },
   ];
   assertGate(
     "process.exit in a library kills the host process",
@@ -428,11 +434,15 @@ test("modules stay reviewable: no production file above the size budget", () => 
   const oversize: readonly Exemption[] = [
     {
       file: "apps/web/src/backend.ts",
-      reason: "1326 lines — split tracked as AGENTS 0.E E15; the budget keeps it from growing",
+      reason:
+        "1117 lines — split tracked as AGENTS 0.E E15; the wire contract moved to views.ts in " +
+        "E19 (1326 → 1117), the budget keeps the rest from growing",
     },
     {
       file: "apps/web/public/app.js",
-      reason: "906 lines — browser front end without a bundler; served as one module",
+      reason:
+        "1097 lines — browser front end without a bundler; served as one module, and typed " +
+        "against views.ts since E19 (JSDoc costs lines instead of hiding them)",
     },
   ];
   const allowed = new Set(oversize.map((entry) => entry.file));

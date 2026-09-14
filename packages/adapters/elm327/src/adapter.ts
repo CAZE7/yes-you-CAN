@@ -112,7 +112,12 @@ export class Elm327Adapter implements CanBus {
 
     for (const command of this.initSequence) {
       const lines = await this.command(command);
-      if (command === "ATZ") this.status.version = lines.join(" ").trim() || this.status.version;
+      // A silent ATZ must not erase a version that was identified before; the
+      // fallback keeps the previous reading instead of writing `undefined`.
+      if (command === "ATZ") {
+        const reported = lines.join(" ").trim();
+        if (reported) this.status.version = reported;
+      }
       if (command === "ATDP") this.status.protocol = lines.join(" ").trim();
     }
     this.log.info("ELM327 initialised", { version: this.status.version, channel: this.channel });

@@ -81,7 +81,7 @@ test.skipIf(!hasSocat())(
       adapter.subscribe((frame) =>
         frames.push({
           id: frame.id,
-          direction: frame.direction,
+          ...(frame.direction !== undefined ? { direction: frame.direction } : {}),
           payload: Buffer.from(frame.payload).toString("hex"),
         }),
       );

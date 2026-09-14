@@ -233,16 +233,24 @@ function factsOf(input: VehicleResolutionInput): VinFacts | undefined {
   const explicit = input.vinFacts;
   if (!explicit) return fromVin;
   if (!fromVin) return explicit;
-  return {
-    vin: explicit.vin || fromVin.vin,
-    wmi: explicit.wmi ?? fromVin.wmi,
-    vds: explicit.vds ?? fromVin.vds,
-    // Position 10 is only evidence when the caller states it explicitly — an
-    // absent `modelYearChar` in `vinFacts` means "do not treat it as a model year".
-    modelYearChar: explicit.modelYearChar,
-    plantChar: explicit.plantChar ?? fromVin.plantChar,
-    serial: explicit.serial ?? fromVin.serial,
-  };
+  // Merged field by field, and a field only exists when a value exists: an
+  // absent key is this type's way of saying "unknown" (see `vinPositions`), so
+  // assigning `undefined` would be a second, indistinguishable spelling of the
+  // same statement — which is exactly what `exactOptionalPropertyTypes` refuses.
+  const merged: VinFacts = { vin: explicit.vin || fromVin.vin };
+  const wmi = explicit.wmi ?? fromVin.wmi;
+  if (wmi) merged.wmi = wmi;
+  const vds = explicit.vds ?? fromVin.vds;
+  if (vds) merged.vds = vds;
+  // Position 10 is only evidence when the caller states it explicitly — an
+  // absent `modelYearChar` in `vinFacts` means "do not treat it as a model year",
+  // so it is *not* filled from `fromVin` here.
+  if (explicit.modelYearChar) merged.modelYearChar = explicit.modelYearChar;
+  const plantChar = explicit.plantChar ?? fromVin.plantChar;
+  if (plantChar) merged.plantChar = plantChar;
+  const serial = explicit.serial ?? fromVin.serial;
+  if (serial) merged.serial = serial;
+  return merged;
 }
 
 function lookupOf(facts: VinFacts | undefined): VinLookup | undefined {
@@ -385,11 +393,11 @@ function weighDeclared(
   }
   if (declared.brand) {
     const ok = sameText(declared.brand, vehicle.brand);
-    tally.weigh("declared-brand", declared.brand, vehicle.brand, `declared brand`, ok);
+    tally.weigh("declared-brand", declared.brand, vehicle.brand, "declared brand", ok);
   }
   if (declared.model) {
     const ok = sameText(declared.model, vehicle.model);
-    tally.weigh("declared-model", declared.model, vehicle.model, `declared model`, ok);
+    tally.weigh("declared-model", declared.model, vehicle.model, "declared model", ok);
   }
   if (declared.platform && vehicle.platform) {
     const ok = sameText(declared.platform, vehicle.platform);

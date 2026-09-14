@@ -12,6 +12,7 @@ import {
   type UdsServerOptions,
   parseMultiDidResponse,
   parseSingleDidResponse,
+  standardSessions,
   xorSeedKeyAlgorithm,
 } from "./index.js";
 
@@ -116,7 +117,8 @@ test("DiagnosticSessionControl adopts the ECU reported P2/P2* timing (AGENTS 9)"
 });
 
 test("unsupported session is rejected with NRC 0x12", async () => {
-  const { client } = createPair({ dids: BASE_DIDS, sessions: [0x01, 0x03] });
+  // Standard sessions: programming (0x02) is not among them.
+  const { client } = createPair({ dids: BASE_DIDS, sessionDefinitions: standardSessions() });
   await assert.rejects(client.diagnosticSessionControl(0x02), (error: unknown) => {
     assert.ok(error instanceof UdsNegativeResponseError);
     assert.equal(error.nrc, 0x12);
@@ -177,6 +179,9 @@ test("ClearDiagnosticInformation removes stored codes and resets the status of p
       { code: "P0171", status: 0x08 },
     ],
   });
+  // Clearing is a write: the ECU only offers 0x14 outside the default session
+  // (AGENTS 29 — no write happens in the default session).
+  await client.diagnosticSessionControl(0x03);
   await client.clearDiagnosticInformation();
   const dtcs = await client.readDtcByStatusMask(0xff);
   assert.deepEqual(
@@ -191,6 +196,7 @@ test("ClearDiagnosticInformation removes stored codes and resets the status of p
 
 test("a clear request without the group of DTC is rejected instead of clearing", async () => {
   const { client } = createPair({ dids: BASE_DIDS, dtcs: [{ code: "P0420", status: 0x08 }] });
+  await client.diagnosticSessionControl(0x03);
   await assert.rejects(
     () => client.raw(fromHex("14 00")),
     (error: unknown) => {
@@ -303,6 +309,17 @@ test("security access is refused by default and works with an explicitly registe
       verifyKey: (_level, key) => toHex(key) === "EE DD CC BB",
     },
   });
+  // Security access is a write-side service: in the default session the ECU does
+  // not offer it (0x7F), and the client must not work around that.
+  await assert.rejects(client.unlockSecurityAccess(0x01), (error: unknown) => {
+    assert.ok(error instanceof UdsNegativeResponseError);
+    assert.equal(error.nrc, 0x7f, "serviceNotSupportedInActiveSession");
+    return true;
+  });
+
+  await client.diagnosticSessionControl(0x03);
+  // Even where the ECU offers it: without a registered algorithm the client
+  // refuses locally instead of guessing a key (AGENTS 29/34.12).
   await assert.rejects(client.unlockSecurityAccess(0x01), SecurityAccessRefusedError);
 
   client.setSeedKeyAlgorithm(xorSeedKeyAlgorithm(0xff));
@@ -316,6 +333,7 @@ test("routine control returns the routine result payload", async () => {
     dids: BASE_DIDS,
     routines: [{ id: 0x0202, run: () => fromHex("01 ff") }],
   });
+  await client.diagnosticSessionControl(0x03);
   assert.equal(toHex(await client.startRoutine(0x0202)), "01 FF");
   await assert.rejects(client.startRoutine(0x9999), UdsNegativeResponseError);
 });

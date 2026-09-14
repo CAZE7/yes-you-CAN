@@ -8,32 +8,32 @@
     "rules": {
       "recommended": true,
       "correctness": {
-        "noUnusedVariables": "warn",
-        "noUnusedImports": "warn",
+        "noUnusedVariables": "error",
+        "noUnusedImports": "error",
         "useExhaustiveDependencies": "off",
-        "noUnnecessaryContinue": "warn"
+        "noUnnecessaryContinue": "error"
       },
       "style": {
         "useImportType": "error",
-        "noNonNullAssertion": "warn",
+        "noNonNullAssertion": "error",
         "useTemplate": "off",
-        "noUnusedTemplateLiteral": "off",
-        "useConst": "off"
+        "noUnusedTemplateLiteral": "error",
+        "useConst": "error"
       },
       "suspicious": {
-        "noExplicitAny": "warn",
-        "noConsoleLog": "off",
-        "noShadowRestrictedNames": "off",
+        "noExplicitAny": "error",
+        "noConsoleLog": "error",
+        "noShadowRestrictedNames": "error",
         "noControlCharactersInRegex": "off",
-        "noImplicitAnyLet": "off",
-        "noAssignInExpressions": "off"
+        "noImplicitAnyLet": "error",
+        "noAssignInExpressions": "error"
       },
       "complexity": {
         "noForEach": "off",
         "useLiteralKeys": "off"
       },
       "performance": {
-        "noDelete": "off"
+        "noDelete": "error"
       }
     }
   },
@@ -56,10 +56,25 @@
       "linter": {
         "rules": {
           "suspicious": {
-            "noExplicitAny": "off"
+            "noExplicitAny": "off",
+            "noAssignInExpressions": "off"
           },
           "style": {
-            "noNonNullAssertion": "off"
+            "noNonNullAssertion": "off",
+            "useConst": "off"
+          },
+          "performance": {
+            "noDelete": "off"
+          }
+        }
+      }
+    },
+    {
+      "include": ["scripts/**", "packages/shared/src/logger.ts"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noConsoleLog": "off"
           }
         }
       }

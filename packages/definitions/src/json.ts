@@ -134,10 +134,28 @@ function coerceProvenance(value: unknown, check: StructuralCheck, path = "proven
   return provenance;
 }
 
-const SEVERITIES = new Set(["info", "minor", "major", "critical"]);
-const LIKELIHOODS = new Set(["common", "possible", "rare"]);
-const FUELS = new Set(["petrol", "diesel", "electric", "hybrid", "plugin-hybrid", "cng", "lpg"]);
-const GEARBOX_TYPES = new Set(["manual", "automatic", "dual-clutch", "cvt", "single-speed"]);
+const SEVERITIES = ["info", "minor", "major", "critical"] as const;
+const LIKELIHOODS = ["common", "possible", "rare"] as const;
+const FUELS = ["petrol", "diesel", "electric", "hybrid", "plugin-hybrid", "cng", "lpg"] as const;
+const GEARBOX_TYPES = ["manual", "automatic", "dual-clutch", "cvt", "single-speed"] as const;
+
+/**
+ * Narrow an untrusted value to one of a fixed set of literals.
+ *
+ * The alternative this replaces was `value !== undefined` + `Set.has` + a cast
+ * `as T["field"]`. That cast re-introduced `undefined` into a field declared
+ * `field?: T`, which `exactOptionalPropertyTypes` rejects — correctly, because
+ * the two cases are not the same thing in a definition package: an absent key
+ * means "the package says nothing here", while a present-but-undefined key
+ * survives a round trip through `JSON.stringify` as an absent one and hides the
+ * difference. Returning the narrowed literal (or `undefined`) keeps the caller's
+ * `if (literal !== undefined)` assignment exactly typed, without a cast.
+ */
+function literalOf<T extends string>(allowed: readonly T[], value: unknown): T | undefined {
+  return typeof value === "string" && (allowed as readonly string[]).includes(value)
+    ? (value as T)
+    : undefined;
+}
 
 function coerceEngine(value: unknown, path: string, check: StructuralCheck): EngineDefinition {
   if (!isRecord(value)) {
@@ -147,17 +165,13 @@ function coerceEngine(value: unknown, path: string, check: StructuralCheck): Eng
   const id = check.string(value, path, "id");
   const name = check.string(value, path, "name");
   const engine: EngineDefinition = { id: id ?? "", name: name ?? "" };
-  const fuel = value.fuel;
-  if (fuel !== undefined) {
-    if (!isString(fuel) || !FUELS.has(fuel)) {
-      check.fail(
-        `${path}.fuel`,
-        "must be one of petrol|diesel|electric|hybrid|plugin-hybrid|cng|lpg",
-      );
-    } else {
-      engine.fuel = fuel as EngineDefinition["fuel"];
-    }
-  }
+  const fuel = literalOf(FUELS, value.fuel);
+  if (fuel !== undefined) engine.fuel = fuel;
+  else if (value.fuel !== undefined)
+    check.fail(
+      `${path}.fuel`,
+      "must be one of petrol|diesel|electric|hybrid|plugin-hybrid|cng|lpg",
+    );
   if (isNumber(value.displacementCc)) engine.displacementCc = value.displacementCc;
   if (isNumber(value.powerKw)) engine.powerKw = value.powerKw;
   if (isNumber(value.torqueNm)) engine.torqueNm = value.torqueNm;
@@ -176,14 +190,10 @@ function coerceGearbox(value: unknown, path: string, check: StructuralCheck): Ge
   const id = check.string(value, path, "id");
   const name = check.string(value, path, "name");
   const gearbox: GearboxDefinition = { id: id ?? "", name: name ?? "" };
-  const type = value.type;
-  if (type !== undefined) {
-    if (!isString(type) || !GEARBOX_TYPES.has(type)) {
-      check.fail(`${path}.type`, "must be one of manual|automatic|dual-clutch|cvt|single-speed");
-    } else {
-      gearbox.type = type as GearboxDefinition["type"];
-    }
-  }
+  const type = literalOf(GEARBOX_TYPES, value.type);
+  if (type !== undefined) gearbox.type = type;
+  else if (value.type !== undefined)
+    check.fail(`${path}.type`, "must be one of manual|automatic|dual-clutch|cvt|single-speed");
   if (isNumber(value.gears)) gearbox.gears = value.gears;
   if (isString(value.description)) gearbox.description = value.description;
   const codes = check.strings(value, path, "codes");
@@ -332,14 +342,10 @@ function coerceFailurePattern(
   const pattern: FailurePatternDefinition = { id: id ?? "", name: name ?? "" };
   if (isString(value.explanation)) pattern.explanation = value.explanation;
   if (isString(value.repair)) pattern.repair = value.repair;
-  const likelihood = value.likelihood;
-  if (likelihood !== undefined) {
-    if (!isString(likelihood) || !LIKELIHOODS.has(likelihood)) {
-      check.fail(`${path}.likelihood`, 'must be "common", "possible" or "rare"');
-    } else {
-      pattern.likelihood = likelihood as FailurePatternDefinition["likelihood"];
-    }
-  }
+  const likelihood = literalOf(LIKELIHOODS, value.likelihood);
+  if (likelihood !== undefined) pattern.likelihood = likelihood;
+  else if (value.likelihood !== undefined)
+    check.fail(`${path}.likelihood`, 'must be "common", "possible" or "rare"');
   if (value.checks !== undefined) {
     if (!Array.isArray(value.checks)) check.fail(`${path}.checks`, "must be an array");
     else
@@ -374,14 +380,10 @@ function coerceDtcKnowledgeEntry(
   if (isString(value.description)) entry.description = value.description;
   if (isString(value.hint)) entry.hint = value.hint;
   if (isString(value.conditions)) entry.conditions = value.conditions;
-  const severity = value.severity;
-  if (severity !== undefined) {
-    if (!isString(severity) || !SEVERITIES.has(severity)) {
-      check.fail(`${path}.severity`, 'must be "info", "minor", "major" or "critical"');
-    } else {
-      entry.severity = severity as DtcKnowledgeDefinition["severity"];
-    }
-  }
+  const severity = literalOf(SEVERITIES, value.severity);
+  if (severity !== undefined) entry.severity = severity;
+  else if (value.severity !== undefined)
+    check.fail(`${path}.severity`, 'must be "info", "minor", "major" or "critical"');
   const relatedSignals = check.strings(value, path, "relatedSignals");
   if (relatedSignals) entry.relatedSignals = relatedSignals;
   if (value.provenance !== undefined) {
@@ -469,11 +471,11 @@ function coerceEcu(value: unknown, index: number, check: StructuralCheck): EcuDe
     protocol: protocol === "kwp2000" ? "kwp2000" : "uds",
   };
   if (Array.isArray(value.identification))
-    ecu.identification = value.identification as EcuDefinition["identification"];
+    ecu.identification = value.identification as NonNullable<EcuDefinition["identification"]>;
   if (Array.isArray(value.services)) ecu.services = value.services as number[];
-  if (Array.isArray(value.dtcs)) ecu.dtcs = value.dtcs as EcuDefinition["dtcs"];
+  if (Array.isArray(value.dtcs)) ecu.dtcs = value.dtcs as NonNullable<EcuDefinition["dtcs"]>;
   if (isString(value.description)) ecu.description = value.description;
-  if (isRecord(value.timing)) ecu.timing = value.timing as EcuDefinition["timing"];
+  if (isRecord(value.timing)) ecu.timing = value.timing as NonNullable<EcuDefinition["timing"]>;
   return ecu;
 }
 

@@ -3,7 +3,7 @@
 [![CI](https://github.com/CAZE7/yes-you-CAN/actions/workflows/ci.yml/badge.svg)](https://github.com/CAZE7/yes-you-CAN/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](./package.json)
-[![Tests](https://img.shields.io/badge/tests-1404%20passed-brightgreen)](#tests)
+[![Tests](https://img.shields.io/badge/tests-1646%20passed-brightgreen)](#tests)
 [![TypeScript](https://img.shields.io/badge/TypeScript-7%20%2F%20tsgo-blue)](./tsconfig.base.json)
 
 Fahrzeugdiagnose-Plattform: CAN und DoIP lesen, Steuergeräte identifizieren, das
@@ -150,6 +150,15 @@ Qualitätstore: `npm run ci` prüft lokal genau das, was die CI prüft —
 `.github/workflows/ci.yml` läuft auf Node 22 und 24 (`npm ci` → `build` →
 `npm test`).
 
+**Seit ADR 0029 (2026-09-14) sind die Gates auch in der CI scharf, ohne dass der
+Workflow geändert werden musste:** der `architecture`-Projektlauf von `npm test`
+führt `biome check .` und beide `--noEmit`-Pässe selbst aus und schlägt mit deren
+Ausgabe fehl (gemessen +2 s auf einen 22,6-s-Lauf). Dazu ist jede Regel, die
+nicht `error` ist, mit Umfang und Messung auf dem Rekord
+(`tests/architecture/guardrails.test.ts`, 0.E E20); Produktionscode hat keinen
+Regel-Ausnahmepfad. Der 57-Punkte-Backlog gegen den gemessenen Stand liegt in
+[`docs/architecture/master-backlog.md`](docs/architecture/master-backlog.md).
+
 **Stand 2026-09-12, bewusst offen (AGENTS 0.E, E10):** die gehärtete CI aus
 ADR 0016 §3 — Quality-Job (`lint` · `build` · `typecheck` · `npm audit`) vor der
 Test-Matrix, Coverage-Lauf mit Artefakt-Upload, `codeql.yml`,
@@ -173,17 +182,19 @@ Zeitraum aus, Doppelklick zeigt die gesamte Aufnahme.
 
 ## Tests
 
-1404 Tests in ~27 s, Vitest 5 mit Projektkonfiguration (ADR 0010, Schritt 1 —
-ersetzt ADR 0008). Unit-Specs liegen co-lokatiert neben dem Code
-(`src/*.spec.ts`); Property-Tests laufen mit fast-check, Coverage-Gates mit
+1646 Tests / 111 Dateien in 32,3 s, Vitest 5 mit Projektkonfiguration (ADR 0010,
+Schritt 1 — ersetzt ADR 0008). Der `architecture`-Lauf prüft die Struktur *und*
+führt die Quality-Gates aus (ADR 0029). Unit-Specs liegen co-lokatiert neben dem
+Code (`src/*.spec.ts`); Property-Tests laufen mit fast-check, Coverage-Gates mit
 `npm run test:coverage` (global 90 % lines / 80 % branches als
-Projekt-Durchschnitt, Ist 96,3 Zeilen / 88,0 Zweige — seit ADR 0027 wird die ganze
+Projekt-Durchschnitt, Ist 94,45 Statements / 87,18 Zweige / 96,27 Funktionen / 95,79 Zeilen — seit ADR 0027 wird die ganze
 Fläche gemessen: `packages/**/src`, `apps/web/src/**` und `tools/**`, weil die
 Workbench-Schicht vorher in keiner Zahl vorkam; per-file-Gates für
-`shared`/`core`/`protocols`/`adapters`/`transport`/`storage`/`charts`/`reports`/`ai` (95/85 seit 2026-09-14)/`definitions`,
+`shared`/`core`/`protocols`/`adapters`/`transport`/`storage`/`charts`/`reports`/`ai` (95/85 seit 2026-09-14)/`diagnostic-ir` (95/85 seit ADR 0034)/`definitions`
 und seit ADR 0027 eine **Bodenschwelle** 69/54 für `apps/web/src/**`; `tools/**` ist
 gemessen, aber ohne Gate (dort steht `flaky-reporter.ts` bei 0 %, weil kein CI-Job ihn
 aufrufen kann — 0.E E10);
+
 Hardware-Module `serial`/`binding` ausgenommen — maßgeblich ist
 `vitest.config.ts`, ADR 0017, 0020, 0022 und 0023). Test-Zeit ist ein Budget: Discovery läuft in Tests mit explizitem
 `windowMs`/`probeDelayMs`, und statt fester Sleeps wird auf Bedingungen

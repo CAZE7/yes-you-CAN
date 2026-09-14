@@ -75,156 +75,48 @@ import {
   createWebAdapterCatalog,
   isApplicationManaged,
 } from "./adapters.js";
+import type {
+  AppState,
+  BackendEvent,
+  BackendMode,
+  DtcClearPrecheck,
+  DtcClearView,
+  DtcView,
+  EcuView,
+  FreezeFrameView,
+  HistoryView,
+  SampleView,
+  VehicleResolutionView,
+  VehicleStateView,
+} from "./views.js";
+
+/**
+ * The wire contract (AGENTS 16) lives in `views.ts` — node-free, so the browser
+ * project can be checked against it. Re-exported here so the backend, its tests
+ * and the front end keep importing from one place.
+ */
+export type {
+  AppState,
+  BackendEvent,
+  BackendMode,
+  DtcClearPrecheck,
+  DtcClearView,
+  DtcView,
+  EcuView,
+  FreezeFrameView,
+  HistoryView,
+  MarkerView,
+  SampleView,
+  SignalStatisticsView,
+  TraceView,
+  VehicleStateView,
+} from "./views.js";
+
 import { analysisDtcOf, analysisVehicleOf } from "./analysis-input.js";
-import { type DtcView, toDtcView } from "./dtc-view.js";
-import { type EcuView, type FreezeFrameView, toEcuView, toFreezeFrameView } from "./ecu-view.js";
-import {
-  type MarkerView,
-  type SampleView,
-  type TraceView,
-  formatCanId,
-  toMarkerView,
-  toSampleView,
-  toTraceView,
-} from "./trace-view.js";
-import { type VehicleResolutionView, toVehicleResolutionView } from "./vehicle-view.js";
-
-/**
- * Vehicle preconditions for a write, as asserted by the operator (AGENTS 26).
- *
- * They are asserted, not measured: the workbench cannot see whether the car is
- * stationary, so the operator confirms each one and the safety layer records who
- * asserted what. A value that a real adapter *can* measure (battery voltage via
- * ATRV) is passed through when it is known.
- */
-export interface VehicleStateView {
-  stationary: boolean;
-  ignitionOn: boolean;
-  parkingBrake?: boolean;
-  batteryVoltage?: number;
-}
-
-/** Result of a cleared fault memory, including the before/after comparison. */
-export interface DtcClearView {
-  ecu: string;
-  cleared: boolean;
-  /** The re-read confirms that the clear took effect. */
-  verified: boolean;
-  before: string[];
-  after: string[];
-  /** Codes that are gone after the clear. */
-  removed: string[];
-  /** Codes that are still stored because the fault condition is still present. */
-  stillFailing: string[];
-  /** Codes whose status did not change at all — the ECU ignored the clear. */
-  unchanged: string[];
-  /**
-   * Why the safety chain refused (only present when {@link cleared} is false):
-   * a rejection is an answer with reasons, not an HTTP error (AGENTS 26,
-   * ADR 0018).
-   */
-  reasons?: string[];
-}
-
-export interface DtcClearPrecheck {
-  rxId: string;
-  ecu: string;
-  ok: boolean;
-  failed: string[];
-  warnings: string[];
-}
-
-export interface HistoryView {
-  /** Wall clock at recording start, so the UI can convert relative times. */
-  startedAt: number;
-  live: boolean;
-  samples: SampleView[];
-  markers: MarkerView[];
-}
-
-/**
- * Window statistics of one recorded signal as the UI consumes them
- * (AGENTS 16 "Min/Max/Durchschnitt/Delta"). Domain-shaped — the web app
- * stays free of core imports (storage/persistence seam, roadmap steps 10–13).
- */
-export interface SignalStatisticsView {
-  signal: string;
-  name: string;
-  unit?: string;
-  samples: number;
-  min: number | null;
-  max: number | null;
-  average: number | null;
-  delta: number | null;
-  first: number | null;
-  last: number | null;
-  outOfRangeCount: number;
-}
-
-/**
- * View types the server and the tests read from this module. They live in
- * `ecu-view.ts`, `dtc-view.ts` and `trace-view.ts` now (0.E E15) and are re-exported
- * so the outward API of the backend is unchanged by the move (ADR 0014).
- */
-export type { DtcView } from "./dtc-view.js";
-export type { EcuView, FreezeFrameView } from "./ecu-view.js";
-export type { MarkerView, SampleView, TraceView } from "./trace-view.js";
-
-export interface AppState {
-  connected: boolean;
-  /** Which transport source is selected (AGENTS 4, 29, 32). */
-  mode: BackendMode;
-  sessionId: string;
-  vin?: string;
-  vehicle: string;
-  /**
-   * Last vehicle resolution (AGENTS 11) — the hypotheses with their evidence.
-   * Absent until something was resolved; never a guess about the identity.
-   */
-  vehicleResolution?: VehicleResolutionView;
-  mileageKm?: number;
-  adapter: { id: string; name: string; kind: string; channels: string[] };
-  /** Adapter the user selected, including its settings, so the UI can show them. */
-  adapterSelection: AdapterSelection;
-  /** Live probe result of the selected adapter (never a guess). */
-  adapterProbe?: AdapterProbe;
-  transport: { kind: string; channel: string; mtu: number };
-  ecus: EcuView[];
-  dtcs: DtcView[];
-  samples: SampleView[];
-  statistics: SignalStatisticsView[];
-  trace: TraceView[];
-  live: boolean;
-  signals: Array<{ id: string; name: string; unit?: string; critical: boolean }>;
-  anomalies: Array<{ signal: string; reason: string; value?: number }>;
-  actions: Array<{
-    timestamp: string;
-    kind: string;
-    ecuId: string;
-    description: string;
-    result: string;
-  }>;
-}
-
-/**
- * Events pushed to the UI over SSE. Every member here has an `emit()` call
- * site below; `'log'` was dropped because nothing ever sent or listened for
- * it (the `'log'` string elsewhere is a storage line kind, not an SSE event).
- */
-export interface BackendEvent {
-  /** 'marker' adds one event, 'markers' replaces the whole list (after a scan). */
-  type:
-    | "sample"
-    | "trace"
-    | "dtc"
-    | "ecu"
-    | "analysis"
-    | "error"
-    | "marker"
-    | "markers"
-    | "vehicle";
-  payload: unknown;
-}
+import { toDtcView } from "./dtc-view.js";
+import { toEcuView, toFreezeFrameView } from "./ecu-view.js";
+import { formatCanId, toMarkerView, toSampleView, toTraceView } from "./trace-view.js";
+import { toVehicleResolutionView } from "./vehicle-view.js";
 
 export interface BackendOptions {
   logger?: Logger;
@@ -274,41 +166,33 @@ const _MAX_TRACE = 800;
  */
 const SIMULATOR_DISCOVERY: ConnectVehicleOptions = { windowMs: 40, probeDelayMs: 0 };
 
-/**
- * Where the CAN traffic comes from.
- *
- * `simulator` and `replay` are application-owned transports; `hardware` means a
- * real adapter builds the bus.
- */
-export type BackendMode = "simulator" | "replay" | "hardware";
-
 export class DemoBackend {
   readonly log: Logger;
   readonly analysisService: AnalysisService;
   readonly adapters: AdapterCatalog;
-  private vehicle?: VirtualVehicle;
-  private bus?: CanBus;
+  private vehicle: VirtualVehicle | undefined;
+  private bus: CanBus | undefined;
   /**
    * The headless diagnostic runtime (ADR 0014): the backend owns transport and
    * presentation only — every vehicle operation goes through the command/query
    * bus, never through the engine below it.
    */
-  private runtime?: DiagnosticRuntime;
+  private runtime: DiagnosticRuntime | undefined;
   private selection: AdapterSelection;
   private mode: BackendMode;
-  private probe?: AdapterProbe;
+  private probe: AdapterProbe | undefined;
   private readonly sessionLogger = new SessionLogger();
   private readonly listeners = new Set<(event: BackendEvent) => void>();
-  private unsubscribeBus?: () => void;
-  private unsubscribeSamples?: () => void;
-  private unsubscribeEvents?: () => void;
+  private unsubscribeBus: (() => void) | undefined;
+  private unsubscribeSamples: (() => void) | undefined;
+  private unsubscribeEvents: (() => void) | undefined;
   private ecus: EcuView[] = [];
   private dtcs: DtcView[] = [];
   private live = false;
   private connected = false;
   private readonly vin: string;
   private definitions: readonly DefinitionPackage[];
-  private resolution?: VehicleResolutionView;
+  private resolution: VehicleResolutionView | undefined;
   private readonly repository?: SessionRepository;
   /**
    * Turns raw protocol codes into described fault entries. Descriptions come
@@ -770,6 +654,7 @@ export class DemoBackend {
       ecu: info.ecuName,
       ok: info.ok,
       failed: [...info.failed],
+      unproven: [...info.unproven],
       warnings: [...info.warnings],
     };
   }
@@ -882,12 +767,16 @@ export class DemoBackend {
   async analyze(): Promise<AnalysisResult> {
     const runtime = this.requireRuntime();
     const session = this.session();
+    // Which car, and how firmly it was determined: without these two the provider
+    // answers about an unnamed vehicle while its output reads like a variant
+    // statement (AGENTS 22, ADR 0026).
+    const vehicle = analysisVehicleOf(runtime.vehicle.identity(), session?.determination);
     const input: AnalysisInput = {
-      // Which car, and how firmly it was determined: without these two the provider
-      // answers about an unnamed vehicle while its output reads like a variant
-      // statement (AGENTS 22, ADR 0026).
-      vehicle: analysisVehicleOf(runtime.vehicle.identity(), session?.determination),
-      mileageKm: session?.mileageKm,
+      ...(vehicle !== undefined ? { vehicle } : {}),
+      // No odometer reading is an absent input, not a present zero: the heuristic
+      // provider must not read "unknown mileage" as "0 km" (AGENTS 22).
+      ...(session?.mileageKm !== undefined ? { mileageKm: session.mileageKm } : {}),
+
       signals: runtime.measurements.statistics().map((stat) => ({
         signal: stat.signalId,
         name: stat.name,

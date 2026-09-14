@@ -570,6 +570,20 @@ test("REGRESSION: a truncated clear request cleared instead of being rejected", 
     const handle = engine.handleFor(0x7e8);
     assert.ok(handle, "engine ECU must be reachable");
 
+    // In the default session the write service is refused before the request is
+    // even parsed; in the session a clear happens in, the truncated request is the
+    // format error this regression is about. Both must leave the fault memory alone.
+    await assert.rejects(
+      () => handle.session.client.raw(fromHex("14 00")),
+      (error: unknown) => {
+        assert.match(
+          String((error as { message?: string }).message),
+          /serviceNotSupportedInActiveSession/,
+        );
+        return true;
+      },
+    );
+    await handle.session.ensureWritableSession();
     await assert.rejects(
       () => handle.session.client.raw(fromHex("14 00")),
       (error: unknown) => {

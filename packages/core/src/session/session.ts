@@ -295,14 +295,13 @@ export class VehicleSession {
       id: createId("dtc"),
       takenAt: nowIso(),
       ...(label ? { label } : {}),
-      // Copy per record and drop the live-scan mark here, rather than storing it
-      // and hoping no reader mistakes it for a session-scoped fact. A copy is also
-      // what keeps a future `EnrichedDtc` field from being forgotten in a list.
-      records: records.map((record) => {
-        const stored = { ...record };
-        delete stored.firstSeenInThisScan;
-        return stored;
-      }),
+      // Drop the live-scan mark here, rather than storing it and hoping no reader
+      // mistakes it for a session-scoped fact. The mark is *omitted by
+      // construction* (rest destructuring) instead of copied and deleted: `delete`
+      // is an error in production code (ADR 0029 §1), and an omit cannot leave a
+      // hole behind. A copy is also what keeps a future `EnrichedDtc` field from
+      // being forgotten in a list.
+      records: records.map(({ firstSeenInThisScan: _liveScanMark, ...stored }) => stored),
     };
     this.data.dtcSnapshots.push(snapshot);
     return snapshot;

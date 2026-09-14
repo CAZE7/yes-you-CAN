@@ -14,6 +14,7 @@ import {
 } from "@vdp/core";
 import type { AdapterInfo, TransportInfo } from "@vdp/transport-can";
 import { describe, test } from "vitest";
+import { type FixturePatch, patched, without } from "../../../tests/helpers/fixture.js";
 import {
   capabilitiesFromServices,
   decodedToReading,
@@ -27,22 +28,24 @@ import {
   toVehicleSummary,
 } from "./index.js";
 
-function makeEcuSession(overrides: Partial<EcuSession> = {}): EcuSession {
-  return {
-    id: "ecu_1",
-    definitionEcuId: "engine",
-    name: "Engine Control Unit",
-    protocol: "uds",
-    txId: 0x7e0,
-    rxId: 0x7e8,
-    extended: false,
-    identification: [{ label: "VIN", value: "WVWZZZ1KZAW000001" }],
-    supportedServices: [0x10, 0x19, 0x22, 0x3e],
-    sessionType: 0x01,
-    timing: { p2Ms: 50, p2StarMs: 5000 },
-    reachable: true,
-    ...overrides,
-  };
+function makeEcuSession(overrides: FixturePatch<EcuSession> = {}): EcuSession {
+  return patched(
+    {
+      id: "ecu_1",
+      definitionEcuId: "engine",
+      name: "Engine Control Unit",
+      protocol: "uds",
+      txId: 0x7e0,
+      rxId: 0x7e8,
+      extended: false,
+      identification: [{ label: "VIN", value: "WVWZZZ1KZAW000001" }],
+      supportedServices: [0x10, 0x19, 0x22, 0x3e],
+      sessionType: 0x01,
+      timing: { p2Ms: 50, p2StarMs: 5000 },
+      reachable: true,
+    },
+    overrides,
+  );
 }
 
 describe("toEcuSummary", () => {
@@ -101,7 +104,7 @@ describe("toMeasurementReading", () => {
   });
 
   test("omits optional text fields when missing", () => {
-    const reading = toMeasurementReading({ ...sample, unit: undefined });
+    const reading = toMeasurementReading(without(sample, "unit"));
     assert.equal("unit" in reading, false);
     assert.equal("enumText" in reading, false);
     assert.equal("name" in reading, false);
@@ -184,27 +187,29 @@ describe("toSessionSummary", () => {
 });
 
 describe("toDtcInfo", () => {
-  function makeDtc(overrides: Partial<EnrichedDtc> = {}): EnrichedDtc {
-    return {
-      code: "P0420",
-      raw: "042000",
-      failureType: "00",
-      status: 0x24,
-      statusBits: {
-        testFailed: true,
-        testFailedThisOperationCycle: true,
-        pendingDtc: false,
-        confirmedDtc: true,
-        testNotCompletedSinceLastClear: false,
-        testFailedSinceLastClear: true,
-        testNotCompletedThisOperationCycle: false,
-        warningIndicatorRequested: false,
+  function makeDtc(overrides: FixturePatch<EnrichedDtc> = {}): EnrichedDtc {
+    return patched(
+      {
+        code: "P0420",
+        raw: "042000",
+        failureType: "00",
+        status: 0x24,
+        statusBits: {
+          testFailed: true,
+          testFailedThisOperationCycle: true,
+          pendingDtc: false,
+          confirmedDtc: true,
+          testNotCompletedSinceLastClear: false,
+          testFailedSinceLastClear: true,
+          testNotCompletedThisOperationCycle: false,
+          warningIndicatorRequested: false,
+        },
+        severity: "major",
+        ecuId: "ecu_1",
+        ecuName: "Engine Control Unit",
       },
-      severity: "major",
-      ecuId: "ecu_1",
-      ecuName: "Engine Control Unit",
-      ...overrides,
-    };
+      overrides,
+    );
   }
 
   test("maps a fully enriched code", () => {
@@ -303,7 +308,7 @@ describe("decodedToReading / clear outcomes", () => {
     assert.equal(reading.signalId, "engine.rpm");
     assert.equal(reading.timestamp, "2026-09-11T10:00:00.000Z");
     assert.equal(reading.unit, "rpm");
-    const withoutUnit = decodedToReading({ ...decoded, unit: undefined, enumText: "idle" }, "x");
+    const withoutUnit = decodedToReading({ ...without(decoded, "unit"), enumText: "idle" }, "x");
     assert.equal("unit" in withoutUnit, false);
     assert.equal(withoutUnit.enumText, "idle");
   });
@@ -341,42 +346,44 @@ describe("decodedToReading / clear outcomes", () => {
 
 describe("toDtcKnowledge", () => {
   /** Variant knowledge as the DTC system records it (AGENTS 20, 23). */
-  function knowledge(overrides: Partial<DtcVariantKnowledge> = {}): DtcVariantKnowledge {
-    return {
-      scope: "vehicle-engine",
-      vehicleId: "virtual-vehicle",
-      conditions: "only in closed loop above 80 °C",
-      patterns: [
-        {
-          id: "catalyst-aged",
-          name: "Aged catalyst",
-          explanation: "Oxygen storage is gone",
-          likelihood: "common",
-          repair: "Replace it after the checks hold",
-          scope: "vehicle-engine",
-          checks: [
-            {
-              signal: "engine.long_term_fuel_trim",
-              signalName: "Long term fuel trim",
-              expect: "neutral",
-              min: -5,
-              max: 5,
-              measurable: true,
-            },
-            {
-              signal: "engine.coolant_temperature",
-              signalName: "Coolant temperature",
-              expect: "listen at operating temperature",
-              measurable: false,
-            },
-          ],
-        },
-      ],
-      provenanceType: "licensed",
-      provenanceSource: "workshop manual",
-      notes: ["the evidence did not narrow the powertrain"],
-      ...overrides,
-    };
+  function knowledge(overrides: FixturePatch<DtcVariantKnowledge> = {}): DtcVariantKnowledge {
+    return patched(
+      {
+        scope: "vehicle-engine",
+        vehicleId: "virtual-vehicle",
+        conditions: "only in closed loop above 80 °C",
+        patterns: [
+          {
+            id: "catalyst-aged",
+            name: "Aged catalyst",
+            explanation: "Oxygen storage is gone",
+            likelihood: "common",
+            repair: "Replace it after the checks hold",
+            scope: "vehicle-engine",
+            checks: [
+              {
+                signal: "engine.long_term_fuel_trim",
+                signalName: "Long term fuel trim",
+                expect: "neutral",
+                min: -5,
+                max: 5,
+                measurable: true,
+              },
+              {
+                signal: "engine.coolant_temperature",
+                signalName: "Coolant temperature",
+                expect: "listen at operating temperature",
+                measurable: false,
+              },
+            ],
+          },
+        ],
+        provenanceType: "licensed",
+        provenanceSource: "workshop manual",
+        notes: ["the evidence did not narrow the powertrain"],
+      },
+      overrides,
+    );
   }
 
   test("maps to the domain's field names and keeps every statement", () => {

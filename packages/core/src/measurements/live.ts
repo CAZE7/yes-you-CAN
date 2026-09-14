@@ -7,11 +7,18 @@
  *  - several ECUs are polled concurrently, each on its own transport channel.
  *
  * Raw and decoded values are recorded separately (AGENTS 34.7).
+ *
+ * The decoder hands back a diagnostic IR observation (P0 #6): either a reading —
+ * recorded as a sample — or a gap. Gaps are collected per round and counted, so a
+ * live session reports "2 of 5 signals could not be observed, because …" instead
+ * of simply producing fewer samples than somebody expected.
  */
 
 import type { SignalDefinition } from "@vdp/definitions";
+import { type SignalGap, type SignalObservation, signalGap } from "@vdp/diagnostic-ir";
 import { type Logger, asError, createLogger, messageOf, toHex } from "@vdp/shared";
 import type { DecodedSignal } from "./decoder.js";
+import { toDecodedSignal } from "./decoder.js";
 import type { MeasurementRecorder, MeasurementSample } from "./recorder.js";
 
 export interface EcuReader {
@@ -35,6 +42,11 @@ export interface PollRoundResult {
   at: number;
   signals: DecodedSignal[];
   /**
+   * Signals of this round that could not be observed, each with its reason
+   * (`errors` stays the DID-level view of the same failures).
+   */
+  gaps: SignalGap[];
+  /**
    * The samples the recorder stored for this round — same order as
    * {@link signals}. Listeners stream these instead of recording a second
    * time (AGENTS 16/34.25: exactly one sample per signal per round).
@@ -47,6 +59,8 @@ export interface LiveDataStats {
   rounds: number;
   samples: number;
   errors: number;
+  /** Signals that could not be observed across all rounds (P0 #6). */
+  gaps: number;
   averageRoundMs: number;
 }
 
@@ -57,16 +71,19 @@ export class LiveDataEngine {
   private readonly maxRounds: number | undefined;
   private running = false;
   private stopRequested = false;
-  private readonly stats: LiveDataStats = { rounds: 0, samples: 0, errors: 0, averageRoundMs: 0 };
+  private readonly stats: LiveDataStats = {
+    rounds: 0,
+    samples: 0,
+    errors: 0,
+    gaps: 0,
+    averageRoundMs: 0,
+  };
   private roundDurations: number[] = [];
   private listeners: Array<(result: PollRoundResult) => void> = [];
   private errorListeners: Array<(error: Error) => void> = [];
 
   constructor(
-    private readonly decoder: (
-      signal: SignalDefinition,
-      payload: Uint8Array,
-    ) => DecodedSignal | null,
+    private readonly decode: (signal: SignalDefinition, payload: Uint8Array) => SignalObservation,
     private readonly recorder: MeasurementRecorder,
     options: LiveDataOptions = {},
   ) {
@@ -171,6 +188,7 @@ export class LiveDataEngine {
       round,
       at,
       signals: [],
+      gaps: [],
       samples: [],
       errors: [],
     };
@@ -182,12 +200,32 @@ export class LiveDataEngine {
         if (!payload) {
           result.errors.push({ did, message: "no data returned" });
           this.stats.errors++;
+          // The whole DID is missing: every signal it feeds is a gap, named at
+          // the signal level as well — "no data returned" alone does not say
+          // which measured value is missing (P0 #6).
+          for (const signal of signals.filter((s) => s.did === did)) {
+            result.gaps.push(
+              signalGap({
+                signalId: signal.id,
+                name: signal.name,
+                ecuId: reader.ecuId,
+                did,
+                reason: `no data returned for DID 0x${did.toString(16).toUpperCase()}`,
+              }),
+            );
+            this.stats.gaps++;
+          }
           continue;
         }
         const timestamp = this.clock();
         for (const signal of signals.filter((s) => s.did === did)) {
-          const decoded = this.decoder(signal, payload);
-          if (!decoded) continue;
+          const observation = this.decode(signal, payload);
+          if (observation.kind === "signal-gap") {
+            result.gaps.push(observation);
+            this.stats.gaps++;
+            continue;
+          }
+          const decoded = toDecodedSignal(observation);
           result.samples.push(this.recorder.record(decoded, timestamp));
           this.stats.samples++;
           result.signals.push(decoded);

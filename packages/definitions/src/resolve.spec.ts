@@ -365,7 +365,9 @@ test("an unknown WMI stays unknown and is said so", () => {
 });
 
 test("packages without vehicle definitions cannot resolve a car", () => {
-  const flat = fixture({ vehicles: undefined });
+  const flat = fixture();
+  // Absent, not present-and-undefined: a package that declares no vehicles at all.
+  delete flat.vehicles;
   const result = resolve({ vin: HATCH_VIN }, [flat]);
   assert.equal(result.unresolved, true);
   assert.deepEqual(result.candidates, []);

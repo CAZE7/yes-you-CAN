@@ -21,7 +21,7 @@ import type {
   VehicleIdentity,
   VehicleSession,
 } from "@vdp/core";
-import { describeVehicle } from "@vdp/core";
+import { type StageReport, describeVehicle } from "@vdp/core";
 import type { SignalDefinition } from "@vdp/definitions";
 import type {
   AnomalyInfo,
@@ -36,6 +36,7 @@ import type {
   SignalInfo,
   SignalStatisticsInfo,
   VehicleSummary,
+  WriteStageInfo,
 } from "@vdp/domain";
 import { capabilitiesFromServices } from "./capability-map.js";
 
@@ -72,6 +73,16 @@ export function toVehicleSummary(
   const brand = known.brand ?? match?.brand;
   const model = known.model ?? match?.model;
   const platform = known.platform ?? match?.platform;
+  // Under `exactOptionalPropertyTypes` (ADR 0029 §3) an absent field is an absent
+  // property, not one that holds `undefined`: the description is built with
+  // conditional spreads so a car without a brand string stays a car without that
+  // field, exactly like the summary above it.
+  const described: VehicleIdentity = {
+    ...known,
+    ...(brand !== undefined ? { brand } : {}),
+    ...(model !== undefined ? { model } : {}),
+    ...(platform !== undefined ? { platform } : {}),
+  };
   return {
     ...(match !== undefined ? { vehicleId: match.vehicleId } : {}),
     ...(known.vin !== undefined ? { vin: known.vin } : {}),
@@ -80,7 +91,7 @@ export function toVehicleSummary(
     ...(model !== undefined ? { model } : {}),
     ...(known.modelYear !== undefined ? { modelYear: known.modelYear } : {}),
     ...(platform !== undefined ? { platform } : {}),
-    description: describeVehicle({ ...known, brand, model, platform }),
+    description: describeVehicle(described),
   };
 }
 
@@ -197,6 +208,20 @@ export function decodedToReading(decoded: DecodedSignal, timestamp: string): Mea
     ...(decoded.unit !== undefined ? { unit: decoded.unit } : {}),
     ...(decoded.enumText !== undefined ? { enumText: decoded.enumText } : {}),
     outOfRange: decoded.outOfRange,
+  };
+}
+
+/**
+ * A write stage as domain data (AGENTS 26).
+ *
+ * The core reports stages with timestamps and details; the domain keeps the
+ * three things a caller reasons about — which stage, how it ended, and why.
+ */
+export function toWriteStageInfo(stage: StageReport): WriteStageInfo {
+  return {
+    stage: stage.stage,
+    state: stage.state,
+    reasons: [...stage.reasons],
   };
 }
 

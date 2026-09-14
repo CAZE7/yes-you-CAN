@@ -106,19 +106,26 @@ export class SignalChart {
 
   // ------------------------------------------------------------ interaction
 
-  /** Time under a pointer event, computed from the last painted geometry. */
+  /**
+   * Time under a pointer event, computed from the last painted geometry.
+   *
+   * @param {WheelEvent | PointerEvent} event
+   * @returns {number} ms on the shared axis
+   */
   timeAt(event) {
     const rect = this.canvas.getBoundingClientRect();
     const x = event.clientX - rect.left - this.plot.left;
     return this.group.viewport.toT(x, this.plot.width);
   }
 
+  /** @param {WheelEvent} event */
   onWheel(event) {
     event.preventDefault();
     const factor = event.deltaY < 0 ? 1.25 : 1 / 1.25;
     this.group.zoomAt(factor, this.timeAt(event));
   }
 
+  /** @param {PointerEvent} event */
   onPointerDown(event) {
     this.canvas.setPointerCapture?.(event.pointerId);
     const t = this.timeAt(event);
@@ -133,6 +140,7 @@ export class SignalChart {
     else this.group.setCursor(t);
   }
 
+  /** @param {PointerEvent} event */
   onPointerMove(event) {
     if (!this.drag) {
       this.group.setCursor(this.timeAt(event));
@@ -149,6 +157,7 @@ export class SignalChart {
     }
   }
 
+  /** @param {PointerEvent} event */
   onPointerUp(event) {
     if (!this.drag) return;
     const drag = this.drag;
@@ -202,7 +211,9 @@ export class SignalChart {
         ...(this.series.max !== undefined ? { max: this.series.max } : {}),
       },
     );
+    /** @param {number} t */
     const x = (t) => PADDING.left + viewport.toX(t, plotW);
+    /** @param {number} value */
     const y = (value) =>
       PADDING.top + plotH - ((value - yRange.min) / (yRange.max - yRange.min)) * plotH;
 
@@ -225,6 +236,15 @@ export class SignalChart {
     ctx.strokeRect(PADDING.left, PADDING.top, plotW, plotH);
   }
 
+  /**
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {{ top: number, left: number }} padding
+   * @param {number} plotW
+   * @param {number} plotH
+   * @param {{ min: number, max: number }} yRange
+   * @param {import('/lib/index.js').TimeRange} range
+   * @param {(t: number) => number} x
+   */
   drawGrid(ctx, padding, plotW, plotH, yRange, range, x) {
     ctx.strokeStyle = THEME.grid;
     ctx.fillStyle = THEME.axisText;
@@ -252,6 +272,12 @@ export class SignalChart {
     ctx.textAlign = "left";
   }
 
+  /**
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {{ top: number, left: number }} padding
+   * @param {number} plotH
+   * @param {(t: number) => number} x
+   */
   drawSelection(ctx, padding, plotH, x) {
     const selection = this.group.selection;
     if (!selection) return;
@@ -269,6 +295,13 @@ export class SignalChart {
     ctx.stroke();
   }
 
+  /**
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {{ top: number, left: number }} padding
+   * @param {number} plotH
+   * @param {import('/lib/index.js').TimeRange} range
+   * @param {(t: number) => number} x
+   */
   drawMarkers(ctx, padding, plotH, range, x) {
     const markers = this.group.markersInWindow(range);
     let lastLabelRight = Number.NEGATIVE_INFINITY;
@@ -294,6 +327,13 @@ export class SignalChart {
     }
   }
 
+  /**
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {readonly import('/lib/index.js').Point[]} points
+   * @param {(t: number) => number} x
+   * @param {(value: number) => number} y
+   * @param {number} plotW
+   */
   drawSeries(ctx, points, x, y, plotW) {
     // Out-of-range samples are drawn before decimation: dropping them would
     // hide exactly the anomaly the operator is looking for (AGENTS 14).
@@ -321,6 +361,14 @@ export class SignalChart {
     ctx.stroke();
   }
 
+  /**
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {{ top: number, left: number }} padding
+   * @param {number} plotW
+   * @param {number} plotH
+   * @param {(t: number) => number} x
+   * @param {(value: number) => number} y
+   */
   drawCursor(ctx, padding, plotW, plotH, x, y) {
     const t = this.group.cursor;
     if (t === null) return;
