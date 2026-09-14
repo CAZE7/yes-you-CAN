@@ -4,6 +4,14 @@
  * Turns externally produced descriptions into a validated DefinitionPackage.
  * Whatever the source, the result must state its provenance — a definition of
  * unknown origin must never look authoritative in the UI.
+ *
+ * Three sources, two coercion paths, one set of rules: DBC and CSV describe messages
+ * and signals, so this tool reads them line by line and reports what it could not
+ * understand. A JSON document is a *package*, so it goes to the package parser in
+ * `@vdp/definitions` — the only place that knows vehicles, fault knowledge, patterns
+ * and measurement checks. A rejected JSON package throws with the full reason list
+ * (`assertValidPackage` inside the parser): a `valid: false` result that a script can
+ * ignore is not an acceptable answer for a file nobody understood.
  */
 
 import {
@@ -13,6 +21,7 @@ import {
   type Provenance,
   type SignalDefinition,
   type SignalEncoding,
+  parseDefinitionPackage,
   validateDefinitionPackage,
 } from "@vdp/definitions";
 import { DefinitionError, type Logger, createLogger, messageOf } from "@vdp/shared";
@@ -222,15 +231,49 @@ export function importCsv(content: string, options: ImportOptions): ImportResult
 /** JSON importer: a `{ ecus, signals }` fragment or a complete package. */
 export function importJson(content: string, options: ImportOptions): ImportResult {
   const log = logger(options);
-  let parsed: Record<string, unknown>;
+  let parsed: unknown;
   try {
-    parsed = JSON.parse(content) as Record<string, unknown>;
+    parsed = JSON.parse(content) as unknown;
   } catch (error) {
     throw new DefinitionError(`JSON definition is not valid: ${messageOf(error)}`);
   }
-  const ecus = (parsed["ecus"] as EcuDefinition[] | undefined) ?? [];
-  const signals = (parsed["signals"] as SignalDefinition[] | undefined) ?? [];
-  return finish(ecus, signals, options, log, []);
+
+  // One parser for both paths (AGENTS 34.2). The importer used to pick `ecus` and
+  // `signals` out of the document itself and ignore the rest — which meant a file that
+  // declared `vehicles[].dtcKnowledge[]` lost the whole vehicle axis while the result
+  // reported `valid: true, errors: []` (measured before this change: `pkg.vehicles`
+  // `undefined` for such a file). Silently dropping a declared section is the same
+  // defect class as the lost `notes` field of ADR 0025, and the fix is the same: hand
+  // the document to the parser that knows the schema, which also runs the validator the
+  // built-in packages run (§23: both paths, the same rules).
+  //
+  // What the tool still owns is the *provenance* of the import: the caller says where
+  // the data came from, so that overlay stays, and a file without a `schemaVersion`
+  // gets the current one stamped — as before.
+  const base =
+    typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : {};
+  const source: Record<string, unknown> = {
+    ...base,
+    schemaVersion:
+      typeof base["schemaVersion"] === "number" ? base["schemaVersion"] : CURRENT_SCHEMA_VERSION,
+    oem: options.oem,
+    name: options.name,
+    version: options.version ?? "0.1.0",
+    provenance: options.provenance,
+  };
+
+  const pkg = parseDefinitionPackage(source);
+  const validation = validateDefinitionPackage(pkg);
+  log.info("definition package imported", {
+    oem: pkg.oem,
+    ecus: pkg.ecus.length,
+    signals: pkg.signals.length,
+    vehicles: (pkg.vehicles ?? []).length,
+    provenance: pkg.provenance.sourceType,
+    valid: validation.valid,
+    warnings: validation.warnings.length,
+  });
+  return { pkg, skipped: [], ...validation };
 }
 
 function finish(

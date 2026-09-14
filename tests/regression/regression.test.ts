@@ -805,3 +805,70 @@ test("REGRESSION: a resolved vehicle confirmed itself in the next resolution", a
     await vehicle.stop();
   }
 });
+
+test("REGRESSION: a file-imported package lost its vehicles[] section", () => {
+  // Symptom: nothing. That is the symptom. An importer that reads `ecus` and `signals`
+  // out of a JSON document and ignores the rest returns `valid: true` with an empty
+  // error list, so a workshop that imported a package with variant knowledge got a
+  // package *without* it and no signal that anything was missing — measured before the
+  // fix: `importJson` on a document declaring `vehicles[0].dtcKnowledge[0]` answered
+  // `pkg.vehicles === undefined`, `valid: true`, `errors: []`. Same class as the lost
+  // `notes` field of ADR 0025: an optional field nobody copies is invisible until
+  // somebody relies on it (AGENTS 13, 23, 34.2: reuse the existing parser).
+  const document = JSON.stringify({
+    schemaVersion: 3,
+    oem: "acme",
+    name: "Acme baseline",
+    version: "1.0.0",
+    provenance: { sourceType: "own", source: "workshop notes" },
+    ecus: [
+      {
+        id: "engine",
+        name: "Engine",
+        protocol: "uds",
+        address: { txId: 0x7e0, rxId: 0x7e8 },
+        dtcs: [{ code: "P0420", description: "Catalyst efficiency below threshold" }],
+      },
+    ],
+    signals: [
+      {
+        id: "cat.temp",
+        name: "Catalyst temperature",
+        ecu: "engine",
+        did: 0xf010,
+        byteOffset: 0,
+        length: 1,
+        encoding: "uint8",
+      },
+    ],
+    vehicles: [
+      {
+        id: "acme-1-2",
+        brand: "Acme",
+        model: "One",
+        vinMatcher: { wmi: "SAJ" },
+        engines: [{ id: "acme-16v", name: "1.6 16V" }],
+        dtcKnowledge: [
+          {
+            code: "P0420",
+            engine: "acme-16v",
+            description: "Ageing substrate",
+            patterns: [{ id: "p1", name: "capacity fades" }],
+          },
+        ],
+      },
+    ],
+  });
+
+  return import("@vdp/definition-importer").then(({ importJson }) => {
+    const result = importJson(document, {
+      oem: "acme",
+      name: "Acme baseline",
+      provenance: { sourceType: "own", source: "workshop notes" },
+    });
+    const vehicle = result.pkg.vehicles?.[0];
+    assert.equal(vehicle?.id, "acme-1-2", "the vehicle axis survives the file path");
+    assert.equal(vehicle?.dtcKnowledge?.[0]?.code, "P0420");
+    assert.equal(vehicle?.dtcKnowledge?.[0]?.engine, "acme-16v", "…including its scope");
+  });
+});
