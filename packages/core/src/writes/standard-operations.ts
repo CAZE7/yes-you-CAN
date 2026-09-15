@@ -1,20 +1,20 @@
 /**
- * The write port with the operations the platform ships today (AGENTS 25/26).
+ * The write port with standard operations (AGENTS 25/26; master backlog P0/P2).
  *
- * A named composition instead of an anonymous `new WritePort(...)` in the
- * runtime and in every test: the set of writable operations is a product
- * decision, so it has one place. Adding an operation here (coding, adaptation,
- * routine — master backlog P2) is a deliberate act, not a side effect of a
- * constructor call somewhere.
+ * A named composition instead of an anonymous `new WritePort(...)`: the set
+ * of writable operations is a product decision, so it has one place.
  *
- * Today that set is exactly one operation: clearing fault memory. Every other
- * kind in the domain's risk table is still unwritten on purpose — an operation
- * that is not registered cannot be executed by accident.
+ * Operations supported:
+ * 1. `clear-dtc`: Clear fault memory (medium risk).
+ * 2. `coding`: ECU configuration / variant coding (high risk).
+ * 3. `adaptation`: ECU calibration / setpoint adaptation (medium risk).
  */
 
 import type { Logger } from "@vdp/shared";
 import type { DtcScanner } from "../dtc/scanner.js";
 import type { SafetyManager } from "../safety/safety-manager.js";
+import { createAdaptationOperation } from "./adaptation.js";
+import { createCodingOperation } from "./coding.js";
 import { createDtcClearOperation } from "./dtc-clear.js";
 import { WritePort } from "./port.js";
 
@@ -25,6 +25,8 @@ export interface StandardWritePortOptions {
   logger?: Logger;
   clock?: () => number;
   historySize?: number;
+  /** Whether to register advanced write operations (coding, adaptation). Default true. */
+  includeAdvancedOperations?: boolean;
 }
 
 export function createWritePort(options: StandardWritePortOptions): WritePort {
@@ -35,5 +37,17 @@ export function createWritePort(options: StandardWritePortOptions): WritePort {
     ...(options.historySize !== undefined ? { historySize: options.historySize } : {}),
   });
   port.register(createDtcClearOperation({ scanner: options.scanner }));
+  if (options.includeAdvancedOperations ?? true) {
+    port.register(
+      createCodingOperation({
+        ...(options.logger !== undefined ? { logger: options.logger } : {}),
+      }),
+    );
+    port.register(
+      createAdaptationOperation({
+        ...(options.logger !== undefined ? { logger: options.logger } : {}),
+      }),
+    );
+  }
   return port;
 }

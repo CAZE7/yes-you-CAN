@@ -16,11 +16,13 @@
  */
 
 export {
+  type DiscriminatingTest,
   type EvidenceConflict,
   evidenceItemId,
   type EvidenceItem,
   type EvidenceKind,
   type EvidenceSet,
+  type GuidedDiagnosisState,
   type Hypothesis,
   type HypothesisCheck,
   type HypothesisOutcome,

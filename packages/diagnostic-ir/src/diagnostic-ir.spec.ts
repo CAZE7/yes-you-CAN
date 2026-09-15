@@ -781,6 +781,29 @@ describe("evidence items and windows", () => {
     assert.equal(window.conclusive, false, "a gap in the span stops the window from judging");
     assert.equal(window.gaps.length, 1);
   });
+
+  test("guided diagnosis types model in-progress, resolved and inconclusive states", () => {
+    const state: import("./evidence.js").GuidedDiagnosisState = {
+      sessionId: "session-test",
+      status: "in-progress",
+      hypotheses: [],
+      evidenceCount: 4,
+      stepsCompleted: 1,
+      summary: "Diagnosing P0420",
+      nextRecommendedTest: {
+        hypothesisId: "cat-efficiency",
+        test: {
+          signal: "engine.short_term_fuel_trim",
+          expect: "Normal fuel trim oscillation",
+          measurable: true,
+        },
+        rationale: "Tests catalyst efficiency",
+        discriminatesAgainst: ["exhaust-leak"],
+      },
+    };
+    assert.equal(state.status, "in-progress");
+    assert.equal(state.nextRecommendedTest?.discriminatesAgainst?.[0], "exhaust-leak");
+  });
 });
 
 /** Local shorthand so the assertions read like sentences. */

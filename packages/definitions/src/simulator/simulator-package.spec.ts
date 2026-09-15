@@ -15,6 +15,12 @@ import type { DiscoveredAddress } from "../resolve.js";
 import { VehicleResolver } from "../resolve.js";
 import { validateDefinitionPackage } from "../validate.js";
 import { matchesPattern, vinPositions } from "../vehicles.js";
+import {
+  highFidelityEcus,
+  highFidelityPackage,
+  highFidelitySignals,
+  highFidelityVehicle,
+} from "./high-fidelity-package.js";
 import { SIMULATOR_VIN, simulatorPackage, simulatorVehicle } from "./simulator-package.js";
 
 /** The identification answers the simulator gives for a non-VIN DID. */
@@ -199,4 +205,16 @@ test("a different VIN does not resolve to the virtual vehicle", () => {
   assert.equal(result.unresolved, true);
   assert.deepEqual(result.candidates, []);
   assert.equal(result.vinLookup?.brand, "Volkswagen");
+});
+
+test("highFidelityPackage validates cleanly and declares all 5 ECUs", () => {
+  const result = validateDefinitionPackage(highFidelityPackage);
+  assert.deepEqual(result.errors, []);
+  assert.equal(highFidelityEcus.length, 5);
+  assert.equal(highFidelityPackage.ecus.length, 5);
+  assert.equal(highFidelityPackage.vehicles?.length, 1);
+  assert.equal(highFidelityVehicle.ecus?.length, 5);
+  assert.ok(highFidelitySignals.some((s) => s.id === "bcm.battery_voltage"));
+  assert.ok(highFidelitySignals.some((s) => s.id === "bcm.coding_block"));
+  assert.ok(highFidelitySignals.some((s) => s.id === "engine.idle_speed_adaptation"));
 });

@@ -21,6 +21,12 @@ export {
   simulatorPackage,
   simulatorVehicle,
 } from "./simulator/simulator-package.js";
+export {
+  highFidelityEcus,
+  highFidelityPackage,
+  highFidelitySignals,
+  highFidelityVehicle,
+} from "./simulator/high-fidelity-package.js";
 
 import { genericPackage } from "./generic/generic-package.js";
 import { type DtcKnowledgeHit, type DtcKnowledgeQuery, findDtcKnowledge } from "./knowledge.js";
