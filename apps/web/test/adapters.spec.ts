@@ -38,13 +38,31 @@ async function json(
 test("the workbench catalog offers simulator, replay and the host adapters", async () => {
   const catalog = createWebAdapterCatalog();
   const ids = catalog.ids();
-  for (const id of ["simulator", "replay", "elm327", "slcan", "socketcan"]) {
+  for (const id of ["simulator", "simulator-5ecu", "replay", "elm327", "slcan", "socketcan"]) {
     assert.ok(ids.includes(id), `missing adapter entry ${id}`);
   }
   const described = await catalog.describeAll();
   assert.equal(described.length, ids.length);
   for (const entry of described) {
     assert.ok(entry.probe.detail.length > 0, `${entry.id} must explain its state`);
+  }
+});
+
+test("the high-fidelity 5-ECU vehicle simulator adapter can be selected and connected", async () => {
+  const backend = new DemoBackend({
+    logger,
+    selection: { id: "simulator-5ecu", config: {} },
+    discovery: { windowMs: 100, probeDelayMs: 0 },
+  });
+  try {
+    const state = await backend.start();
+    assert.equal(state.mode, "simulator");
+    assert.equal(state.connected, true);
+    assert.equal(state.adapterSelection.id, "simulator-5ecu");
+    const ecus = await backend.identify();
+    assert.ok(ecus.length >= 1);
+  } finally {
+    await backend.stop();
   }
 });
 

@@ -38,17 +38,24 @@ export type CanChaosRule =
 export class CanChaosBus implements CanBus {
   private readonly rules: CanChaosRule[] = [];
   private readonly droppedFrames: CanFrame[] = [];
+  private corruptedFrameCount = 0;
+  private delayedFrameCount = 0;
   private readonly listeners: Array<{
     listener: FrameListener;
     filters?: readonly CanFilter[];
   }> = [];
   private readonly innerBus: CanBus;
   private readonly sleep: (ms: number) => Promise<void>;
+  private readonly random: () => number;
 
-  constructor(innerBus: CanBus, options: { sleep?: (ms: number) => Promise<void> } = {}) {
+  constructor(
+    innerBus: CanBus,
+    options: { sleep?: (ms: number) => Promise<void>; random?: () => number } = {},
+  ) {
     this.innerBus = innerBus;
     this.sleep =
       options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+    this.random = options.random ?? Math.random;
 
     // Forward received frames from inner bus through chaos filter
     this.innerBus.subscribe((frame) => {
@@ -68,8 +75,32 @@ export class CanChaosBus implements CanBus {
     return this.droppedFrames;
   }
 
+  get corruptedCount(): number {
+    return this.corruptedFrameCount;
+  }
+
+  get delayedCount(): number {
+    return this.delayedFrameCount;
+  }
+
+  get remainingBurstDrops(): number {
+    let count = 0;
+    for (const rule of this.rules) {
+      if (rule.kind === "drop-count") count += rule.count;
+    }
+    return count;
+  }
+
   addRule(rule: CanChaosRule): void {
     this.rules.push(rule);
+  }
+
+  injectDropRate(rate: number): void {
+    const random = this.random;
+    this.rules.push({
+      kind: "drop-predicate",
+      match: () => random() < rate,
+    });
   }
 
   clearRules(): void {
@@ -102,6 +133,7 @@ export class CanChaosBus implements CanBus {
         return; // Dropped on send
       }
       if (rule.kind === "corrupt-payload" && rule.id === frame.id) {
+        this.corruptedFrameCount++;
         frameToSend = { ...frameToSend, payload: rule.modifier(frameToSend.payload) };
       }
     }
@@ -130,9 +162,11 @@ export class CanChaosBus implements CanBus {
         return;
       }
       if (rule.kind === "corrupt-payload" && rule.id === frame.id) {
+        this.corruptedFrameCount++;
         frameToDeliver = { ...frameToDeliver, payload: rule.modifier(frameToDeliver.payload) };
       }
       if (rule.kind === "delay" && rule.id === frame.id) {
+        this.delayedFrameCount++;
         void this.sleep(rule.delayMs).then(() => {
           this.emit(frameToDeliver);
         });
@@ -213,5 +247,12 @@ export const ChaosLab = {
       id: canId,
       count: dropCount,
     });
+  },
+
+  /**
+   * Configures probabilistic drop rate (0.0 to 1.0).
+   */
+  injectDropRate(bus: CanChaosBus, dropRate: number): void {
+    bus.injectDropRate(dropRate);
   },
 };

@@ -360,6 +360,10 @@ test("nondeterminism is injectable (Math.random only as a default)", () => {
       file: "tools/simulators/src/virtual-can.ts",
       reason: "`options.random ?? Math.random` — the caller can inject a seeded generator",
     },
+    {
+      file: "tools/simulators/src/chaos-lab.ts",
+      reason: "`options.random ?? Math.random` — the caller can inject a seeded generator",
+    },
   ];
   assertGate(
     "unreachable-from-tests randomness makes failures irreproducible (AGENTS 31)",

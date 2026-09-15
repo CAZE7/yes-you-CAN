@@ -53,6 +53,23 @@ export class EvidenceService {
   }
 
   /**
+   * Ingests a manual or interactive test measurement for guided diagnosis.
+   */
+  recordStepMeasurement(signalId: string, value: number): void {
+    this.engine.recorder.record({
+      signalId,
+      name: signalId,
+      raw: new Uint8Array(),
+      rawHex: "",
+      rawValue: value,
+      value,
+      outOfRange: false,
+      did: 0,
+      ecu: "tester",
+    });
+  }
+
+  /**
    * Evaluates the active session through the guided diagnosis loop (Task 6).
    * Determines whether the diagnosis is in-progress, resolved, or inconclusive,
    * and recommends the next discriminating test.

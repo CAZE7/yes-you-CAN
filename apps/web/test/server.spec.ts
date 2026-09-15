@@ -590,13 +590,22 @@ test("guided diagnosis, coding/adaptation, signal analysis, and chaos endpoints 
   await withServer(async (base) => {
     await json(base, "/api/start", { method: "POST" });
 
-    // 1. Guided Diagnosis endpoint
+    // 1. Guided Diagnosis endpoint & step
     const gd = await json(base, "/api/guided-diagnosis");
     assert.equal(gd.status, 200);
     const gdBody = gd.body as { state: { status: string; hypotheses: unknown[] } };
     assert.ok(["in-progress", "resolved", "inconclusive"].includes(gdBody.state.status));
 
-    // 2. Coding precheck endpoint
+    const gdStep = await json(base, "/api/guided-diagnosis/step", {
+      method: "POST",
+      body: JSON.stringify({ signalId: "engine.coolant_temperature", value: 92 }),
+      headers: { "content-type": "application/json" },
+    });
+    assert.equal(gdStep.status, 200);
+    const gdStepBody = gdStep.body as { state: { stepsCompleted: number } };
+    assert.equal(gdStepBody.state.stepsCompleted, 1);
+
+    // 2. Coding precheck and write endpoints
     const codingPrecheck = await json(base, "/api/coding/precheck", {
       method: "POST",
       body: JSON.stringify({
@@ -607,12 +616,29 @@ test("guided diagnosis, coding/adaptation, signal analysis, and chaos endpoints 
       }),
       headers: { "content-type": "application/json" },
     });
-    if (codingPrecheck.status !== 200) {
-      console.error("codingPrecheck failed:", codingPrecheck.status, codingPrecheck.body);
-    }
     assert.equal(codingPrecheck.status, 200);
 
-    // 3. Adaptation precheck endpoint
+    const codingWrite = await json(base, "/api/coding/write", {
+      method: "POST",
+      body: JSON.stringify({
+        rxId: "0x7e8",
+        did: 0x0100,
+        data: "010203",
+        confirmed: true,
+        vehicleState: {
+          stationary: true,
+          ignitionOn: true,
+          parkingBrake: true,
+          batteryVoltage: 12.6,
+        },
+      }),
+      headers: { "content-type": "application/json" },
+    });
+    assert.equal(codingWrite.status, 200);
+    const codingWriteBody = codingWrite.body as { result: { transactionId: string } };
+    assert.ok(codingWriteBody.result.transactionId);
+
+    // 3. Adaptation precheck and write endpoints
     const adaptPrecheck = await json(base, "/api/adaptation/precheck", {
       method: "POST",
       body: JSON.stringify({
@@ -624,6 +650,26 @@ test("guided diagnosis, coding/adaptation, signal analysis, and chaos endpoints 
       headers: { "content-type": "application/json" },
     });
     assert.equal(adaptPrecheck.status, 200);
+
+    const adaptWrite = await json(base, "/api/adaptation/write", {
+      method: "POST",
+      body: JSON.stringify({
+        rxId: "0x7e8",
+        did: 0x0100,
+        value: 42,
+        confirmed: true,
+        vehicleState: {
+          stationary: true,
+          ignitionOn: true,
+          parkingBrake: true,
+          batteryVoltage: 12.6,
+        },
+      }),
+      headers: { "content-type": "application/json" },
+    });
+    assert.equal(adaptWrite.status, 200);
+    const adaptWriteBody = adaptWrite.body as { result: { transactionId: string } };
+    assert.ok(adaptWriteBody.result.transactionId);
 
     // 4. Signal analysis endpoint
     const analysis = await json(base, "/api/analysis/signal?signalId=engine.speed");

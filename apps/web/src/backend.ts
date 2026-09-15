@@ -218,6 +218,9 @@ export class DemoBackend {
   private definitions: readonly DefinitionPackage[];
   private resolution: VehicleResolutionView | undefined;
   private readonly repository?: SessionRepository;
+  private guidedDiagnosisSteps = 0;
+  private chaosDropRate = 0;
+  private chaosDropBurst = 0;
   /**
    * Turns raw protocol codes into described fault entries. Descriptions come
    * from definition packages only — a code nobody documented stays undescribed
@@ -604,6 +607,9 @@ export class DemoBackend {
     this.ecus = [];
     this.dtcs = [];
     this.resolution = undefined;
+    this.guidedDiagnosisSteps = 0;
+    this.chaosDropRate = 0;
+    this.chaosDropBurst = 0;
   }
 
   /** Read identification DIDs from every discovered ECU (read-only, AGENTS 34.11). */
@@ -748,12 +754,14 @@ export class DemoBackend {
   }): Promise<GuidedDiagnosisView> {
     const runtime = this.requireRuntime();
     if (stepMeasurement) {
+      this.guidedDiagnosisSteps += 1;
+      runtime.evidence.recordStepMeasurement(stepMeasurement.signalId, stepMeasurement.value);
       const marker = await runtime.commands.dispatch(
         addMarker(`Prüfschritt: ${stepMeasurement.signalId}=${stepMeasurement.value}`, "action"),
       );
       this.emit("marker", toMarkerView(marker));
     }
-    const state = runtime.evidence.guidedDiagnosis();
+    const state = runtime.evidence.guidedDiagnosis(this.guidedDiagnosisSteps);
     return {
       status: state.status,
       summary: state.summary,
@@ -1031,7 +1039,12 @@ export class DemoBackend {
     }
     if (this.chaosBus) {
       if (options.dropBurst !== undefined) {
+        this.chaosDropBurst = options.dropBurst;
         ChaosLab.injectBurstFrameDrop(this.chaosBus, 0x7e0, options.dropBurst);
+      }
+      if (options.dropRate !== undefined) {
+        this.chaosDropRate = options.dropRate;
+        ChaosLab.injectDropRate(this.chaosBus, options.dropRate);
       }
       if (options.corruptSequenceCanId !== undefined) {
         ChaosLab.injectIsoTpSequenceCorruption(this.chaosBus, options.corruptSequenceCanId);
@@ -1041,16 +1054,21 @@ export class DemoBackend {
 
   resetChaos(): void {
     this.chaosBus?.clearRules();
+    this.chaosDropRate = 0;
+    this.chaosDropBurst = 0;
   }
 
   chaosStatus(): ChaosStatusView {
+    const burstRemaining = this.chaosBus?.remainingBurstDrops ?? 0;
+    const isActuallyActive =
+      this.chaosBus !== undefined && (this.chaosDropRate > 0 || burstRemaining > 0);
     return {
-      active: this.chaosBus !== undefined,
-      dropRate: 0,
-      dropBurstRemaining: 0,
+      active: isActuallyActive,
+      dropRate: this.chaosDropRate,
+      dropBurstRemaining: burstRemaining,
       droppedFrames: this.chaosBus?.dropped.length ?? 0,
-      corruptedFrames: 0,
-      delayedFrames: 0,
+      corruptedFrames: this.chaosBus?.corruptedCount ?? 0,
+      delayedFrames: this.chaosBus?.delayedCount ?? 0,
     };
   }
 
