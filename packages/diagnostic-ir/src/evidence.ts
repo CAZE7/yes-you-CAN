@@ -99,8 +99,29 @@ export interface HypothesisTest {
   measurable: boolean;
 }
 
+/** A recommended test to distinguish between competing hypotheses. */
+export interface DiscriminatingTest {
+  hypothesisId: string;
+  test: HypothesisTest;
+  rationale: string;
+  discriminatesAgainst?: readonly string[];
+}
+
+/** The state of an ongoing guided diagnostic session. */
+export interface GuidedDiagnosisState {
+  sessionId: string;
+  status: "in-progress" | "resolved" | "inconclusive";
+  leadingHypothesis?: Hypothesis;
+  nextRecommendedTest?: DiscriminatingTest;
+  hypotheses: readonly Hypothesis[];
+  evidenceCount: number;
+  stepsCompleted: number;
+  summary: string;
+}
+
 /**
  * A failure pattern, judged.
+
  *
  * `confidence` is derived from what was measured and how the statement is sourced
  * (see the ranking rule in `@vdp/core`); it is never the pattern's own assertion,

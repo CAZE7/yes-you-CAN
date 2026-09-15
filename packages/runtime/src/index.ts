@@ -15,6 +15,14 @@ export type { DoipEcuLinkFactoryOptions } from "./transport.js";
 export { EvidenceService } from "./evidence-service.js";
 export type { EvidenceSnapshot } from "./evidence-service.js";
 
+export { SignalAnalysisService } from "./signal-analysis-service.js";
+export type {
+  AdvancedSignalStatistics,
+  DetectedSignalAnomaly,
+  FrequencySpectrum,
+  SignalCorrelationResult,
+} from "./signal-analysis-service.js";
+
 export { EventAuditRecorder } from "./event-recorder.js";
 export type { AuditEntry } from "./event-recorder.js";
 
@@ -34,6 +42,12 @@ export {
   VehicleService,
   parseEcuAddress,
   unknownEcu,
+} from "./services.js";
+export type {
+  WriteBinding,
+  WriteOperationResult,
+  WritePrecheckResult,
+  WritePort,
 } from "./services.js";
 
 export { registerRuntimeHandlers } from "./handlers.js";

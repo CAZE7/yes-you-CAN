@@ -313,3 +313,43 @@ describe("toDtcView — provenance of the description (P0 #6)", () => {
     );
   });
 });
+
+describe("GuidedDiagnosis and Chaos views", () => {
+  test("GuidedDiagnosisView structure conforms to contract", () => {
+    const gd: import("../src/views.js").GuidedDiagnosisView = {
+      status: "in-progress",
+      summary: "Diagnosing misfire",
+      stepsCompleted: 1,
+      hypotheses: [
+        {
+          id: "hyp_1",
+          claim: "Cylinder 1 ignition coil failure",
+          confidence: 0.85,
+          outcome: "confirmed",
+          checks: [{ signal: "engine.misfire_cyl1", expect: "> 5", outcome: "match" }],
+        },
+      ],
+      nextRecommendedTest: {
+        hypothesisId: "hyp_1",
+        rationale: "Verify spark plug gap",
+        test: { signal: "engine.spark_dwell", expect: "in-range", min: 2.0, max: 4.0 },
+      },
+    };
+    assert.equal(gd.status, "in-progress");
+    assert.equal(gd.hypotheses.length, 1);
+    assert.equal(gd.hypotheses[0]?.outcome, "confirmed");
+  });
+
+  test("ChaosStatusView structure conforms to contract", () => {
+    const chaos: import("../src/views.js").ChaosStatusView = {
+      active: true,
+      dropRate: 0.2,
+      dropBurstRemaining: 5,
+      droppedFrames: 12,
+      corruptedFrames: 3,
+      delayedFrames: 1,
+    };
+    assert.equal(chaos.active, true);
+    assert.equal(chaos.droppedFrames, 12);
+  });
+});

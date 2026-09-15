@@ -44,10 +44,20 @@ import {
   resolveVehicle,
   startMeasurements,
 } from "@vdp/application";
-import { type DefinitionPackage, genericPackage, simulatorPackage } from "@vdp/definitions";
+import {
+  type DefinitionPackage,
+  genericPackage,
+  highFidelityPackage,
+  simulatorPackage,
+} from "@vdp/definitions";
 import type { DtcClearPrecheckInfo, VehicleResolutionRef } from "@vdp/domain";
 import type { DtcRecord } from "@vdp/protocols-uds";
-import { type DiagnosticRuntime, PLATFORM_VERSION, createDiagnosticRuntime } from "@vdp/runtime";
+import {
+  type DiagnosticRuntime,
+  PLATFORM_VERSION,
+  type WriteBinding,
+  createDiagnosticRuntime,
+} from "@vdp/runtime";
 import {
   AdapterUnsupportedError,
   type Logger,
@@ -55,7 +65,13 @@ import {
   createLogger,
   messageOf,
 } from "@vdp/shared";
-import { DEFAULT_VIN, VirtualVehicle } from "@vdp/simulators";
+import {
+  CanChaosBus,
+  ChaosLab,
+  DEFAULT_VIN,
+  HighFidelityVehicle,
+  VirtualVehicle,
+} from "@vdp/simulators";
 import {
   FileSystemSessionRepository,
   SessionLogger,
@@ -71,19 +87,25 @@ import {
 } from "@vdp/transport-can";
 import {
   REPLAY_ADAPTER_ID,
+  SIMULATOR_5ECU_ADAPTER_ID,
   SIMULATOR_ADAPTER_ID,
   createWebAdapterCatalog,
   isApplicationManaged,
 } from "./adapters.js";
 import type {
+  AdaptationResultView,
+  AdvancedSignalAnalysisView,
   AppState,
   BackendEvent,
   BackendMode,
+  ChaosStatusView,
+  CodingResultView,
   DtcClearPrecheck,
   DtcClearView,
   DtcView,
   EcuView,
   FreezeFrameView,
+  GuidedDiagnosisView,
   HistoryView,
   SampleView,
   VehicleResolutionView,
@@ -171,6 +193,8 @@ export class DemoBackend {
   readonly analysisService: AnalysisService;
   readonly adapters: AdapterCatalog;
   private vehicle: VirtualVehicle | undefined;
+  private hfVehicle: HighFidelityVehicle | undefined;
+  private chaosBus: CanChaosBus | undefined;
   private bus: CanBus | undefined;
   /**
    * The headless diagnostic runtime (ADR 0014): the backend owns transport and
@@ -194,6 +218,9 @@ export class DemoBackend {
   private definitions: readonly DefinitionPackage[];
   private resolution: VehicleResolutionView | undefined;
   private readonly repository?: SessionRepository;
+  private guidedDiagnosisSteps = 0;
+  private chaosDropRate = 0;
+  private chaosDropBurst = 0;
   /**
    * Turns raw protocol codes into described fault entries. Descriptions come
    * from definition packages only — a code nobody documented stays undescribed
@@ -210,7 +237,7 @@ export class DemoBackend {
     this.adapters = options.adapters ?? createWebAdapterCatalog();
     this.selection = options.selection ?? { id: SIMULATOR_ADAPTER_ID, config: {} };
     this.mode = modeForSelection(this.selection, this.adapters);
-    this.definitions = options.definitions ?? defaultDefinitionsFor(this.mode);
+    this.definitions = options.definitions ?? defaultDefinitionsFor(this.mode, this.selection.id);
     // Persistence is opt-in so tests and ephemeral runs stay side-effect free.
     if (options.repository) this.repository = options.repository;
     else if (options.sessionDir)
@@ -276,7 +303,7 @@ export class DemoBackend {
     this.mode = modeForSelection(selection, this.adapters);
     // Which definitions describe the bus changes with the source: the simulated
     // car answers with simulated identification values, a real one does not.
-    this.definitions = this.options.definitions ?? defaultDefinitionsFor(this.mode);
+    this.definitions = this.options.definitions ?? defaultDefinitionsFor(this.mode, selection.id);
     const description = await this.adapters.describe(selection.id, selection.config, {
       logger: this.log,
     });
@@ -428,6 +455,13 @@ export class DemoBackend {
       return this.options.bus;
     }
     if (this.mode === "simulator") {
+      if (this.selection.id === SIMULATOR_5ECU_ADAPTER_ID) {
+        this.hfVehicle = new HighFidelityVehicle({ vin: this.vin, logger: this.log });
+        await this.hfVehicle.start();
+        const bus = this.hfVehicle.testerBus;
+        this.bus = bus;
+        return bus;
+      }
       this.vehicle = this.createVirtualVehicle();
       await this.vehicle.start();
       return this.vehicle.testerBus;
@@ -563,11 +597,19 @@ export class DemoBackend {
       this.log.warn("simulator stop failed", { error: messageOf(error) });
     });
     this.vehicle = undefined;
+    await this.hfVehicle?.stop().catch((error: unknown) => {
+      this.log.warn("high-fidelity simulator stop failed", { error: messageOf(error) });
+    });
+    this.hfVehicle = undefined;
+    this.chaosBus = undefined;
     this.bus = undefined;
     this.connected = false;
     this.ecus = [];
     this.dtcs = [];
     this.resolution = undefined;
+    this.guidedDiagnosisSteps = 0;
+    this.chaosDropRate = 0;
+    this.chaosDropBurst = 0;
   }
 
   /** Read identification DIDs from every discovered ECU (read-only, AGENTS 34.11). */
@@ -699,6 +741,334 @@ export class DemoBackend {
       stillFailing: [...outcome.stillFailingCodes],
       unchanged: [...outcome.unchangedCodes],
       ...(outcome.ok ? {} : { reasons: [...outcome.reasons] }),
+    };
+  }
+
+  /**
+   * Evaluates the current session through the Guided Diagnosis Engine (Task 6).
+   * Ranks hypotheses and recommends the next discriminating test.
+   */
+  async guidedDiagnosis(stepMeasurement?: {
+    signalId: string;
+    value: number;
+  }): Promise<GuidedDiagnosisView> {
+    const runtime = this.requireRuntime();
+    if (stepMeasurement) {
+      this.guidedDiagnosisSteps += 1;
+      runtime.evidence.recordStepMeasurement(stepMeasurement.signalId, stepMeasurement.value);
+      const marker = await runtime.commands.dispatch(
+        addMarker(`Prüfschritt: ${stepMeasurement.signalId}=${stepMeasurement.value}`, "action"),
+      );
+      this.emit("marker", toMarkerView(marker));
+    }
+    const state = runtime.evidence.guidedDiagnosis(this.guidedDiagnosisSteps);
+    return {
+      status: state.status,
+      summary: state.summary,
+      stepsCompleted: state.stepsCompleted,
+      hypotheses: state.hypotheses.map((h) => ({
+        id: h.id,
+        claim: h.claim,
+        confidence: h.confidence,
+        outcome: h.outcome,
+        checks: h.checks.map((c) => ({
+          signal: c.test.signal,
+          expect: c.test.expect,
+          outcome: c.outcome,
+        })),
+        ...(h.nextTest ? { nextTest: h.nextTest } : {}),
+      })),
+      ...(state.nextRecommendedTest
+        ? {
+            nextRecommendedTest: {
+              hypothesisId: state.nextRecommendedTest.hypothesisId,
+              rationale: state.nextRecommendedTest.rationale,
+              test: state.nextRecommendedTest.test,
+              ...(state.nextRecommendedTest.discriminatesAgainst
+                ? { discriminatesAgainst: [...state.nextRecommendedTest.discriminatesAgainst] }
+                : {}),
+            },
+          }
+        : {}),
+    };
+  }
+
+  /**
+   * Prechecks ECU variant coding write (Task 8).
+   */
+  async precheckCoding(
+    rxId: number,
+    did: number,
+    data: string,
+    vehicleState: VehicleStateView,
+  ): Promise<{ ok: boolean; failed: string[]; unproven: string[]; warnings: string[] }> {
+    const runtime = this.requireRuntime();
+    const binding: WriteBinding = {
+      ecuId: this.ecuRef(rxId),
+      ecuName:
+        this.ecus.find((e) => e.rxId === formatCanId(rxId))?.name ?? `ECU_${formatCanId(rxId)}`,
+      vehicleState: {
+        stationary: vehicleState.stationary,
+        ignitionOn: vehicleState.ignitionOn,
+        ...(vehicleState.parkingBrake !== undefined
+          ? { parkingBrake: vehicleState.parkingBrake }
+          : {}),
+        ...(vehicleState.batteryVoltage !== undefined
+          ? { batteryVoltage: vehicleState.batteryVoltage }
+          : {}),
+      },
+    };
+    const precheck = await runtime.writes.precheck("coding", { did, data }, binding, {
+      userConfirmed: false,
+    });
+    return {
+      ok: precheck.ok,
+      failed: [...precheck.failed],
+      unproven: [...precheck.unproven],
+      warnings: [...precheck.warnings],
+    };
+  }
+
+  /**
+   * Executes ECU variant coding write (Task 8).
+   */
+  async writeCoding(
+    rxId: number,
+    did: number,
+    data: string,
+    confirmed: boolean,
+    vehicleState: VehicleStateView,
+  ): Promise<CodingResultView> {
+    const runtime = this.requireRuntime();
+    const ecuName =
+      this.ecus.find((e) => e.rxId === formatCanId(rxId))?.name ?? `ECU_${formatCanId(rxId)}`;
+    const binding: WriteBinding = {
+      ecuId: this.ecuRef(rxId),
+      ecuName,
+      vehicleState: {
+        stationary: vehicleState.stationary,
+        ignitionOn: vehicleState.ignitionOn,
+        ...(vehicleState.parkingBrake !== undefined
+          ? { parkingBrake: vehicleState.parkingBrake }
+          : {}),
+        ...(vehicleState.batteryVoltage !== undefined
+          ? { batteryVoltage: vehicleState.batteryVoltage }
+          : {}),
+      },
+    };
+    const result = await runtime.writes.run<unknown, unknown, unknown>(
+      "coding",
+      { did, data, userConfirmed: confirmed },
+      binding,
+    );
+    const originalHex =
+      result.value && typeof result.value === "object" && "originalHex" in result.value
+        ? String(result.value.originalHex)
+        : undefined;
+    const writtenHex =
+      result.value && typeof result.value === "object" && "writtenHex" in result.value
+        ? String(result.value.writtenHex)
+        : undefined;
+    return {
+      ok: result.ok,
+      verified: Boolean(
+        result.value &&
+          typeof result.value === "object" &&
+          "verified" in result.value &&
+          result.value.verified,
+      ),
+      ecuId: binding.ecuId,
+      did,
+      ...(originalHex !== undefined ? { originalHex } : {}),
+      ...(writtenHex !== undefined ? { writtenHex } : {}),
+      reasons: [...result.reasons],
+      warnings: [...result.warnings],
+      transactionId: result.transaction.id,
+    };
+  }
+
+  /**
+   * Prechecks ECU parameter adaptation write (Task 8).
+   */
+  async precheckAdaptation(
+    rxId: number,
+    did: number,
+    value: number,
+    vehicleState: VehicleStateView,
+  ): Promise<{ ok: boolean; failed: string[]; unproven: string[]; warnings: string[] }> {
+    const runtime = this.requireRuntime();
+    const binding: WriteBinding = {
+      ecuId: this.ecuRef(rxId),
+      ecuName:
+        this.ecus.find((e) => e.rxId === formatCanId(rxId))?.name ?? `ECU_${formatCanId(rxId)}`,
+      vehicleState: {
+        stationary: vehicleState.stationary,
+        ignitionOn: vehicleState.ignitionOn,
+        ...(vehicleState.parkingBrake !== undefined
+          ? { parkingBrake: vehicleState.parkingBrake }
+          : {}),
+        ...(vehicleState.batteryVoltage !== undefined
+          ? { batteryVoltage: vehicleState.batteryVoltage }
+          : {}),
+      },
+    };
+    const precheck = await runtime.writes.precheck("adaptation", { did, value }, binding, {
+      userConfirmed: false,
+    });
+    return {
+      ok: precheck.ok,
+      failed: [...precheck.failed],
+      unproven: [...precheck.unproven],
+      warnings: [...precheck.warnings],
+    };
+  }
+
+  /**
+   * Executes ECU parameter adaptation write (Task 8).
+   */
+  async writeAdaptation(
+    rxId: number,
+    did: number,
+    value: number,
+    confirmed: boolean,
+    vehicleState: VehicleStateView,
+  ): Promise<AdaptationResultView> {
+    const runtime = this.requireRuntime();
+    const ecuName =
+      this.ecus.find((e) => e.rxId === formatCanId(rxId))?.name ?? `ECU_${formatCanId(rxId)}`;
+    const binding: WriteBinding = {
+      ecuId: this.ecuRef(rxId),
+      ecuName,
+      vehicleState: {
+        stationary: vehicleState.stationary,
+        ignitionOn: vehicleState.ignitionOn,
+        ...(vehicleState.parkingBrake !== undefined
+          ? { parkingBrake: vehicleState.parkingBrake }
+          : {}),
+        ...(vehicleState.batteryVoltage !== undefined
+          ? { batteryVoltage: vehicleState.batteryVoltage }
+          : {}),
+      },
+    };
+    const result = await runtime.writes.run<unknown, unknown, unknown>(
+      "adaptation",
+      { did, value, userConfirmed: confirmed },
+      binding,
+    );
+    const originalValue =
+      result.value && typeof result.value === "object" && "originalValue" in result.value
+        ? Number(result.value.originalValue)
+        : undefined;
+    const writtenValue =
+      result.value && typeof result.value === "object" && "writtenValue" in result.value
+        ? Number(result.value.writtenValue)
+        : undefined;
+    const unit =
+      result.value && typeof result.value === "object" && "unit" in result.value
+        ? String(result.value.unit)
+        : undefined;
+    return {
+      ok: result.ok,
+      verified: Boolean(
+        result.value &&
+          typeof result.value === "object" &&
+          "verified" in result.value &&
+          result.value.verified,
+      ),
+      ecuId: binding.ecuId,
+      did,
+      ...(originalValue !== undefined ? { originalValue } : {}),
+      ...(writtenValue !== undefined ? { writtenValue } : {}),
+      ...(unit !== undefined ? { unit } : {}),
+      reasons: [...result.reasons],
+      warnings: [...result.warnings],
+      transactionId: result.transaction.id,
+    };
+  }
+
+  /**
+   * Signal analysis with FFT spectrum and anomaly detection (Task 5).
+   */
+  analyzeSignal(signalId: string): AdvancedSignalAnalysisView {
+    const runtime = this.requireRuntime();
+    const res = runtime.signalAnalysis.analyze(signalId);
+    return {
+      signalId: res.signalId,
+      sampleCount: res.sampleCount,
+      ...(res.statistics
+        ? {
+            statistics: {
+              min: res.statistics.min,
+              max: res.statistics.max,
+              mean: res.statistics.mean,
+              median: res.statistics.median,
+              variance: res.statistics.variance,
+              stdDev: res.statistics.stdDev,
+              skewness: res.statistics.skewness,
+              kurtosis: res.statistics.kurtosis,
+              p5: res.statistics.percentiles.p5,
+              p50: res.statistics.percentiles.p50,
+              p95: res.statistics.percentiles.p95,
+            },
+          }
+        : {}),
+      spectrum: {
+        dominantFrequency: res.spectrum.dominantFrequency,
+        dominantMagnitude: res.spectrum.dominantMagnitude,
+        snrDb: res.spectrum.snrDb,
+      },
+      anomalies: res.anomalies.map((a) => ({
+        kind: a.kind,
+        value: a.value,
+        severity: a.severity,
+        description: a.description,
+      })),
+    };
+  }
+
+  /**
+   * Injects chaos into CAN transport (Task 4).
+   */
+  injectChaos(options: {
+    dropBurst?: number;
+    dropRate?: number;
+    corruptSequenceCanId?: number;
+  }): void {
+    if (!this.chaosBus && this.bus) {
+      this.chaosBus = new CanChaosBus(this.bus);
+    }
+    if (this.chaosBus) {
+      if (options.dropBurst !== undefined) {
+        this.chaosDropBurst = options.dropBurst;
+        ChaosLab.injectBurstFrameDrop(this.chaosBus, 0x7e0, options.dropBurst);
+      }
+      if (options.dropRate !== undefined) {
+        this.chaosDropRate = options.dropRate;
+        ChaosLab.injectDropRate(this.chaosBus, options.dropRate);
+      }
+      if (options.corruptSequenceCanId !== undefined) {
+        ChaosLab.injectIsoTpSequenceCorruption(this.chaosBus, options.corruptSequenceCanId);
+      }
+    }
+  }
+
+  resetChaos(): void {
+    this.chaosBus?.clearRules();
+    this.chaosDropRate = 0;
+    this.chaosDropBurst = 0;
+  }
+
+  chaosStatus(): ChaosStatusView {
+    const burstRemaining = this.chaosBus?.remainingBurstDrops ?? 0;
+    const isActuallyActive =
+      this.chaosBus !== undefined && (this.chaosDropRate > 0 || burstRemaining > 0);
+    return {
+      active: isActuallyActive,
+      dropRate: this.chaosDropRate,
+      dropBurstRemaining: burstRemaining,
+      droppedFrames: this.chaosBus?.dropped.length ?? 0,
+      corruptedFrames: this.chaosBus?.corruptedCount ?? 0,
+      delayedFrames: this.chaosBus?.delayedCount ?? 0,
     };
   }
 
@@ -967,12 +1337,18 @@ function describe(
  * customer's car with the simulator's identification values would be exactly the
  * kind of invented vehicle truth AGENTS 24 forbids.
  */
-function defaultDefinitionsFor(mode: BackendMode): readonly DefinitionPackage[] {
-  return mode === "hardware" ? [genericPackage] : [simulatorPackage];
+function defaultDefinitionsFor(
+  mode: BackendMode,
+  adapterId?: string,
+): readonly DefinitionPackage[] {
+  if (mode === "hardware") return [genericPackage];
+  if (adapterId === SIMULATOR_5ECU_ADAPTER_ID) return [highFidelityPackage];
+  return [simulatorPackage];
 }
 
 function modeForSelection(selection: AdapterSelection, catalog: AdapterCatalog): BackendMode {
-  if (selection.id === SIMULATOR_ADAPTER_ID) return "simulator";
+  if (selection.id === SIMULATOR_ADAPTER_ID || selection.id === SIMULATOR_5ECU_ADAPTER_ID)
+    return "simulator";
   if (selection.id === REPLAY_ADAPTER_ID) return "replay";
   // An unknown id stays "hardware": the catalog rejects it with a clear message
   // when the bus is opened instead of silently falling back to the simulator.

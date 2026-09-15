@@ -543,7 +543,7 @@ describe("DtcAccess — fault memory, enrichment and the write path", () => {
     // memory reader has no method that can change the vehicle.
     assert.equal(Object.hasOwn(access, "clear"), false);
     assert.equal(Object.hasOwn(access, "evaluate"), false);
-    assert.deepEqual(writes.kinds, ["clear-dtc"]);
+    assert.deepEqual(writes.kinds, ["clear-dtc", "coding", "adaptation"]);
 
     const target = clearableEcuOf(handle);
     const binding = writeBinding(target.id, target.name, target.sessionType);

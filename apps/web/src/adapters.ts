@@ -21,6 +21,7 @@ import { AdapterCatalog, type AdapterEntry, createHostAdapterCatalog } from "@vd
 import { AdapterUnsupportedError } from "@vdp/shared";
 
 export const SIMULATOR_ADAPTER_ID = "simulator";
+export const SIMULATOR_5ECU_ADAPTER_ID = "simulator-5ecu";
 export const REPLAY_ADAPTER_ID = "replay";
 
 /** Entries whose bus is built by the application, not by the adapter layer. */
@@ -58,6 +59,37 @@ function simulatorEntry(): AdapterEntry {
       throw new AdapterUnsupportedError(
         'the simulator bus is created by the application — select it with mode "simulator"',
         { adapterId: SIMULATOR_ADAPTER_ID },
+      );
+    },
+  };
+}
+
+function simulator5EcuEntry(): AdapterEntry {
+  return {
+    id: SIMULATOR_5ECU_ADAPTER_ID,
+    displayName: "High-Fidelity Simulator (5-ECU Fahrzeug)",
+    kind: "simulator",
+    transport: "can",
+    description:
+      "High-Fidelity Virtual Vehicle mit 5 ECUs (Gateway, Engine, ABS, Gearbox, BCM) und dynamischem Fahrzustand (Task 2).",
+    capabilities: {
+      can: true,
+      canFd: false,
+      doip: false,
+      isoTpOffload: false,
+      channels: 1,
+      supportsFunctionalAddressing: true,
+    },
+    requires: {},
+    managedBy: "application",
+    probe: async () => ({
+      available: true,
+      detail: "5 virtuelle ECUs (0x7DF, 0x7E0..0x7E3) mit gekoppeltem Dynamikmodell",
+    }),
+    create: async () => {
+      throw new AdapterUnsupportedError(
+        'the simulator bus is created by the application — select it with mode "simulator"',
+        { adapterId: SIMULATOR_5ECU_ADAPTER_ID },
       );
     },
   };
@@ -117,7 +149,10 @@ export interface WebAdapterCatalogOptions {
 /** Catalog used by the workbench: simulator, replay and every adapter of this host. */
 export function createWebAdapterCatalog(options: WebAdapterCatalogOptions = {}): AdapterCatalog {
   const entries: AdapterEntry[] = [];
-  if (options.simulator !== false) entries.push(simulatorEntry());
+  if (options.simulator !== false) {
+    entries.push(simulatorEntry());
+    entries.push(simulator5EcuEntry());
+  }
   if (options.replay !== false) entries.push(replayEntry());
   if (options.host !== false) entries.push(...createHostAdapterCatalog().list());
   return new AdapterCatalog(entries);

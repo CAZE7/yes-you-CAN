@@ -1,0 +1,18 @@
+[package]
+name = "yes-you-can-core"
+version = "0.1.0"
+edition = "2021"
+authors = ["CAZE7 <info@arena.ai>"]
+description = "High-performance zero-copy ISO-TP, Signal Processing, and Safety State core for yes-you-CAN"
+license = "MIT"
+
+[dependencies]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"

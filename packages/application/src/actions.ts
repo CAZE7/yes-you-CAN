@@ -178,5 +178,39 @@ export function createStandardActions(): readonly DiagnosticActionDefinition[] {
             ? { ok: false, reason: "no ECU selected" }
             : { ok: true },
     },
+    {
+      id: "coding.write",
+      name: "ECU Coding",
+      operation: "coding",
+      requiredCapabilities: ["coding"],
+      description: "Write variant/equipment coding (backup + confirmation required).",
+      canExecute: (context) => {
+        if (!context.connected) return { ok: false, reason: "no vehicle connection" };
+        if (!context.ecu) return { ok: false, reason: "no ECU selected" };
+        if (context.ecu.sessionType === 0x01)
+          return {
+            ok: false,
+            reason: "ECU is in the default session — writes require an extended session",
+          };
+        return { ok: true };
+      },
+    },
+    {
+      id: "adaptation.write",
+      name: "Parameter Adaptation",
+      operation: "adaptation",
+      requiredCapabilities: ["adaptation"],
+      description: "Calibrate ECU parameters within permitted engineering limits.",
+      canExecute: (context) => {
+        if (!context.connected) return { ok: false, reason: "no vehicle connection" };
+        if (!context.ecu) return { ok: false, reason: "no ECU selected" };
+        if (context.ecu.sessionType === 0x01)
+          return {
+            ok: false,
+            reason: "ECU is in the default session — writes require an extended session",
+          };
+        return { ok: true };
+      },
+    },
   ];
 }

@@ -18,9 +18,10 @@ import {
   type DiagnosticEngine,
   type SamplePoint,
   collectEvidence,
+  evaluateGuidedDiagnosis,
   rankHypotheses,
 } from "@vdp/core";
-import type { EvidenceSet, Hypothesis } from "@vdp/diagnostic-ir";
+import type { EvidenceSet, GuidedDiagnosisState, Hypothesis } from "@vdp/diagnostic-ir";
 
 export interface EvidenceSnapshot {
   evidence: EvidenceSet;
@@ -49,6 +50,51 @@ export class EvidenceService {
    */
   hypotheses(): Hypothesis[] {
     return this.snapshot().hypotheses;
+  }
+
+  /**
+   * Ingests a manual or interactive test measurement for guided diagnosis.
+   */
+  recordStepMeasurement(signalId: string, value: number): void {
+    this.engine.recorder.record({
+      signalId,
+      name: signalId,
+      raw: new Uint8Array(),
+      rawHex: "",
+      rawValue: value,
+      value,
+      outOfRange: false,
+      did: 0,
+      ecu: "tester",
+    });
+  }
+
+  /**
+   * Evaluates the active session through the guided diagnosis loop (Task 6).
+   * Determines whether the diagnosis is in-progress, resolved, or inconclusive,
+   * and recommends the next discriminating test.
+   */
+  guidedDiagnosis(stepsCompleted = 0): GuidedDiagnosisState {
+    const session = this.engine.vehicleSession;
+    if (session === null) throw new Error("no session — call vehicle.connect() first");
+    const recorder = this.engine.recorder;
+    const samplesOf = (signalId: string): readonly SamplePoint[] =>
+      recorder
+        .samplesFor(signalId)
+        .filter((sample) => typeof sample.value === "number")
+        .map((sample) => ({ at: sample.timestamp, value: sample.value as number }));
+    const evidence = collectEvidence({
+      session: session.data,
+      statistics: recorder.statisticsForAll(),
+      anomalies: recorder.anomalies(),
+    });
+    const dtcs = session.data.dtcSnapshots.at(-1)?.records ?? [];
+    return evaluateGuidedDiagnosis({
+      evidence,
+      dtcs,
+      samplesOf,
+      stepsCompleted,
+    });
   }
 
   /**

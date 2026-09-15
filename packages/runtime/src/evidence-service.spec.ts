@@ -72,6 +72,9 @@ test("an empty session answers with its open questions, not with a blank", async
       "nothing here was measured, so nothing may be printed as proven",
     );
     assert.deepEqual(snapshot.hypotheses, [], "no scan, so no documented pattern to judge");
+    const guided = runtime.evidence.guidedDiagnosis();
+    assert.equal(guided.status, "inconclusive");
+    assert.match(guided.summary, /No diagnostic hypotheses/);
   } finally {
     await runtime.dispose();
   }

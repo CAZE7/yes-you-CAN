@@ -222,6 +222,12 @@ export class DiagnosticTransaction {
       this.abort(reasons[0] ?? `stage ${stage} not allowed`);
       return report;
     }
+    if (stage === "execute" && this.permit === undefined) {
+      const reasons = ['stage "execute" requires a valid confirmed permit (AGENTS 26)'];
+      const report = this.report(stage, "failed", reasons);
+      this.abort(reasons[0] ?? "stage execute without permit");
+      return report;
+    }
     let outcome: StageOutcome<T>;
     try {
       outcome = await body();

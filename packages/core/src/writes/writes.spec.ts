@@ -517,7 +517,7 @@ test("an operation that reports its own outcome decides what the audit log says"
 
 test("an unknown operation kind is a programming error, not a denied write", async () => {
   const { port: writes } = port();
-  assert.deepEqual(writes.kinds, ["clear-dtc"]);
+  assert.deepEqual(writes.kinds, ["clear-dtc", "coding", "adaptation"]);
   const empty = new WritePort({ safety: new SafetyManager() });
   await assert.rejects(
     empty.run("flash", { userConfirmed: true }, TEST_BINDING),

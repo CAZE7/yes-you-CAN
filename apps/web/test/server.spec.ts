@@ -585,3 +585,108 @@ test("without a session directory persistence reports itself as inactive", async
     assert.match(((await pkg.json()) as { error: string }).error, /persistence is not enabled/);
   });
 });
+
+test("guided diagnosis, coding/adaptation, signal analysis, and chaos endpoints are operational", async () => {
+  await withServer(async (base) => {
+    await json(base, "/api/start", { method: "POST" });
+
+    // 1. Guided Diagnosis endpoint & step
+    const gd = await json(base, "/api/guided-diagnosis");
+    assert.equal(gd.status, 200);
+    const gdBody = gd.body as { state: { status: string; hypotheses: unknown[] } };
+    assert.ok(["in-progress", "resolved", "inconclusive"].includes(gdBody.state.status));
+
+    const gdStep = await json(base, "/api/guided-diagnosis/step", {
+      method: "POST",
+      body: JSON.stringify({ signalId: "engine.coolant_temperature", value: 92 }),
+      headers: { "content-type": "application/json" },
+    });
+    assert.equal(gdStep.status, 200);
+    const gdStepBody = gdStep.body as { state: { stepsCompleted: number } };
+    assert.equal(gdStepBody.state.stepsCompleted, 1);
+
+    // 2. Coding precheck and write endpoints
+    const codingPrecheck = await json(base, "/api/coding/precheck", {
+      method: "POST",
+      body: JSON.stringify({
+        rxId: "0x7e8",
+        did: 0x0100,
+        data: "010203",
+        vehicleState: { stationary: true, ignitionOn: true },
+      }),
+      headers: { "content-type": "application/json" },
+    });
+    assert.equal(codingPrecheck.status, 200);
+
+    const codingWrite = await json(base, "/api/coding/write", {
+      method: "POST",
+      body: JSON.stringify({
+        rxId: "0x7e8",
+        did: 0x0100,
+        data: "010203",
+        confirmed: true,
+        vehicleState: {
+          stationary: true,
+          ignitionOn: true,
+          parkingBrake: true,
+          batteryVoltage: 12.6,
+        },
+      }),
+      headers: { "content-type": "application/json" },
+    });
+    assert.equal(codingWrite.status, 200);
+    const codingWriteBody = codingWrite.body as { result: { transactionId: string } };
+    assert.ok(codingWriteBody.result.transactionId);
+
+    // 3. Adaptation precheck and write endpoints
+    const adaptPrecheck = await json(base, "/api/adaptation/precheck", {
+      method: "POST",
+      body: JSON.stringify({
+        rxId: "0x7e8",
+        did: 0x0100,
+        value: 42,
+        vehicleState: { stationary: true, ignitionOn: true },
+      }),
+      headers: { "content-type": "application/json" },
+    });
+    assert.equal(adaptPrecheck.status, 200);
+
+    const adaptWrite = await json(base, "/api/adaptation/write", {
+      method: "POST",
+      body: JSON.stringify({
+        rxId: "0x7e8",
+        did: 0x0100,
+        value: 42,
+        confirmed: true,
+        vehicleState: {
+          stationary: true,
+          ignitionOn: true,
+          parkingBrake: true,
+          batteryVoltage: 12.6,
+        },
+      }),
+      headers: { "content-type": "application/json" },
+    });
+    assert.equal(adaptWrite.status, 200);
+    const adaptWriteBody = adaptWrite.body as { result: { transactionId: string } };
+    assert.ok(adaptWriteBody.result.transactionId);
+
+    // 4. Signal analysis endpoint
+    const analysis = await json(base, "/api/analysis/signal?signalId=engine.speed");
+    assert.equal(analysis.status, 200);
+    const analysisBody = analysis.body as { analysis: { signalId: string; anomalies: unknown[] } };
+    assert.equal(analysisBody.analysis.signalId, "engine.speed");
+
+    // 5. Chaos injection and status endpoints
+    const chaosInject = await json(base, "/api/chaos/inject", {
+      method: "POST",
+      body: JSON.stringify({ dropBurst: 5 }),
+      headers: { "content-type": "application/json" },
+    });
+    assert.equal(chaosInject.status, 200);
+    const chaosStatus = await json(base, "/api/chaos/status");
+    assert.equal(chaosStatus.status, 200);
+    const chaosReset = await json(base, "/api/chaos/reset", { method: "POST" });
+    assert.equal(chaosReset.status, 200);
+  });
+});
