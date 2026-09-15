@@ -25,8 +25,11 @@
   <button class="tab active" data-view="connection">Verbindung</button>
   <button class="tab" data-view="ecus">ECU Explorer</button>
   <button class="tab" data-view="dtc">Fehlerspeicher</button>
+  <button class="tab" data-view="guided-diagnosis">Geführte Diagnose</button>
+  <button class="tab" data-view="coding-adaptation">Codierung &amp; Anpassung</button>
   <button class="tab" data-view="live">Live-Daten</button>
   <button class="tab" data-view="graphs">Graphen</button>
+  <button class="tab" data-view="chaos-lab">Chaos Lab</button>
   <button class="tab" data-view="record">Aufnahme</button>
   <button class="tab" data-view="trace">Roh-Trace</button>
   <button class="tab" data-view="analysis">Analyse</button>
@@ -171,6 +174,127 @@
     </div>
   </section>
 
+  <!-- Geführte Diagnose (Task 6) -->
+  <section class="view" id="view-guided-diagnosis">
+    <h2>Geführte Diagnose <span class="muted small">Evidence → Hypothesis → Guided Diagnosis Loop</span></h2>
+    <p class="hint">
+      Systematische Ursachenermittlung: Symptome und DTCs werden als Belege (Evidence) erfasst, gegen Fehlermuster
+      ausgewertet, zu Hypothesen aggregiert und durch diskriminierende Messungen validiert (Task 6).
+    </p>
+
+    <div class="row">
+      <button id="btn-guided-refresh" class="primary">Diagnosezyklus starten / aktualisieren</button>
+      <span id="guided-status-badge" class="pill pill-possible">bereit</span>
+      <span id="guided-summary-text" class="muted small"></span>
+    </div>
+
+    <!-- Empfohlener nächster Prüfschritt -->
+    <div class="card" id="guided-next-test-card" style="margin-bottom: 1rem;">
+      <h3>Empfohlener nächster Prüfschritt <span class="muted small">Diskriminierender Test</span></h3>
+      <div id="guided-next-test-content">
+        <p class="muted">Noch kein Diagnosezyklus aktiv. Klicken Sie auf „Diagnosezyklus starten / aktualisieren“.</p>
+      </div>
+      <div class="row" id="guided-next-test-actions" hidden>
+        <button id="btn-guided-step" class="primary">Diesen Test ausführen &amp; Hypothesen bewerten</button>
+      </div>
+    </div>
+
+    <!-- Hypothesen Ranking -->
+    <div class="card">
+      <h3>Hypothesen &amp; Wahrscheinlichkeiten</h3>
+      <table class="grid" id="guided-hypotheses-table">
+        <thead>
+          <tr>
+            <th>Hypothese</th>
+            <th>Konfidenz</th>
+            <th>Status</th>
+            <th>Durchgeführte Prüfungen</th>
+          </tr>
+        </thead>
+        <tbody id="guided-hypotheses-rows">
+          <tr><td colspan="4" class="muted">Keine Hypothesen geladen.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Codierung & Anpassung (Task 7 & 8) -->
+  <section class="view" id="view-coding-adaptation">
+    <h2>Codierung &amp; Anpassung <span class="muted small">Sicherheitskritische ECU-Schreiboperationen</span></h2>
+    <p class="hint">
+      Formale 6-stufige State-Machine (Prepared → Confirmed → Permitted → Executing → Verifying → Verified).
+      Alle Schreiboperationen erfordern Sicherheits-Vorprüfungen, 2-Stufen-Bestätigung, atomaren Rollback-Schutz
+      und automatische Readback-Verifikation (Task 7 &amp; 8).
+    </p>
+
+    <div class="card" style="margin-bottom: 1rem;">
+      <h3>Fahrzeug-Sicherheitszustand (Preconditions)</h3>
+      <div class="row">
+        <label class="field">Ziel-ECU
+          <select id="ca-ecu">
+            <option value="0x7E8">Motor (0x7E8)</option>
+            <option value="0x708">Gateway (0x708)</option>
+            <option value="0x728">ABS / Bremse (0x728)</option>
+            <option value="0x748">Getriebe (0x748)</option>
+            <option value="0x768">BCM / Komfort (0x768)</option>
+          </select>
+        </label>
+        <label class="field checkbox"><input type="checkbox" id="ca-stationary" checked /> Fahrzeug steht (0 km/h)</label>
+        <label class="field checkbox"><input type="checkbox" id="ca-ignition" checked /> Zündung ein / Motor aus</label>
+        <label class="field checkbox"><input type="checkbox" id="ca-parking" checked /> Feststellbremse angezogen</label>
+        <label class="field">Batteriespannung (V)
+          <input type="number" id="ca-voltage" value="12.6" step="0.1" min="0" max="30" />
+        </label>
+      </div>
+    </div>
+
+    <div class="cards">
+      <!-- Varianten-Codierung -->
+      <div class="card danger-zone">
+        <h3>Varianten-Codierung (Hex) <span class="muted small">DID Write</span></h3>
+        <p class="hint">Schreibt Konfigurationsbytes in den Daten-Identifier des Steuergeräts.</p>
+        <div class="row">
+          <label class="field">DID (Hex)
+            <input type="text" id="coding-did" value="0x0100" />
+          </label>
+          <label class="field" style="flex: 1;">Codierungsdaten (Hex)
+            <input type="text" id="coding-data" value="01020304" placeholder="z. B. 01020304" />
+          </label>
+        </div>
+        <div class="row">
+          <button id="btn-coding-precheck">1. Vorbedingungen prüfen</button>
+          <label class="field checkbox"><input type="checkbox" id="coding-confirm" disabled />
+            Ich bestätige die Varianten-Codierung verbindlich</label>
+          <button id="btn-coding-execute" class="danger" disabled>2. Codieren &amp; Verifizieren</button>
+        </div>
+        <ul class="plain small" id="coding-precheck-status"></ul>
+        <div id="coding-result-box" class="small"></div>
+      </div>
+
+      <!-- Parameter-Anpassung -->
+      <div class="card danger-zone">
+        <h3>Parameter-Anpassung (Adaptation) <span class="muted small">Value Write</span></h3>
+        <p class="hint">Kalibriert Einzelparameter (z. B. Leerlaufdrehzahl, Schaltpunkte, Beleuchtungszeiten).</p>
+        <div class="row">
+          <label class="field">DID (Hex)
+            <input type="text" id="adapt-did" value="0x2100" />
+          </label>
+          <label class="field" style="flex: 1;">Neuer Wert (Zahl)
+            <input type="number" id="adapt-value" value="750" />
+          </label>
+        </div>
+        <div class="row">
+          <button id="btn-adapt-precheck">1. Vorbedingungen prüfen</button>
+          <label class="field checkbox"><input type="checkbox" id="adapt-confirm" disabled />
+            Ich bestätige die Parameter-Anpassung verbindlich</label>
+          <button id="btn-adapt-execute" class="danger" disabled>2. Anpassen &amp; Verifizieren</button>
+        </div>
+        <ul class="plain small" id="adapt-precheck-status"></ul>
+        <div id="adapt-result-box" class="small"></div>
+      </div>
+    </div>
+  </section>
+
   <!-- Live-Daten -->
   <section class="view" id="view-live">
     <h2>Live-Daten</h2>
@@ -237,6 +361,71 @@
     </div>
   </section>
 
+  <!-- Chaos Lab (Task 4) -->
+  <section class="view" id="view-chaos-lab">
+    <h2>Chaos Lab <span class="muted small">Fault-Injection &amp; Resilienz-Testing</span></h2>
+    <p class="hint">
+      Simuliert reale Störeinflüsse auf dem CAN-Bus: Frame-Verlust (Drop Burst / Drop Rate), Frame-Korruption,
+      Sequenzstörungen und UDS NRC 0x78 Pending-Loops. Testet die Robustheit der Transport- und UDS-Schicht (Task 4).
+    </p>
+
+    <!-- Status Monitore -->
+    <div class="cards" style="margin-bottom: 1rem;">
+      <div class="card">
+        <h3>Chaos-Status</h3>
+        <dl class="kv">
+          <dt>Status</dt><dd id="chaos-active-label"><span class="pill pill-online">inaktiv</span></dd>
+          <dt>Drop-Rate</dt><dd id="chaos-drop-rate-label">0%</dd>
+          <dt>Burst verbleibend</dt><dd id="chaos-burst-remaining-label">0 Frames</dd>
+        </dl>
+      </div>
+      <div class="card">
+        <h3>Fehlerzähler</h3>
+        <dl class="kv">
+          <dt>Verworfene Frames</dt><dd id="chaos-dropped-count">0</dd>
+          <dt>Korrumpierte Frames</dt><dd id="chaos-corrupted-count">0</dd>
+          <dt>Verzögerte Frames</dt><dd id="chaos-delayed-count">0</dd>
+        </dl>
+      </div>
+    </div>
+
+    <!-- Chaos Injektionssteuerungen -->
+    <div class="cards">
+      <div class="card">
+        <h3>Frame-Drop Injektion</h3>
+        <p class="hint">Verwirft CAN-Frames zur Simulation von EMV-Störungen oder Pufferüberläufen.</p>
+        <div class="row">
+          <label class="field">Burst-Anzahl (Frames)
+            <input type="number" id="chaos-burst-input" value="5" min="1" max="100" />
+          </label>
+          <button id="btn-chaos-burst-inject" class="warn">Burst-Drop auslösen</button>
+        </div>
+        <div class="row">
+          <label class="field">Dauerhafte Drop-Rate (0.0 - 1.0)
+            <input type="number" id="chaos-rate-input" value="0.2" min="0" max="1" step="0.05" />
+          </label>
+          <button id="btn-chaos-rate-inject">Drop-Rate setzen</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Frame-Korruption &amp; Reset</h3>
+        <p class="hint">Verändert Datenbytes im CAN-Frame oder setzt alle aktiven Störungen zurück.</p>
+        <div class="row">
+          <label class="field">CAN-ID für Sequenzkorruption
+            <input type="text" id="chaos-corrupt-can-id" value="0x7E8" />
+          </label>
+          <button id="btn-chaos-corrupt-inject" class="danger">Frame korrumpieren</button>
+        </div>
+        <div class="row">
+          <button id="btn-chaos-reset-all" class="primary">Alle Chaos-Regeln zurücksetzen</button>
+          <button id="btn-chaos-refresh">Status aktualisieren</button>
+        </div>
+      </div>
+    </div>
+    <ul class="plain small" id="chaos-feedback-log" style="margin-top: 1rem;"></ul>
+  </section>
+
   <!-- Aufnahme -->
   <section class="view" id="view-record">
     <h2>Aufnahme</h2>
@@ -270,6 +459,28 @@
     <h2>Analyse</h2>
     <div class="row"><button id="btn-analyze" class="primary">Analyse starten</button><span id="analysis-source" class="muted"></span></div>
     <div id="analysis-out"></div>
+
+    <!-- Erweiterte Signalanalyse & Spektral-FFT (Task 5) -->
+    <div class="card" style="margin-top: 1.5rem;">
+      <h3>Erweiterte Signalanalyse &amp; Spektral-FFT <span class="muted small">Höhere statistische Momente &amp; Anomalien</span></h3>
+      <p class="hint">
+        Berechnet Schiefe (Skewness), Wölbung (Kurtosis), Perzentile (P5, P50, P95), Hann-gefensterte FFT mit dominanter
+        Frequenz und SNR sowie automatische Anomalie-Erkennung (Spikes, Dropouts, eingefrorene Sensoren).
+      </p>
+      <div class="row">
+        <label class="field">Signal auswählen
+          <select id="analysis-signal-select">
+            <option value="engine.speed">Motordrehzahl (engine.speed)</option>
+            <option value="engine.throttle">Drosselklappe (engine.throttle)</option>
+            <option value="engine.coolant_temperature">Kühlmitteltemperatur (engine.coolant_temperature)</option>
+            <option value="vehicle.speed">Fahrzeuggeschwindigkeit (vehicle.speed)</option>
+            <option value="battery.voltage">Batteriespannung (battery.voltage)</option>
+          </select>
+        </label>
+        <button id="btn-signal-analyze" class="primary">Signal &amp; FFT analysieren</button>
+      </div>
+      <div id="signal-analysis-out"></div>
+    </div>
   </section>
 
   <!-- Log -->

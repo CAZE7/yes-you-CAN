@@ -140,3 +140,77 @@ export const addMarker = (query) => request("/api/marker", post(query));
 
 /** @returns {Promise<import("../src/views.js").AnalysisView>} */
 export const analyze = () => request("/api/analyze", post({}));
+
+/**
+ * Guided Diagnosis: retrieve ranked hypotheses and next recommended test (Task 6).
+ *
+ * @returns {Promise<{ state: import("../src/views.js").GuidedDiagnosisView }>}
+ */
+export const fetchGuidedDiagnosis = () => request("/api/guided-diagnosis", post({}));
+
+/**
+ * @param {{ signalId?: string, value?: number }} query
+ * @returns {Promise<{ state: import("../src/views.js").GuidedDiagnosisView }>}
+ */
+export const stepGuidedDiagnosis = (query) => request("/api/guided-diagnosis/step", post(query));
+
+/**
+ * Prechecks variant coding write (Task 8).
+ *
+ * @param {{ rxId: string, did?: number, data?: string, vehicleState: import("../src/views.js").VehicleStateView }} query
+ * @returns {Promise<{ precheck: { ok: boolean, failed: string[], unproven: string[], warnings: string[] } }>}
+ */
+export const precheckCoding = (query) => request("/api/coding/precheck", post(query));
+
+/**
+ * Executes variant coding write with readback verification (Task 8).
+ *
+ * @param {{ rxId: string, did?: number, data?: string, confirmed: boolean, vehicleState: import("../src/views.js").VehicleStateView }} query
+ * @returns {Promise<{ result: import("../src/views.js").CodingResultView }>}
+ */
+export const writeCoding = (query) => request("/api/coding/write", post(query));
+
+/**
+ * Prechecks parameter adaptation write (Task 8).
+ *
+ * @param {{ rxId: string, did?: number, value?: number, vehicleState: import("../src/views.js").VehicleStateView }} query
+ * @returns {Promise<{ precheck: { ok: boolean, failed: string[], unproven: string[], warnings: string[] } }>}
+ */
+export const precheckAdaptation = (query) => request("/api/adaptation/precheck", post(query));
+
+/**
+ * Executes parameter adaptation write with readback verification (Task 8).
+ *
+ * @param {{ rxId: string, did?: number, value?: number, confirmed: boolean, vehicleState: import("../src/views.js").VehicleStateView }} query
+ * @returns {Promise<{ result: import("../src/views.js").AdaptationResultView }>}
+ */
+export const writeAdaptation = (query) => request("/api/adaptation/write", post(query));
+
+/**
+ * Advanced signal analysis: spectral FFT, higher-order stats, anomalies (Task 5).
+ *
+ * @param {string} signalId
+ * @returns {Promise<{ analysis: import("../src/views.js").AdvancedSignalAnalysisView }>}
+ */
+export const fetchSignalAnalysis = (signalId) =>
+  request(`/api/analysis/signal?signalId=${encodeURIComponent(signalId)}`);
+
+/**
+ * Injects chaos/faults into the transport layer (Task 4).
+ *
+ * @param {{ dropBurst?: number, dropRate?: number, corruptSequenceCanId?: number }} query
+ * @returns {Promise<{ status: import("../src/views.js").ChaosStatusView }>}
+ */
+export const injectChaos = (query) => request("/api/chaos/inject", post(query));
+
+/**
+ * Resets chaos rules on the transport layer (Task 4).
+ *
+ * @returns {Promise<{ status: import("../src/views.js").ChaosStatusView }>}
+ */
+export const resetChaos = () => request("/api/chaos/reset", post({}));
+
+/**
+ * @returns {Promise<{ status: import("../src/views.js").ChaosStatusView }>}
+ */
+export const fetchChaosStatus = () => request("/api/chaos/status");

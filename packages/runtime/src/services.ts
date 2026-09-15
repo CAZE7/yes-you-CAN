@@ -12,6 +12,12 @@ import type {
   ConnectVehicleResult,
   ResolveVehicleHints,
 } from "@vdp/application";
+export type {
+  WriteBinding,
+  WriteOperationResult,
+  WritePrecheckResult,
+  WritePort,
+} from "@vdp/core";
 import type {
   ClearDtcResult,
   DiagnosticEngine,

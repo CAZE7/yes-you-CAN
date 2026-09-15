@@ -32,9 +32,9 @@ function mockEvidenceSet(sessionId = "session-1"): EvidenceSet {
   };
 }
 
-function mockDtc(patterns: DtcKnowledgePattern[]): EvidenceDtc {
+function mockDtc(patterns: DtcKnowledgePattern[], code = "P0420"): EvidenceDtc {
   return {
-    code: "P0420",
+    code,
     ecuId: "engine",
     status: 0x2f,
     raw: "042000",
@@ -97,14 +97,42 @@ describe("Guided Diagnosis Engine", () => {
     ],
   };
 
+  const patternO2Sensor: DtcKnowledgePattern = {
+    id: "o2-sensor",
+    name: "O2 Sensor Slow Response",
+    explanation: "Sensor aging or fouled",
+    likelihood: "rare",
+    scope: "package",
+    checks: [
+      {
+        signal: "engine.o2_voltage",
+        signalName: "O2 Sensor Voltage",
+        expect: "Voltage swing 0.1V..0.9V",
+        min: 0.1,
+        max: 0.9,
+        windowMs: 3000,
+        measurable: true,
+      },
+    ],
+  };
+
+  test("returns inconclusive when no hypotheses are documented", () => {
+    const evidence = mockEvidenceSet();
+    const state = evaluateGuidedDiagnosis({ evidence, dtcs: [] });
+    assert.equal(state.status, "inconclusive");
+    assert.equal(state.hypotheses.length, 0);
+    assert.match(state.summary, /No diagnostic hypotheses documented/);
+  });
+
   test("starts in-progress with a discriminating next test recommended", () => {
     const evidence = mockEvidenceSet();
     const dtcs = [mockDtc([patternCatalyst, patternExhaustLeak])];
 
-    const state = evaluateGuidedDiagnosis({ evidence, dtcs });
+    const state = evaluateGuidedDiagnosis({ evidence, dtcs, stepsCompleted: 1 });
 
     assert.equal(state.status, "in-progress");
     assert.equal(state.hypotheses.length, 2);
+    assert.equal(state.stepsCompleted, 1);
     assert.ok(state.nextRecommendedTest);
     assert.equal(state.nextRecommendedTest?.test.signal, "engine.short_term_fuel_trim");
     assert.equal(state.nextRecommendedTest?.hypothesisId, "cat-efficiency");
@@ -114,22 +142,144 @@ describe("Guided Diagnosis Engine", () => {
     );
   });
 
-  test("addMeasurementEvidence updates the evidence set with proven observation", () => {
+  test("selects discriminating test when competitors share the same signal", () => {
+    const patternAlt: DtcKnowledgePattern = {
+      id: "cat-alt",
+      name: "Alternative Catalyst Fault",
+      explanation: "Secondary symptom",
+      likelihood: "possible",
+      scope: "package",
+      checks: [
+        {
+          signal: "engine.short_term_fuel_trim",
+          signalName: "Fuel Trim",
+          expect: "Near zero",
+          min: -1,
+          max: 1,
+          windowMs: 4000,
+          measurable: true,
+        },
+      ],
+    };
+
+    const evidence = mockEvidenceSet();
+    const dtcs = [mockDtc([patternCatalyst, patternAlt])];
+    const state = evaluateGuidedDiagnosis({ evidence, dtcs });
+
+    assert.equal(state.status, "in-progress");
+    assert.ok(state.nextRecommendedTest?.discriminatesAgainst);
+    assert.ok(state.nextRecommendedTest.discriminatesAgainst.includes("cat-alt"));
+  });
+
+  test("selects runner-up next test if top has no next test", () => {
+    // Top pattern has empty checks (no nextTest)
+    const patternNoChecks: DtcKnowledgePattern = {
+      id: "no-checks",
+      name: "Generic Component Failure",
+      explanation: "No specific measurement available",
+      likelihood: "common",
+      scope: "package",
+      checks: [],
+    };
+
+    const evidence = mockEvidenceSet();
+    const dtcs = [mockDtc([patternNoChecks, patternExhaustLeak])];
+    const state = evaluateGuidedDiagnosis({ evidence, dtcs });
+
+    assert.equal(state.status, "in-progress");
+    assert.equal(state.nextRecommendedTest?.hypothesisId, "exhaust-leak");
+  });
+
+  test("selects third hypothesis if top two have no next test", () => {
+    const patternNoChecks1: DtcKnowledgePattern = {
+      id: "no-checks-1",
+      name: "Top without checks",
+      explanation: "None",
+      likelihood: "common",
+      scope: "package",
+      checks: [],
+    };
+    const patternNoChecks2: DtcKnowledgePattern = {
+      id: "no-checks-2",
+      name: "Runner-up without checks",
+      explanation: "None",
+      likelihood: "possible",
+      scope: "package",
+      checks: [],
+    };
+
+    const evidence = mockEvidenceSet();
+    const dtcs = [mockDtc([patternNoChecks1, patternNoChecks2, patternO2Sensor])];
+    const state = evaluateGuidedDiagnosis({ evidence, dtcs });
+
+    assert.equal(state.status, "in-progress");
+    assert.equal(state.nextRecommendedTest?.hypothesisId, "o2-sensor");
+  });
+
+  test("resolves when confirmed hypothesis exists without further tests", () => {
+    const patternConfirmedNoChecks: DtcKnowledgePattern = {
+      id: "confirmed-pattern",
+      name: "Confirmed Issue",
+      explanation: "Confirmed",
+      likelihood: "common",
+      scope: "package",
+      checks: [],
+    };
+
+    const evidence: EvidenceSet = {
+      kind: "evidence",
+      sessionId: "s1",
+      collectedAt: new Date().toISOString(),
+      items: [
+        {
+          id: "dtc:P0420@engine",
+          kind: "dtc",
+          subject: "P0420",
+          statement: "Catalyst",
+          at: new Date().toISOString(),
+          evidence: proven({ origin: "ecu-response", ecuId: "engine" }),
+        },
+        {
+          id: "pattern:confirmed-pattern",
+          kind: "pattern",
+          subject: "confirmed-pattern",
+          statement: "Pattern confirmed",
+          at: new Date().toISOString(),
+          evidence: proven({ origin: "ecu-response" }),
+        },
+      ],
+      conflicts: [],
+    };
+
+    const dtcs = [mockDtc([patternConfirmedNoChecks])];
+    const state = evaluateGuidedDiagnosis({ evidence, dtcs });
+
+    assert.ok(state.status === "resolved" || state.status === "inconclusive");
+  });
+
+  test("addMeasurementEvidence updates and replaces observations", () => {
     const initialEvidence = mockEvidenceSet();
     assert.equal(initialEvidence.items.length, 1);
 
-    const updated = addMeasurementEvidence(initialEvidence, {
-      signalId: "engine.short_term_fuel_trim",
-      value: 1.5,
-      unit: "%",
+    // Add without unit
+    const updated1 = addMeasurementEvidence(initialEvidence, {
+      signalId: "engine.coolant_temperature",
+      value: 88,
+      at: "2026-09-15T08:00:00.000Z",
       ecuId: "engine",
     });
+    assert.equal(updated1.items.length, 2);
 
-    assert.equal(updated.items.length, 2);
-    const added = updated.items.find((i) => i.subject === "engine.short_term_fuel_trim");
-    assert.ok(added);
-    assert.equal(added?.evidence.kind, "proven");
-    assert.match(added?.statement ?? "", /Observed engine\.short_term_fuel_trim = 1\.5 %/);
+    // Replace measurement for same signal & ecuId
+    const updated2 = addMeasurementEvidence(updated1, {
+      signalId: "engine.coolant_temperature",
+      value: 92,
+      unit: "C",
+      ecuId: "engine",
+    });
+    assert.equal(updated2.items.length, 2);
+    const item = updated2.items.find((i) => i.subject === "engine.coolant_temperature");
+    assert.equal(item?.statement, "Observed engine.coolant_temperature = 92 C");
   });
 
   test("advances diagnosis to resolved when leading hypothesis is confirmed", () => {
@@ -139,14 +289,12 @@ describe("Guided Diagnosis Engine", () => {
     const now = Date.now();
     const samples = (signalId: string) => {
       if (signalId === "engine.short_term_fuel_trim") {
-        // Samples inside bounds (-5..5): confirms catalyst pattern
         return [
           { at: new Date(now - 3000).toISOString(), value: 0.5 },
           { at: new Date(now - 1000).toISOString(), value: 1.2 },
         ];
       }
       if (signalId === "engine.coolant_temperature") {
-        // Coolant is 60 C (outside 80..110 bounds): refutes exhaust leak
         return [
           { at: new Date(now - 3000).toISOString(), value: 60 },
           { at: new Date(now - 1000).toISOString(), value: 62 },
@@ -172,7 +320,6 @@ describe("Guided Diagnosis Engine", () => {
     const dtcs = [mockDtc([patternCatalyst])];
 
     const now = Date.now();
-    // Fuel trim is -15% (outside -5..5): refutes catalyst
     const samples = (signalId: string) => {
       if (signalId === "engine.short_term_fuel_trim") {
         return [

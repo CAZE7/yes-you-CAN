@@ -28,6 +28,7 @@ import {
   type EcuLinkFactory,
   type SafetyManager,
   type VehicleSessionData,
+  type WritePort,
   createWritePort,
 } from "@vdp/core";
 import type { DefinitionPackage } from "@vdp/definitions";
@@ -53,6 +54,7 @@ import {
   SessionService,
   VehicleService,
 } from "./services.js";
+import { SignalAnalysisService } from "./signal-analysis-service.js";
 
 export interface RuntimeOptions {
   /**
@@ -93,6 +95,8 @@ export interface DiagnosticRuntime {
   readonly ecus: EcuService;
   readonly dtc: DtcService;
   readonly measurements: MeasurementService;
+  readonly signalAnalysis: SignalAnalysisService;
+  readonly writes: WritePort;
   /**
    * Evidence and hypotheses of the current session (AGENTS 22, master backlog
    * P0 #39/#40). Read-only by construction: nothing here can reach a vehicle.
@@ -146,6 +150,7 @@ export function createDiagnosticRuntime(options: RuntimeOptions): DiagnosticRunt
   const definitions = new PackageDefinitionProvider(options.definitions ?? []);
   const vehicle = new VehicleService(engine, ecus, events, log, definitions);
   const measurements = new MeasurementService(engine, events, log);
+  const signalAnalysis = new SignalAnalysisService(engine);
   // Read-only evidence view of the running session (P0 #39): the workbench, a
   // report and an analysis provider must cite one and the same set.
   const evidence = new EvidenceService(engine);
@@ -167,6 +172,8 @@ export function createDiagnosticRuntime(options: RuntimeOptions): DiagnosticRunt
     ecus,
     dtc,
     measurements,
+    signalAnalysis,
+    writes,
     evidence,
     session,
     safety,

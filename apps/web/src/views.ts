@@ -225,6 +225,94 @@ export interface AdaptersView {
   adapters: AdapterDescription[];
 }
 
+/** Guided Diagnosis wire contract (Task 6). */
+export interface GuidedDiagnosisView {
+  status: "in-progress" | "resolved" | "inconclusive";
+  summary: string;
+  stepsCompleted: number;
+  hypotheses: Array<{
+    id: string;
+    claim: string;
+    confidence: number;
+    outcome: "confirmed" | "refuted" | "untested";
+    checks: Array<{ signal: string; expect: string; outcome: string }>;
+    nextTest?: { signal: string; expect: string; min?: number; max?: number; windowMs?: number };
+  }>;
+  nextRecommendedTest?: {
+    hypothesisId: string;
+    rationale: string;
+    test: { signal: string; expect: string; min?: number; max?: number; windowMs?: number };
+    discriminatesAgainst?: string[];
+  };
+}
+
+/** ECU Coding write outcome (Task 8). */
+export interface CodingResultView {
+  ok: boolean;
+  verified: boolean;
+  ecuId: string;
+  did: number;
+  originalHex?: string;
+  writtenHex?: string;
+  reasons?: string[];
+  warnings?: string[];
+  transactionId: string;
+}
+
+/** Parameter Adaptation write outcome (Task 8). */
+export interface AdaptationResultView {
+  ok: boolean;
+  verified: boolean;
+  ecuId: string;
+  did: number;
+  originalValue?: number;
+  writtenValue?: number;
+  unit?: string;
+  reasons?: string[];
+  warnings?: string[];
+  transactionId: string;
+}
+
+/** Advanced signal analysis view (Task 5). */
+export interface AdvancedSignalAnalysisView {
+  signalId: string;
+  sampleCount: number;
+  statistics?: {
+    min: number;
+    max: number;
+    mean: number;
+    median: number;
+    variance: number;
+    stdDev: number;
+    skewness: number;
+    kurtosis: number;
+    p5: number;
+    p50: number;
+    p95: number;
+  };
+  spectrum?: {
+    dominantFrequency: number;
+    dominantMagnitude: number;
+    snrDb: number;
+  };
+  anomalies: Array<{
+    kind: string;
+    value: number;
+    severity: string;
+    description: string;
+  }>;
+}
+
+/** Chaos testing and fault injection status view (Task 4). */
+export interface ChaosStatusView {
+  active: boolean;
+  dropRate: number;
+  dropBurstRemaining: number;
+  droppedFrames: number;
+  corruptedFrames: number;
+  delayedFrames: number;
+}
+
 /** Payload of `POST /api/adapter/select`. */
 export interface AdapterSelectView {
   adapter: AdapterDescription;

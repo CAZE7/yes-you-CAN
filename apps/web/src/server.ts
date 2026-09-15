@@ -315,6 +315,125 @@ export class WebServer {
       return this.sendJson(response, 200, { result });
     }
 
+    // Guided Diagnosis (Task 6)
+    if (path === "/api/guided-diagnosis" && (method === "GET" || method === "POST")) {
+      const state = await this.backend.guidedDiagnosis();
+      return this.sendJson(response, 200, { state });
+    }
+    if (path === "/api/guided-diagnosis/step" && method === "POST") {
+      const body = await this.readBody<{ signalId?: string; value?: number }>(request);
+      const state = await this.backend.guidedDiagnosis(
+        body.signalId && body.value !== undefined
+          ? { signalId: body.signalId, value: body.value }
+          : undefined,
+      );
+      return this.sendJson(response, 200, { state });
+    }
+
+    // ECU Coding & Adaptation (Task 8)
+    if (path === "/api/coding/precheck" && method === "POST") {
+      const body = await this.readBody<{
+        rxId?: string;
+        did?: number;
+        data?: string;
+        vehicleState?: Record<string, unknown>;
+      }>(request);
+      const rxId = parseCanId(body.rxId);
+      const did = body.did ?? 0x0100;
+      const data = body.data ?? "";
+      const precheck = await this.backend.precheckCoding(
+        rxId,
+        did,
+        data,
+        parseVehicleState(body.vehicleState),
+      );
+      return this.sendJson(response, 200, { precheck });
+    }
+    if (path === "/api/coding/write" && method === "POST") {
+      const body = await this.readBody<{
+        rxId?: string;
+        did?: number;
+        data?: string;
+        confirmed?: boolean;
+        vehicleState?: Record<string, unknown>;
+      }>(request);
+      const rxId = parseCanId(body.rxId);
+      const did = body.did ?? 0x0100;
+      const data = body.data ?? "";
+      const result = await this.backend.writeCoding(
+        rxId,
+        did,
+        data,
+        body.confirmed === true,
+        parseVehicleState(body.vehicleState),
+      );
+      return this.sendJson(response, 200, { result });
+    }
+    if (path === "/api/adaptation/precheck" && method === "POST") {
+      const body = await this.readBody<{
+        rxId?: string;
+        did?: number;
+        value?: number;
+        vehicleState?: Record<string, unknown>;
+      }>(request);
+      const rxId = parseCanId(body.rxId);
+      const did = body.did ?? 0x0100;
+      const value = body.value ?? 0;
+      const precheck = await this.backend.precheckAdaptation(
+        rxId,
+        did,
+        value,
+        parseVehicleState(body.vehicleState),
+      );
+      return this.sendJson(response, 200, { precheck });
+    }
+    if (path === "/api/adaptation/write" && method === "POST") {
+      const body = await this.readBody<{
+        rxId?: string;
+        did?: number;
+        value?: number;
+        confirmed?: boolean;
+        vehicleState?: Record<string, unknown>;
+      }>(request);
+      const rxId = parseCanId(body.rxId);
+      const did = body.did ?? 0x0100;
+      const value = body.value ?? 0;
+      const result = await this.backend.writeAdaptation(
+        rxId,
+        did,
+        value,
+        body.confirmed === true,
+        parseVehicleState(body.vehicleState),
+      );
+      return this.sendJson(response, 200, { result });
+    }
+
+    // Signal Analysis & Anomaly Detection (Task 5)
+    if (path.startsWith("/api/analysis/signal") && method === "GET") {
+      const url = new URL(request.url ?? "/", "http://localhost");
+      const signalId = url.searchParams.get("signalId") ?? "engine.speed";
+      const analysis = this.backend.analyzeSignal(signalId);
+      return this.sendJson(response, 200, { analysis });
+    }
+
+    // Chaos Lab Controls (Task 4)
+    if (path === "/api/chaos/inject" && method === "POST") {
+      const body = await this.readBody<{
+        dropBurst?: number;
+        dropRate?: number;
+        corruptSequenceCanId?: number;
+      }>(request);
+      this.backend.injectChaos(body);
+      return this.sendJson(response, 200, { status: this.backend.chaosStatus() });
+    }
+    if (path === "/api/chaos/reset" && method === "POST") {
+      this.backend.resetChaos();
+      return this.sendJson(response, 200, { status: this.backend.chaosStatus() });
+    }
+    if (path === "/api/chaos/status" && method === "GET") {
+      return this.sendJson(response, 200, { status: this.backend.chaosStatus() });
+    }
+
     if (path === "/api/live/start" && method === "POST") {
       const body = await this.readBody<{ signalIds?: string[] }>(request);
       await this.backend.startLive(body.signalIds);

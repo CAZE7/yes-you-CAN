@@ -42,10 +42,10 @@ export class CanChaosBus implements CanBus {
     listener: FrameListener;
     filters?: readonly CanFilter[];
   }> = [];
-  private readonly innerBus: VirtualCanBus;
+  private readonly innerBus: CanBus;
   private readonly sleep: (ms: number) => Promise<void>;
 
-  constructor(innerBus: VirtualCanBus, options: { sleep?: (ms: number) => Promise<void> } = {}) {
+  constructor(innerBus: CanBus, options: { sleep?: (ms: number) => Promise<void> } = {}) {
     this.innerBus = innerBus;
     this.sleep =
       options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));

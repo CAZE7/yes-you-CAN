@@ -203,8 +203,8 @@ export function createCodingOperation(
     describe(transaction, input, prepared, sessionType) {
       const definitionVersion = transaction.snapshot.binding.definitionVersion;
       const context: WriteRequestContext = {
-        ecuId: input.target.id,
-        ecuName: input.target.name,
+        ecuId: input.target?.id ?? transaction.snapshot.binding.ecuId,
+        ecuName: input.target?.name ?? transaction.snapshot.binding.ecuName,
         newValue: prepared !== undefined ? toHex(prepared.newBytes) : "coding-change",
         risk: "high",
         userConfirmed: input.userConfirmed,

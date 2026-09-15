@@ -11,6 +11,7 @@ export * from "./measurements/decoder.js";
 export * from "./measurements/encoder.js";
 export * from "./measurements/types.js";
 export * from "./measurements/statistics.js";
+export * from "./measurements/signal-analysis.js";
 export * from "./measurements/recorder.js";
 export * from "./measurements/live.js";
 export * from "./diagnostics/discovery.js";

@@ -27,17 +27,25 @@ class FakeVirtualBcm implements CodingTargetEcu {
   writeAttempts = 0;
   failNextWrite = false;
   corruptReadback = false;
+  throwOnRead = false;
+  throwOnSessionSwitch = false;
 
   constructor(initialCoding: Uint8Array) {
     this.codingMemory = new Uint8Array(initialCoding);
   }
 
   async prepareWrite(targetSession = 0x03) {
+    if (this.throwOnSessionSwitch) {
+      throw new Error("security access denied for session switch");
+    }
     this.sessionType = targetSession;
     return { sessionType: this.sessionType, switched: true };
   }
 
   async readCoding(_did = 0x0200): Promise<Uint8Array> {
+    if (this.throwOnRead) {
+      throw new Error("read timeout");
+    }
     if (this.corruptReadback) {
       return new Uint8Array([0xff, 0xff, 0xff]);
     }
@@ -62,17 +70,25 @@ class FakeVirtualEngine implements AdaptationTargetEcu {
   writeAttempts = 0;
   failNextWrite = false;
   corruptReadback = false;
+  throwOnRead = false;
+  throwOnSessionSwitch = false;
 
   constructor() {
     this.adaptationMemory.set(0x2100, 800); // Default idle_speed = 800 rpm
   }
 
   async prepareWrite(targetSession = 0x03) {
+    if (this.throwOnSessionSwitch) {
+      throw new Error("security access denied");
+    }
     this.sessionType = targetSession;
     return { sessionType: this.sessionType, switched: true };
   }
 
   async readAdaptation(channelDid: number): Promise<number> {
+    if (this.throwOnRead) {
+      throw new Error("CAN bus timeout");
+    }
     if (this.corruptReadback) {
       return 9999;
     }
@@ -121,7 +137,6 @@ function engineBinding(engine: FakeVirtualEngine): WriteBinding {
 describe("Virtual Coding System", () => {
   test("applyCodingChanges correctly modifies bit and byte levels with diff", () => {
     const original = new Uint8Array([0x00, 0x12, 0x34]);
-    // Byte 0, Bit 3 (0x08) -> 1 (e.g. Daytime Running Lights)
     const result = applyCodingChanges(original, [
       { byteIndex: 0, bitIndex: 3, value: 1, description: "DRL enabled" },
       { byteIndex: 1, value: 0xaa, description: "Country code" },
@@ -133,6 +148,32 @@ describe("Virtual Coding System", () => {
     assert.equal(result.diffSummary.length, 2);
     assert.match(result.diffSummary[0] ?? "", /Byte 0 Bit 3: 0 -> 1/);
     assert.match(result.diffSummary[1] ?? "", /Byte 1: 0x12 -> 0xAA/);
+  });
+
+  test("rejects coding with empty changes or invalid byte index", async () => {
+    const safety = new SafetyManager();
+    const port = new WritePort({ safety });
+    port.register(createCodingOperation());
+
+    const bcm = new FakeVirtualBcm(new Uint8Array([0x00]));
+
+    // Empty changes
+    const resEmpty = await runCoding(
+      port,
+      { target: bcm, changes: [], userConfirmed: true },
+      bcmBinding(bcm),
+    );
+    assert.equal(resEmpty.ok, false);
+    assert.match(resEmpty.reasons.join("; "), /no coding changes specified/);
+
+    // Byte index out of range
+    const resOob = await runCoding(
+      port,
+      { target: bcm, changes: [{ byteIndex: 99, value: 1 }], userConfirmed: true },
+      bcmBinding(bcm),
+    );
+    assert.equal(resOob.ok, false);
+    assert.match(resOob.reasons.join("; "), /outside coding payload length/);
   });
 
   test("full successful coding write with readback verification and audit", async () => {
@@ -163,8 +204,6 @@ describe("Virtual Coding System", () => {
     assert.equal(bcm.codingMemory[0], 0x08);
     assert.equal(bcm.sessionType, 0x03, "switched to extended diagnostic session");
     assert.deepEqual(actions, ["coding-write"]);
-
-    // Audit log records write-success
     assert.ok(safety.audit.some((entry) => entry.action === "write-success"));
   });
 
@@ -197,7 +236,7 @@ describe("Virtual Coding System", () => {
 
     const initial = new Uint8Array([0x42]);
     const bcm = new FakeVirtualBcm(initial);
-    bcm.failNextWrite = true; // Fails execute, but rollback write succeeds
+    bcm.failNextWrite = true;
 
     const result = await runCoding(
       port,
@@ -238,6 +277,33 @@ describe("Virtual Coding System", () => {
     assert.match(result.reasons.join("; "), /does not match written configuration/);
     assert.equal(result.transaction.state, "executed");
     assert.equal(result.value?.verified, false);
+  });
+
+  test("coding verification readback error is handled cleanly", async () => {
+    const safety = new SafetyManager();
+    const port = new WritePort({ safety });
+    port.register(createCodingOperation());
+
+    const bcm = new FakeVirtualBcm(new Uint8Array([0x10]));
+    // Execute write succeeds, but read during verify throws
+    const origWrite = bcm.writeCoding.bind(bcm);
+    bcm.writeCoding = async (data, did) => {
+      await origWrite(data, did);
+      bcm.throwOnRead = true;
+    };
+
+    const result = await runCoding(
+      port,
+      {
+        target: bcm,
+        changes: [{ byteIndex: 0, value: 0x20 }],
+        userConfirmed: true,
+      },
+      bcmBinding(bcm),
+    );
+
+    assert.equal(result.ok, false);
+    assert.match(result.reasons.join("; "), /verification readback failed/);
   });
 });
 
@@ -287,7 +353,7 @@ describe("Virtual Adaptation System", () => {
         target: engine,
         channelDid: 0x2100,
         channelName: "idle_speed",
-        requestedValue: 1200, // Dangerously high idle speed outside 600..900 range
+        requestedValue: 1200,
         allowedRange: { min: 600, max: 900, unit: "rpm" },
         userConfirmed: true,
       },
@@ -306,7 +372,7 @@ describe("Virtual Adaptation System", () => {
     port.register(createAdaptationOperation());
 
     const engine = new FakeVirtualEngine();
-    engine.failNextWrite = true; // Fails execute, rollback succeeds
+    engine.failNextWrite = true;
 
     const result = await runAdaptation(
       port,
@@ -325,5 +391,55 @@ describe("Virtual Adaptation System", () => {
     assert.match(result.reasons.join("; "), /adaptation condition not met/);
     assert.equal(engine.adaptationMemory.get(0x2100), 800, "original 800 RPM backup intact");
     assert.equal(result.transaction.state, "rolled-back");
+  });
+
+  test("adaptation readback mismatch or read error is handled in verify", async () => {
+    const safety = new SafetyManager();
+    const port = new WritePort({ safety });
+    port.register(createAdaptationOperation());
+
+    const engine = new FakeVirtualEngine();
+    engine.corruptReadback = true;
+
+    // Readback value mismatch
+    const resultMismatch = await runAdaptation(
+      port,
+      {
+        target: engine,
+        channelDid: 0x2100,
+        channelName: "idle_speed",
+        requestedValue: 750,
+        allowedRange: { min: 600, max: 900, unit: "rpm" },
+        userConfirmed: true,
+      },
+      engineBinding(engine),
+    );
+
+    assert.equal(resultMismatch.ok, false);
+    assert.match(resultMismatch.reasons.join("; "), /does not match requested target/);
+
+    // Readback threw error during verify
+    const engine2 = new FakeVirtualEngine();
+    const origWrite = engine2.writeAdaptation.bind(engine2);
+    engine2.writeAdaptation = async (did, val) => {
+      await origWrite(did, val);
+      engine2.throwOnRead = true;
+    };
+
+    const resultErr = await runAdaptation(
+      port,
+      {
+        target: engine2,
+        channelDid: 0x2100,
+        channelName: "idle_speed",
+        requestedValue: 750,
+        allowedRange: { min: 600, max: 900, unit: "rpm" },
+        userConfirmed: true,
+      },
+      engineBinding(engine2),
+    );
+
+    assert.equal(resultErr.ok, false);
+    assert.match(resultErr.reasons.join("; "), /verification readback for idle_speed failed/);
   });
 });

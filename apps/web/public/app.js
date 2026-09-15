@@ -7,7 +7,7 @@
  */
 
 import * as api from "/api.js";
-import { button, child, el, input, kv, messageOf, must, row, select } from "/dom.js";
+import { $, button, child, el, input, kv, messageOf, must, row, select } from "/dom.js";
 import { GraphBoard } from "/graphs.js";
 import { renderVehicleResolution } from "/vehicle.js";
 
@@ -20,6 +20,11 @@ import { renderVehicleResolution } from "/vehicle.js";
 /** @typedef {import("../src/views.js").SampleView} SampleView */
 /** @typedef {import("../src/views.js").SignalStatisticsView} SignalStatisticsView */
 /** @typedef {import("../src/views.js").TraceView} TraceView */
+/** @typedef {import("../src/views.js").GuidedDiagnosisView} GuidedDiagnosisView */
+/** @typedef {import("../src/views.js").CodingResultView} CodingResultView */
+/** @typedef {import("../src/views.js").AdaptationResultView} AdaptationResultView */
+/** @typedef {import("../src/views.js").AdvancedSignalAnalysisView} AdvancedSignalAnalysisView */
+/** @typedef {import("../src/views.js").ChaosStatusView} ChaosStatusView */
 
 /**
  * The little bit of state the front end keeps on its own.
@@ -150,7 +155,20 @@ function renderConnection(data) {
 }
 
 /** @param {EcuView[]} ecus */
+function renderCodingEcuOptions(ecus) {
+  const selectNode = $("#ca-ecu");
+  if (!(selectNode instanceof HTMLSelectElement)) return;
+  const previous = selectNode.value;
+  selectNode.replaceChildren(
+    ...ecus.map((ecu) => el("option", { value: ecu.rxId, text: `${ecu.name} (${ecu.rxId})` })),
+  );
+  if (previous && ecus.some((e) => e.rxId === previous)) selectNode.value = previous;
+}
+
+/** @param {EcuView[]} ecus */
 function renderEcus(ecus) {
+  state.ecusCache = ecus;
+  renderCodingEcuOptions(ecus);
   const body = must("#ecu-rows");
   body.replaceChildren();
   for (const ecu of ecus) {
@@ -232,7 +250,19 @@ function renderDtcs(dtcs) {
 }
 
 /** @param {AppState["signals"]} signals */
+function renderAnalysisSignalOptions(signals) {
+  const selectNode = $("#analysis-signal-select");
+  if (!(selectNode instanceof HTMLSelectElement)) return;
+  const previous = selectNode.value;
+  selectNode.replaceChildren(
+    ...signals.map((s) => el("option", { value: s.id, text: `${s.name} (${s.id})` })),
+  );
+  if (previous && signals.some((s) => s.id === previous)) selectNode.value = previous;
+}
+
+/** @param {AppState["signals"]} signals */
 function renderSignals(signals) {
+  renderAnalysisSignalOptions(signals);
   const picker = must("#signal-picker");
   picker.replaceChildren();
   for (const signal of signals) {
@@ -1125,6 +1155,486 @@ button("#btn-analyze").addEventListener("click", async () => {
     renderAnalysis(await api.analyze());
   } catch (error) {
     logError(error);
+  }
+});
+
+/* ------------------------------------------- Geführte Diagnose (Task 6) */
+
+/** @type {GuidedDiagnosisView | null} */
+let guidedDiagnosisState = null;
+
+/** @param {GuidedDiagnosisView} view */
+function renderGuidedDiagnosis(view) {
+  guidedDiagnosisState = view;
+  const badge = must("#guided-status-badge");
+  badge.textContent = view.status;
+  badge.className = "pill";
+  if (view.status === "resolved") badge.classList.add("pill-online");
+  else if (view.status === "in-progress") badge.classList.add("pill-live");
+  else badge.classList.add("pill-possible");
+
+  must("#guided-summary-text").textContent =
+    `${view.summary} · ${view.stepsCompleted} Schritte abgeschlossen`;
+
+  const testContent = must("#guided-next-test-content");
+  const testActions = must("#guided-next-test-actions");
+
+  if (view.nextRecommendedTest) {
+    const next = view.nextRecommendedTest;
+    testContent.replaceChildren(
+      el("p", {}, [el("strong", { text: "Warum dieser Test: " }), next.rationale]),
+      el("p", {
+        class: "mono small",
+        text: `Signal: ${next.test.signal} | Erwartung: ${next.test.expect} (Min: ${next.test.min ?? "—"}, Max: ${next.test.max ?? "—"}, Fenster: ${next.test.windowMs ?? 1000} ms)`,
+      }),
+      next.discriminatesAgainst && next.discriminatesAgainst.length > 0
+        ? el("p", {
+            class: "muted small",
+            text: `Grenzt ab gegen: ${next.discriminatesAgainst.join(", ")}`,
+          })
+        : el("span"),
+    );
+    testActions.hidden = false;
+  } else {
+    testContent.replaceChildren(
+      el("p", {
+        class: "muted",
+        text: "Kein weiterer diskriminierender Prüfschritt erforderlich (Diagnose abgeschlossen oder keine weiteren Tests definiert).",
+      }),
+    );
+    testActions.hidden = true;
+  }
+
+  const rows = must("#guided-hypotheses-rows");
+  rows.replaceChildren();
+  if (view.hypotheses.length === 0) {
+    rows.append(row(["Keine Hypothesen formuliert."]));
+    return;
+  }
+
+  for (const hyp of view.hypotheses) {
+    const tr = el("tr");
+
+    // Hypothese
+    const tdClaim = el("td", {}, [
+      el("strong", { text: hyp.claim }),
+      el("div", { class: "muted small mono", text: `ID: ${hyp.id}` }),
+    ]);
+
+    // Konfidenz
+    const pct = Math.round(hyp.confidence * 100);
+    const scoreFill = el("div", {
+      class: hyp.confidence >= 0.7 ? "score-fill" : "score-fill score-fill-weak",
+    });
+    scoreFill.style.width = `${pct}%`;
+    const tdConf = el("td", {}, [
+      el("span", { class: "mono small", text: `${pct} %` }),
+      el("div", { class: "score" }, [scoreFill]),
+    ]);
+
+    // Status
+    const statusPill = el("span", {
+      class: `pill pill-${hyp.outcome}`,
+      text:
+        hyp.outcome === "confirmed"
+          ? "bestätigt"
+          : hyp.outcome === "refuted"
+            ? "widerlegt"
+            : "offen",
+    });
+    const tdStatus = el("td", {}, [statusPill]);
+
+    // Prüfungen
+    const checksList = hyp.checks.map((c) => `${c.signal}: ${c.expect} → ${c.outcome}`).join(" · ");
+    const tdChecks = el("td", {
+      class: "small",
+      text: checksList || "Noch keine Prüfschritte ausgeführt",
+    });
+
+    tr.append(tdClaim, tdConf, tdStatus, tdChecks);
+    rows.append(tr);
+  }
+}
+
+async function refreshGuidedDiagnosis() {
+  try {
+    const { state: gdState } = await api.fetchGuidedDiagnosis();
+    renderGuidedDiagnosis(gdState);
+  } catch (error) {
+    logError(error);
+  }
+}
+
+button("#btn-guided-refresh").addEventListener("click", refreshGuidedDiagnosis);
+
+button("#btn-guided-step").addEventListener("click", async () => {
+  if (!guidedDiagnosisState?.nextRecommendedTest) return;
+  const next = guidedDiagnosisState.nextRecommendedTest;
+  try {
+    const { state: gdState } = await api.stepGuidedDiagnosis({
+      signalId: next.test.signal,
+      value:
+        next.test.min !== undefined
+          ? next.test.min
+          : next.test.max !== undefined
+            ? next.test.max
+            : 1.0,
+    });
+    renderGuidedDiagnosis(gdState);
+  } catch (error) {
+    logError(error);
+  }
+});
+
+/* --------------------------------- Codierung & Anpassung (Task 7 & 8) */
+
+function currentCaVehicleState() {
+  const voltage = Number.parseFloat(input("#ca-voltage").value);
+  return {
+    stationary: input("#ca-stationary").checked,
+    ignitionOn: input("#ca-ignition").checked,
+    parkingBrake: input("#ca-parking").checked,
+    ...(Number.isFinite(voltage) ? { batteryVoltage: voltage } : {}),
+  };
+}
+
+// Codierung
+button("#btn-coding-precheck").addEventListener("click", async () => {
+  const rxId = select("#ca-ecu").value;
+  const did = Number.parseInt(input("#coding-did").value, 16);
+  const data = input("#coding-data").value.trim();
+  const status = must("#coding-precheck-status");
+  status.replaceChildren();
+
+  try {
+    const { precheck } = await api.precheckCoding({
+      rxId,
+      did: Number.isFinite(did) ? did : 0x0100,
+      data,
+      vehicleState: currentCaVehicleState(),
+    });
+
+    if (precheck.ok) {
+      status.append(
+        el("li", {
+          class: "info",
+          text: "Vorprüfung erfolgreich: Alle Sicherheitsbedingungen für Codierung erfüllt.",
+        }),
+      );
+      input("#coding-confirm").disabled = false;
+    } else {
+      for (const f of precheck.failed) {
+        status.append(el("li", { class: "warn", text: `Fehlgeschlagen: ${f}` }));
+      }
+      for (const u of precheck.unproven) {
+        status.append(el("li", { class: "warn", text: `Nicht nachgewiesen: ${u}` }));
+      }
+      input("#coding-confirm").checked = false;
+      input("#coding-confirm").disabled = true;
+    }
+    button("#btn-coding-execute").disabled = !input("#coding-confirm").checked || !precheck.ok;
+  } catch (error) {
+    logError(error);
+  }
+});
+
+input("#coding-confirm").addEventListener("change", () => {
+  button("#btn-coding-execute").disabled = !input("#coding-confirm").checked;
+});
+
+button("#btn-coding-execute").addEventListener("click", async () => {
+  const rxId = select("#ca-ecu").value;
+  const did = Number.parseInt(input("#coding-did").value, 16);
+  const data = input("#coding-data").value.trim();
+  const box = must("#coding-result-box");
+  box.replaceChildren(
+    el("p", { class: "muted", text: "Codierung wird ausgeführt und verifiziert …" }),
+  );
+
+  try {
+    const { result } = await api.writeCoding({
+      rxId,
+      did: Number.isFinite(did) ? did : 0x0100,
+      data,
+      confirmed: input("#coding-confirm").checked,
+      vehicleState: currentCaVehicleState(),
+    });
+
+    box.replaceChildren(
+      el("div", {
+        class: result.verified ? "pill pill-online" : "pill pill-offline",
+        text: result.verified ? "VERIFIZIERT" : "FEHLGESCHLAGEN",
+      }),
+      el("p", {}, [
+        el("strong", {
+          text: `ECU: ${result.ecuId} | DID: 0x${result.did.toString(16).toUpperCase()}`,
+        }),
+      ]),
+      el("p", {
+        class: "mono small",
+        text: `Vorher: ${result.originalHex ?? "—"} → Geschrieben: ${result.writtenHex ?? "—"}`,
+      }),
+      el("p", { class: "muted small mono", text: `Transaktions-ID: ${result.transactionId}` }),
+    );
+    if (result.warnings && result.warnings.length > 0) {
+      box.append(el("p", { class: "warn small", text: result.warnings.join(" · ") }));
+    }
+  } catch (error) {
+    logError(error);
+    box.replaceChildren(el("p", { class: "warn", text: messageOf(error) }));
+  }
+});
+
+// Anpassung (Adaptation)
+button("#btn-adapt-precheck").addEventListener("click", async () => {
+  const rxId = select("#ca-ecu").value;
+  const did = Number.parseInt(input("#adapt-did").value, 16);
+  const value = Number.parseFloat(input("#adapt-value").value);
+  const status = must("#adapt-precheck-status");
+  status.replaceChildren();
+
+  try {
+    const { precheck } = await api.precheckAdaptation({
+      rxId,
+      did: Number.isFinite(did) ? did : 0x2100,
+      value: Number.isFinite(value) ? value : 0,
+      vehicleState: currentCaVehicleState(),
+    });
+
+    if (precheck.ok) {
+      status.append(
+        el("li", {
+          class: "info",
+          text: "Vorprüfung erfolgreich: Alle Sicherheitsbedingungen für Anpassung erfüllt.",
+        }),
+      );
+      input("#adapt-confirm").disabled = false;
+    } else {
+      for (const f of precheck.failed) {
+        status.append(el("li", { class: "warn", text: `Fehlgeschlagen: ${f}` }));
+      }
+      for (const u of precheck.unproven) {
+        status.append(el("li", { class: "warn", text: `Nicht nachgewiesen: ${u}` }));
+      }
+      input("#adapt-confirm").checked = false;
+      input("#adapt-confirm").disabled = true;
+    }
+    button("#btn-adapt-execute").disabled = !input("#adapt-confirm").checked || !precheck.ok;
+  } catch (error) {
+    logError(error);
+  }
+});
+
+input("#adapt-confirm").addEventListener("change", () => {
+  button("#btn-adapt-execute").disabled = !input("#adapt-confirm").checked;
+});
+
+button("#btn-adapt-execute").addEventListener("click", async () => {
+  const rxId = select("#ca-ecu").value;
+  const did = Number.parseInt(input("#adapt-did").value, 16);
+  const value = Number.parseFloat(input("#adapt-value").value);
+  const box = must("#adapt-result-box");
+  box.replaceChildren(
+    el("p", { class: "muted", text: "Parameteranpassung wird ausgeführt und verifiziert …" }),
+  );
+
+  try {
+    const { result } = await api.writeAdaptation({
+      rxId,
+      did: Number.isFinite(did) ? did : 0x2100,
+      value: Number.isFinite(value) ? value : 0,
+      confirmed: input("#adapt-confirm").checked,
+      vehicleState: currentCaVehicleState(),
+    });
+
+    box.replaceChildren(
+      el("div", {
+        class: result.verified ? "pill pill-online" : "pill pill-offline",
+        text: result.verified ? "VERIFIZIERT" : "FEHLGESCHLAGEN",
+      }),
+      el("p", {}, [
+        el("strong", {
+          text: `ECU: ${result.ecuId} | DID: 0x${result.did.toString(16).toUpperCase()}`,
+        }),
+      ]),
+      el("p", {
+        class: "mono small",
+        text: `Vorher: ${result.originalValue ?? "—"} → Geschrieben: ${result.writtenValue ?? "—"} ${result.unit ?? ""}`,
+      }),
+      el("p", { class: "muted small mono", text: `Transaktions-ID: ${result.transactionId}` }),
+    );
+    if (result.warnings && result.warnings.length > 0) {
+      box.append(el("p", { class: "warn small", text: result.warnings.join(" · ") }));
+    }
+  } catch (error) {
+    logError(error);
+    box.replaceChildren(el("p", { class: "warn", text: messageOf(error) }));
+  }
+});
+
+/* ------------------------------------------- Chaos Lab (Task 4) */
+
+/** @param {ChaosStatusView} status */
+function renderChaosStatus(status) {
+  const activeLabel = must("#chaos-active-label");
+  activeLabel.replaceChildren(
+    el("span", {
+      class: status.active ? "pill pill-offline" : "pill pill-online",
+      text: status.active ? "aktiv" : "inaktiv",
+    }),
+  );
+  must("#chaos-drop-rate-label").textContent = `${Math.round(status.dropRate * 100)} %`;
+  must("#chaos-burst-remaining-label").textContent = `${status.dropBurstRemaining} Frames`;
+  must("#chaos-dropped-count").textContent = String(status.droppedFrames);
+  must("#chaos-corrupted-count").textContent = String(status.corruptedFrames);
+  must("#chaos-delayed-count").textContent = String(status.delayedFrames);
+}
+
+/** @param {string} text */
+function logChaosEvent(text) {
+  const logList = must("#chaos-feedback-log");
+  const time = new Date().toLocaleTimeString();
+  logList.prepend(el("li", { text: `[${time}] ${text}` }));
+}
+
+async function refreshChaos() {
+  try {
+    const { status } = await api.fetchChaosStatus();
+    renderChaosStatus(status);
+  } catch (error) {
+    logError(error);
+  }
+}
+
+button("#btn-chaos-burst-inject").addEventListener("click", async () => {
+  const count = Number.parseInt(input("#chaos-burst-input").value, 10);
+  try {
+    const { status } = await api.injectChaos({ dropBurst: Number.isFinite(count) ? count : 5 });
+    renderChaosStatus(status);
+    logChaosEvent(`Drop-Burst von ${count} Frames injiziert.`);
+  } catch (error) {
+    logError(error);
+  }
+});
+
+button("#btn-chaos-rate-inject").addEventListener("click", async () => {
+  const rate = Number.parseFloat(input("#chaos-rate-input").value);
+  try {
+    const { status } = await api.injectChaos({ dropRate: Number.isFinite(rate) ? rate : 0.2 });
+    renderChaosStatus(status);
+    logChaosEvent(`Dauerhafte Drop-Rate auf ${Math.round(rate * 100)} % gesetzt.`);
+  } catch (error) {
+    logError(error);
+  }
+});
+
+button("#btn-chaos-corrupt-inject").addEventListener("click", async () => {
+  const canId = Number.parseInt(input("#chaos-corrupt-can-id").value, 16);
+  try {
+    const { status } = await api.injectChaos({
+      corruptSequenceCanId: Number.isFinite(canId) ? canId : 0x7e8,
+    });
+    renderChaosStatus(status);
+    logChaosEvent(`Sequenzfehler auf CAN-ID 0x${canId.toString(16).toUpperCase()} injiziert.`);
+  } catch (error) {
+    logError(error);
+  }
+});
+
+button("#btn-chaos-reset-all").addEventListener("click", async () => {
+  try {
+    const { status } = await api.resetChaos();
+    renderChaosStatus(status);
+    logChaosEvent("Alle Chaos-Regeln zurückgesetzt. Bus läuft störungsfrei.");
+  } catch (error) {
+    logError(error);
+  }
+});
+
+button("#btn-chaos-refresh").addEventListener("click", refreshChaos);
+
+/* --------------------------------- Erweiterte Signalanalyse (Task 5) */
+
+button("#btn-signal-analyze").addEventListener("click", async () => {
+  const signalId = select("#analysis-signal-select").value;
+  const out = must("#signal-analysis-out");
+  out.replaceChildren(
+    el("p", { class: "muted", text: "Berechne FFT, Spektrum und statistische Momente …" }),
+  );
+
+  try {
+    const { analysis } = await api.fetchSignalAnalysis(signalId);
+    out.replaceChildren();
+
+    // Statistics card
+    if (analysis.statistics) {
+      const stats = analysis.statistics;
+      const statsCard = el("div", { class: "card", style: "margin-top: 0.75rem;" }, [
+        el("h4", { text: `Statistische Momente (${analysis.sampleCount} Samples)` }),
+        el("dl", { class: "kv" }, [
+          el("dt", { text: "Min / Max" }),
+          el("dd", { text: `${stats.min.toFixed(2)} / ${stats.max.toFixed(2)}` }),
+          el("dt", { text: "Mittelwert (Ø) / Median" }),
+          el("dd", { text: `${stats.mean.toFixed(2)} / ${stats.median.toFixed(2)}` }),
+          el("dt", { text: "Standardabweichung (σ)" }),
+          el("dd", { text: `${stats.stdDev.toFixed(3)} (Varianz: ${stats.variance.toFixed(3)})` }),
+          el("dt", { text: "Schiefe (Skewness)" }),
+          el("dd", { text: stats.skewness.toFixed(3) }),
+          el("dt", { text: "Wölbung (Kurtosis)" }),
+          el("dd", { text: stats.kurtosis.toFixed(3) }),
+          el("dt", { text: "Perzentile (P5 / P50 / P95)" }),
+          el("dd", {
+            text: `${stats.p5.toFixed(2)} / ${stats.p50.toFixed(2)} / ${stats.p95.toFixed(2)}`,
+          }),
+        ]),
+      ]);
+      out.append(statsCard);
+    }
+
+    // Spectrum card
+    if (analysis.spectrum) {
+      const spec = analysis.spectrum;
+      const specCard = el("div", { class: "card", style: "margin-top: 0.75rem;" }, [
+        el("h4", { text: "Frequenzspektrum (Hann-FFT)" }),
+        el("dl", { class: "kv" }, [
+          el("dt", { text: "Dominante Frequenz" }),
+          el("dd", { text: `${spec.dominantFrequency.toFixed(2)} Hz` }),
+          el("dt", { text: "Dominante Amplitude" }),
+          el("dd", { text: spec.dominantMagnitude.toFixed(2) }),
+          el("dt", { text: "Signal-Rausch-Verhältnis (SNR)" }),
+          el("dd", { text: `${spec.snrDb.toFixed(1)} dB` }),
+        ]),
+      ]);
+      out.append(specCard);
+    }
+
+    // Anomalies card
+    const anomalyCard = el("div", { class: "card", style: "margin-top: 0.75rem;" }, [
+      el("h4", { text: `Erkannte Anomalien (${analysis.anomalies.length})` }),
+    ]);
+    if (analysis.anomalies.length === 0) {
+      anomalyCard.append(
+        el("p", {
+          class: "muted small",
+          text: "Keine physikalischen Anomalien erkannt (Signal stationär und fehlerfrei).",
+        }),
+      );
+    } else {
+      const ul = el("ul", { class: "plain small" });
+      for (const anom of analysis.anomalies) {
+        ul.append(
+          el("li", {}, [
+            el("span", { class: "pill pill-offline", text: anom.kind }),
+            ` Schwere: ${anom.severity} | Wert: ${anom.value.toFixed(2)} — ${anom.description}`,
+          ]),
+        );
+      }
+      anomalyCard.append(ul);
+    }
+    out.append(anomalyCard);
+  } catch (error) {
+    logError(error);
+    out.replaceChildren(el("p", { class: "warn", text: messageOf(error) }));
   }
 });
 

@@ -149,9 +149,9 @@ export function createAdaptationOperation(
     describe(transaction, input, prepared, sessionType) {
       const definitionVersion = transaction.snapshot.binding.definitionVersion;
       const context: WriteRequestContext = {
-        ecuId: input.target.id,
-        ecuName: input.target.name,
-        newValue: `${input.channelName}=${input.requestedValue}`,
+        ecuId: input.target?.id ?? transaction.snapshot.binding.ecuId,
+        ecuName: input.target?.name ?? transaction.snapshot.binding.ecuName,
+        newValue: `${input.channelName ?? "parameter"}=${input.requestedValue ?? 0}`,
         risk: "medium",
         userConfirmed: input.userConfirmed,
         backupAvailable: prepared !== undefined,
