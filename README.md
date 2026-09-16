@@ -125,11 +125,18 @@ Motortemperatur, Räder und die Verdrahtung jedes Moduls — ein Fehler wird nic
 gesetzt, er entsteht, wenn ein Monitor eine Bedingung lange genug gemessen hat.
 Dazu gibt es die **Szenario-Engine**: `GET /api/simulator/scenarios` listet den
 Katalog, `POST /api/simulator/scenario {"id": "under-voltage-at-start"}` läuft ein
-Szenario und meldet jede Prüfung mit Begründung. Gemessen am laufenden Demo-Server:
+Szenario und meldet jede Prüfung mit Begründung. Seit 2026-09-16 liegt beides in der
+Workbench: der Reiter „Szenarien“ wählt aus dem Katalog, startet den Lauf auf dem
+gewählten Adapter und zeigt das Ergebnis als Urteil, Check-Liste, Fehlerspeicher,
+Endzustand und Zeitlinie (Projektion in `apps/web/src/scenario-view.ts`; ein Adapter ohne
+`runScenario` wird als ohne Szenarien ausgewiesen). Der Fehlerspeicher dekodiert dabei den
+Statusbyte — 14 Zeilen sind das dokumentierte Vokabular des Fahrzeugs, gemeldet ist einer,
+und die Note unter der Tabelle sagt genau das. Gemessen am laufenden Demo-Server:
 der Lauf endet mit `passed: true` (8 Checks, u. a. `supplyVoltage < 11,5 → 10,7`),
 und der sich anschließende `POST /api/dtc/scan` liest `B1001` mit Status `0x2E`
 über UDS — geheilt, aber im Speicher, mit Beschreibung und Schweregrad aus dem
-Definitions-Paket.
+Definitions-Paket. Im Panel desselben Laufs steht dazu `bestätigt` (nicht „jetzt
+fehlgeschlagen“) und `1 von 14 dokumentierten Codes sind im Fehlerspeicher gemeldet`.
 
 Mit echtem Adapter:
 
@@ -195,8 +202,8 @@ Zeitraum aus, Doppelklick zeigt die gesamte Aufnahme.
 
 ## Tests
 
-1953 bestandene Tests / 131 geprüfte Dateien (`npm test` in 58,7 s; `npm run
-test:coverage` in 66,2 s), Vitest 5 mit Projektkonfiguration (ADR 0010,
+1981 bestandene Tests / 133 geprüfte Dateien (`npm test` in 53 s; `npm run
+test:coverage` in 63 s), Vitest 5 mit Projektkonfiguration (ADR 0010,
 Schritt 1 — ersetzt ADR 0008). Der `architecture`-Lauf prüft die Struktur *und*
 führt die Quality-Gates aus (ADR 0029) — unter `CI` auch die Coverage-Gates, als
 Kind-Lauf von `npm run test:coverage` (ADR 0029 §6), weil kein Workflow sie selbst
@@ -205,9 +212,9 @@ aufrufen kann (0.E E20) — einschließlich
 tatsächlichen Importen passt (ADR 0042). Unit-Specs liegen co-lokatiert neben dem
 Code (`src/*.spec.ts`); Property-Tests laufen mit fast-check, Coverage-Gates mit
 `npm run test:coverage` (global 90 % lines / 80 % branches als
-Projekt-Durchschnitt, Ist 94,74 Statements / 86,67 Zweige / 96,09 Funktionen /
-96,04 Zeilen — die letzten Stellen wandern mit Last und Node-Version (86,59 bis 86,67
-Zweige auf demselben Commit, ADR 0029 §6) — seit ADR 0027 wird die ganze
+Projekt-Durchschnitt, Ist 94,77 Statements / 86,69 Zweige / 96,13 Funktionen /
+96,05 Zeilen — gemessen am Stand vom 2026-09-16, und die letzten Stellen wandern mit
+Last und Node-Version (86,59 bis 86,69 Zweige auf demselben Baum, ADR 0029 §6) — seit ADR 0027 wird die ganze
 Fläche gemessen: `packages/**/src`, `apps/web/src/**` und `tools/**`, weil die
 Workbench-Schicht vorher in keiner Zahl vorkam; per-file-Gates für
 `shared`/`core`/`protocols`/`adapters`/`transport`/`storage`/`charts`/`reports`/`ai` (95/85 seit 2026-09-14)/`diagnostic-ir` (95/85 seit ADR 0034)/`definitions`

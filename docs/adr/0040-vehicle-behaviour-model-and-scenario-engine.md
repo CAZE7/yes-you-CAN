@@ -98,7 +98,13 @@ dasselbe Objekt nötig: Daten, die ein Test abarbeitet und ein Simulator ausfüh
    2026-09-16 — das Tor vergleicht neuerdings die Zahl im Ausnahmetext mit der
    gemessenen, weil beide dort als Prosa standen und um 545 Zeilen verfault waren), und
    eine View, die niemand abdecken kann, ist Schulden statt Funktion. Der Endpoint ist
-   die nach oben offene Fläche; das Panel ist ein eigener, kleiner Schritt.
+die nach oben offene Fläche; das Panel ist ein eigener, kleiner Schritt — er kam
+(2026-09-16, 0.E E21 geschlossen) und war dann genau das: ein Schritt, kein Umzug.
+`apps/web/public/scenario.js` (194 Zeilen) montiert Katalog, Lauf und Ergebnis an die
+View, `apps/web/src/scenario-view.ts` (407 Zeilen) baut jede Zeile auf der Server-Seite
+der Grenze, damit das Markup keine zweite Zuordnungstabelle bekommt; `app.js` wuchs nur
+um Mount und Refresh (1648 Zeilen, dieselbe Messung, die den Ausnahmegrund in
+`tests/architecture/hygiene.test.ts` auf den Stand des Commits gebracht hat).
 
 9. **Die Messwert-Tabelle und die Signale des Fahrzeugs sind eine geprüfte Beziehung.**
    `MODEL_SIGNAL_READERS` (`vehicle-signals.ts`) ist die eine Tabelle — eine Tabelle und
@@ -150,6 +156,22 @@ dasselbe Objekt nötig: Daten, die ein Test abarbeitet und ein Simulator ausfüh
   ohne Cause an der Stelle wurde **nie geprüft** und war damit grün. Momente sind jetzt
   Cause- **und** Prüfzeitpunkte.
 - Der 5-ECU-Simulator startet mit leerem Fehlerspeicher (`startWithStoredFaults: false`);
+
+- **Ein Tablett mit vierzehn Zeilen, dreizehn davon falsch beschriftet.** Das erste Panel
+  zeigte den Fehlerspeicher als 14 Zeilen, 13 mit Status `0x00`, und die Zeilen sagten
+  „gespeichert“. Sie kamen aus dem dokumentierten Vokabular des Modells (`dtcMemory`: Codes,
+  die die Monitore melden *könnten*), gemeldet war einer. Eine Tabelle ohne Nenner ist eine
+  Aussage, die sich der Leser selbst basteln muss. Seither dekodiert `toMemoryRows` den
+  Statusbyte mit demselben `decodeDtcStatus` aus `@vdp/protocols-uds`, das auch die UDS-Lesung
+  benutzt, und `toMemoryNote` nennt die Hälfte, die zählt: „1 von 14 dokumentierten Codes sind
+  im Fehlerspeicher gemeldet“. Kein neuer Rand: `apps/web` hatte das Paket schon als Dependency.
+- **Die Frontends waren die letzte Schicht ohne Prüfer — und ihre Fehlerklasse war nicht die
+  der Typen.** Ein `checkJs`-Pass deckt Seitentypen ab, aber eine ID, die kein Markup hat,
+  wirft zur Laufzeit und reißt die Module mit, die nach ihr geladen werden. Der naheliegende
+  Prüfer war ein enger Kreis „nur die Workbench“; geworden ist `apps/web/test/markup.spec.ts`,
+  das alle `public/*.js` gegen `index.html` scannt (94 Selektoren gegen 140 IDs, gemessen am
+  Commit von 1.35) und zusätzlich die Hosts des neuen Panels einzeln pinnt — der Biss ist durch
+  Umbenennen einer Host-ID bewiesen, nicht durch Behaupten.
   die Paket-Codes sind sonst Einträge, die kein Monitor gelatcht hat.
 
 ## Konsequenzen
