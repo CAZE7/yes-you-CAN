@@ -113,7 +113,7 @@ Architekturtest schlägt fehl, sobald ein Orchestrator als Abhängigkeit, als
 Konfigurationsdatei oder in einem Skript auftaucht; die Entscheidung muss dann
 bewusst neu getroffen werden.
 
-### 6. Der Coverage-Gate bekommt denselben Träger — CI-only, weil er teuer ist
+### 6. Der Coverage-Gate bekommt denselben Träger — CI-only, weil er die Suite doppelt
 
 §4 gilt für Tore, die nichts kosten (Biome und zwei `tsc`-Durchläufe ≈ 2 s). Die
 Coverage-Schwellen aus ADR 0027/0028 waren davon ausgenommen: `npm test` läuft ohne
@@ -121,31 +121,42 @@ Coverage-Schwellen aus ADR 0027/0028 waren davon ausgenommen: `npm test` läuft 
 dieser App nicht schreibbar — zum dritten Mal gemessen 2026-09-16, wortgleich zu E10:
 `refusing to allow a GitHub App to create or update workflow
 '.github/workflows/ci.yml' without 'workflows' permission'`. Ein Schwellwert, den
-niemand ausführt, ist ein Wunschzettel in der Konfiguration: Er fällt nicht auf, wenn
-die Coverage sinkt, und er fällt nicht auf, wenn jemand den Boden absenkt.
+niemand ausführt, ist ein Wunschzettel in der Konfiguration: weder ein Sinken der
+Coverage noch ein Absenken des Bodens fällt auf.
 
 Neu: `tests/architecture/coverage-gate.test.ts`. Nur unter `CI`, und das Kind ist
-wörtlich `npm run test:coverage`, damit Tor und Kommando nicht zwei Definitionen der
-Schwellwerte sind — gemessen dasselbe Ergebnis (94,74 / 86,67 / 96,09 / 96,04). Was der
-Lauf dabei über die Deckung aussagt, ist eine eigene Zeile wert: die **letzte Stelle der
-Zweigsumme ist lastabhängig** (86,66 im ruhigen Lauf, 86,67 unter Last, zweimal
-nachgemessen). Ursache ist ein einzelner Zweig in `tools/simulators/src/chaos-lab.ts`
-(Realtime-`sleep`-Fallback, Zeile 58 — in Unit-Läufen bewusst nie erwartet, bei Load
-dann und wann doch: 91,66 ↔ 93,33 Zweige). Ein Ist-Wert, der mit der Machineatmung
-wandert, ist ein zweiter Grund, warum die Gates ein Boden sind und kein Versprechen. Drei
-Einbauten, die erst der Lauf gezeigt hat: Rekursionssperre `VDP_COVERAGE_CHILD=1`
-(`test:coverage` fährt das Projekt `architecture` und damit diesen Test selbst),
-`VITEST_JUNIT_FILE` wird dem Kind genommen (zwei Schreiber an einer CI-Artefaktdatei
-sind schlechter als keine), und `retry: 0` gegen den CI-Default zwei — ein Retry hier
-ist keine neu versuchte Behauptung, sondern eine zweite volle Suite: ohne diese Zeile
-dreimal dieselbe Threshold-Meldung und 203 s statt 65 s.
+wörtlich `npm run test:coverage`, damit Tor und Kommando nicht zwei Definitionen
+derselben Zahl werden. Vier Einbauten, die erst der Lauf gezeigt hat: Rekursionssperre
+`VDP_COVERAGE_CHILD=1` (`test:coverage` fährt das Projekt `architecture` und damit
+diesen Test selbst); `VITEST_JUNIT_FILE` wird dem Kind genommen (zwei Schreiber an
+einer CI-Artefaktdatei sind schlechter als keine); `retry: 0` gegen den CI-Default
+zwei, weil ein Retry hier keine neu versuchte Behauptung ist, sondern eine zweite
+volle Suite — gemessen dreimal dieselbe Threshold-Meldung und 203 s statt 65 s; und
+eine `::notice` pro Zweig (derselbe Kanal, den `tools/test-reporters/flaky-reporter.ts`
+nutzt), weil die Job-Logs mit diesen Zugangsdaten nicht abrufbar sind. Ein Tor, das
+nichts berichtet, ist von einem Tor, das nicht lief, nicht zu unterscheiden.
 
-Preis, gemessen: `architecture` in 5,5 s lokal (Test skipped) gegenüber 73,2 s im
-CI-Lauf, also ≈65 s pro Matrix-Bein. Bewusst **nicht** in `npm run ci` aufgenommen —
-das wäre eine halbe Suite zusätzlich in der Schleife vor jedem Push; lokal bleibt
-`npm run test:coverage` der Weg, der Testlauf ist der CI-Weg. Biss gemessen: `lines`
-auf 99 gehoben (Ist 96,04) → genau dieser Test fällt als einziger des Projekts, mit
-der Meldung des Kindes im Text.
+Was diese Zeile wert war, ist die zweite Hälfte der Geschichte: der erste Anlauf maß
+40 s pro Bein, und das las sich als „das Kind läuft hier nie". Die Annotations
+antworteten in einem Lesegang — `mode=armed (CI=true)`, dann `mode=measured 34,3 s`
+(Node 22) und `mode=measured 27,6 s` (Node 24). Die Runner sind schneller als die
+Entwicklungssandbox, die für dieselbe Kind-Suite 66 s braucht; die Kosten, die gegen
+`npm run ci` sprechen, sind also maschinenabhängig und stehen mit beiden Zahlen da.
+
+Dritter Befund aus demselben Vergleich: der Ist-Wert atmet. 94,74 / 86,66 / 96,09 /
+96,04 lokal im ruhigen Lauf, 86,67 Zweige unter Last, und auf dem Node-22-Bein
+94,68 / 86,59 / 96,02 gegen 94,74 / 86,66 / 96,04 auf Node 24 — derselbe Commit.
+Ursache ist ein einzelner Zweig in `tools/simulators/src/chaos-lab.ts` (der
+Realtime-`sleep`-Fallback, Zeile 58: in Unit-Läufen bewusst nie erwartet, bei Last
+dann und wann doch, 91,66 ↔ 93,33 Zweige dieser Datei). Wer eine Coverage-Zahl in die
+Dokumentation schreibt, schreibt einen Momentwert hin; die Tore bleiben Böden mit
+Abstand (80 Zweige, 90 Zeilen) und werden keine Zusicherung auf die letzte Kommastelle.
+
+Biss gemessen: `lines` auf 99 gehoben (Ist 96,04) → genau dieser Test fällt als
+einziger seines Projekts, mit der Meldung des Kindes im Text. Bewusst **nicht** in
+`npm run ci` aufgenommen, weil das lokal eine halbe Suite obendrauf in der Schleife
+vor jedem Push wäre; `npm run test:coverage` bleibt der eigene Weg, der Testlauf ist
+der CI-Weg.
 
 ## Konsequenzen
 

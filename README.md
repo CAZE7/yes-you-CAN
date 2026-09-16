@@ -206,7 +206,8 @@ tatsächlichen Importen passt (ADR 0042). Unit-Specs liegen co-lokatiert neben d
 Code (`src/*.spec.ts`); Property-Tests laufen mit fast-check, Coverage-Gates mit
 `npm run test:coverage` (global 90 % lines / 80 % branches als
 Projekt-Durchschnitt, Ist 94,74 Statements / 86,67 Zweige / 96,09 Funktionen /
-96,04 Zeilen — die letzte Stelle der Zweigsumme wandert mit der Last (ADR 0029 §6) — seit ADR 0027 wird die ganze
+96,04 Zeilen — die letzten Stellen wandern mit Last und Node-Version (86,59 bis 86,67
+Zweige auf demselben Commit, ADR 0029 §6) — seit ADR 0027 wird die ganze
 Fläche gemessen: `packages/**/src`, `apps/web/src/**` und `tools/**`, weil die
 Workbench-Schicht vorher in keiner Zahl vorkam; per-file-Gates für
 `shared`/`core`/`protocols`/`adapters`/`transport`/`storage`/`charts`/`reports`/`ai` (95/85 seit 2026-09-14)/`diagnostic-ir` (95/85 seit ADR 0034)/`definitions`

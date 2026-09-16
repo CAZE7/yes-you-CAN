@@ -31,15 +31,20 @@
  *    suite has no timing to be flaky about — the child either reports the table or
  *    it does not, and both branches are asserted below.
  *
- * Cost and bite, measured on this tree: the `architecture` project runs in 5,5 s with
- * this test skipped (every local `npm test`) and in 73,2 s with the child (every CI
- * leg, both matrix entries); `npm run test:coverage` alone is 66,2 s, so ≈65 s per leg
- * is bought for the gates that previously had no CI carrier at all. Child and local
- * command agree by construction (94,74 / 86,67 / 96,09 / 96,04 in both runs measured
- * here) — which is what running the script instead of restating its numbers buys. It is
- * *not* a claim that the numbers are stable: the branch total moves by 0,01 between a
- * quiet and a loaded machine, because one `chaos-lab.ts` branch (its realtime-`sleep`
- * fallback, line 58) is covered only when a run has to wait — a floor, not a promise.
+ * Cost and bite, measured: the `architecture` project runs in 5,5 s here with this test
+ * skipped and in 73,2 s with the child (`npm run test:coverage` alone is 66,2 s on this
+ * machine). On the CI runners the same child takes 34,3 s (Node 22) and 27,6 s (Node 24)
+ * inside a 40 s leg. The gap between the two machines is worth recording, because
+ * machine cost is the only argument against moving this into `npm run ci` — where it
+ * would be paid per push instead of per PR.
+ *
+ * Child and command agree by construction, and that is all the design promises. The ist
+ * itself moves in its last digits: 94,74 / 86,66 / 96,09 / 96,04 on a quiet local run,
+ * 86,67 branches under load, and 94,68 / 86,59 / 96,02 on the Node-22 leg against
+ * 94,74 / 86,66 / 96,04 on Node 24 — same commit. One `chaos-lab.ts` branch (its
+ * realtime-`sleep` fallback, line 58) is covered only when a run has to wait. Which is
+ * the second reason these gates are floors with daylight (80 branches, 90 lines) and not
+ * numbers to copy into prose.
  *
  * Bite measured: raising the global `lines` threshold to 99 (ist 96,04) makes this test
  * the project's only failure, and its message carries the child's own line `ERROR:
@@ -75,9 +80,12 @@ const COVERAGE_TIMEOUT_MS = 15 * 60_000;
  * API here cannot fetch), but `::notice` lines become check annotations and *are*
  * readable — the same channel `tools/test-reporters/flaky-reporter.ts` uses for flaky
  * tests. A gate that reports nothing cannot be told apart from a gate that did not
- * run; without a line here, a CI leg of the same length as before this file existed
- * would be a belief about `process.env.CI` instead of an annotation. Escaping order is
- * `%` before `::`, otherwise the escape itself is escaped twice.
+ * run. The line earned its keep at once: the first legs after this file landed measured
+ * 40 s, which reads too short to contain a child at all, and the annotations settled it
+ * in one read — `mode=armed (CI=true)`, then `mode=measured 34,3s` (Node 22) and
+ * `mode=measured 27,6s` (Node 24). The slow machine in this story is the development
+ * sandbox, not a CI that skipped its gate. Escaping order is `%` before `::`, otherwise
+ * the escape sequence is escaped twice.
  */
 const notice = (message: string): void => {
   process.stdout.write(
