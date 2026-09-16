@@ -51,6 +51,7 @@ import {
 import { VehicleBehaviourModel } from "./vehicle-model.js";
 import type {
   IgnitionState,
+  SensorFaultMode,
   VehicleModelOptions,
   VehicleModelState,
   VehiclePhysics,
@@ -273,12 +274,15 @@ export class HighFidelityVehicle extends VirtualVehicle implements ScenarioTarge
     this.model.setDriverDemand(demand);
   }
 
-  /** A sensor that lies. The ECU then decides something wrong for a good reason. */
-  breakSensor(
-    signal: string,
-    mode: "open-circuit" | "short-to-battery" | "stuck",
-    value?: number,
-  ): void {
+  /**
+   * A sensor that lies. The ECU then decides something wrong for a good reason.
+   *
+   * The full {@link SensorFaultMode} vocabulary, because that is what the model
+   * implements: `short-to-ground` reads zero for a reason of its own, and a cause script
+   * (`scenarios.ts`) already accepts it. A setter narrower than the thing it sets turns
+   * a documented failure mode into one nobody can reach from the vehicle.
+   */
+  breakSensor(signal: string, mode: SensorFaultMode, value?: number): void {
     this.model.setSensorFault({ signal, mode, ...(value === undefined ? {} : { value }) });
   }
 

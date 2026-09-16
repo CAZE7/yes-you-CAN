@@ -13,7 +13,7 @@ import { NRC, SID, UdsServer, type UdsServerLink } from "@vdp/protocols-uds";
 import { createLogger } from "@vdp/shared";
 import { describe, test } from "vitest";
 import { VehicleBehaviourModel } from "./vehicle-model.js";
-import type { VehicleModelOptions } from "./vehicle-state.js";
+import type { SensorFaultMode, VehicleModelOptions } from "./vehicle-state.js";
 import { createRandom } from "./virtual-vehicle.js";
 
 const logger = createLogger("vehicle-model-spec", { level: "ERROR" });
@@ -375,6 +375,75 @@ describe("the physics", () => {
       statusOf(server, "C0035"),
       0x2f,
       "and the rationality test catches both directions",
+    );
+  });
+});
+
+describe("the sensor vocabulary", () => {
+  /**
+   * One wheel channel, one mode, the number a tester would read. The model's whole
+   * claim about sensors is that each mode is a different *electrical story* with its own
+   * reading — so this is where a mode collapsing into another one, or into a catch-all,
+   * becomes visible.
+   */
+  function readingWith(mode: SensorFaultMode, value?: number): number | undefined {
+    const { model } = modelWithBcm({ initial: { speedKph: 60 } });
+    model.setSensorFault({
+      signal: "abs.wheel_speed_front_left",
+      mode,
+      ...(value === undefined ? {} : { value }),
+    });
+    model.advance(40);
+    return model.signalValue("abs.wheel_speed_front_left");
+  }
+
+  test("each mode of the vocabulary reads as the story it tells", () => {
+    const readings = [
+      readingWith("open-circuit"),
+      readingWith("short-to-ground"),
+      readingWith("short-to-battery"),
+      readingWith("stuck", 42),
+      readingWith("drift-high"),
+      readingWith("drift-low"),
+    ];
+    assert.deepEqual(readings, [0, 0, 520, 42, 150, 18]);
+    assert.equal(
+      new Set(readings).size,
+      5,
+      "six modes, five readings: a cut wire and a wire on ground are the same dead channel, " +
+        "and that is a decision the model states — every other mode stands alone",
+    );
+  });
+
+  test("a stuck channel stays stuck while the car moves", () => {
+    const { model } = modelWithBcm({ initial: { speedKph: 20 } });
+    model.setSensorFault({ signal: "abs.wheel_speed_front_left", mode: "stuck", value: 42 });
+    model.setDriverDemand({ demandSpeedKph: 90 });
+    // 12 km/h per second of model time is the acceleration this car has, so six seconds
+    // is the shortest wait that lets the neighbour arrive at 90 — the numbers in this
+    // file are chosen from the model's rates, not from a sleep that happens to work.
+    model.advance(6_000);
+    assert.equal(model.signalValue("abs.wheel_speed_front_left"), 42, "the value it froze at");
+    assert.equal(
+      model.signalValue("abs.wheel_speed_front_right"),
+      90,
+      "while its neighbour arrived at what the driver asked for",
+    );
+  });
+
+  test("a lie at the meter is a different number than the same lie at the wheel", () => {
+    // The MAF path scales against what the engine breathes and the wheel path against
+    // the speed the car rolls at; both must stay inside their own units, and a shared
+    // "fault means zero" shortcut for both would erase the difference the monitors read.
+    const { model } = modelWithBcm({ initial: { speedKph: 60, rpm: 800 } });
+    model.setSensorFault({ signal: "engine.maf_airflow", mode: "drift-high" });
+    model.advance(40);
+    const maf = model.signalValue("engine.maf_airflow") ?? 0;
+    assert.ok(maf > 0, "a drifted meter still reports a quantity, not a zero");
+    assert.equal(
+      model.signalValue("abs.wheel_speed_front_left"),
+      60,
+      "and the wheels are untouched",
     );
   });
 });

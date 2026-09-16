@@ -69,6 +69,31 @@ interface MonitorRuntime {
 }
 
 /**
+ * What one wheel-speed channel reads with this fault applied.
+ *
+ * Its own function with no `default` arm, for the reason `ignitionCode` has one: when
+ * `SensorFaultMode` gains a mode, a switch that must return a value for every case
+ * fails to compile until the new mode is thought about, while a catch-all files it under
+ * whatever the last branch did. `open-circuit` and `short-to-ground` share a reading
+ * because a dead channel is what both of them are — that is a decision, not a fallback.
+ */
+function faultedWheelSpeed(speedKph: number, fault: SensorFault): number {
+  switch (fault.mode) {
+    case "open-circuit":
+    case "short-to-ground":
+      return 0;
+    case "short-to-battery":
+      return 520;
+    case "stuck":
+      return fault.value ?? 0;
+    case "drift-high":
+      return Math.max(0, speedKph * 2.5);
+    case "drift-low":
+      return Math.max(0, speedKph * 0.3);
+  }
+}
+
+/**
  * A small, deterministic vehicle: electrical supply, one petrol engine, four wheels,
  * five modules with monitors. Not a powertrain simulation — it is the smallest model
  * in which every fault of the scenario catalog *has to* happen for the reason the
@@ -606,21 +631,7 @@ export class VehicleBehaviourModel implements MonitorContext {
     ] as const) {
       const fault = this.sensors.get(signal);
       if (fault === undefined) continue;
-      const wheel = key as keyof VehicleModelState["wheelSpeedKph"];
-      switch (fault.mode) {
-        case "open-circuit":
-        case "short-to-ground":
-          wheels[wheel] = 0;
-          break;
-        case "short-to-battery":
-          wheels[wheel] = 520;
-          break;
-        case "stuck":
-          wheels[wheel] = fault.value ?? 0;
-          break;
-        default:
-          wheels[wheel] = Math.max(0, state.speedKph * (fault.mode === "drift-high" ? 2.5 : 0.3));
-      }
+      wheels[key] = faultedWheelSpeed(state.speedKph, fault);
     }
   }
 
