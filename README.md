@@ -146,8 +146,8 @@ npm run typecheck     # Build + strikter noEmit-Pass über Tests, Konfiguration,
 npx biome check .     # Lint + Format (Biome 1.9): 2-space, 100-char, organizeImports
 npm test              # Build + Vitest: alle 6 Ebenen (unit, protocol, regression, replay, integration, architecture)
 npm run test:unit     # nur Unit-Specs — schnelle Feedback-Schleife
-npm run test:coverage # Suite + V8-Coverage (global 90/80 als Durchschnitt; per-file laut vitest.config.ts, ADR 0020)
-npm run ci            # Build + Typecheck + Biome + Test — entspricht der CI
+npm run test:coverage # Suite + V8-Coverage (global 90/80; per-file laut vitest.config.ts) — in der CI erzwungen seit ADR 0029 §6
+npm run ci            # Build + Typecheck + Biome + Test — die Gates der CI ohne den Coverage-Lauf
 ```
 
 Einzelnes Paket bzw. einzelne Test-Datei:
@@ -195,9 +195,12 @@ Zeitraum aus, Doppelklick zeigt die gesamte Aufnahme.
 
 ## Tests
 
-1953 Tests / 131 Dateien (`npm run ci`), 62,1 s im Coverage-Lauf; Vitest 5 mit Projektkonfiguration (ADR 0010,
+1953 bestandene Tests / 131 geprüfte Dateien (`npm test` in 58,7 s; `npm run
+test:coverage` in 66,2 s), Vitest 5 mit Projektkonfiguration (ADR 0010,
 Schritt 1 — ersetzt ADR 0008). Der `architecture`-Lauf prüft die Struktur *und*
-führt die Quality-Gates aus (ADR 0029) — einschließlich
+führt die Quality-Gates aus (ADR 0029) — unter `CI` auch die Coverage-Gates, als
+Kind-Lauf von `npm run test:coverage` (ADR 0029 §6), weil kein Workflow sie selbst
+aufrufen kann (0.E E20) — einschließlich
 `npm run check:manifests`, das verlangt, dass jedes `package.json` zu den
 tatsächlichen Importen passt (ADR 0042). Unit-Specs liegen co-lokatiert neben dem
 Code (`src/*.spec.ts`); Property-Tests laufen mit fast-check, Coverage-Gates mit

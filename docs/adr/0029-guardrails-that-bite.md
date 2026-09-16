@@ -100,7 +100,8 @@ Workflow entfernt, entfernt sonst still die Gates.
 
 `npm run ci` bleibt das lokale Tor; sobald die `workflows`-Berechtigung da ist
 (E10), gehört der Quality-Job direkt in den Workflow, und dieser Test darf
-zurückgebaut werden.
+zurückgebaut werden. Für die Coverage-Gates gilt dasselbe Muster seit 2026-09-16 —
+aber als eigener Punkt, weil sie nicht kostenlos sind: §6.
 
 ### 5. Keine Build-Orchestrierung auf Vorrat (kein Turborepo, kein Nx)
 
@@ -111,6 +112,34 @@ Repository gated —, um ein Problem zu lösen, das noch nicht existiert. Der
 Architekturtest schlägt fehl, sobald ein Orchestrator als Abhängigkeit, als
 Konfigurationsdatei oder in einem Skript auftaucht; die Entscheidung muss dann
 bewusst neu getroffen werden.
+
+### 6. Der Coverage-Gate bekommt denselben Träger — CI-only, weil er teuer ist
+
+§4 gilt für Tore, die nichts kosten (Biome und zwei `tsc`-Durchläufe ≈ 2 s). Die
+Coverage-Schwellen aus ADR 0027/0028 waren davon ausgenommen: `npm test` läuft ohne
+`--coverage`, kein Workflow führt `npm run test:coverage` aus, und `ci.yml` ist mit
+dieser App nicht schreibbar — zum dritten Mal gemessen 2026-09-16, wortgleich zu E10:
+`refusing to allow a GitHub App to create or update workflow
+'.github/workflows/ci.yml' without 'workflows' permission'`. Ein Schwellwert, den
+niemand ausführt, ist ein Wunschzettel in der Konfiguration: Er fällt nicht auf, wenn
+die Coverage sinkt, und er fällt nicht auf, wenn jemand den Boden absenkt.
+
+Neu: `tests/architecture/coverage-gate.test.ts`. Nur unter `CI`, und das Kind ist
+wörtlich `npm run test:coverage`, damit Tor und Kommando nicht zwei Definitionen der
+Schwellwerte sind (gemessen dieselbe Tabelle: 94,74 / 86,66 / 96,09 / 96,04). Drei
+Einbauten, die erst der Lauf gezeigt hat: Rekursionssperre `VDP_COVERAGE_CHILD=1`
+(`test:coverage` fährt das Projekt `architecture` und damit diesen Test selbst),
+`VITEST_JUNIT_FILE` wird dem Kind genommen (zwei Schreiber an einer CI-Artefaktdatei
+sind schlechter als keine), und `retry: 0` gegen den CI-Default zwei — ein Retry hier
+ist keine neu versuchte Behauptung, sondern eine zweite volle Suite: ohne diese Zeile
+dreimal dieselbe Threshold-Meldung und 203 s statt 65 s.
+
+Preis, gemessen: `architecture` in 5,5 s lokal (Test skipped) gegenüber 73,2 s im
+CI-Lauf, also ≈65 s pro Matrix-Bein. Bewusst **nicht** in `npm run ci` aufgenommen —
+das wäre eine halbe Suite zusätzlich in der Schleife vor jedem Push; lokal bleibt
+`npm run test:coverage` der Weg, der Testlauf ist der CI-Weg. Biss gemessen: `lines`
+auf 99 gehoben (Ist 96,04) → genau dieser Test fällt als einziger des Projekts, mit
+der Meldung des Kindes im Text.
 
 ## Konsequenzen
 
