@@ -286,19 +286,32 @@ export default defineConfig({
         // reach it — that is the point of the line, and it says so in a comment.
         'packages/definitions/**/src/**': { lines: 85, branches: 80, perFile: true },
         // New on 2026-09-14 with the measurement scope widened to the whole tree
-        // (ADR 0027), raised on 2026-09-16 after the E17 round (tests first, then the
-        // gate — ADR 0017). This is a FLOOR, not a target: measured per file at that
-        // commit — server.ts 76,99 lines / 77,28 branches (the CLI block at its bottom
-        // stays unmeasured on purpose: a spawned child is not in the parent's v8
-        // counters, so covering it there would be a number bought by lying about the
-        // scope), backend.ts 92,81/67,87, adapters.ts 100/100 (its two thin branches
-        // were an unused export, deleted rather than decorated), paths.ts 100/91,66,
-        // vehicle-view.ts 100/87,5, scenario-view.ts 100/93,18, dtc-knowledge-view.ts
-        // 100/100, analysis-input.ts 100/97,4. The gate sits one point under the
-        // weakest measured value per column, so it cannot be satisfied by moving code
-        // around and it fails the moment coverage slips — the web layer used to be
-        // invisible to this file entirely, which is how its two thin files stayed thin.
-        'apps/web/src/**': { lines: 75, branches: 66, perFile: true },
+        // (ADR 0027), raised on 2026-09-16 after the E17 round and again after its
+        // remainder (tests first, then the gate — ADR 0017). This is a FLOOR, not a
+        // target, and the numbers below are the summary's own columns for
+        // `npm run test:coverage` (statements / branches / lines per file):
+        //   server.ts  77,12 / 77,42 / 79,67  — the CLI block at its bottom stays
+        //     unmeasured on purpose: a spawned child is not in the parent's v8
+        //     counters, so covering it there would be a number bought by lying about
+        //     the scope (0.E E17).
+        //   backend.ts 95,56 / 73,89 / 96,67  — was 92,81 / 67,87 before
+        //     `apps/web/test/backend-paths.spec.ts` walked the replay sources, the
+        //     throwing event listener, the marker before start, the managed-entry
+        //     guard, the statistics arm and the three chaos switches. What is left is
+        //     reachable only with an injected failure (the three teardown catches,
+        //     603/607/611), with a guided or anomalous session (777-784, 1318-1324),
+        //     or by constructing a backend without a logger (240).
+        //   adapters.ts 100/100/100 (its two thin branches were an unused export,
+        //     deleted rather than decorated), paths.ts 100/91,66, vehicle-view.ts
+        //     100/87,5, scenario-view.ts 100/93,18, analysis-input.ts 97,61/93,93.
+        // The floor sits under the weakest column value with the margin measured in
+        // units of the thing that would have to change: one branch of 249 is 0,4
+        // points, so branches 72 leaves ~4,7 untested branches of room, and lines 76
+        // is 3,67 points under the weakest line count. It cannot be satisfied by
+        // moving code around and it fails the moment coverage slips — the web layer
+        // used to be invisible to this file entirely, which is how its two thin files
+        // stayed thin.
+        'apps/web/src/**': { lines: 76, branches: 72, perFile: true },
         // `tools/**` is measured now (definition-importer 97,9/95,3 lines, simulators
         // 94,9/82,0, trace-analyzer 97,8/75,3) but deliberately has NO per-file gate:
         // `tools/test-reporters/flaky-reporter.ts` measures 0 % — lines 29-101, no
