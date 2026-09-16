@@ -140,8 +140,9 @@ Was diese Zeile wert war, ist die zweite Hälfte der Geschichte: der erste Anlau
 40 s pro Bein, und das las sich als „das Kind läuft hier nie". Die Annotations
 antworteten in einem Lesegang — `mode=armed (CI=true)`, dann `mode=measured` mit
 28 bis 36 s pro Bein. Fünfte Messung am Kopf 391f04f, zehn Werte: 27,6 / 28,1 / 28,2 /
-28,7 / 34,3 / 35,0 / 35,1 / 35,5 / 35,8 / 36,3 s — die beiden neuen befestigen nur die
-untere Kante der Spanne, sie verschieben sie nicht. Welches Bein oben liegt, wechselt:
+28,7 / 32,0 / 34,3 / 35,0 / 35,1 / 35,2 / 35,5 / 35,8 / 36,3 s — zwölf Werte, zwei pro
+Kopf, beide Beine `success`. Die neue Messung befestigt die untere Kante der Spanne, sie
+verschiebt sie nicht. Welches Bein oben liegt, wechselt:
 Node 22 führte drei Runden, in der vierten lag Node 24 vorn (36,3 s gegen 35,1 s), in der
 fünften wieder Node 22 (28,7 s gegen 28,2 s) — ein Muster aus drei Stichproben war eine
 Überziehung, und die fünfte Runde erledigt auch die zweite Vermutung: die
@@ -164,8 +165,12 @@ innerhalb eines Beamts messbar (Node 24 meldete auf demselben Commit 86,66 dreim
 zweiter Effekt — im fünften Lauf ist er umgekehrt (94,77 / 96,05 auf Node 22 gegen 94,71 /
 96,03 auf Node 24, Kopf 391f04f), also ist auch er ein Momentwert und keine
 Laufwerkseigenschaft. Die Spanne über alle fünf Runden: Statements 94,68–94,77, Zweige
-86,59–86,71, Zeilen 96,02–96,05. Beides verschiebt keinen Boden — die
-Böden bleiben 80/90. Wer eine Coverage-Zahl in die
+86,59–86,71, Zeilen 96,02–96,05. Der nächste Push (nur Doku, kein Code) trennt die beiden
+Erklärungen sauber: Node 24 meldete auf demselben Stand *exakt* dieselbe Tabelle
+(94,71 / 86,63 / 96,03), Node 22 wackelte um 0,02 Zweige (86,71 → 86,69) — dasselbe
+Messobjekt, ein Bein reproduzierbar, das andere von seiner Auslastung abhängig. Die
+Träger-Dauer blieb in beiden Fällen in der Spanne (32,0 s und 35,2 s). Beides
+verschiebt keinen Boden — die Böden bleiben 80/90. Wer eine Coverage-Zahl in die
 Dokumentation schreibt, schreibt einen Momentwert hin; die Tore bleiben Böden mit
 Abstand (80 Zweige, 90 Zeilen) und werden keine Zusicherung auf die letzte Kommastelle.
 
