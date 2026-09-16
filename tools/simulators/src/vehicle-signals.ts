@@ -26,63 +26,61 @@ export interface ModelSignalSource {
   readonly idleAdaptation: number;
 }
 
+/** One signal's reader: the model in, the number out. */
+export type ModelSignalReader = (source: ModelSignalSource) => number;
+
+/**
+ * Every signal id this vehicle answers from a physical state, with its reader.
+ *
+ * A table and not a switch, because the list of ids is itself a claim: the definition
+ * package the vehicle runs on has to declare exactly these signals (plus the ones the
+ * vehicle answers from its own registers), and `vehicle-definition.spec.ts` compares the
+ * two. A switch cannot be enumerated, so the check would have to read this file's text —
+ * and a rule the test extracts from source has its home in the wrong file.
+ */
+export const MODEL_SIGNAL_READERS: Readonly<Record<string, ModelSignalReader>> = {
+  "engine.rpm": (source) => source.state.rpm,
+  "engine.coolant_temperature": (source) => source.state.coolantC,
+  "transmission.oil_temperature": (source) => source.state.oilC,
+  "vehicle.speed": (source) => source.state.speedKph,
+  "engine.load": (source) => source.state.loadPct,
+  "engine.throttle_position": (source) => source.state.throttlePct,
+  "engine.short_term_fuel_trim": (source) => source.state.shortTermTrimPct,
+  "engine.long_term_fuel_trim": (source) => source.state.longTermTrimPct,
+  "engine.intake_manifold_pressure": (source) => source.state.mapKpa,
+  "engine.intake_air_temperature": (source) => source.state.intakeAirC,
+  "engine.timing_advance": (source) => source.state.timingAdvanceDeg,
+  "engine.maf_airflow": (source) => source.state.mafGramsPerS,
+  "engine.runtime": (source) => source.state.runtimeS,
+  "engine.fuel_rail_pressure": (source) => source.state.fuelRailKpa,
+  // Closed loop is a decision about the mixture, not a sensor: it is only reached once
+  // the coolant left warm-up behind, and the engine runs.
+  "engine.fuel_system_status": (source) =>
+    source.state.coolantC >= source.thresholds.closedLoopCoolantC && source.state.engineRunning
+      ? 2
+      : 1,
+  "transmission.gear_position": (source) => source.state.gear,
+  "abs.brake_pedal": (source) => (source.state.brakePressed ? 1 : 0),
+  "abs.wheel_speed_front_left": (source) => source.state.wheelSpeedKph.frontLeft,
+  "abs.wheel_speed_front_right": (source) => source.state.wheelSpeedKph.frontRight,
+  "abs.wheel_speed_rear_left": (source) => source.state.wheelSpeedKph.rearLeft,
+  "abs.wheel_speed_rear_right": (source) => source.state.wheelSpeedKph.rearRight,
+  // The supply voltage a module reports is the one at *its* pins; the battery's label
+  // would hide a corroded feed, which is the whole point of the B1001 monitor.
+  "bcm.battery_voltage": (source) => source.supplyOf("bcm"),
+  "bcm.ignition_state": (source) => ignitionCode(source.state.ignition),
+  // Routing is reported as the gateway's own verdict about its supervised peers, so a
+  // module that stops talking is visible here before any U-code is latched.
+  "gateway.routing_state": (source) => (source.anyPeerSilent("gateway") ? 0 : 1),
+  "gateway.bus_sleep_state": (source) =>
+    source.state.ignition === "lock" || !source.state.engineRunning ? 0 : 1,
+  "engine.idle_speed_adaptation": (source) => source.idleAdaptation,
+};
+
+/** The ids of {@link MODEL_SIGNAL_READERS} — the vehicle's signal vocabulary. */
+export const MODEL_SIGNAL_IDS: readonly string[] = Object.keys(MODEL_SIGNAL_READERS);
+
 /** The model's answer for one signal id, or `undefined` when the model is silent about it. */
 export function readModelSignal(source: ModelSignalSource, signalId: string): number | undefined {
-  const state = source.state;
-  switch (signalId) {
-    case "engine.rpm":
-      return state.rpm;
-    case "engine.coolant_temperature":
-      return state.coolantC;
-    case "transmission.oil_temperature":
-      return state.oilC;
-    case "vehicle.speed":
-      return state.speedKph;
-    case "engine.load":
-      return state.loadPct;
-    case "engine.throttle_position":
-      return state.throttlePct;
-    case "engine.short_term_fuel_trim":
-      return state.shortTermTrimPct;
-    case "engine.long_term_fuel_trim":
-      return state.longTermTrimPct;
-    case "engine.intake_manifold_pressure":
-      return state.mapKpa;
-    case "engine.intake_air_temperature":
-      return state.intakeAirC;
-    case "engine.timing_advance":
-      return state.timingAdvanceDeg;
-    case "engine.maf_airflow":
-      return state.mafGramsPerS;
-    case "engine.runtime":
-      return state.runtimeS;
-    case "engine.fuel_rail_pressure":
-      return state.fuelRailKpa;
-    case "engine.fuel_system_status":
-      return state.coolantC >= source.thresholds.closedLoopCoolantC && state.engineRunning ? 2 : 1;
-    case "transmission.gear_position":
-      return state.gear;
-    case "abs.brake_pedal":
-      return state.brakePressed ? 1 : 0;
-    case "abs.wheel_speed_front_left":
-      return state.wheelSpeedKph.frontLeft;
-    case "abs.wheel_speed_front_right":
-      return state.wheelSpeedKph.frontRight;
-    case "abs.wheel_speed_rear_left":
-      return state.wheelSpeedKph.rearLeft;
-    case "abs.wheel_speed_rear_right":
-      return state.wheelSpeedKph.rearRight;
-    case "bcm.battery_voltage":
-      return source.supplyOf("bcm");
-    case "bcm.ignition_state":
-      return ignitionCode(state.ignition);
-    case "gateway.routing_state":
-      return source.anyPeerSilent("gateway") ? 0 : 1;
-    case "gateway.bus_sleep_state":
-      return state.ignition === "lock" || !state.engineRunning ? 0 : 1;
-    case "engine.idle_speed_adaptation":
-      return source.idleAdaptation;
-    default:
-      return undefined;
-  }
+  return MODEL_SIGNAL_READERS[signalId]?.(source);
 }
