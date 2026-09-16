@@ -17,6 +17,7 @@ export type ErrorCode =
   | "E_DECODE"
   | "E_ENCODE"
   | "E_SESSION"
+  | "E_ECU_UNKNOWN"
   | "E_ADAPTER_UNSUPPORTED"
   | "E_SAFETY_VIOLATION"
   | "E_STORAGE"
@@ -118,6 +119,25 @@ export class EncodeError extends VdpError {
 export class SessionError extends VdpError {
   constructor(message: string, details: Record<string, unknown> = {}) {
     super("E_SESSION", message, details);
+  }
+}
+
+/**
+ * The ECU a request names is not on the bus of this session.
+ *
+ * This one earns its own class because the *status* is the finding: the sentence reads
+ * like a server fault, and for a while it answered as one. An operator who mistyped an
+ * address fixes it by picking another ECU — nothing on the server is broken, nothing has
+ * to be retried — so a caller that maps errors to answers needs the class, not a string
+ * match (AGENTS 35: typed errors so upper layers can react; 0.E E23; ADR 0018: a refusal
+ * a person can act on is data).
+ */
+export class UnknownEcuError extends VdpError {
+  readonly ecuId: string;
+
+  constructor(ecuId: string) {
+    super("E_ECU_UNKNOWN", `unknown ECU "${ecuId}" — connect first or check the id`, { ecuId });
+    this.ecuId = ecuId;
   }
 }
 

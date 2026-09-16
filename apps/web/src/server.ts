@@ -30,6 +30,7 @@ import {
   type Logger,
   SafetyViolationError,
   StorageError,
+  UnknownEcuError,
   createLogger,
   messageOf,
 } from "@vdp/shared";
@@ -688,6 +689,9 @@ function statusFor(error: unknown): number {
   if (error instanceof AdapterUnsupportedError) return 400;
   if (error instanceof SafetyViolationError) return 403;
   if (error instanceof StorageError) return 404;
+  // A wrong address is the operator's to fix, not the server's to explain: 409 says
+  // "this is not the state this session is in" (E23), where 500 said "something broke".
+  if (error instanceof UnknownEcuError) return 409;
   return 500;
 }
 

@@ -168,11 +168,12 @@ test("an id that is not on this bus is answered, and the server keeps working", 
       rxId: "0x7F0",
       code: SEEDED_CODE,
     });
-    // Pinned as it is, not as it should be: an operator's wrong id reaches the runtime as a
-    // plain Error, so the HTTP layer reports 500 and logs "request failed" as if the server
-    // had broken. The sentence is right; the status is a 409 case. 0.E E23 carries that,
-    // because changing a pinned status is a decision of its own, not a side effect.
-    assert.equal(response.status, 500);
+    // The class is the answer now (0.E E23, ADR 0018): the runtime reports an
+    // `UnknownEcuError` with the same sentence, and the HTTP layer maps it to 409 —
+    // "not the state this session is in" — instead of 500 plus an ERROR log line that
+    // blamed the server for a typo in a field. Both halves are pinned here: what a person
+    // can fix must not arrive as a defect, and a real defect still must.
+    assert.equal(response.status, 409);
     assert.match(
       (response.body as { error: string }).error,
       /unknown ECU "0x7f0" — connect first or check the id/,
