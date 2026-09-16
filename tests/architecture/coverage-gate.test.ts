@@ -34,9 +34,12 @@
  * Cost and bite, measured on this tree: the `architecture` project runs in 5,5 s with
  * this test skipped (every local `npm test`) and in 73,2 s with the child (every CI
  * leg, both matrix entries); `npm run test:coverage` alone is 66,2 s, so ≈65 s per leg
- * is bought for the gates that previously had no CI carrier at all. The child reports
- * the same table as the local command (94,74 / 86,66 / 96,09 / 96,04 on 2026-09-16) —
- * which is what running the script instead of restating its numbers buys.
+ * is bought for the gates that previously had no CI carrier at all. Child and local
+ * command agree by construction (94,74 / 86,67 / 96,09 / 96,04 in both runs measured
+ * here) — which is what running the script instead of restating its numbers buys. It is
+ * *not* a claim that the numbers are stable: the branch total moves by 0,01 between a
+ * quiet and a loaded machine, because one `chaos-lab.ts` branch (its realtime-`sleep`
+ * fallback, line 58) is covered only when a run has to wait — a floor, not a promise.
  *
  * Bite measured: raising the global `lines` threshold to 99 (ist 96,04) makes this test
  * the project's only failure, and its message carries the child's own line `ERROR:
@@ -64,6 +67,32 @@ const isCoverageChild = process.env.VDP_COVERAGE_CHILD === "1";
  * global 20 s `testTimeout` kill a measurement that is merely slow. */
 const COVERAGE_TIMEOUT_MS = 15 * 60_000;
 
+/**
+ * One line into the CI log, as an annotation.
+ *
+ * Why this exists: the job's raw log is not readable with the credentials this
+ * repository is worked with (`actions/jobs/<id>/logs` redirects to a results blob the
+ * API here cannot fetch), but `::notice` lines become check annotations and *are*
+ * readable — the same channel `tools/test-reporters/flaky-reporter.ts` uses for flaky
+ * tests. A gate that reports nothing cannot be told apart from a gate that did not
+ * run; without a line here, a CI leg of the same length as before this file existed
+ * would be a belief about `process.env.CI` instead of an annotation. Escaping order is
+ * `%` before `::`, otherwise the escape itself is escaped twice.
+ */
+const notice = (message: string): void => {
+  process.stdout.write(
+    `::notice title=Coverage gate::${message.replaceAll("%", "%25").replaceAll("::", "%3A%3A")}\n`,
+  );
+};
+
+notice(
+  isCoverageChild
+    ? "mode=child (VDP_COVERAGE_CHILD is set): carrier off, that is the recursion guard"
+    : isCi
+      ? `mode=armed (CI=${String(process.env.CI)}): the child run below decides`
+      : `mode=skipped (CI=${String(process.env.CI)}): local loop, \`npm run test:coverage\` is the command here`,
+);
+
 const tail = (value: string, lines = 30): string =>
   value
     .split("\n")
@@ -89,6 +118,7 @@ test.skipIf(!isCi || isCoverageChild)(
         "coverage — the flag lives in the script, not in the spawn below",
     );
 
+    const startedAt = Date.now();
     const result = spawnSync("npm", ["run", "test:coverage"], {
       cwd: repoRoot,
       encoding: "utf8",
@@ -103,6 +133,10 @@ test.skipIf(!isCi || isCoverageChild)(
     });
 
     const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+    const seconds = ((Date.now() - startedAt) / 1000).toFixed(1);
+    const row =
+      output.split("\n").find((line) => line.trimStart().startsWith("All files")) ?? "no table";
+    notice(`mode=measured ${seconds}s — ${row.trim().replaceAll(/\s+/g, " ")}`);
     assert.equal(
       result.status,
       0,
