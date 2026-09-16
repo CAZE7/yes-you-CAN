@@ -158,6 +158,23 @@ Konstante. Die Runner sind schneller als die Entwicklungssandbox, die
 für dieselbe Kind-Suite 66 s braucht; die Kosten, die gegen
 `npm run ci` sprechen, sind also maschinenabhängig und stehen mit beiden Zahlen da.
 
+**Nachtrag am Kopf `c419100` (1.37): der Selbstbericht war nicht zu lesen, und deshalb
+steht hier eine andere Zahl.** Die 14 Werte oben sind die Sekunden, die
+`coverage-gate.test.ts` über `::notice` meldet; diese Runde war weder der Log
+verfügbar (`gh run view --log --job 104677105260` → `failed to get run log: Get
+"https://results-receiver.actions.githubusercontent.com/…"`) noch die Annotation
+(`check-runs/<id>/annotations` leer) — der Kanal des Selbstberichts ist die Log-Datei,
+und die ist von hier nicht abrufbar. Erreichbar war die Steps-Zeit der Jobs
+(`actions/jobs/<id>`, `started_at`/`completed_at`): der Schritt „Run the full test
+suite" — `npm test`, und in ihm der Träger-Kindlauf — brauchte 41 s auf beiden Beinen
+(Node 22 05:28:52→05:29:33, Node 24 05:28:57→05:29:38), der ganze Job 57 s bzw. 56 s.
+Diese Zahl wird **nicht** in die Liste der 14 aufgenommen: ein Schritt und ein
+Selbstbericht sind zwei verschiedene Größen, und eine Spanne mit einem
+nicht vergleichbaren Wert fortzuschreiben wäre genau die Bequemlichkeit, die der
+Abschnitt sonst einfordert. Was sie trägt: beide Beine grün mit der angehobenen
+`apps/web/src`-Schwelle 76/72, also gilt der neue Boden auch auf der Runner-Maschine
+und nicht nur im ruhigen Lokal-Lauf.
+
 Dritter Befund aus demselben Vergleich: der Ist-Wert atmet. 94,74 / 86,66 / 96,09 /
 96,04 lokal im ruhigen Lauf, 86,67 Zweige unter Last, und auf dem Node-22-Bein
 94,68 / 86,59 / 96,02 gegen 94,74 / 86,66 / 96,04 auf Node 24 — derselbe Commit.
