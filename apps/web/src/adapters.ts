@@ -162,12 +162,3 @@ export function createWebAdapterCatalog(options: WebAdapterCatalogOptions = {}):
 export function isApplicationManaged(entry: AdapterEntry): boolean {
   return entry.managedBy === APPLICATION_MANAGED;
 }
-
-/** Availability line for the UI header: the first usable adapter wins. */
-export function summarizeAvailability(
-  descriptions: ReadonlyArray<{ id: string; displayName: string; probe: { available: boolean } }>,
-): string {
-  const usable = descriptions.filter((entry) => entry.probe.available);
-  if (usable.length === 0) return "kein Adapter einsatzbereit";
-  return `${usable.length} von ${descriptions.length} Adaptern einsatzbereit`;
-}

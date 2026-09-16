@@ -4,34 +4,11 @@ import { VirtualVehicle } from "@vdp/simulators";
 import { MemorySessionRepository } from "@vdp/storage";
 import { test } from "vitest";
 import { waitFor } from "../../../tests/helpers/wait.js";
+import { json, withServer } from "../../../tests/helpers/workbench.js";
 import { createWebAdapterCatalog } from "../src/adapters.js";
 import { DemoBackend } from "../src/backend.js";
-import { WebServer } from "../src/server.js";
 
 const logger = createLogger("web", { level: "ERROR" });
-
-async function withServer<T>(run: (base: string, server: WebServer) => Promise<T>): Promise<T> {
-  const server = new WebServer({ port: 0, liveIntervalMs: 60 });
-  const { port } = await server.listen();
-  try {
-    return await run(`http://127.0.0.1:${port}`, server);
-  } finally {
-    await server.close();
-  }
-}
-
-async function json(
-  base: string,
-  path: string,
-  init?: RequestInit,
-): Promise<{ status: number; body: unknown }> {
-  const response = await fetch(`${base}${path}`, init);
-  const type = response.headers.get("content-type") ?? "";
-  return {
-    status: response.status,
-    body: type.includes("json") ? await response.json() : await response.text(),
-  };
-}
 
 /* --------------------------------------------------------------- catalog */
 
@@ -64,6 +41,42 @@ test("the high-fidelity 5-ECU vehicle simulator adapter can be selected and conn
   } finally {
     await backend.stop();
   }
+});
+
+test("an application-managed bus refuses to be created from the catalog", async () => {
+  // The refusal is the whole contract of `managedBy: "application"`: the buses of the
+  // simulators and of the replay live and die with the backend that owns their model, so
+  // a caller that reaches past the application must not get a second, detached one.
+  const catalog = createWebAdapterCatalog();
+  for (const id of ["simulator", "simulator-5ecu", "replay"]) {
+    const entry = catalog.get(id);
+    assert.ok(entry, `${id} is in the catalog`);
+    assert.equal(entry.managedBy, "application", `${id} is application-managed`);
+    const failure = await entry.create({}, {}).catch((error: unknown) => error);
+    assert.ok(failure instanceof Error, `${id} refuses instead of handing out a bus`);
+    assert.match(
+      (failure as Error).message,
+      /created by the application/,
+      "the refusal names the way that works",
+    );
+  }
+});
+
+test("the catalog flags decide the sections, not the caller's mood", () => {
+  const ids = (options: Parameters<typeof createWebAdapterCatalog>[0]): string[] =>
+    createWebAdapterCatalog(options).ids();
+  for (const id of ["simulator", "simulator-5ecu"]) {
+    assert.ok(ids({}).includes(id), `${id} is in by default`);
+    assert.ok(!ids({ simulator: false }).includes(id), `${id} leaves with the simulator flag`);
+  }
+  assert.ok(ids({}).includes("replay"));
+  assert.ok(!ids({ replay: false }).includes("replay"));
+  // `--list-adapters` runs on a machine without hardware; the host flag is what makes
+  // that list honest instead of a catalogue of devices that are not plugged in.
+  assert.deepEqual(ids({ simulator: false, replay: false, host: false }), []);
+  const hostOnly = ids({ simulator: false, replay: false });
+  assert.ok(hostOnly.length > 0, "the host adapters stay when only they are asked for");
+  assert.ok(!hostOnly.includes("simulator"));
 });
 
 /* ------------------------------------------------------------------- API */
