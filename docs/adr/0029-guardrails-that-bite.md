@@ -139,16 +139,21 @@ nichts berichtet, ist von einem Tor, das nicht lief, nicht zu unterscheiden.
 Was diese Zeile wert war, ist die zweite Hälfte der Geschichte: der erste Anlauf maß
 40 s pro Bein, und das las sich als „das Kind läuft hier nie". Die Annotations
 antworteten in einem Lesegang — `mode=armed (CI=true)`, dann `mode=measured` mit
-28 bis 36 s pro Bein. Fünfte Messung am Kopf 391f04f, zehn Werte: 27,6 / 28,1 / 28,2 /
-28,7 / 32,0 / 34,3 / 35,0 / 35,1 / 35,2 / 35,5 / 35,8 / 36,3 s — zwölf Werte, zwei pro
-Kopf, beide Beine `success`. Die neue Messung befestigt die untere Kante der Spanne, sie
-verschiebt sie nicht. Welches Bein oben liegt, wechselt:
+28 bis 36 s pro Bein. Sechs Messläufe später sind es vierzehn Werte, zwei pro Kopf, alle
+Beine `success`: 27,6 / 28,1 / 28,2 / 28,7 / 32,0 / 34,3 / 35,0 / 35,0 / 35,1 / 35,2 / 35,5 /
+35,8 / 36,3 / 38,0 s. Die untere Kante liegt seither unverändert, die obere ist auf 38,0 s
+gerutscht — am Kopf 0c17922, dem mit der größten Suite und der angehobenen
+`apps/web/src`-Schwelle (1.36); ob das der Grund ist, ist nicht gemessen, gemessen ist die
+Folge: **eine Spanne, die über Köpfe hinweg gebildet wird, muss mit den Köpfen wachsen**,
+sonst steht am Ende eine bequeme Zahl, die keine Messung mehr ist. Welches Bein oben liegt, wechselt:
 Node 22 führte drei Runden, in der vierten lag Node 24 vorn (36,3 s gegen 35,1 s), in der
 fünften wieder Node 22 (28,7 s gegen 28,2 s) — ein Muster aus drei Stichproben war eine
 Überziehung, und die fünfte Runde erledigt auch die zweite Vermutung: die
 94,68/86,59/96,02-Stufe war *vier Läufe lang* die von Node 22; an diesem Kopf meldet
 Node 22 94,77 / 86,71 / 96,05 und Node 24 94,71 / 86,63 / 96,03, die Stufen sind also
-über die Beine gewandert. Zwei Effekte, und keiner ist eine
+über die Beine gewandert — und am Kopf 0c17922 ist es wieder umgekehrt (Node 22
+95,06 / 87,03 / 96,33 gegen Node 24 95,00 / 86,94 / 96,31, dieselbe Tabelle bis auf die
+Wanderung der letzten Stelle). Zwei Effekte, und keiner ist eine
 Konstante. Die Runner sind schneller als die Entwicklungssandbox, die
 für dieselbe Kind-Suite 66 s braucht; die Kosten, die gegen
 `npm run ci` sprechen, sind also maschinenabhängig und stehen mit beiden Zahlen da.
