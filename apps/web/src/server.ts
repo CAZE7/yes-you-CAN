@@ -436,7 +436,9 @@ export class WebServer {
 
     // Scenario engine (AGENTS 32): the catalog, and one run on the virtual vehicle.
     if (path === "/api/simulator/scenarios" && method === "GET") {
-      return this.sendJson(response, 200, { scenarios: this.backend.scenarios() });
+      // The catalog view *is* the response body: `scenarios`, `options`, `note` — the
+      // projection runs in `backend.ts`, so the route stays a route (ADR 0014).
+      return this.sendJson(response, 200, this.backend.scenarios());
     }
     if (path === "/api/simulator/scenario" && method === "POST") {
       const body = await this.readBody<{ id?: string }>(request);
@@ -446,7 +448,7 @@ export class WebServer {
       }
       const result = await this.backend.runScenario(id);
       if (!result.ok) return this.sendJson(response, 409, { error: result.error });
-      return this.sendJson(response, 200, { run: result.run });
+      return this.sendJson(response, 200, { run: result.run, panel: result.panel });
     }
 
     if (path === "/api/live/start" && method === "POST") {

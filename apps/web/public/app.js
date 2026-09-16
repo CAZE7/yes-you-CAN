@@ -9,6 +9,7 @@
 import * as api from "/api.js";
 import { $, button, child, el, input, kv, messageOf, must, row, select } from "/dom.js";
 import { GraphBoard } from "/graphs.js";
+import { mountScenarioPanel, refreshScenarioCatalog } from "/scenario.js";
 import { renderVehicleResolution } from "/vehicle.js";
 
 /** @typedef {import("../src/views.js").AppState} AppState */
@@ -90,6 +91,10 @@ for (const rawTab of document.querySelectorAll(".tab")) {
       board.refresh();
       loadHistory();
     }
+    // The scenario catalog belongs to the *selected adapter*, so it is read when the tab
+    // is opened rather than once at boot — a boot-time fetch would freeze the answer of
+    // whichever adapter happened to be connected when the page loaded (AGENTS 32).
+    if (view === "scenarios") void refreshScenarioCatalog();
   });
 }
 
@@ -1640,3 +1645,4 @@ button("#btn-signal-analyze").addEventListener("click", async () => {
 
 connectStream();
 void loadAdapters();
+mountScenarioPanel();

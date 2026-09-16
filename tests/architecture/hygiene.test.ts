@@ -452,14 +452,14 @@ test("modules stay reviewable: no production file above the size budget", () => 
     {
       file: "apps/web/src/backend.ts",
       reason:
-        "1420 lines — split tracked as AGENTS 0.E E15; the wire contract moved to views.ts in " +
+        "1427 lines — split tracked as AGENTS 0.E E15; the wire contract moved to views.ts in " +
         "E19 (1326 → 1117) and the file has grown since, so the budget only keeps the *rest* " +
         "from growing unnoticed",
     },
     {
       file: "apps/web/public/app.js",
       reason:
-        "1642 lines — browser front end without a bundler; served as one module, and typed " +
+        "1648 lines — browser front end without a bundler; served as one module, and typed " +
         "against views.ts since E19 (JSDoc costs lines instead of hiding them)",
     },
   ];

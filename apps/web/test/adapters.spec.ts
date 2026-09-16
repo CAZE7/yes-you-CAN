@@ -312,15 +312,20 @@ test("the 5-ECU vehicle serves the scenario catalog and runs one", async () => {
   });
   try {
     await backend.start();
-    const scenarios = backend.scenarios();
+    const catalog = backend.scenarios();
     assert.ok(
-      scenarios.some((entry) => entry.id === "under-voltage-at-start"),
+      catalog.scenarios.some((entry) => entry.id === "under-voltage-at-start"),
       "the picker lists the catalog it was built from",
     );
     assert.ok(
-      scenarios.every((entry) => entry.expectations.length > 0),
+      catalog.scenarios.every((entry) => entry.expectations.length > 0),
       "every scenario says in the list what it predicts — a row without a claim is a button with no test",
     );
+    // The panel is served projected, not raw: the browser module has no test runner, so
+    // the labels and the counts are decided here (ADR 0030 §2).
+    assert.equal(catalog.options.length, catalog.scenarios.length);
+    assert.match(catalog.options[0]?.hint ?? "", /Schritte · ~/);
+    assert.match(catalog.note, /^\d+ Szenarien/);
 
     const unknown = await backend.runScenario("not-a-scenario");
     assert.equal(unknown.ok, false);
@@ -344,6 +349,18 @@ test("the 5-ECU vehicle serves the scenario catalog and runs one", async () => {
       "number",
       "and the physical number the code was latched on comes along",
     );
+    const panel = result.panel;
+    assert.equal(panel.verdict.tone, "ok", panel.verdict.detail);
+    assert.equal(panel.checks.length, run.checks.length);
+    assert.ok(
+      panel.memory.some((entry) => entry.cells[1] === "B1001" && entry.cells[3] === "bestätigt"),
+      "the same code, spelled the way the table shows it: confirmed, not current",
+    );
+    assert.match(panel.memoryNote, /^1 von \d+ dokumentierten Codes/, "and the denominator");
+    assert.ok(
+      panel.model.some((entry) => entry.label === "Versorgung" && / V$/.test(entry.value)),
+      "a model row carries its unit — that is the mapping the panel must not get wrong",
+    );
   } finally {
     await backend.stop();
   }
@@ -358,7 +375,13 @@ test("a connection without a behaviour model says so, and does not throw", async
   try {
     await backend.start();
     // The catalog is data the app can always show; the run is what needs the model.
-    assert.ok(backend.scenarios().length > 0);
+    const catalog = backend.scenarios();
+    assert.ok(catalog.scenarios.length > 0);
+    assert.equal(
+      catalog.note,
+      `${catalog.scenarios.length} Szenarien aus dem Katalog des Fahrzeugs — jede Ursache wird gesetzt, bevor eine Erwartung gilt`,
+      "the note counts the same list the picker shows — no second number to drift",
+    );
     const refused = await backend.runScenario("can-bus-dropouts");
     assert.equal(refused.ok, false);
     if (!refused.ok) assert.match(refused.error, /High-fidelity/);

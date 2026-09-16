@@ -140,9 +140,11 @@ import { buildAnalysisInput } from "./analysis-input.js";
 import { toDtcView } from "./dtc-view.js";
 import { toEcuView, toFreezeFrameView } from "./ecu-view.js";
 import {
+  type ScenarioCatalogView,
+  type ScenarioPanelView,
   type ScenarioRunView,
-  type ScenarioSummary,
-  summariseScenarios,
+  toScenarioCatalogView,
+  toScenarioPanelView,
   toScenarioRunView,
 } from "./scenario-view.js";
 import { formatCanId, toMarkerView, toSampleView, toTraceView } from "./trace-view.js";
@@ -1067,8 +1069,8 @@ export class DemoBackend {
    * a new scenario is in the workbench the moment it is in the catalog — no second list
    * here that a commit could forget (AGENTS 34.24).
    */
-  scenarios(): ScenarioSummary[] {
-    return summariseScenarios(SCENARIO_CATALOG);
+  scenarios(): ScenarioCatalogView {
+    return toScenarioCatalogView(SCENARIO_CATALOG);
   }
 
   /**
@@ -1080,7 +1082,9 @@ export class DemoBackend {
    */
   async runScenario(
     id: string,
-  ): Promise<{ ok: true; run: ScenarioRunView } | { ok: false; error: string }> {
+  ): Promise<
+    { ok: true; run: ScenarioRunView; panel: ScenarioPanelView } | { ok: false; error: string }
+  > {
     const vehicle = this.hfVehicle;
     if (vehicle === undefined) {
       return {
@@ -1103,7 +1107,10 @@ export class DemoBackend {
         active: ((dtc.status ?? 0) & 0x01) !== 0,
       })),
     );
-    return { ok: true, run: toScenarioRunView(run, memory) };
+    const view = toScenarioRunView(run, memory);
+    // The panel's rows are projected here, not in the browser: `public/*.js` has no test
+    // runner, and every one of those rows is a claim about the vehicle (ADR 0030 §2).
+    return { ok: true, run: view, panel: toScenarioPanelView(view) };
   }
 
   resetChaos(): void {

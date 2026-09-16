@@ -30,6 +30,7 @@
   <button class="tab" data-view="live">Live-Daten</button>
   <button class="tab" data-view="graphs">Graphen</button>
   <button class="tab" data-view="chaos-lab">Chaos Lab</button>
+  <button class="tab" data-view="scenarios">Szenarien</button>
   <button class="tab" data-view="record">Aufnahme</button>
   <button class="tab" data-view="trace">Roh-Trace</button>
   <button class="tab" data-view="analysis">Analyse</button>
@@ -427,6 +428,53 @@
   </section>
 
   <!-- Aufnahme -->
+  <!-- Szenarien (AGENTS 32, ADR 0040 §8): Ursachen werden gesetzt, Erwartungen gelesen -->
+  <section class="view" id="view-scenarios">
+    <h2>Szenarien</h2>
+    <p class="hint">
+      Ein Szenario ist Daten: Ursachen mit Modellzeit, Erwartungen an die Fehlerspeicher je
+      Modul, und die Bedingung, dass nichts Unvorhergesehenes latcht. Der Lauf läuft auf dem
+      verbundenen Fahrzeug; das Panel zeigt beide Urteile — was das Modell rechnete und was
+      der UDS-Read sah. Beides ist eine andere Aussage, und die Kette existiert, um sie
+      trennen zu können.
+    </p>
+    <div class="row">
+      <label class="field">Szenario
+        <select id="scenario-picker"></select>
+      </label>
+      <button id="btn-scenario-run">Ausführen</button>
+      <button id="btn-scenario-refresh">Katalog neu laden</button>
+      <span id="scenario-verdict" class="pill pill-untested">kein Lauf</span>
+      <span id="scenario-verdict-detail" class="muted small"></span>
+    </div>
+    <p class="muted small" id="scenario-note"></p>
+
+    <div id="scenario-run" hidden>
+      <div class="cards">
+        <div class="card">
+          <h3>Erwartungen</h3>
+          <ul class="plain check-list" id="scenario-checks"></ul>
+        </div>
+        <div class="card">
+          <h3>Unvorhergesehene Latches</h3>
+          <div id="scenario-unexpected"></div>
+          <h3>Endzustand</h3>
+          <dl class="kv" id="scenario-model-rows"></dl>
+        </div>
+        <div class="card">
+          <h3>Fehlerspeicher nach dem Lauf</h3>
+          <table class="grid">
+            <thead><tr><th>Modul</th><th>Code</th><th>Status</th><th>Lesart</th></tr></thead>
+            <tbody id="scenario-memory-rows"></tbody>
+          </table>
+          <p class="muted small" id="scenario-memory-note"></p>
+          <h3>Zeitachse</h3>
+          <ul class="plain" id="scenario-timeline"></ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <section class="view" id="view-record">
     <h2>Aufnahme</h2>
     <div class="row">

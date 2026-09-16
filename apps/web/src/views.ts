@@ -45,10 +45,18 @@ export type { DtcCheckView, DtcKnowledgeView, DtcPatternView } from "./dtc-knowl
 export type { DtcView } from "./dtc-view.js";
 export type { EcuView, FreezeFrameView } from "./ecu-view.js";
 export type {
+  ScenarioCatalogView,
+  ScenarioCheckRow,
   ScenarioCheckView,
+  ScenarioMemoryRow,
   ScenarioMemoryView,
+  ScenarioModelRow,
+  ScenarioOptionView,
+  ScenarioPanelState,
+  ScenarioPanelView,
   ScenarioRunView,
   ScenarioSummary,
+  ScenarioVerdictView,
 } from "./scenario-view.js";
 export type { MarkerView, SampleView, TraceView } from "./trace-view.js";
 export type {
