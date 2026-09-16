@@ -295,3 +295,74 @@ test("the state reports which transport is selected", async () => {
   assert.equal(state.adapterProbe?.available, true);
   await backend.stop();
 });
+
+/**
+ * The scenario engine through the workbench's own backend (AGENTS 32).
+ *
+ * `DemoBackend` is the layer the HTTP server talks to, so this is where "the workbench can
+ * run a scenario" is decided: the catalog has to come from the simulator's data, a run has
+ * to reach the vehicle's modules, and a connection without a behaviour model has to say so
+ * as an answer instead of an exception.
+ */
+test("the 5-ECU vehicle serves the scenario catalog and runs one", async () => {
+  const backend = new DemoBackend({
+    logger,
+    selection: { id: "simulator-5ecu", config: {} },
+    discovery: { windowMs: 100, probeDelayMs: 0 },
+  });
+  try {
+    await backend.start();
+    const scenarios = backend.scenarios();
+    assert.ok(
+      scenarios.some((entry) => entry.id === "under-voltage-at-start"),
+      "the picker lists the catalog it was built from",
+    );
+    assert.ok(
+      scenarios.every((entry) => entry.expectations.length > 0),
+      "every scenario says in the list what it predicts — a row without a claim is a button with no test",
+    );
+
+    const unknown = await backend.runScenario("not-a-scenario");
+    assert.equal(unknown.ok, false);
+    if (!unknown.ok) {
+      assert.match(unknown.error, /known: under-voltage-at-start/, "and names what does exist");
+    }
+
+    const result = await backend.runScenario("  under-voltage-at-start  ");
+    assert.equal(result.ok, true, JSON.stringify(result));
+    if (!result.ok) return;
+    const run = result.run;
+    assert.equal(run.scenarioId, "under-voltage-at-start");
+    assert.equal(run.passed, true, `the run disagreed with itself: ${JSON.stringify(run.checks)}`);
+    assert.ok(run.checks.length > 0 && run.checks.every((check) => check.passed));
+    assert.ok(
+      run.memory.some((entry) => entry.ecu === "bcm" && entry.code === "B1001"),
+      "the code has to be in the module the panel reads, not only in the run's report",
+    );
+    assert.equal(
+      typeof run.model.supplyVoltage,
+      "number",
+      "and the physical number the code was latched on comes along",
+    );
+  } finally {
+    await backend.stop();
+  }
+});
+
+test("a connection without a behaviour model says so, and does not throw", async () => {
+  const backend = new DemoBackend({
+    logger,
+    selection: { id: "simulator", config: {} },
+    discovery: { windowMs: 100, probeDelayMs: 0 },
+  });
+  try {
+    await backend.start();
+    // The catalog is data the app can always show; the run is what needs the model.
+    assert.ok(backend.scenarios().length > 0);
+    const refused = await backend.runScenario("can-bus-dropouts");
+    assert.equal(refused.ok, false);
+    if (!refused.ok) assert.match(refused.error, /High-fidelity/);
+  } finally {
+    await backend.stop();
+  }
+});

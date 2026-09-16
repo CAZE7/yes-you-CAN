@@ -434,6 +434,21 @@ export class WebServer {
       return this.sendJson(response, 200, { status: this.backend.chaosStatus() });
     }
 
+    // Scenario engine (AGENTS 32): the catalog, and one run on the virtual vehicle.
+    if (path === "/api/simulator/scenarios" && method === "GET") {
+      return this.sendJson(response, 200, { scenarios: this.backend.scenarios() });
+    }
+    if (path === "/api/simulator/scenario" && method === "POST") {
+      const body = await this.readBody<{ id?: string }>(request);
+      const id = typeof body.id === "string" ? body.id : "";
+      if (id.trim().length === 0) {
+        return this.sendJson(response, 400, { error: "a scenario run needs an id" });
+      }
+      const result = await this.backend.runScenario(id);
+      if (!result.ok) return this.sendJson(response, 409, { error: result.error });
+      return this.sendJson(response, 200, { run: result.run });
+    }
+
     if (path === "/api/live/start" && method === "POST") {
       const body = await this.readBody<{ signalIds?: string[] }>(request);
       await this.backend.startLive(body.signalIds);

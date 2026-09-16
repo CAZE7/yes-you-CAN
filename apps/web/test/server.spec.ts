@@ -690,3 +690,68 @@ test("guided diagnosis, coding/adaptation, signal analysis, and chaos endpoints 
     assert.equal(chaosReset.status, 200);
   });
 });
+
+/**
+ * The scenario endpoints on the wire (AGENTS 32, 28).
+ *
+ * Three statuses are the contract, and each is a different kind of answer: 200 with the
+ * catalog (data the app always has), 400 when the request says nothing (an empty `id` is
+ * the caller's mistake, not the platform's), 409 when the *connection* cannot do it (a
+ * simulator without a behaviour model). A run through the selected 5-ECU vehicle answers
+ * 200 with the verdicts of the run and the fault memories it left behind.
+ */
+test("the scenario endpoints answer by what is missing: nothing, an id, or a model", async () => {
+  await withServer(async (base) => {
+    const list = await json(base, "/api/simulator/scenarios");
+    assert.equal(list.status, 200);
+    const scenarios = (list.body as { scenarios: { id: string; steps: number }[] }).scenarios;
+    assert.ok(scenarios.length >= 4, "the catalog is served as it is");
+    assert.ok(scenarios.every((entry) => entry.steps > 0));
+
+    const noId = await json(base, "/api/simulator/scenario", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    assert.equal(noId.status, 400, "an empty request is the caller's error");
+
+    const noModel = await json(base, "/api/simulator/scenario", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "under-voltage-at-start" }),
+    });
+    assert.equal(noModel.status, 409, "the default simulator has no behaviour model");
+    assert.match(String((noModel.body as { error: string }).error), /High-fidelity/);
+
+    const selected = await json(base, "/api/adapter/select", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "simulator-5ecu" }),
+    });
+    assert.equal(selected.status, 200, JSON.stringify(selected.body));
+    // Selecting does not connect — the workbench starts a run explicitly (AGENTS 28), and
+    // a scenario needs the vehicle behind that connection, not just the choice of one.
+    const started = await json(base, "/api/start", { method: "POST" });
+    assert.equal(started.status, 200, JSON.stringify(started.body));
+
+    const run = await json(base, "/api/simulator/scenario", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "under-voltage-at-start" }),
+    });
+    assert.equal(run.status, 200, JSON.stringify(run.body));
+    const view = (run.body as { run: { passed: boolean; checks: unknown[]; memory: unknown[] } })
+      .run;
+    assert.equal(view.passed, true);
+    assert.ok(view.checks.length > 0, "the run reports its verdicts, not only a boolean");
+    assert.ok(Array.isArray(view.memory), "and what the modules hold afterwards");
+
+    const unknown = await json(base, "/api/simulator/scenario", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "no-such-scenario" }),
+    });
+    assert.equal(unknown.status, 409);
+    assert.match(String((unknown.body as { error: string }).error), /known: /);
+  });
+});

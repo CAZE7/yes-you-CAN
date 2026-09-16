@@ -12,10 +12,12 @@
  */
 
 import assert from "node:assert/strict";
+import { VehicleBehaviourModel } from "@vdp/simulators";
 import { describe, test } from "vitest";
 import { type FixturePatch, patched, without } from "../../../tests/helpers/fixture.js";
 import { type DtcView, toDtcView } from "../src/dtc-view.js";
 import { type EcuView, toEcuView, toFreezeFrameView } from "../src/ecu-view.js";
+import { summariseScenarios, toScenarioRunView } from "../src/scenario-view.js";
 import {
   type SampleView,
   formatCanId,
@@ -24,6 +26,9 @@ import {
   toSampleView,
   toTraceView,
 } from "../src/trace-view.js";
+
+/** One model, built once: every view fixture reads its live state instead of a copy. */
+const MODEL = new VehicleBehaviourModel({ initial: { ignition: "on" } });
 
 type DtcInput = Parameters<typeof toDtcView>[0];
 type EcuInput = Parameters<typeof toEcuView>[0];
@@ -351,5 +356,117 @@ describe("GuidedDiagnosis and Chaos views", () => {
     };
     assert.equal(chaos.active, true);
     assert.equal(chaos.droppedFrames, 12);
+  });
+});
+
+describe("scenario views", () => {
+  type RunInput = Parameters<typeof toScenarioRunView>[0];
+  type MemoryInput = Parameters<typeof toScenarioRunView>[1];
+
+  function run(fields: FixturePatch<RunInput> = {}): RunInput {
+    return patched(
+      {
+        scenarioId: "under-voltage-at-start",
+        passed: true,
+        checks: [
+          {
+            kind: "dtc" as const,
+            subject: "bcm:B1001",
+            expected: "active",
+            actual: "active",
+            passed: true,
+            because: "cranking holds the supply below the window",
+            atMs: 1_500,
+          },
+        ],
+        unexpected: [],
+        timeline: ["1000 ms: ignition → start"],
+        // The real state object of a fresh model, not a hand-written subset: the view
+        // reads nine fields of it, and a fixture that named its own would test a shape
+        // the simulator does not produce.
+        finalState: MODEL.state,
+      },
+      fields,
+    );
+  }
+
+  test("the run view keeps both verdicts: what the model latched and what it predicted", () => {
+    const memory: MemoryInput = [
+      { ecu: "bcm", code: "B1001", status: 0x2f, active: true },
+      { ecu: "engine", code: "P0300", status: 0x08, active: false },
+    ];
+    const view = toScenarioRunView(run(), memory);
+    assert.equal(view.scenarioId, "under-voltage-at-start");
+    assert.equal(view.passed, true);
+    assert.deepEqual(
+      view.checks.map((check) => `${check.subject}=${check.actual}/${check.passed}`),
+      ["bcm:B1001=active/true"],
+    );
+    assert.equal(view.checks[0]?.because, "cranking holds the supply below the window");
+    assert.equal(view.timeline.length, 1);
+    assert.equal(view.model.supplyVoltage, MODEL.state.supplyVoltage);
+    assert.equal(
+      view.model.engineRunning,
+      MODEL.state.engineRunning,
+      "the physical state travels with the verdict, and it is the model's own number",
+    );
+    assert.deepEqual(
+      Object.keys(view.model).sort(),
+      [
+        "coolantC",
+        "engineRunning",
+        "ignition",
+        "longTermTrimPct",
+        "operationCycles",
+        "rpm",
+        "speedKph",
+        "supplyVoltage",
+        "timeMs",
+      ].sort(),
+      "the panel gets nine fields and no more — a wide object on the wire is an undocumented one",
+    );
+    assert.deepEqual(
+      view.memory.map((entry) => `${entry.ecu}:${entry.code}=${entry.active}`),
+      ["bcm:B1001=true", "engine:P0300=false"],
+      "0x2f reads as active and 0x08 as stored — the distinction the panel is for",
+    );
+  });
+
+  test("the projection copies its lists, so a later run cannot rewrite a shown one", () => {
+    const memory: MemoryInput = [{ ecu: "bcm", code: "B1001", status: 0x2f, active: true }];
+    const view = toScenarioRunView(run(), memory);
+    const first = memory[0];
+    assert.ok(first);
+    first.status = 0x00;
+    assert.equal(
+      view.memory[0]?.status,
+      0x2f,
+      "the rows a response was built from stay as they were",
+    );
+  });
+
+  test("the catalog projection names what a picker has to show", () => {
+    const summaries = summariseScenarios([
+      {
+        id: "demo",
+        title: "A demo scenario",
+        summary: "One cause, one code.",
+        durationMs: 5_000,
+        steps: [
+          { atMs: 0, cause: { kind: "battery", volts: 10 } },
+          { atMs: 1_000, cause: { kind: "ignition", state: "start" }, holdMs: 500 },
+        ],
+        expectations: [
+          { ecu: "bcm", code: "B1001", state: "active", because: "the supply is down" },
+          { ecu: "gateway", code: "U0100", state: "absent", because: "the engine still answers" },
+        ],
+      },
+    ]);
+    assert.equal(summaries.length, 1);
+    const summary = summaries[0];
+    assert.equal(summary?.steps, 2, "a run of 5 s with two causes, said in the row");
+    assert.deepEqual(summary?.expectations, ["bcm:B1001 → active", "gateway:U0100 → absent"]);
+    assert.equal(summary?.durationMs, 5_000);
+    assert.equal(summary?.title, "A demo scenario");
   });
 });

@@ -70,7 +70,9 @@ import {
   ChaosLab,
   DEFAULT_VIN,
   HighFidelityVehicle,
+  SCENARIO_CATALOG,
   VirtualVehicle,
+  scenarioById,
 } from "@vdp/simulators";
 import {
   FileSystemSessionRepository,
@@ -137,6 +139,12 @@ export type {
 import { buildAnalysisInput } from "./analysis-input.js";
 import { toDtcView } from "./dtc-view.js";
 import { toEcuView, toFreezeFrameView } from "./ecu-view.js";
+import {
+  type ScenarioRunView,
+  type ScenarioSummary,
+  summariseScenarios,
+  toScenarioRunView,
+} from "./scenario-view.js";
 import { formatCanId, toMarkerView, toSampleView, toTraceView } from "./trace-view.js";
 import { toVehicleResolutionView } from "./vehicle-view.js";
 
@@ -1050,6 +1058,52 @@ export class DemoBackend {
         ChaosLab.injectIsoTpSequenceCorruption(this.chaosBus, options.corruptSequenceCanId);
       }
     }
+  }
+
+  /**
+   * The scenario catalog of the virtual vehicle (AGENTS 32).
+   *
+   * Data, not a copy: the list is the simulator's own catalog projected for a picker, so
+   * a new scenario is in the workbench the moment it is in the catalog — no second list
+   * here that a commit could forget (AGENTS 34.24).
+   */
+  scenarios(): ScenarioSummary[] {
+    return summariseScenarios(SCENARIO_CATALOG);
+  }
+
+  /**
+   * Run one scenario on the connected virtual vehicle and report both verdicts.
+   *
+   * The answer is data, never a thrown error: "this adapter has no behaviour model" and
+   * "no such scenario" are states of the *request*, and a 500 with a stack trace would
+   * describe neither. `ok: false` says what is missing in the caller's words.
+   */
+  async runScenario(
+    id: string,
+  ): Promise<{ ok: true; run: ScenarioRunView } | { ok: false; error: string }> {
+    const vehicle = this.hfVehicle;
+    if (vehicle === undefined) {
+      return {
+        ok: false,
+        error:
+          'no scenario support on this connection — select the "High-fidelity virtual vehicle" adapter',
+      };
+    }
+    const scenario = scenarioById(id.trim());
+    if (scenario === undefined) {
+      const known = SCENARIO_CATALOG.map((entry) => entry.id).join(", ");
+      return { ok: false, error: `unknown scenario "${id}" — known: ${known}` };
+    }
+    const run = await vehicle.runScenario(scenario);
+    const memory = vehicle.modules().flatMap((module) =>
+      vehicle.model.dtcMemoryOf(module.ecuId).map((dtc) => ({
+        ecu: module.ecuId,
+        code: dtc.code,
+        status: dtc.status ?? 0,
+        active: ((dtc.status ?? 0) & 0x01) !== 0,
+      })),
+    );
+    return { ok: true, run: toScenarioRunView(run, memory) };
   }
 
   resetChaos(): void {
