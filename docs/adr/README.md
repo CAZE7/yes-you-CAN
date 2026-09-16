@@ -4,6 +4,19 @@ Kurze, dauerhafte Aufzeichnungen darüber, *warum* die Plattform so gebaut ist, 
 sie gebaut ist (AGENTS 34.17). Ein ADR wird nicht gelöscht, wenn er überholt ist —
 er wird durch einen neuen ersetzt, der den alten als `superseded` markiert.
 
+**Pflichtstruktur ab ADR 0043** (vorabgebildet in [ADR 0043](0043-ai-context-layer.md)):
+nach *Problem*, *Entscheidung*, *Why* und *Alternatives* folgen die
+Abschnitte **Affected packages** (welche Pakete die Entscheidung berührt),
+**Forbidden implementations** (was damit *nicht* gebaut werden darf),
+**Migration** (wie der Ist-Zustand dorthin kommt), **Tests** (was die
+Entscheidung bewacht) und **AI implementation notes** (was ein Coding-Agent
+wissen muss, um die Entscheidung umzusetzen). Ältere ADRs bleiben, wie sie
+sind — sie sind Aufzeichnungen, keine Vorlagen.
+
+Die maschinenlesbare Form der Architektur (Layer, Abhängigkeitsregeln,
+AI-Context-Topics) steht in [`architecture/architecture.yaml`](../../architecture/architecture.yaml)
+— ein ADR dokumentiert die *Entscheidung*, das YAML trägt die *Regel*.
+
 | Nr. | Titel | Status |
 |---|---|---|
 | [0001](0001-layered-architecture.md) | Geschichtete Architektur mit fester Abhängigkeitsrichtung | accepted |
@@ -48,6 +61,4 @@ er wird durch einen neuen ersetzt, der den alten als `superseded` markiert.
 | [0040](0040-vehicle-behaviour-model-and-scenario-engine.md) | Das Fahrzeugmodell erzeugt die Fehler, die Szenario-Engine schreibt sie vor | accepted |
 | [0041](0041-uds-server-api-for-simulators.md) | Der UDS-Server hat eine Simulator-API; Casts in interne Maps sind keine | accepted |
 | [0042](0042-manifest-and-import-graph-one-gate.md) | `package.json` ist eine Behauptung über Importe; ein Werkzeug prüft sie | accepted |
-| [0040](0040-vehicle-behaviour-model-and-scenario-engine.md) | Das Fahrzeugmodell erzeugt die Fehler, die Szenario-Engine schreibt sie vor | accepted |
-| [0041](0041-uds-server-api-for-simulators.md) | Der UDS-Server hat eine Simulator-API; Casts in interne Maps sind keine | accepted |
-| [0042](0042-manifest-and-import-graph-one-gate.md) | `package.json` ist eine Behauptung über Importe; ein Werkzeug prüft sie | accepted |
+| [0043](0043-ai-context-layer.md) | Die AI-Kontextschicht: eine Doku-Ebene über einer maschinenlesbaren Architektur | accepted |

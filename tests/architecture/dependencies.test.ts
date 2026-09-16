@@ -6,7 +6,7 @@
  * carry the graph themselves — that was the duplication master backlog P0 #2
  * named: one copy in this file, one in the heads of the reviewers, and a rule
  * that only ever fired when somebody remembered to look. The rule now lives in
- * `tools/architecture/dependency-rules.json` and is enforced by
+ * `architecture/architecture.yaml` and is enforced by
  * `tools/architecture/check-dependencies.mjs`, which runs in the CI path
  * (`npm run check:deps`, part of `npm run ci`) *before* the suite.
  *
@@ -27,9 +27,10 @@ import { test } from "vitest";
 import { repoRoot as root } from "./workspace.js";
 
 const TOOL = join(root, "tools/architecture/check-dependencies.mjs");
-const RULES_FILE = join(root, "tools/architecture/dependency-rules.json");
+const RULES_FILE = join(root, "architecture/architecture.yaml");
 
 interface RulePackage {
+  layer: string;
   mayImport: readonly string[];
   why: string;
 }
@@ -106,7 +107,7 @@ test("the rule lives in exactly one file", () => {
   );
   assert.ok(
     readFileSync(RULES_FILE, "utf8").includes('"@vdp/core"'),
-    "the graph itself stays in dependency-rules.json",
+    "the graph itself stays in architecture/architecture.yaml",
   );
   for (const [name, entry] of Object.entries(rules.packages)) {
     assert.ok(entry.why.trim().length > 0, `${name} must say why it sits where it sits`);
@@ -115,7 +116,11 @@ test("the rule lives in exactly one file", () => {
 
 test("every workspace package has a declared place in the dependency graph", () => {
   const unplaced = graph.filter((pkg) => !(pkg.name in rules.packages)).map((pkg) => pkg.name);
-  assert.deepEqual(unplaced, [], "new packages must be placed consciously (dependency-rules.json)");
+  assert.deepEqual(
+    unplaced,
+    [],
+    "new packages must be placed consciously (architecture/architecture.yaml)",
+  );
   const stale = Object.keys(rules.packages).filter((name) => !byName.has(name));
   assert.deepEqual(stale, [], `rules for packages that no longer exist: ${stale.join(", ")}`);
   assert.ok(graph.length >= 25, `all workspace packages are scanned (found ${graph.length})`);

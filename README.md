@@ -3,7 +3,7 @@
 [![CI](https://github.com/CAZE7/yes-you-CAN/actions/workflows/ci.yml/badge.svg)](https://github.com/CAZE7/yes-you-CAN/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](./package.json)
-[![Tests](https://img.shields.io/badge/tests-2010%20passed-brightgreen)](#tests)
+[![Tests](https://img.shields.io/badge/tests-2037%20passed-brightgreen)](#tests)
 [![TypeScript](https://img.shields.io/badge/TypeScript-7%20%2F%20tsgo-blue)](./tsconfig.base.json)
 
 Fahrzeugdiagnose-Plattform: CAN und DoIP lesen, Steuergeräte identifizieren, das
@@ -17,6 +17,26 @@ Vitest 5, Biome, tsc-Projekt-Referenzen, Architekturtests, strikte Security-Base
 
 Die Spezifikation liegt in [`AGENTS.md`](AGENTS.md), die Begründungen für den
 Aufbau in [`docs/adr/`](docs/adr/).
+
+## Architektur lesen (auch für AI-Agenten)
+
+Die Architektur hat eine feste Lesereihenfolge (ADR 0043) — jede Ebene ist
+maschinengeprüft, Doku-Drift ist ein Fehler:
+
+| Frage | Antwort |
+|---|---|
+| Wie ist das System aufgebaut? | [`ARCHITECTURE.md`](ARCHITECTURE.md) — Schichten, Verträge, Tests |
+| Wo ändere ich für Aufgabe X? | [`docs/code-map.md`](docs/code-map.md) — „Where should I change this?“ |
+| Welche Abhängigkeiten sind erlaubt? | [`architecture/architecture.yaml`](architecture/architecture.yaml) — die eine Regel; `npm run check:deps` |
+| Was heißt dieser Begriff? | [`docs/glossary.md`](docs/glossary.md) — ein Begriff = eine Bedeutung |
+| Wie sieht die öffentliche API aus? | [`docs/api/`](docs/api/) — IR, UDS, Transport, Evidence, Hypothesis, Runtime |
+| Wie fließt eine Diagnose? | [`docs/flows/`](docs/flows/) — Read, Write, DTC, Recording/Replay, AI |
+| Welche Invarianten nicht brechen? | [`.ai/invariants.md`](.ai/invariants.md) + [AGENTS §0.0](AGENTS.md) (AI Engineering Contract) |
+| So benutzt man die API (ausführbar) | `tests/examples/*.example.ts` — laufen im Vitest-Projekt `integration` |
+
+Für einen Arbeitskontext zu einem Thema (UDS, Transport, IR, DTC, Simulator,
+AI): `npm run ai:context <topic>` → `.ai/generated/<topic>-context.md`
+(generiert aus derselben Regel, nie committet).
 
 ## Schichten
 
@@ -202,9 +222,12 @@ Zeitraum aus, Doppelklick zeigt die gesamte Aufnahme.
 
 ## Tests
 
-2010 bestandene Tests / 136 geprüfte Dateien (`npm test` in 54 s; `npm run
-test:coverage` in 67 s), Vitest 5 mit Projektkonfiguration (ADR 0010,
-Schritt 1 — ersetzt ADR 0008). Der `architecture`-Lauf prüft die Struktur *und*
+2037 bestandene Tests / 141 geprüfte Dateien (`npm test` in 67 s; `npm run
+test:coverage` in 73 s — gemessen 2026-09-16), Vitest 5 mit Projektkonfiguration
+(ADR 0010, Schritt 1 — ersetzt ADR 0008). Seit ADR 0043 gehören dazu 17
+ausführbare Doku-Beispiele in `tests/examples/*.example.ts` (Projekt
+`integration`) — sie zeigen die API so, wie sie benutzt wird. Der
+`architecture`-Lauf prüft die Struktur *und*
 führt die Quality-Gates aus (ADR 0029) — unter `CI` auch die Coverage-Gates, als
 Kind-Lauf von `npm run test:coverage` (ADR 0029 §6), weil kein Workflow sie selbst
 aufrufen kann (0.E E20) — einschließlich

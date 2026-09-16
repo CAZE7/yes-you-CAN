@@ -164,7 +164,14 @@ export default defineConfig({
       project({ name: 'replay', include: ['tests/replay/**/*.test.ts'] }),
       project({
         name: 'integration',
-        include: ['tests/integration/**/*.test.ts', 'apps/web/test/**/*.spec.ts'],
+        // `tests/examples/**` is runnable documentation (ADR 0043): the four
+        // standard paths as live tests, so "so wird diese API benutzt" stays
+        // true by construction instead of by memory.
+        include: [
+          'tests/integration/**/*.test.ts',
+          'tests/examples/**/*.example.ts',
+          'apps/web/test/**/*.spec.ts',
+        ],
         testTimeout: 30_000,
       }),
       // Static analysis of the import graph — the dependency rules are tests

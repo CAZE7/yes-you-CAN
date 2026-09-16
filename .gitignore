@@ -8,3 +8,4 @@ dist/
 *.log
 sessions-local/
 coverage/
+.ai/generated/
