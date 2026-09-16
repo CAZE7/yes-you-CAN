@@ -139,8 +139,12 @@ nichts berichtet, ist von einem Tor, das nicht lief, nicht zu unterscheiden.
 Was diese Zeile wert war, ist die zweite Hälfte der Geschichte: der erste Anlauf maß
 40 s pro Bein, und das las sich als „das Kind läuft hier nie". Die Annotations
 antworteten in einem Lesegang — `mode=armed (CI=true)`, dann `mode=measured` mit
-28,1 bis 35,8 s pro Bein (sechs Messungen über drei Läufe: 27,6 / 28,1 / 34,3 / 35,0 /
-35,5 / 35,8 s; Node 22 consistently am oberen Ende). Die Runner sind schneller als die Entwicklungssandbox, die
+28 bis 36 s pro Bein (acht Messungen über vier Läufe: 27,6 / 28,1 / 34,3 / 35,0 / 35,1 /
+35,5 / 35,8 / 36,3 s). Welches Bein oben liegt, wechselt: Node 22 führte drei Runden, in
+der vierten lag Node 24 vorn (36,3 s gegen 35,1 s) — ein Muster aus drei Stichproben war
+eine Überziehung, und dieselbe Probe entschärft die zweite Vermutung gleich mit: die
+86,67-Zweigstufe erschien auf Node 24, die 94,68/86,59/96,02-Stufe durchgehend auf
+Node 22 — das sind zwei Effekte, nicht einer. Die Runner sind schneller als die Entwicklungssandbox, die
 für dieselbe Kind-Suite 66 s braucht; die Kosten, die gegen
 `npm run ci` sprechen, sind also maschinenabhängig und stehen mit beiden Zahlen da.
 
@@ -149,7 +153,11 @@ Dritter Befund aus demselben Vergleich: der Ist-Wert atmet. 94,74 / 86,66 / 96,0
 94,68 / 86,59 / 96,02 gegen 94,74 / 86,66 / 96,04 auf Node 24 — derselbe Commit.
 Ursache ist ein einzelner Zweig in `tools/simulators/src/chaos-lab.ts` (der
 Realtime-`sleep`-Fallback, Zeile 58: in Unit-Läufen bewusst nie erwartet, bei Last
-dann und wann doch, 91,66 ↔ 93,33 Zweige dieser Datei). Wer eine Coverage-Zahl in die
+dann und wann doch, 91,66 ↔ 93,33 Zweige dieser Datei). Die Lastverschiebung ist
+innerhalb eines Beamts messbar (Node 24 meldete auf demselben Commit 86,66 dreimal und
+86,67 einmal); der Abstand *zwischen* den Nodes (86,59/86,60 Zweige, 94,68 Statements,
+96,02 Zeilen auf Node 22 gegen 94,74 / 96,04 auf Node 24, in allen vier Läufen) ist ein
+zweiter, konstanter Effekt. Beides verschiebt keinen Boden — die Böden bleiben 80/90. Wer eine Coverage-Zahl in die
 Dokumentation schreibt, schreibt einen Momentwert hin; die Tore bleiben Böden mit
 Abstand (80 Zweige, 90 Zeilen) und werden keine Zusicherung auf die letzte Kommastelle.
 

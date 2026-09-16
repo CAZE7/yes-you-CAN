@@ -33,10 +33,11 @@
  *
  * Cost and bite, measured: the `architecture` project runs in 5,5 s here with this test
  * skipped and in 73,2 s with the child (`npm run test:coverage` alone is 66,2 s on this
- * machine). On the CI runners the same child takes 28–36 s inside a ~40 s leg — six
- * measurements over three runs: 27,6 / 28,1 / 34,3 / 35,0 / 35,5 / 35,8 s, Node 22
- * consistently at the top of that range. The runners beat this sandbox and differ from
- * each other, which is why the cost is written as a range and not as a number. The gap between the two machines is worth recording, because
+ * machine). On the CI runners the same child takes 28–36 s inside a ~40 s leg — eight
+ * measurements over four runs: 27,6 / 28,1 / 34,3 / 35,0 / 35,1 / 35,5 / 35,8 / 36,3 s.
+ * Which leg is slower changes between runs, so the cost is a range with its raw values
+ * next to it, never a single number (a three-sample "Node 22 is always on top" pattern
+ * was written here and refuted by the fourth run). The gap between the two machines is worth recording, because
  * machine cost is the only argument against moving this into `npm run ci` — where it
  * would be paid per push instead of per PR.
  *
