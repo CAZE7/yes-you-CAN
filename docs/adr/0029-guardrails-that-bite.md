@@ -126,7 +126,13 @@ die Coverage sinkt, und er fällt nicht auf, wenn jemand den Boden absenkt.
 
 Neu: `tests/architecture/coverage-gate.test.ts`. Nur unter `CI`, und das Kind ist
 wörtlich `npm run test:coverage`, damit Tor und Kommando nicht zwei Definitionen der
-Schwellwerte sind (gemessen dieselbe Tabelle: 94,74 / 86,66 / 96,09 / 96,04). Drei
+Schwellwerte sind — gemessen dasselbe Ergebnis (94,74 / 86,67 / 96,09 / 96,04). Was der
+Lauf dabei über die Deckung aussagt, ist eine eigene Zeile wert: die **letzte Stelle der
+Zweigsumme ist lastabhängig** (86,66 im ruhigen Lauf, 86,67 unter Last, zweimal
+nachgemessen). Ursache ist ein einzelner Zweig in `tools/simulators/src/chaos-lab.ts`
+(Realtime-`sleep`-Fallback, Zeile 58 — in Unit-Läufen bewusst nie erwartet, bei Load
+dann und wann doch: 91,66 ↔ 93,33 Zweige). Ein Ist-Wert, der mit der Machineatmung
+wandert, ist ein zweiter Grund, warum die Gates ein Boden sind und kein Versprechen. Drei
 Einbauten, die erst der Lauf gezeigt hat: Rekursionssperre `VDP_COVERAGE_CHILD=1`
 (`test:coverage` fährt das Projekt `architecture` und damit diesen Test selbst),
 `VITEST_JUNIT_FILE` wird dem Kind genommen (zwei Schreiber an einer CI-Artefaktdatei
