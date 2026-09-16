@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://yes-you-can.dev/scenario.schema.json",
+  "type": "object",
+  "required": ["scenario", "steps", "expect"],
+  "properties": {
+    "scenario": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$" },
+    "title": { "type": "string" },
+    "vehicle": { "type": "string" },
+    "steps": { "type": "array", "items": { "type": "object", "minProperties": 1 } },
+    "expect": { "type": "array", "items": { "type": "object" } },
+    "determinism": {
+      "type": "object",
+      "required": ["clock", "seed"],
+      "properties": { "clock": { "const": "model-time" }, "seed": { "type": "integer" } },
+      "additionalProperties": false
+    },
+    "uses": { "type": "array", "items": { "type": "string" } }
+  },
+  "additionalProperties": false
+}
