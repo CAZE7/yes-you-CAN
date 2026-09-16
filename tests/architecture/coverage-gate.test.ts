@@ -33,8 +33,9 @@
  *
  * Cost and bite, measured: the `architecture` project runs in 5,5 s here with this test
  * skipped and in 73,2 s with the child (`npm run test:coverage` alone is 66,2 s on this
- * machine). On the CI runners the same child takes 34,3 s (Node 22) and 27,6 s (Node 24)
- * inside a 40 s leg. The gap between the two machines is worth recording, because
+ * machine). On the CI runners the same child takes 27,6–35,5 s inside a ~40 s leg (two
+ * measurement rounds: 34,3/27,6 on one head, 35,5/35,0 on the next) — the runners beat
+ * this sandbox and are not identical to each other either. The gap between the two machines is worth recording, because
  * machine cost is the only argument against moving this into `npm run ci` — where it
  * would be paid per push instead of per PR.
  *
@@ -82,8 +83,8 @@ const COVERAGE_TIMEOUT_MS = 15 * 60_000;
  * tests. A gate that reports nothing cannot be told apart from a gate that did not
  * run. The line earned its keep at once: the first legs after this file landed measured
  * 40 s, which reads too short to contain a child at all, and the annotations settled it
- * in one read — `mode=armed (CI=true)`, then `mode=measured 34,3s` (Node 22) and
- * `mode=measured 27,6s` (Node 24). The slow machine in this story is the development
+ * in one read — `mode=armed (CI=true)`, then `mode=measured 34.3s`/`35.5s` (Node 22)
+ * and `mode=measured 27.6s`/`35.0s` (Node 24). The slow machine in this story is the development
  * sandbox, not a CI that skipped its gate. Escaping order is `%` before `::`, otherwise
  * the escape sequence is escaped twice.
  */

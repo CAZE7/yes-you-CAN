@@ -139,8 +139,9 @@ nichts berichtet, ist von einem Tor, das nicht lief, nicht zu unterscheiden.
 Was diese Zeile wert war, ist die zweite Hälfte der Geschichte: der erste Anlauf maß
 40 s pro Bein, und das las sich als „das Kind läuft hier nie". Die Annotations
 antworteten in einem Lesegang — `mode=armed (CI=true)`, dann `mode=measured 34,3 s`
-(Node 22) und `mode=measured 27,6 s` (Node 24). Die Runner sind schneller als die
-Entwicklungssandbox, die für dieselbe Kind-Suite 66 s braucht; die Kosten, die gegen
+und 35,5 s (Node 22) gegen `mode=measured 27,6 s` und 35,0 s (Node 24), über zwei
+Messläufe auf zwei Köpfen. Die Runner sind schneller als die Entwicklungssandbox, die
+für dieselbe Kind-Suite 66 s braucht; die Kosten, die gegen
 `npm run ci` sprechen, sind also maschinenabhängig und stehen mit beiden Zahlen da.
 
 Dritter Befund aus demselben Vergleich: der Ist-Wert atmet. 94,74 / 86,66 / 96,09 /
