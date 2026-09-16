@@ -3,7 +3,7 @@
 [![CI](https://github.com/CAZE7/yes-you-CAN/actions/workflows/ci.yml/badge.svg)](https://github.com/CAZE7/yes-you-CAN/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](./package.json)
-[![Tests](https://img.shields.io/badge/tests-1731%20passed-brightgreen)](#tests)
+[![Tests](https://img.shields.io/badge/tests-1939%20passed-brightgreen)](#tests)
 [![TypeScript](https://img.shields.io/badge/TypeScript-7%20%2F%20tsgo-blue)](./tsconfig.base.json)
 
 Fahrzeugdiagnose-Plattform: CAN und DoIP lesen, Steuergeräte identifizieren, das
@@ -119,6 +119,18 @@ Live-Messwerte. Die Demo bestimmt das Fahrzeug aus der VIN und zeigt zu P0420
 zwei Ausfallmuster mit fünf auswertbaren Messfenstern. Kein Adapter, kein
 Fahrzeug.
 
+Der Adapter „High-Fidelity Virtual Vehicle (5-ECU)" fährt zusätzlich ein
+**Verhaltensmodell** (ADR 0040): Spannung, Anlasserlast, Lichtmaschine,
+Motortemperatur, Räder und die Verdrahtung jedes Moduls — ein Fehler wird nicht
+gesetzt, er entsteht, wenn ein Monitor eine Bedingung lange genug gemessen hat.
+Dazu gibt es die **Szenario-Engine**: `GET /api/simulator/scenarios` listet den
+Katalog, `POST /api/simulator/scenario {"id": "under-voltage-at-start"}` läuft ein
+Szenario und meldet jede Prüfung mit Begründung. Gemessen am laufenden Demo-Server:
+der Lauf endet mit `passed: true` (8 Checks, u. a. `supplyVoltage < 11,5 → 10,7`),
+und der sich anschließende `POST /api/dtc/scan` liest `B1001` mit Status `0x2E`
+über UDS — geheilt, aber im Speicher, mit Beschreibung und Schweregrad aus dem
+Definitions-Paket.
+
 Mit echtem Adapter:
 
 ```bash
@@ -183,12 +195,14 @@ Zeitraum aus, Doppelklick zeigt die gesamte Aufnahme.
 
 ## Tests
 
-1731 Tests / 115 Dateien in 37,5 s, Vitest 5 mit Projektkonfiguration (ADR 0010,
+1939 Tests / 130 Dateien in 52,3 s, Vitest 5 mit Projektkonfiguration (ADR 0010,
 Schritt 1 — ersetzt ADR 0008). Der `architecture`-Lauf prüft die Struktur *und*
-führt die Quality-Gates aus (ADR 0029). Unit-Specs liegen co-lokatiert neben dem
+führt die Quality-Gates aus (ADR 0029) — einschließlich
+`npm run check:manifests`, das verlangt, dass jedes `package.json` zu den
+tatsächlichen Importen passt (ADR 0042). Unit-Specs liegen co-lokatiert neben dem
 Code (`src/*.spec.ts`); Property-Tests laufen mit fast-check, Coverage-Gates mit
 `npm run test:coverage` (global 90 % lines / 80 % branches als
-Projekt-Durchschnitt, Ist 94,62 Statements / 87,52 Zweige / 96,44 Funktionen / 95,90 Zeilen — seit ADR 0027 wird die ganze
+Projekt-Durchschnitt, Ist 94,69 Statements / 86,55 Zweige / 96,05 Funktionen / 95,97 Zeilen — seit ADR 0027 wird die ganze
 Fläche gemessen: `packages/**/src`, `apps/web/src/**` und `tools/**`, weil die
 Workbench-Schicht vorher in keiner Zahl vorkam; per-file-Gates für
 `shared`/`core`/`protocols`/`adapters`/`transport`/`storage`/`charts`/`reports`/`ai` (95/85 seit 2026-09-14)/`diagnostic-ir` (95/85 seit ADR 0034)/`definitions`
@@ -228,6 +242,8 @@ nicht — der laufende Test schon.
 | `GET /api/stream` | SSE: Samples, Trace, DTCs, Marker, Fahrzeugbestimmung |
 | `GET /lib/*` | kompiliertes `@vdp/charts` für den Browser (ADR 0011) |
 | `POST /api/start` | Simulator verbinden, ECUs entdecken |
+| `GET /api/simulator/scenarios` | Katalog der Fahrzeugszenarien (Ursachen, Erwartungen, Begründungen) |
+| `POST /api/simulator/scenario` | ein Szenario auf dem 5-ECU-Fahrzeug laufen lassen (ADR 0040) |
 | `POST /api/vehicle/resolve` | Fahrzeug bestimmen: Kandidaten mit Belegen und Widersprüchen (read-only) |
 | `POST /api/dtc/scan` | Fehlerspeicher lesen |
 | `POST /api/live/start` \| `/stop` | Live-Messung |
