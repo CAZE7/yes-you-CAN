@@ -139,12 +139,16 @@ nichts berichtet, ist von einem Tor, das nicht lief, nicht zu unterscheiden.
 Was diese Zeile wert war, ist die zweite Hälfte der Geschichte: der erste Anlauf maß
 40 s pro Bein, und das las sich als „das Kind läuft hier nie". Die Annotations
 antworteten in einem Lesegang — `mode=armed (CI=true)`, dann `mode=measured` mit
-28 bis 36 s pro Bein (acht Messungen über vier Läufe: 27,6 / 28,1 / 34,3 / 35,0 / 35,1 /
-35,5 / 35,8 / 36,3 s). Welches Bein oben liegt, wechselt: Node 22 führte drei Runden, in
-der vierten lag Node 24 vorn (36,3 s gegen 35,1 s) — ein Muster aus drei Stichproben war
-eine Überziehung, und dieselbe Probe entschärft die zweite Vermutung gleich mit: die
-86,67-Zweigstufe erschien auf Node 24, die 94,68/86,59/96,02-Stufe durchgehend auf
-Node 22 — das sind zwei Effekte, nicht einer. Die Runner sind schneller als die Entwicklungssandbox, die
+28 bis 36 s pro Bein. Fünfte Messung am Kopf 391f04f, zehn Werte: 27,6 / 28,1 / 28,2 /
+28,7 / 34,3 / 35,0 / 35,1 / 35,5 / 35,8 / 36,3 s — die beiden neuen befestigen nur die
+untere Kante der Spanne, sie verschieben sie nicht. Welches Bein oben liegt, wechselt:
+Node 22 führte drei Runden, in der vierten lag Node 24 vorn (36,3 s gegen 35,1 s), in der
+fünften wieder Node 22 (28,7 s gegen 28,2 s) — ein Muster aus drei Stichproben war eine
+Überziehung, und die fünfte Runde erledigt auch die zweite Vermutung: die
+94,68/86,59/96,02-Stufe war *vier Läufe lang* die von Node 22; an diesem Kopf meldet
+Node 22 94,77 / 86,71 / 96,05 und Node 24 94,71 / 86,63 / 96,03, die Stufen sind also
+über die Beine gewandert. Zwei Effekte, und keiner ist eine
+Konstante. Die Runner sind schneller als die Entwicklungssandbox, die
 für dieselbe Kind-Suite 66 s braucht; die Kosten, die gegen
 `npm run ci` sprechen, sind also maschinenabhängig und stehen mit beiden Zahlen da.
 
@@ -156,8 +160,12 @@ Realtime-`sleep`-Fallback, Zeile 58: in Unit-Läufen bewusst nie erwartet, bei L
 dann und wann doch, 91,66 ↔ 93,33 Zweige dieser Datei). Die Lastverschiebung ist
 innerhalb eines Beamts messbar (Node 24 meldete auf demselben Commit 86,66 dreimal und
 86,67 einmal); der Abstand *zwischen* den Nodes (86,59/86,60 Zweige, 94,68 Statements,
-96,02 Zeilen auf Node 22 gegen 94,74 / 96,04 auf Node 24, in allen vier Läufen) ist ein
-zweiter, konstanter Effekt. Beides verschiebt keinen Boden — die Böden bleiben 80/90. Wer eine Coverage-Zahl in die
+96,02 Zeilen auf Node 22 gegen 94,74 / 96,04 auf Node 24, in allen vier Läufen) war ein
+zweiter Effekt — im fünften Lauf ist er umgekehrt (94,77 / 96,05 auf Node 22 gegen 94,71 /
+96,03 auf Node 24, Kopf 391f04f), also ist auch er ein Momentwert und keine
+Laufwerkseigenschaft. Die Spanne über alle fünf Runden: Statements 94,68–94,77, Zweige
+86,59–86,71, Zeilen 96,02–96,05. Beides verschiebt keinen Boden — die
+Böden bleiben 80/90. Wer eine Coverage-Zahl in die
 Dokumentation schreibt, schreibt einen Momentwert hin; die Tore bleiben Böden mit
 Abstand (80 Zweige, 90 Zeilen) und werden keine Zusicherung auf die letzte Kommastelle.
 
