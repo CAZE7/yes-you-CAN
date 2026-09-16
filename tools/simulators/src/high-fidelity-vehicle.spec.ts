@@ -67,6 +67,20 @@ async function readRpm(tester: UdsClient): Promise<number> {
   return (((payload[0] ?? 0) << 8) | (payload[1] ?? 0)) * 0.25;
 }
 
+/** The four corners as the ABS reports them on DID 0xF40D (uint16 each, 0.01 km/h). */
+async function readWheels(tester: UdsClient): Promise<number[]> {
+  const payload = await tester.readDid(0xf40d);
+  assert.ok(payload, "the ABS answers its wheel-speed DID");
+  assert.equal(
+    payload.length,
+    8,
+    "the DID carries four corners, not the two the OBD baseline asks for",
+  );
+  const at = (offset: number): number =>
+    (((payload[offset] ?? 0) << 8) | (payload[offset + 1] ?? 0)) / 100;
+  return [at(0), at(2), at(4), at(6)];
+}
+
 function stored(records: readonly DtcRecord[], code: string): DtcRecord | undefined {
   return records.find((dtc) => dtc.code === code);
 }
@@ -274,6 +288,53 @@ describe("HighFidelityVehicle, measured through UDS", () => {
       assert.ok(
         stored(codes, "C0035"),
         `and the rationality test stores the circuit code, read ${codes.map((d) => d.code)}`,
+      );
+    } finally {
+      await fresh.stop();
+    }
+  });
+
+  test("a rear corner is readable, so a cause at the rear leaves evidence", async () => {
+    const fresh = new HighFidelityVehicle({ modelTickMs: 0 });
+    await fresh.start();
+    const tester = testerFor(fresh, "abs");
+    try {
+      fresh.drive({ demandSpeedKph: 60, gear: 4 });
+      fresh.advance(1_500);
+      const rolling = await readWheels(tester);
+      assert.ok(
+        rolling.every((speed) => speed > 0),
+        `the car rolls on four wheels and the module reports four, got ${rolling.join(", ")}`,
+      );
+      assert.equal(
+        new Set(rolling.map((speed) => speed.toFixed(2))).size,
+        1,
+        "on a straight run all four corners agree — that is what makes the next step a finding",
+      );
+
+      fresh.breakSensor("abs.wheel_speed_rear_left", "short-to-ground");
+      fresh.advance(1_500);
+      const oneDown = await readWheels(tester);
+      assert.equal(oneDown[2], 0, "the broken corner reads zero where a tester can read it");
+      assert.ok((oneDown[0] ?? 0) > 0, "and the front left keeps answering");
+      const afterOne = await tester.readDtcByStatusMask(0xff);
+      assert.equal(
+        stored(afterOne, "C0035"),
+        undefined,
+        "one dead rear corner is not a front-left circuit fault: the monitor measures against the other three, it does not react to every sensor",
+      );
+
+      fresh.breakSensor("abs.wheel_speed_rear_right", "short-to-ground");
+      fresh.advance(1_500);
+      const twoDown = await readWheels(tester);
+      assert.deepEqual(
+        twoDown.map((speed) => (speed > 0 ? "moving" : "zero")),
+        ["moving", "moving", "zero", "zero"],
+      );
+      const afterTwo = await tester.readDtcByStatusMask(0xff);
+      assert.ok(
+        stored(afterTwo, "C0035"),
+        "with both rear corners down the front left is implausible against what is left — and C0035 is the only wheel-speed circuit this module documents, so it is the code that comes out (rule 3: nothing is invented for the rear corners)",
       );
     } finally {
       await fresh.stop();

@@ -103,6 +103,37 @@ export const highFidelityEcus: EcuDefinition[] = [
 
 export const highFidelitySignals: SignalDefinition[] = [
   ...genericPackage.signals,
+  // --- ABS: the two corners the baseline does not carry -------------------
+  //
+  // The generic package stops where an OBD-style reader stops: the two front wheels on
+  // DID 0xF40D. This vehicle turns four wheels, and its cause API can break any of them
+  // (`breakSensor("abs.wheel_speed_rear_left", …)`). A cause nobody can read is a claim
+  // without evidence rather than a simulation, so the ABS declares the other two corners
+  // on the DID it already answers — the same encoding, the same scale, the next bytes.
+  {
+    id: "abs.wheel_speed_rear_left",
+    name: "Wheel speed rear left",
+    ecu: "abs",
+    did: 0xf40d,
+    byteOffset: 4,
+    length: 2,
+    encoding: "uint16",
+    scale: 0.01,
+    unit: "km/h",
+    critical: true,
+  },
+  {
+    id: "abs.wheel_speed_rear_right",
+    name: "Wheel speed rear right",
+    ecu: "abs",
+    did: 0xf40d,
+    byteOffset: 6,
+    length: 2,
+    encoding: "uint16",
+    scale: 0.01,
+    unit: "km/h",
+    critical: true,
+  },
   // --- Gateway DIDs ----------------------------------------------------
   {
     id: "gateway.routing_state",

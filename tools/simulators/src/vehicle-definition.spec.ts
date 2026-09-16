@@ -12,11 +12,13 @@ import assert from "node:assert/strict";
 import {
   SIMULATOR_VIN,
   genericPackage,
+  highFidelityPackage,
   identificationKindForLabel,
   simulatorPackage,
   simulatorVehicle,
 } from "@vdp/definitions";
 import { test } from "vitest";
+import { MODEL_SIGNAL_IDS } from "./vehicle-signals.js";
 import { DEFAULT_VIN, VirtualVehicle } from "./virtual-vehicle.js";
 
 /** How the simulator answers an identification DID that is not the VIN. */
@@ -91,4 +93,55 @@ test("the simulator package keeps the generic signal and DTC set", () => {
   const dtcs = (pkg: typeof genericPackage): number =>
     pkg.ecus.reduce((total, ecu) => total + (ecu.dtcs?.length ?? 0), 0);
   assert.equal(dtcs(simulatorPackage), dtcs(genericPackage));
+});
+
+/**
+ * The signals the high-fidelity vehicle answers from one of its own registers instead of
+ * from a measured state — the coding block lives in the module, not in the physics.
+ */
+const VEHICLE_OWN_REGISTERS = ["bcm.coding_block"];
+
+test("the model answers no signal the vehicle does not declare", () => {
+  // The other half of the coupling: an id the mapping knows but no ECU declares is a
+  // reading nothing can ask for. It looks like a feature and is dead weight — and it
+  // hides the case where the *definition* renamed the id, which would silently drop a
+  // measurement off the wire while every test kept passing.
+  const declared = new Set(highFidelityPackage.signals.map((signal) => signal.id));
+  const undeclared = MODEL_SIGNAL_IDS.filter((id) => !declared.has(id));
+  assert.deepEqual(
+    undeclared,
+    [],
+    `the model maps signals ${highFidelityPackage.name} does not declare: ${undeclared.join(", ")}`,
+  );
+});
+
+test("every declared measurement is answered by the model, not by a default", () => {
+  // An ascii signal is an identification answer and comes from the vehicle's identity
+  // (the VIN, the part number). Anything numeric is a *measurement*, and a measurement
+  // the model has no rule for is served by the base simulator's synthetic value: the DID
+  // reads, and nobody measured it. That is the failure this vehicle exists to avoid.
+  const measurements = highFidelityPackage.signals.filter((signal) => signal.encoding !== "ascii");
+  const unanswered = measurements
+    .filter((signal) => !MODEL_SIGNAL_IDS.includes(signal.id))
+    .map((signal) => signal.id)
+    .filter((id) => !VEHICLE_OWN_REGISTERS.includes(id));
+  assert.deepEqual(
+    unanswered,
+    [],
+    `no rule reads these signals — add a reader or document the register: ${unanswered.join(", ")}`,
+  );
+});
+
+test("an exemption is a register, or it is not an exemption", () => {
+  // The list above has to stay small and honest: only a bitfield a module stores is
+  // allowed to answer itself. A numeric signal hiding here is the bug the test prevents.
+  for (const id of VEHICLE_OWN_REGISTERS) {
+    const signal = highFidelityPackage.signals.find((entry) => entry.id === id);
+    assert.ok(signal, `${id} has to be declared by the package to be exempt at all`);
+    assert.equal(
+      signal?.encoding,
+      "bitmask",
+      `${id} is exempted as a register of the vehicle, so it must be one (encoding was "${signal?.encoding}")`,
+    );
+  }
 });
