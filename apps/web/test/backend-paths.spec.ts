@@ -14,7 +14,7 @@
 
 import assert from "node:assert/strict";
 import { AdapterCatalog, type AdapterEntry } from "@vdp/adapter-host";
-import { createLogger } from "@vdp/shared";
+import { TransportClosedError, createLogger } from "@vdp/shared";
 import { MemorySessionRepository } from "@vdp/storage";
 import { test } from "vitest";
 import { tick, waitFor } from "../../../tests/helpers/wait.js";
@@ -200,64 +200,62 @@ test("signal analysis states its statistics once there are samples to state", as
 });
 
 /**
- * What the chaos switches report, measured on this bus — and deliberately nothing more.
+ * Chaos, measured where it has to bite: on the session.
  *
- * The figures this file had to establish first (one run each, printed from a probe that was then
- * deleted): a corruption rule on `0x7e0` counted 328 frames in 900 ms, a burst of 6 drained in
- * about the same time, a sustained rate of 1 added a few hundred more, and `resetChaos()` cleared
- * the rules without clearing the counts.
- *
- * What those counters count is the chaos layer's *own* view of the bus, not what the session lost:
- * `apps/web/src/backend.ts:1039-1041` builds the `CanChaosBus` beside the bus the runtime holds,
- * and `openBus()` never installs one. A `dropRate` of 1 armed after `start()` therefore left
- * `identify()` and `scanDtcs()` working and the polling at 23 signals — measured here, same
- * probe. That gap is 0.E **E24**, including the fact that arming before `start()` cannot work
- * either because `stop()` zeroes `chaosBus`/`chaosDropRate` (606, 613-614) and `start()` stops
- * first. This test pins the reporting; the fix for the reaching needs its own assertions and is
- * not to be smuggled in here.
+ * The layer used to sit *beside* the bus the runtime held, so every switch reported its own
+ * observation while the vehicle noticed nothing — 0.E E24, measured as `dropRate: 1` counting
+ * 566 frames in 600 ms while `identify()` went through, `scanDtcs()` answered 7 codes and 23
+ * signals kept polling. `start()` installs the chaos layer in the path now (AGENTS 35: a
+ * switch that cannot reach anything is a widget, not a control), so these tests assert the
+ * effect on a request and not the counter of a bystander.
  */
-test("chaos: the switches report themselves, and reset disarms without erasing", async () => {
+test("chaos before a connection is refused with its reason", () => {
+  const backend = new DemoBackend({ logger, seedDtcs: false });
+  // Nothing is open, so there is no bus to arm. A silent no-op here is what made the panel
+  // lie; `TransportClosedError` is what makes `POST /api/chaos/inject` answer 409.
+  assert.throws(
+    () => backend.injectChaos({ dropRate: 1 }),
+    (error: unknown) =>
+      error instanceof TransportClosedError &&
+      /chaos needs an open connection/.test(error.message) &&
+      error.code === "E_TRANSPORT_CLOSED",
+  );
+  assert.equal(backend.chaosStatus().active, false, "and nothing was armed either");
+});
+
+test("a bus-wide drop rate starves the session, and a reset hands the bus back", async () => {
   const backend = new DemoBackend({ logger, liveIntervalMs: 60, seedDtcs: false });
+  const samples = () =>
+    backend.state().statistics.reduce((total, entry) => total + entry.samples, 0);
   try {
     await backend.start();
-    await backend.startLive();
-    const fresh = backend.chaosStatus();
-    assert.equal(fresh.active, false, "a fresh connection has nothing armed");
-    assert.equal(fresh.droppedFrames, 0);
-
-    backend.injectChaos({ corruptSequenceCanId: 0x7e0 });
+    await backend.startLive(["engine.rpm"]);
     await waitFor(
-      () => backend.chaosStatus().corruptedFrames,
-      (count) => count > 0,
+      () => samples(),
+      (count) => count >= 2,
       { timeoutMs: 4000 },
-    );
-
-    backend.injectChaos({ dropBurst: 6 });
-    assert.equal(
-      backend.chaosStatus().dropBurstRemaining,
-      6,
-      "an armed burst is stated before the bus has carried anything",
-    );
-    await waitFor(
-      () => backend.chaosStatus().droppedFrames,
-      (count) => count > 0,
-      { timeoutMs: 4000 },
-    );
-    const burst = backend.chaosStatus();
-    assert.equal(burst.dropBurstRemaining, 0, "and it is spent once the frames went by");
-    assert.ok(
-      burst.droppedFrames >= 6,
-      `the layer must have seen the burst's frames go by, got ${burst.droppedFrames}`,
     );
 
     backend.injectChaos({ dropRate: 1 });
     const armed = backend.chaosStatus();
-    assert.equal(armed.active, true, "a sustained rate is active");
-    assert.equal(armed.dropRate, 1, "and the rate is stated back as set");
+    assert.equal(armed.active, true, "the sustained rate is reported as set");
+    assert.equal(armed.dropRate, 1);
     await waitFor(
       () => backend.chaosStatus().droppedFrames,
-      (count) => count > burst.droppedFrames,
+      (count) => count > 0,
       { timeoutMs: 4000 },
+    );
+
+    // The claim that was missing before E24 was fixed: not "the counter moved" but "the
+    // session stopped working". Polling asks the vehicle for a value on every round; on a bus
+    // that eats every frame there is nothing to record, so the sample count must freeze.
+    const frozen = samples();
+    await tick(400);
+    assert.equal(
+      samples(),
+      frozen,
+      "a bus that drops everything must not keep collecting samples, and that is the proof " +
+        "that the chaos sits in the session's path",
     );
 
     backend.resetChaos();
@@ -265,9 +263,119 @@ test("chaos: the switches report themselves, and reset disarms without erasing",
     assert.equal(reset.dropRate, 0, "the rate is disarmed");
     assert.equal(reset.active, false, "and nothing claims to be running");
     assert.ok(
-      reset.droppedFrames >= 6,
+      reset.droppedFrames > 0,
       "the counters stay: a reset removes rules, it does not erase what happened",
     );
+    await waitFor(
+      () => samples(),
+      (count) => count > frozen,
+      { timeoutMs: 4000 },
+    );
+    assert.ok(true, "and the same polling collects samples again once the rules are gone");
+  } finally {
+    backend.stopLive();
+    await backend.stop();
+  }
+});
+
+test("an armed burst is spent on frames, and its target is stated either way", async () => {
+  const backend = new DemoBackend({ logger, liveIntervalMs: 60, seedDtcs: false });
+  try {
+    await backend.start();
+    await backend.startLive();
+    backend.injectChaos({ dropBurst: 6 });
+    const armed = backend.chaosStatus();
+    assert.equal(armed.dropBurstRemaining, 6, "before frames went by, all six are left");
+    assert.equal(armed.dropBurstScope, "bus-wide", "and it was aimed at the connection");
+    assert.equal(armed.dropBurstTarget, null);
+    await waitFor(
+      () => backend.chaosStatus().dropBurstRemaining,
+      (count) => count === 0,
+      { timeoutMs: 4000 },
+    );
+    const spent = backend.chaosStatus();
+    assert.ok(
+      spent.droppedFrames >= 6,
+      `a bus-wide burst of 6 must have taken six frames, got ${JSON.stringify(spent)}`,
+    );
+  } finally {
+    backend.stopLive();
+    await backend.stop();
+  }
+});
+
+test("a burst aimed at an id nobody answers on is visible as aimed there", async () => {
+  // E24's second half was not the missing effect but the missing *sentence*: the switch
+  // reported `active: true` for a rule that could never match. The target is part of the
+  // status now, so an aimed-but-untouched burst reads as what it is.
+  const backend = new DemoBackend({ logger, liveIntervalMs: 60, seedDtcs: false });
+  try {
+    await backend.start();
+    await backend.startLive();
+    const nowhere = 0x7f0;
+    backend.injectChaos({ dropBurst: 6, dropBurstCanId: nowhere });
+    const status = backend.chaosStatus();
+    assert.equal(status.dropBurstScope, "targeted");
+    assert.equal(status.dropBurstTarget, "0x7F0", "formatted like every other id on this wire");
+    await tick(400);
+    const after = backend.chaosStatus();
+    assert.equal(
+      after.dropBurstRemaining,
+      6,
+      "the vehicle does not talk on 0x7f0, so the burst is still armed — stated, not secret",
+    );
+    // …and the same count aimed at an id the vehicle does answer on takes them (measured:
+    // 0x7e0 is the demo vehicle's request id, see `chaos-lab.spec.ts` for the rule itself).
+    backend.resetChaos();
+    backend.injectChaos({ dropBurst: 3, dropBurstCanId: 0x7e0 });
+    await waitFor(
+      () => backend.chaosStatus().dropBurstRemaining,
+      (count) => count === 0,
+      { timeoutMs: 4000 },
+    );
+  } finally {
+    backend.stopLive();
+    await backend.stop();
+  }
+});
+
+test("a corrupted response takes codes off the readout, and the aim says which", async () => {
+  const backend = new DemoBackend({ logger, liveIntervalMs: 60 });
+  try {
+    await backend.start();
+    await backend.startLive();
+    const clean = (await backend.scanDtcs()).map((dtc) => dtc.code);
+    assert.equal(
+      clean.length,
+      8,
+      `the seeded vehicle answers with eight codes before anything is injected, got ${clean.join(",")}`,
+    );
+
+    // The response id is where a multi-frame answer can be broken: the engine's records stop
+    // mid-transfer, and the workshop reads fewer codes. That is the effect on the session —
+    // not a counter next to it — and the reset hands the full readout back.
+    backend.injectChaos({ corruptSequenceCanId: 0x7e8 });
+    const mangled = (await backend.scanDtcs()).map((dtc) => dtc.code);
+    assert.ok(
+      mangled.length < clean.length,
+      `a mangled response must be felt in the readout, got ${mangled.length} of ${clean.length}`,
+    );
+    assert.ok(backend.chaosStatus().corruptedFrames > 0, "and it is counted");
+
+    backend.resetChaos();
+    const again = (await backend.scanDtcs()).map((dtc) => dtc.code);
+    assert.deepEqual(again, clean, "with the rules gone the same scan reads the same codes");
+
+    // The request id is a different story, and it is the reason the aim is a field of the
+    // status: single-frame requests carry no sequence number, so this injection changes
+    // nothing on the readout while still counting frames.
+    backend.injectChaos({ corruptSequenceCanId: 0x7e0 });
+    assert.deepEqual(
+      (await backend.scanDtcs()).map((dtc) => dtc.code),
+      clean,
+      "corruption aimed at the request id leaves a single-frame readout untouched",
+    );
+    backend.resetChaos();
   } finally {
     backend.stopLive();
     await backend.stop();

@@ -452,16 +452,20 @@ test("modules stay reviewable: no production file above the size budget", () => 
     {
       file: "apps/web/src/backend.ts",
       reason:
-        "1419 lines — split tracked as AGENTS 0.E E15; the wire contract moved to views.ts in " +
-        "E19 (1326 → 1117), the file grew again, and `get canBus()` (which nothing had used " +
-        "since the replay suites moved to injected buses) is gone: 1427 → 1419. The budget only " +
-        "keeps the *rest* from growing unnoticed",
+        "1458 lines — split tracked as AGENTS 0.E E15; the wire contract moved to views.ts in " +
+        "E19 (1326 → 1117), `get canBus()` (which nothing had used since the replay suites " +
+        "moved to injected buses) is gone (1427 → 1419), and E24's chaos-in-the-path added the " +
+        "wrapper in `start()`, the burst target and the refusal before a connection: 1419 → " +
+        "1458. The budget only keeps the *rest* from growing unnoticed",
     },
     {
       file: "apps/web/public/app.js",
       reason:
-        "1648 lines — browser front end without a bundler; served as one module, and typed " +
-        "against views.ts since E19 (JSDoc costs lines instead of hiding them)",
+        "1676 lines — browser front end without a bundler; served as one module, and typed " +
+        "against views.ts since E19 (JSDoc costs lines instead of hiding them); E24's burst " +
+        "target field and the aim line in the status card are 28 of the growth (1648 → 1676), " +
+        "and the two silent fallbacks it replaced cost nothing: a missing field now refuses in " +
+        "the panel instead of sending a guessed address",
     },
   ];
   const allowed = new Set(oversize.map((entry) => entry.file));

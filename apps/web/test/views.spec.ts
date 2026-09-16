@@ -353,9 +353,27 @@ describe("GuidedDiagnosis and Chaos views", () => {
       droppedFrames: 12,
       corruptedFrames: 3,
       delayedFrames: 1,
+      dropBurstTarget: "0x7E0",
+      dropBurstScope: "targeted",
     };
     assert.equal(chaos.active, true);
     assert.equal(chaos.droppedFrames, 12);
+    // Wohin ein Burst zielt, ist ein Feld und keine Folgerung: `dropBurstRemaining`
+    // liest sich für „auf 0x7e0 gerichtet" wie für „alle Rahmen", und der Unterschied
+    // ist die halbe Antwort auf 0.E E24.
+    const busWide: import("../src/views.js").ChaosStatusView = {
+      ...chaos,
+      dropBurstTarget: null,
+      dropBurstScope: "bus-wide",
+    };
+    assert.equal(busWide.dropBurstTarget, null);
+    const disarmed: import("../src/views.js").ChaosStatusView = {
+      ...chaos,
+      dropBurstRemaining: 0,
+      dropBurstTarget: null,
+      dropBurstScope: "none",
+    };
+    assert.equal(disarmed.dropBurstScope, "none");
   });
 });
 

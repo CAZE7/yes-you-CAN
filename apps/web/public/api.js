@@ -198,7 +198,7 @@ export const fetchSignalAnalysis = (signalId) =>
 /**
  * Injects chaos/faults into the transport layer (Task 4).
  *
- * @param {{ dropBurst?: number, dropRate?: number, corruptSequenceCanId?: number }} query
+ * @param {{ dropBurst?: number, dropBurstCanId?: string | number, dropRate?: number, corruptSequenceCanId?: string | number }} query
  * @returns {Promise<{ status: import("../src/views.js").ChaosStatusView }>}
  */
 export const injectChaos = (query) => request("/api/chaos/inject", post(query));

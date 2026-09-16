@@ -378,6 +378,7 @@
           <dt>Status</dt><dd id="chaos-active-label"><span class="pill pill-online">inaktiv</span></dd>
           <dt>Drop-Rate</dt><dd id="chaos-drop-rate-label">0%</dd>
           <dt>Burst verbleibend</dt><dd id="chaos-burst-remaining-label">0 Frames</dd>
+          <dt>Burst zielt auf</dt><dd id="chaos-burst-target-label">nichts</dd>
         </dl>
       </div>
       <div class="card">
@@ -398,6 +399,9 @@
         <div class="row">
           <label class="field">Burst-Anzahl (Frames)
             <input type="number" id="chaos-burst-input" value="5" min="1" max="100" />
+          </label>
+          <label class="field">CAN-ID (leer = alle Rahmen)
+            <input type="text" id="chaos-burst-can-id" placeholder="0x7E0" />
           </label>
           <button id="btn-chaos-burst-inject" class="warn">Burst-Drop auslösen</button>
         </div>

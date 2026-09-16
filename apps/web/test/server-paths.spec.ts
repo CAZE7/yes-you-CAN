@@ -23,6 +23,10 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 import { json, post, withServer } from "../../../tests/helpers/workbench.js";
 import type { FreezeFrameView } from "../src/ecu-view.js";
+import type { ChaosStatusView } from "../src/views.js";
+
+/** The chaos status as this file reads it — the same shape the panel gets. */
+type ChaosStatus = ChaosStatusView;
 import { WebServer } from "../src/server.js";
 
 /** What `/api/history` exposes of the recording — only the part these tests read. */
@@ -250,4 +254,79 @@ test("binding every interface is allowed, and the address it prints says localho
   } finally {
     await server.close();
   }
+});
+
+test("chaos on a connection that is not open is refused, and stays out of the error log", async () => {
+  // The harness server does not autostart, so this is the panel's first click before any
+  // `POST /api/start`: arming a rule needs a bus to arm it on. `TransportClosedError` is
+  // the class, 409 is the answer, and no `request failed` line is written for it (E23's
+  // rule: an answer the operator can act on is not a server defect).
+  await withServer(async (base) => {
+    const refused = await post(base, "/api/chaos/inject", { dropRate: 1 });
+    assert.equal(refused.status, 409);
+    assert.match(
+      (refused.body as { error: string }).error,
+      /chaos needs an open connection/,
+      "the refusal names what to do about it",
+    );
+    const status = await json(base, "/api/chaos/status");
+    assert.equal(status.status, 200, "reading the status of a calm bus is always allowed");
+    const calm = (status.body as { status: ChaosStatus }).status;
+    assert.equal(calm.active, false);
+    assert.equal(calm.dropBurstScope, "none", "and an unconnected server has nothing armed");
+  });
+});
+
+test("a burst says how many frames and which address, and both are checked on the way in", async () => {
+  await started(async (base) => {
+    for (const count of [0, 2.5, -1, "drei"]) {
+      const refused = await post(base, "/api/chaos/inject", { dropBurst: count });
+      assert.equal(refused.status, 400, `"${String(count)}" is not a burst of frames`);
+      assert.match(
+        (refused.body as { error: string }).error,
+        /a burst needs a whole number of frames/,
+        "and the refusal says what a burst is",
+      );
+    }
+
+    for (const rate of [-0.1, 1.5, "50%"]) {
+      const refused = await post(base, "/api/chaos/inject", { dropRate: rate });
+      assert.equal(refused.status, 400, `"${String(rate)}" is not a probability`);
+      assert.match(
+        (refused.body as { error: string }).error,
+        /a drop rate is a fraction between 0 and 1/,
+        `the rate refusal says what a rate is, got ${JSON.stringify(refused.body)}`,
+      );
+    }
+
+    // One grammar for both spellings, the same one `/api/dtc/snapshot` uses: a burst aimed
+    // at a misread address is a rule over the wrong ECU, which is the finding E24 was about.
+    for (const id of ["0xZZ", "7e8xyz", 2 ** 33, -1]) {
+      const refused = await post(base, "/api/chaos/inject", { dropBurst: 3, dropBurstCanId: id });
+      assert.equal(refused.status, 400, `"${String(id)}" is not a CAN identifier`);
+      assert.match(
+        (refused.body as { error: string }).error,
+        /is not a CAN identifier|is not a CAN identifier/,
+        `the id refusal carries its sentence, got ${JSON.stringify(refused.body)}`,
+      );
+    }
+
+    const targeted = await post(base, "/api/chaos/inject", { dropBurst: 3, dropBurstCanId: "7E0" });
+    assert.equal(targeted.status, 200);
+    const armed = (targeted.body as { status: ChaosStatus }).status;
+    assert.equal(armed.dropBurstScope, "targeted");
+    assert.equal(armed.dropBurstTarget, "0x7E0", "the aim is reported back, formatted");
+
+    const busWide = await post(base, "/api/chaos/inject", { dropBurst: 2 });
+    const wide = (busWide.body as { status: ChaosStatus }).status;
+    assert.equal(wide.dropBurstScope, "bus-wide", "no field means every frame of this bus");
+    assert.equal(wide.dropBurstTarget, null);
+
+    const reset = await post(base, "/api/chaos/reset");
+    const calm = (reset.body as { status: ChaosStatus }).status;
+    assert.equal(calm.dropBurstScope, "none", "a reset says so in the same field");
+    assert.equal(calm.dropBurstTarget, null);
+    assert.equal(calm.dropRate, 0);
+    assert.equal(calm.active, false);
+  });
 });

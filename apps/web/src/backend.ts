@@ -61,6 +61,7 @@ import {
 import {
   AdapterUnsupportedError,
   type Logger,
+  TransportClosedError,
   TransportError,
   createLogger,
   messageOf,
@@ -231,6 +232,8 @@ export class DemoBackend {
   private guidedDiagnosisSteps = 0;
   private chaosDropRate = 0;
   private chaosDropBurst = 0;
+  /** The id the last armed burst was aimed at; `undefined` is the bus-wide form. */
+  private chaosDropBurstCanId: number | undefined;
   /**
    * Turns raw protocol codes into described fault entries. Descriptions come
    * from definition packages only — a code nobody documented stays undescribed
@@ -407,7 +410,13 @@ export class DemoBackend {
           detail: described.probe.detail,
         });
       }
-      const bus = await this.openBus();
+      const inner = await this.openBus();
+      // Chaos belongs *in* the path, not beside it (0.E E24): this wrapper is the bus the
+      // runtime and the raw-trace recorder see, so a switch thrown after `start` changes
+      // what the session experiences instead of counting what a bystander watched. With no
+      // rule armed it is a pass-through — one call per frame, no behaviour of its own.
+      this.chaosBus = new CanChaosBus(inner);
+      const bus = this.chaosBus;
       this.bus = bus;
 
       // Raw trace: every frame on the bus is recorded verbatim (AGENTS 18).
@@ -460,9 +469,7 @@ export class DemoBackend {
       if (this.selection.id === SIMULATOR_5ECU_ADAPTER_ID) {
         this.hfVehicle = new HighFidelityVehicle({ vin: this.vin, logger: this.log });
         await this.hfVehicle.start();
-        const bus = this.hfVehicle.testerBus;
-        this.bus = bus;
-        return bus;
+        return this.hfVehicle.testerBus;
       }
       this.vehicle = this.createVirtualVehicle();
       await this.vehicle.start();
@@ -1030,27 +1037,45 @@ export class DemoBackend {
 
   /**
    * Injects chaos into CAN transport (Task 4).
+   *
+   * The switches act on the bus the session runs on, which exists only while
+   * something is connected — `start()` installs the chaos layer there (E24). Before a
+   * connection there is nothing to inject into, and answering that with a silent
+   * no-op is how the panel came to report a chaos that never touched the vehicle:
+   * refused instead, with the reason, as a `TransportClosedError` the HTTP layer
+   * turns into 409 (ADR 0018: a refusal is an answer with reasons).
+   *
+   * `dropBurstCanId` aims the burst at one arbitration id; left out, the burst takes
+   * the next `dropBurst` frames of the whole connection. Aiming is what makes the
+   * switch meaningful per ECU, and the panel shows which of the two is armed
+   * (`chaosStatus().dropBurstScope`) because a burst aimed at an id nobody uses takes
+   * nothing — measured in 0.E E24 as 6 of 6 frames on the demo vehicle against 0 of 6
+   * on the managed one, both reporting `active: true`.
    */
   injectChaos(options: {
     dropBurst?: number;
+    dropBurstCanId?: number;
     dropRate?: number;
     corruptSequenceCanId?: number;
   }): void {
-    if (!this.chaosBus && this.bus) {
-      this.chaosBus = new CanChaosBus(this.bus);
+    const chaosBus = this.chaosBus;
+    if (!chaosBus) {
+      throw new TransportClosedError(
+        "chaos needs an open connection — start the vehicle first, the switches act on the live bus",
+        { adapter: this.selection.id },
+      );
     }
-    if (this.chaosBus) {
-      if (options.dropBurst !== undefined) {
-        this.chaosDropBurst = options.dropBurst;
-        ChaosLab.injectBurstFrameDrop(this.chaosBus, 0x7e0, options.dropBurst);
-      }
-      if (options.dropRate !== undefined) {
-        this.chaosDropRate = options.dropRate;
-        ChaosLab.injectDropRate(this.chaosBus, options.dropRate);
-      }
-      if (options.corruptSequenceCanId !== undefined) {
-        ChaosLab.injectIsoTpSequenceCorruption(this.chaosBus, options.corruptSequenceCanId);
-      }
+    if (options.dropBurst !== undefined) {
+      this.chaosDropBurst = options.dropBurst;
+      this.chaosDropBurstCanId = options.dropBurstCanId;
+      ChaosLab.injectBurstFrameDrop(chaosBus, options.dropBurstCanId, options.dropBurst);
+    }
+    if (options.dropRate !== undefined) {
+      this.chaosDropRate = options.dropRate;
+      ChaosLab.injectDropRate(chaosBus, options.dropRate);
+    }
+    if (options.corruptSequenceCanId !== undefined) {
+      ChaosLab.injectIsoTpSequenceCorruption(chaosBus, options.corruptSequenceCanId);
     }
   }
 
@@ -1105,10 +1130,16 @@ export class DemoBackend {
     return { ok: true, run: view, panel: toScenarioPanelView(view) };
   }
 
+  /**
+   * Disarms every rule on the live bus. The counters keep their values: they report
+   * what happened on this connection, and a reset that also erased the record would
+   * make the panel's numbers untrustworthy in exactly the moment someone checks them.
+   */
   resetChaos(): void {
     this.chaosBus?.clearRules();
     this.chaosDropRate = 0;
     this.chaosDropBurst = 0;
+    this.chaosDropBurstCanId = undefined;
   }
 
   chaosStatus(): ChaosStatusView {
@@ -1119,6 +1150,14 @@ export class DemoBackend {
       active: isActuallyActive,
       dropRate: this.chaosDropRate,
       dropBurstRemaining: burstRemaining,
+      dropBurstTarget:
+        this.chaosDropBurstCanId === undefined ? null : formatCanId(this.chaosDropBurstCanId),
+      dropBurstScope:
+        this.chaosDropBurst <= 0
+          ? "none"
+          : this.chaosDropBurstCanId === undefined
+            ? "bus-wide"
+            : "targeted",
       droppedFrames: this.chaosBus?.dropped.length ?? 0,
       corruptedFrames: this.chaosBus?.corruptedCount ?? 0,
       delayedFrames: this.chaosBus?.delayedCount ?? 0,

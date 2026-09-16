@@ -322,6 +322,15 @@ export interface ChaosStatusView {
   active: boolean;
   dropRate: number;
   dropBurstRemaining: number;
+  /**
+   * What the armed burst is aimed at, formatted like every other id on this wire.
+   * `null` means no id was given, and `dropBurstScope` then says whether that was the
+   * bus-wide form or nothing armed at all — the panel must not have to guess, because
+   * a burst aimed at an id the vehicle does not talk on takes nothing and looks active
+   * either way (AGENTS 0.E E24).
+   */
+  dropBurstTarget: string | null;
+  dropBurstScope: "none" | "bus-wide" | "targeted";
   droppedFrames: number;
   corruptedFrames: number;
   delayedFrames: number;

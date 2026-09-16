@@ -30,6 +30,7 @@ import {
   type Logger,
   SafetyViolationError,
   StorageError,
+  TransportClosedError,
   UnknownEcuError,
   createLogger,
   messageOf,
@@ -38,6 +39,7 @@ import { SIMULATOR_ADAPTER_ID, createWebAdapterCatalog } from "./adapters.js";
 import { DemoBackend } from "./backend.js";
 import type { VehicleStateView } from "./backend.js";
 import { resolveContained } from "./paths.js";
+import { HttpError, parseBurstCount, parseCanId, parseDropRate } from "./route-input.js";
 
 export interface ServerOptions {
   port?: number;
@@ -78,17 +80,6 @@ const SECURITY_HEADERS: Record<string, string> = {
   "referrer-policy": "no-referrer",
   "cross-origin-resource-policy": "same-origin",
 };
-
-/** Error carrying the HTTP status the request should fail with. */
-class HttpError extends Error {
-  constructor(
-    readonly statusCode: number,
-    message: string,
-  ) {
-    super(message);
-    this.name = "HttpError";
-  }
-}
 
 // Compiled file lives at apps/web/dist/src/server.js, so the public directory is
 // two levels up. When the module runs from TypeScript sources (vitest), the
@@ -419,12 +410,25 @@ export class WebServer {
 
     // Chaos Lab Controls (Task 4)
     if (path === "/api/chaos/inject" && method === "POST") {
+      // Ids and counts are the operator's input like every other address in this API:
+      // both spellings through one grammar, and a burst count that is not a positive
+      // integer is a refusal with a sentence instead of an armed rule of `NaN` frames.
       const body = await this.readBody<{
         dropBurst?: number;
+        dropBurstCanId?: number | string;
         dropRate?: number;
-        corruptSequenceCanId?: number;
+        corruptSequenceCanId?: number | string;
       }>(request);
-      this.backend.injectChaos(body);
+      const dropBurstCanId =
+        body.dropBurstCanId === undefined ? undefined : parseCanId(body.dropBurstCanId);
+      const corruptSequenceCanId =
+        body.corruptSequenceCanId === undefined ? undefined : parseCanId(body.corruptSequenceCanId);
+      this.backend.injectChaos({
+        ...(body.dropBurst === undefined ? {} : { dropBurst: parseBurstCount(body.dropBurst) }),
+        ...(dropBurstCanId === undefined ? {} : { dropBurstCanId }),
+        ...(body.dropRate === undefined ? {} : { dropRate: parseDropRate(body.dropRate) }),
+        ...(corruptSequenceCanId === undefined ? {} : { corruptSequenceCanId }),
+      });
       return this.sendJson(response, 200, { status: this.backend.chaosStatus() });
     }
     if (path === "/api/chaos/reset" && method === "POST") {
@@ -639,27 +643,6 @@ export class WebServer {
   }
 }
 
-/** Parse a CAN identifier from the UI (`0x7E8`, `7e8` or `2024`). */
-function parseCanId(value: unknown): number {
-  // One grammar for both spellings. A number is not exempt from the range, and hex text
-  // is not exempt from being hex: `Number.parseInt` stops at the first character it
-  // cannot read, so "7e8xyz" used to answer as 0x7E8 and an id typed one key too long
-  // became a *different* ECU's answer. Refusing is the only honest option here.
-  const isAddress = (id: number): boolean => Number.isInteger(id) && id >= 0 && id <= 0x1fffffff;
-  if (typeof value === "number") {
-    if (!isAddress(value)) throw new HttpError(400, `"${value}" is not a CAN identifier`);
-    return value;
-  }
-  if (typeof value !== "string" || value.trim().length === 0)
-    throw new HttpError(400, "an ECU response id (rxId) is required");
-  const text = value.trim().toLowerCase().replace(/^0x/, "");
-  const parsed = /^[0-9a-f]+$/.test(text) ? Number.parseInt(text, 16) : Number.NaN;
-  if (Number.isNaN(parsed) || !isAddress(parsed)) {
-    throw new HttpError(400, `"${value}" is not a CAN identifier`);
-  }
-  return parsed;
-}
-
 /**
  * Read the operator's precondition assertions.
  *
@@ -692,6 +675,9 @@ function statusFor(error: unknown): number {
   // A wrong address is the operator's to fix, not the server's to explain: 409 says
   // "this is not the state this session is in" (E23), where 500 said "something broke".
   if (error instanceof UnknownEcuError) return 409;
+  // Same class as the unknown address above: the operator asked a connection that is not
+  // open for something (chaos on a bus that does not run yet) — 409, not a server defect.
+  if (error instanceof TransportClosedError) return 409;
   return 500;
 }
 
