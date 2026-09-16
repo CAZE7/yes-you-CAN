@@ -12,6 +12,7 @@
 import type { DtcRecord } from "@vdp/protocols-uds";
 import { toHex } from "@vdp/shared";
 import type { CanFrame } from "@vdp/transport-can";
+import { createRawTraceManifest, type RawTraceManifest } from "./integrity.js";
 import type { Marker, MeasurementSample } from "../measurements/recorder.js";
 
 export interface RawTraceEntry {
@@ -206,6 +207,11 @@ export class SessionLogger {
       null,
       2,
     );
+  }
+
+  /** Cryptographic witness for the current raw trace, ready to store beside an export. */
+  rawTraceManifest(): RawTraceManifest {
+    return createRawTraceManifest(this.trace);
   }
 
   snapshot(): { trace: RawTraceEntry[]; log: DiagnosticLogEntry[] } {

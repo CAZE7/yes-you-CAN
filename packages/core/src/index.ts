@@ -27,4 +27,5 @@ export * from "./writes/coding.js";
 export * from "./writes/adaptation.js";
 export * from "./writes/standard-operations.js";
 export * from "./logging/session-logger.js";
+export * from "./logging/integrity.js";
 export * from "./safety/safety-manager.js";
