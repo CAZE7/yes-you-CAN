@@ -286,15 +286,19 @@ export default defineConfig({
         // reach it — that is the point of the line, and it says so in a comment.
         'packages/definitions/**/src/**': { lines: 85, branches: 80, perFile: true },
         // New on 2026-09-14 with the measurement scope widened to the whole tree
-        // (ADR 0027). This is a FLOOR, not a target: measured per file — server.ts
-        // 69,63 lines / 65,53 branches, backend.ts 89,61/73,22, adapters.ts
-        // 73,68/54,54 (functions 60), paths.ts 100/91,66, vehicle-view.ts 100/87,5,
-        // dtc-knowledge-view.ts and analysis-input.ts 100/100 and 100/97,4. The gate
-        // sits one point under the weakest measured value per column, so it cannot be
-        // satisfied by moving code around and it fails the moment coverage slips — the
-        // web layer used to be invisible to this file entirely, which is how its two
-        // thin files stayed thin. Closing the gap is 0.E E17, not a gate to dream up.
-        'apps/web/src/**': { lines: 69, branches: 54, perFile: true },
+        // (ADR 0027), raised on 2026-09-16 after the E17 round (tests first, then the
+        // gate — ADR 0017). This is a FLOOR, not a target: measured per file at that
+        // commit — server.ts 76,99 lines / 77,28 branches (the CLI block at its bottom
+        // stays unmeasured on purpose: a spawned child is not in the parent's v8
+        // counters, so covering it there would be a number bought by lying about the
+        // scope), backend.ts 92,81/67,87, adapters.ts 100/100 (its two thin branches
+        // were an unused export, deleted rather than decorated), paths.ts 100/91,66,
+        // vehicle-view.ts 100/87,5, scenario-view.ts 100/93,18, dtc-knowledge-view.ts
+        // 100/100, analysis-input.ts 100/97,4. The gate sits one point under the
+        // weakest measured value per column, so it cannot be satisfied by moving code
+        // around and it fails the moment coverage slips — the web layer used to be
+        // invisible to this file entirely, which is how its two thin files stayed thin.
+        'apps/web/src/**': { lines: 75, branches: 66, perFile: true },
         // `tools/**` is measured now (definition-importer 97,9/95,3 lines, simulators
         // 94,9/82,0, trace-analyzer 97,8/75,3) but deliberately has NO per-file gate:
         // `tools/test-reporters/flaky-reporter.ts` measures 0 % — lines 29-101, no
