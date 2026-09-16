@@ -44,3 +44,13 @@ nachgezogen wurde. Gemessen am 2026-09-11 galt:
   97 %/84 % nachgetestet (Crash-Toleranz der Streams, Migrations-Persistenz,
   Listen-Resilienz); das storage-Gate stieg entsprechend auf 90/55.
   `transport/doip/src/transport.ts` bleibt ein Nachtest-Kandidat (AGENTS 0.E).
+- Dasselbe Muster ein drittes Mal angewandt (2026-09-16, AGENTS 0.E E17): die
+  Bodenschwelle `apps/web/src/**` stand auf 69/54, während `server.ts` 69,63/65,53
+  und `adapters.ts` 73,68/54,54 meldeten. Erst die Tests (`server-paths.spec.ts` für
+  Freeze-Frame-Lesung bis aufs Rohbyte, die Absagen, das Body-Limit und die Marker;
+  Adapter-Pins für die drei `create()`-Verweigerungen), dann die Schwelle auf 75/66.
+  Der Biss ist gezeigt, nicht behauptet: mit `branches: 78` benennt der Coverage-Lauf
+  genau `backend.ts` 67,87 und `server.ts` 77,28 und bricht mit EXIT 1. Was die Zahl
+  ausdrücklich *nicht* vortäuscht: der CLI-Block am Fuß von `server.ts` bleibt
+  ungeprüft, weil die v8-Deckung eines Kindprozesses nicht in die Zählung des Vaters
+  fällt — ihn zu spawnen bringt Verhalten, keine Coverage.

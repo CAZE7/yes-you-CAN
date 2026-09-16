@@ -202,7 +202,7 @@ Zeitraum aus, Doppelklick zeigt die gesamte Aufnahme.
 
 ## Tests
 
-1981 bestandene Tests / 133 geprüfte Dateien (`npm test` in 53 s; `npm run
+1991 bestandene Tests / 134 geprüfte Dateien (`npm test` in 54 s; `npm run
 test:coverage` in 63 s), Vitest 5 mit Projektkonfiguration (ADR 0010,
 Schritt 1 — ersetzt ADR 0008). Der `architecture`-Lauf prüft die Struktur *und*
 führt die Quality-Gates aus (ADR 0029) — unter `CI` auch die Coverage-Gates, als
@@ -212,14 +212,17 @@ aufrufen kann (0.E E20) — einschließlich
 tatsächlichen Importen passt (ADR 0042). Unit-Specs liegen co-lokatiert neben dem
 Code (`src/*.spec.ts`); Property-Tests laufen mit fast-check, Coverage-Gates mit
 `npm run test:coverage` (global 90 % lines / 80 % branches als
-Projekt-Durchschnitt, Ist 94,77 Statements / 86,69 Zweige / 96,13 Funktionen /
-96,05 Zeilen — gemessen am Stand vom 2026-09-16, und die letzten Stellen wandern mit
+Projekt-Durchschnitt, Ist 95,06 Statements / 87,01 Zweige / 96,46 Funktionen /
+96,33 Zeilen — gemessen am Stand vom 2026-09-16, und die letzten Stellen wandern mit
 Last und Node-Version (86,59 bis 86,71 Zweige auf demselben Baum,
 ADR 0029 §6) — seit ADR 0027 wird die ganze
 Fläche gemessen: `packages/**/src`, `apps/web/src/**` und `tools/**`, weil die
 Workbench-Schicht vorher in keiner Zahl vorkam; per-file-Gates für
 `shared`/`core`/`protocols`/`adapters`/`transport`/`storage`/`charts`/`reports`/`ai` (95/85 seit 2026-09-14)/`diagnostic-ir` (95/85 seit ADR 0034)/`definitions`
-und seit ADR 0027 eine **Bodenschwelle** 69/54 für `apps/web/src/**`; `tools/**` ist
+und seit ADR 0027 eine **Bodenschwelle** für `apps/web/src/**`, am 2026-09-16 von
+69/54 auf 75/66 gehoben, nachdem die nachgetesteten Randpfade der Workbench (Freeze Frame,
+Body-Limit, Marker, Adapter-Absagen) die dünnsten Dateien gehoben hatten — erst Tests, dann
+Gate (ADR 0017); `tools/**` ist
 gemessen, aber ohne Gate (dort steht `flaky-reporter.ts` bei 0 %, weil kein CI-Job ihn
 aufrufen kann — 0.E E10);
 
@@ -259,6 +262,7 @@ nicht — der laufende Test schon.
 | `POST /api/simulator/scenario` | ein Szenario auf dem 5-ECU-Fahrzeug laufen lassen (ADR 0040) |
 | `POST /api/vehicle/resolve` | Fahrzeug bestimmen: Kandidaten mit Belegen und Widersprüchen (read-only) |
 | `POST /api/dtc/scan` | Fehlerspeicher lesen |
+| `POST /api/dtc/snapshot` | Freeze Frame zu einem Code lesen: `rxId` als `0x7E8`, `7e8` oder Zahl, `code` Pflicht, Recordnummer optional (Default `0xff`) |
 | `POST /api/live/start` \| `/stop` | Live-Messung |
 | `POST /api/analyze` | Analyse (lokaler Regel-Provider) — nennt, über welches Auto sie spricht, auf welcher Fassung sie beruht und welche Belege sie gelesen hat |
 | `POST /api/session/save` | Session persistieren |
