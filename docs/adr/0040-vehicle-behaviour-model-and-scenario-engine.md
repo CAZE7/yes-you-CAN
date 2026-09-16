@@ -93,15 +93,36 @@ dasselbe Objekt nötig: Daten, die ein Test abarbeitet und ein Simulator ausfüh
    Katalog und Lauf (`ScenarioSummary`, `ScenarioRunView`), `GET /api/simulator/scenarios`
    und `POST /api/simulator/scenario` liefern sie; die Typen hängen an `views.ts`, weil das
    Frontend dagegen typgeprüft wird (ADR 0030). Bewusst **kein** Panel in `public/app.js`
-   gebaut: `app.js` steht mit 1642 Zeilen schon außerhalb des Größenbudgets (Ausnahmeeintrag in
-   `tests/architecture/hygiene.test.ts`, Zahl nachgemessen 2026-09-16 — das Tor prüft neuerlich die
-   Zahl im Ausnahmetext gegen die gemessene, weil beide Zahlen dort als Prosa standen und um 545
-   Zeilen verfault waren),
-   und eine View, die niemand abdecken kann, ist Schulden statt Funktion. Der Endpoint ist
+   gebaut: `app.js` steht mit 1642 Zeilen schon außerhalb des Größenbudgets
+   (Ausnahmeeintrag in `tests/architecture/hygiene.test.ts`, Zahl nachgemessen
+   2026-09-16 — das Tor vergleicht neuerdings die Zahl im Ausnahmetext mit der
+   gemessenen, weil beide dort als Prosa standen und um 545 Zeilen verfault waren), und
+   eine View, die niemand abdecken kann, ist Schulden statt Funktion. Der Endpoint ist
    die nach oben offene Fläche; das Panel ist ein eigener, kleiner Schritt.
 
+9. **Die Messwert-Tabelle und die Signale des Fahrzeugs sind eine geprüfte Beziehung.**
+   `MODEL_SIGNAL_READERS` (`vehicle-signals.ts`) ist die eine Tabelle — eine Tabelle und
+   kein `switch`, weil die Liste der Ids *selbst* die Behauptung ist, die verglichen wird;
+   eine sich aus Quelltext lesende Liste hätte ihre Regel im Test statt im Modul.
+   `tools/simulators/src/vehicle-definition.spec.ts` prüft beide Richtungen gegen
+   `highFidelityPackage`: jede gemappte Id braucht ein deklariertes Signal, und jedes
+   deklarierte Signal mit numerischem Encoding braucht einen Leser — sonst antwortet die
+   Basis-Simulation eine Zahl, die niemand gemessen hat. Ausgenommen sind
+   ASCII-Identifikationen und die Register, die das Fahrzeug selbst führt
+   (`bcm.coding_block`); die Ausnahme ist an `encoding === "bitmask"` gebunden, damit sich
+   keine Messgröße dort eintragen kann. Gefunden hat der erste Lauf die eine Hälfte: der
+   ABS-Modul meldete zwei Räder, während das Modell vier fährt und `breakSensor()` an
+   jedem der vier etwas kaputt machen kann — eine Ursache, die niemand ablesen kann. Das
+   Paket deklariert die beiden Hinterräder seither auf dem DID, das das Modul schon
+   antwortet (`0xF40D`, vier Werte, Provenance `own`, keine erfundene Nummer). Und weil
+   eine Mode-Union eine Zusage ist, hat `faultedWheelSpeed` keinen `default`-Zweig: ein
+   neuer Modus muss beantwortet sein, bevor der Baum baut.
 ## Gemessen beim Bauen (das hier steht, weil es sonst eine Anekdote bleibt)
 
+- **Die Cause-API war schmaler als ihr eigenes Vokabular**: `breakSensor()` nahm drei der
+  sechs `SensorFaultMode`-Arten an, das Szenario-Format alle sechs — `short-to-ground` war
+  vom Fahrzeug aus unerreichbar, obwohl das Modell es seitlich auf null zieht. Typ jetzt auf
+  die Union; der Fehler war unsichtbar, weil jede Teststelle eine der drei zuließ.
 - **Rundung frisst Akkumulation.** `batteryVoltage` pro Schritt auf 0,01 V gerundet, bei
   0,0037 V pro Schritt: die Spannung bewegte sich 40 s Modellzeit nicht — ein
   Lade-system-Ausfall ohne Effekt. Integration akkumuliert jetzt ungerundet; kodiert wird

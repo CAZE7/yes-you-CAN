@@ -3,7 +3,7 @@
 [![CI](https://github.com/CAZE7/yes-you-CAN/actions/workflows/ci.yml/badge.svg)](https://github.com/CAZE7/yes-you-CAN/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](./package.json)
-[![Tests](https://img.shields.io/badge/tests-1939%20passed-brightgreen)](#tests)
+[![Tests](https://img.shields.io/badge/tests-1953%20passed-brightgreen)](#tests)
 [![TypeScript](https://img.shields.io/badge/TypeScript-7%20%2F%20tsgo-blue)](./tsconfig.base.json)
 
 Fahrzeugdiagnose-Plattform: CAN und DoIP lesen, Steuergeräte identifizieren, das
@@ -195,14 +195,15 @@ Zeitraum aus, Doppelklick zeigt die gesamte Aufnahme.
 
 ## Tests
 
-1939 Tests / 130 Dateien in 52,3 s, Vitest 5 mit Projektkonfiguration (ADR 0010,
+1953 Tests / 131 Dateien (`npm run ci`), 62,1 s im Coverage-Lauf; Vitest 5 mit Projektkonfiguration (ADR 0010,
 Schritt 1 — ersetzt ADR 0008). Der `architecture`-Lauf prüft die Struktur *und*
 führt die Quality-Gates aus (ADR 0029) — einschließlich
 `npm run check:manifests`, das verlangt, dass jedes `package.json` zu den
 tatsächlichen Importen passt (ADR 0042). Unit-Specs liegen co-lokatiert neben dem
 Code (`src/*.spec.ts`); Property-Tests laufen mit fast-check, Coverage-Gates mit
 `npm run test:coverage` (global 90 % lines / 80 % branches als
-Projekt-Durchschnitt, Ist 94,69 Statements / 86,55 Zweige / 96,05 Funktionen / 95,97 Zeilen — seit ADR 0027 wird die ganze
+Projekt-Durchschnitt, Ist 94,74 Statements / 86,66 Zweige / 96,09 Funktionen /
+96,04 Zeilen — seit ADR 0027 wird die ganze
 Fläche gemessen: `packages/**/src`, `apps/web/src/**` und `tools/**`, weil die
 Workbench-Schicht vorher in keiner Zahl vorkam; per-file-Gates für
 `shared`/`core`/`protocols`/`adapters`/`transport`/`storage`/`charts`/`reports`/`ai` (95/85 seit 2026-09-14)/`diagnostic-ir` (95/85 seit ADR 0034)/`definitions`
