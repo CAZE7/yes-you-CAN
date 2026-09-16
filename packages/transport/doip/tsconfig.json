@@ -12,9 +12,6 @@
     },
     {
       "path": "../can"
-    },
-    {
-      "path": "../../protocols/uds"
     }
   ],
   "exclude": ["src/**/*.spec.ts"]

@@ -40,6 +40,9 @@
     },
     {
       "path": "../../tools/simulators"
+    },
+    {
+      "path": "../../packages/diagnostic-ir"
     }
   ]
 }

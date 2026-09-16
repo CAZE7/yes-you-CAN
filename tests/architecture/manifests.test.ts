@@ -10,8 +10,10 @@
  */
 
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
-import { join, relative } from "node:path";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, relative } from "node:path";
 import { test } from "vitest";
 import { discoverWorkspaceDirs, repoRoot } from "./workspace.js";
 
@@ -137,4 +139,286 @@ test("PLATFORM_VERSION is the version the workspace actually has", () => {
     rootManifest.version,
     "the constant is a copy of the root version — this test is what keeps it true",
   );
+});
+
+/**
+ * The manifest *is* the import graph (AGENTS 34.20; master backlog P0 #2's sibling).
+ *
+ * A hoisted workspace makes an undeclared import work, and makes an unused dependency
+ * harmless — which is exactly why neither survives without a gate. The rule is a tool
+ * (`tools/architecture/check-package-manifests.mjs`, `npm run check:manifests`, part of
+ * `npm run ci`) and these tests are its three duties: that it is wired in, that the tree
+ * passes it, and that it bites. The fixtures below are the bite proof — each is a whole
+ * drift that must be reported, plus two shapes that must **not** be reported, because a
+ * checker that invents dependencies out of prose is a checker whose findings get ignored.
+ */
+
+const MANIFEST_TOOL = join(repoRoot, "tools/architecture/check-package-manifests.mjs");
+
+interface ManifestViolation {
+  rule: string;
+  package: string;
+  dependency?: string;
+  message: string;
+}
+
+function runManifestTool(args: readonly string[] = []): {
+  status: number | null;
+  stdout: string;
+  stderr: string;
+} {
+  const result = spawnSync(process.execPath, [MANIFEST_TOOL, ...args], { encoding: "utf8" });
+  return { status: result.status, stdout: result.stdout, stderr: result.stderr };
+}
+
+test("the manifest rule runs in the CI path, not only in this test", () => {
+  const root = JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8")) as {
+    scripts?: Record<string, string>;
+  };
+  const scripts = root.scripts ?? {};
+  assert.equal(
+    scripts["check:manifests"],
+    "node tools/architecture/check-package-manifests.mjs",
+    "the rule needs a script of its own",
+  );
+  assert.ok(
+    (scripts.ci ?? "").includes("check:manifests"),
+    "`npm run ci` must run the manifest rule before the tests",
+  );
+  assert.ok(
+    (scripts.ci ?? "").includes("check:deps"),
+    "the layer rule stays part of the same gate — two questions, one gate",
+  );
+});
+
+test("every manifest matches its imports", () => {
+  const run = runManifestTool(["--json"]);
+  assert.equal(
+    run.status,
+    0,
+    `the manifest rule must pass on this tree:\n${run.stdout}\n${run.stderr}`,
+  );
+  const violations = JSON.parse(run.stdout) as { violations: ManifestViolation[] };
+  assert.deepEqual(violations.violations, []);
+});
+
+test("the manifest rule reads the graph, it does not restate it (ADR 0031)", () => {
+  const tool = readFileSync(MANIFEST_TOOL, "utf8");
+  // The allowed-edge list belongs to dependency-rules.json. A second copy here would be
+  // a second rule, and the two would drift exactly like the lint config did before ADR
+  // 0029 — so the manifest tool must not contain a single `mayImport` entry.
+  assert.doesNotMatch(tool, /mayImport/, "the manifest tool must not restate the layer rules");
+  assert.doesNotMatch(
+    tool,
+    /"@vdp\/[a-z-]+":\s*\[/,
+    "no dependency allow list may live in this file",
+  );
+});
+
+/** A two-package workspace with `code` written into `packages/one/src/index.ts`. */
+function fixtureWorkspace(files: Record<string, string>): {
+  dir: string;
+  run: () => { status: number | null; stdout: string };
+} {
+  const dir = mkdtempSync(join(tmpdir(), "vdp-manifest-"));
+  for (const [name, content] of Object.entries(files)) {
+    const full = join(dir, name);
+    mkdirSync(dirname(full), { recursive: true });
+    writeFileSync(full, content);
+  }
+  return {
+    dir,
+    run: () => {
+      const result = spawnSync(process.execPath, [MANIFEST_TOOL, "--root", dir, "--json"], {
+        encoding: "utf8",
+      });
+      return { status: result.status, stdout: result.stdout };
+    },
+  };
+}
+
+const ROOT_MANIFEST = JSON.stringify({
+  name: "fixture-root",
+  version: "0.1.0",
+  private: true,
+  workspaces: ["packages/*"],
+  devDependencies: { vitest: "5.0.0" },
+});
+
+const TWO_PACKAGES = {
+  "package.json": ROOT_MANIFEST,
+  "packages/two/package.json": JSON.stringify({
+    name: "@vdp/two",
+    version: "0.1.0",
+    private: true,
+    main: "./dist/src/index.js",
+    dependencies: {},
+  }),
+  "packages/two/src/index.ts": "export const two = 2;\n",
+};
+
+function violationsOf(fixture: ReturnType<typeof fixtureWorkspace>): ManifestViolation[] {
+  const run = fixture.run();
+  assert.notEqual(run.status, 2, `the tool must not fail to read a fixture: ${run.stdout}`);
+  return run.status === 0
+    ? []
+    : (JSON.parse(run.stdout) as { violations: ManifestViolation[] }).violations;
+}
+
+function rulesOf(fixture: ReturnType<typeof fixtureWorkspace>): string[] {
+  return violationsOf(fixture).map((violation) => violation.rule);
+}
+
+test("an import nobody declared is reported", () => {
+  const fixture = fixtureWorkspace({
+    ...TWO_PACKAGES,
+    "packages/one/package.json": JSON.stringify({
+      name: "@vdp/one",
+      version: "0.1.0",
+      private: true,
+      main: "./dist/src/index.js",
+      dependencies: {},
+    }),
+    "packages/one/src/index.ts": 'import { two } from "@vdp/two";\nexport const one = two + 1;\n',
+  });
+  try {
+    assert.deepEqual(rulesOf(fixture), ["missing-production-dependency"]);
+  } finally {
+    rmSync(fixture.dir, { recursive: true, force: true });
+  }
+});
+
+test("a declared dependency nothing imports is reported", () => {
+  const fixture = fixtureWorkspace({
+    ...TWO_PACKAGES,
+    "packages/one/package.json": JSON.stringify({
+      name: "@vdp/one",
+      version: "0.1.0",
+      private: true,
+      main: "./dist/src/index.js",
+      dependencies: { "@vdp/two": "0.1.0" },
+    }),
+    "packages/one/src/index.ts": "export const one = 1;\n",
+  });
+  try {
+    assert.deepEqual(rulesOf(fixture), ["unused-production-dependency"]);
+  } finally {
+    rmSync(fixture.dir, { recursive: true, force: true });
+  }
+});
+
+test("a dependency only tests import is reported, and says where it belongs", () => {
+  const fixture = fixtureWorkspace({
+    ...TWO_PACKAGES,
+    "packages/one/package.json": JSON.stringify({
+      name: "@vdp/one",
+      version: "0.1.0",
+      private: true,
+      main: "./dist/src/index.js",
+      dependencies: { "@vdp/two": "0.1.0" },
+    }),
+    "packages/one/src/index.ts": "export const one = 1;\n",
+    "packages/one/src/one.spec.ts": 'import { two } from "@vdp/two";\nexport const used = two;\n',
+  });
+  try {
+    const violations = violationsOf(fixture);
+    assert.deepEqual(
+      violations.map((violation) => violation.rule),
+      ["test-only-dependency"],
+      "the production surface is what a manifest states, so a test-only entry is a wrong statement",
+    );
+    assert.match(violations[0]?.message ?? "", /devDependencies/);
+  } finally {
+    rmSync(fixture.dir, { recursive: true, force: true });
+  }
+});
+
+test("a workspace dependency that is not the root version is reported", () => {
+  const fixture = fixtureWorkspace({
+    ...TWO_PACKAGES,
+    "packages/one/package.json": JSON.stringify({
+      name: "@vdp/one",
+      version: "0.1.0",
+      private: true,
+      main: "./dist/src/index.js",
+      dependencies: { "@vdp/two": "^0.0.3" },
+    }),
+    "packages/one/src/index.ts": 'import { two } from "@vdp/two";\nexport const one = two;\n',
+  });
+  try {
+    assert.deepEqual(rulesOf(fixture), ["dep-version-drift"]);
+  } finally {
+    rmSync(fixture.dir, { recursive: true, force: true });
+  }
+});
+
+test("a dependency that is not a workspace package is reported", () => {
+  const fixture = fixtureWorkspace({
+    ...TWO_PACKAGES,
+    "packages/one/package.json": JSON.stringify({
+      name: "@vdp/one",
+      version: "0.1.0",
+      private: true,
+      main: "./dist/src/index.js",
+      dependencies: { "@vdp/gone": "0.1.0" },
+    }),
+    "packages/one/src/index.ts": "export const one = 1;\n",
+  });
+  try {
+    assert.ok(rulesOf(fixture).includes("unknown-workspace-dependency"));
+  } finally {
+    rmSync(fixture.dir, { recursive: true, force: true });
+  }
+});
+
+test("a module served by resolved path counts as a dependency — and prose does not", () => {
+  // Both halves matter. `apps/web` serves `@vdp/charts` to the browser through
+  // `createRequire(...).resolve("@vdp/charts")`, which is a dependency the naive reader
+  // of `from` clauses would demand be removed; and a doc comment that says a model tells
+  // "no start" apart from "misfire" must never be read as an import of a package called
+  // `misfire`. One fixture, both directions.
+  const fixture = fixtureWorkspace({
+    ...TWO_PACKAGES,
+    "packages/one/package.json": JSON.stringify({
+      name: "@vdp/one",
+      version: "0.1.0",
+      private: true,
+      main: "./dist/src/index.js",
+      // No `dependencies` at all: the point is that the resolve below *is* the reason it
+      // would be wrong to call this clean — reported as missing, not as unused.
+      devDependencies: {},
+    }),
+    "packages/one/src/index.ts": `/**
+ * A checker that matched prose would report a dependency on "misfire" here, from a
+ * sentence that says "no start" differs from "misfire" — and miss the real one below.
+ */
+import { createRequire } from "node:module";
+
+const served = createRequire(import.meta.url).resolve("@vdp/two");
+export const one = served.length;
+`,
+  });
+  try {
+    const violations = violationsOf(fixture);
+    assert.deepEqual(
+      violations.map((violation) => `${violation.rule}:${violation.dependency}`),
+      ["missing-production-dependency:@vdp/two"],
+      "the resolved workspace module is the only import, and prose is not an import",
+    );
+  } finally {
+    rmSync(fixture.dir, { recursive: true, force: true });
+  }
+});
+
+test("a broken manifest is exit 2, never a clean report", () => {
+  const fixture = fixtureWorkspace({
+    "package.json": ROOT_MANIFEST,
+    "packages/broken/package.json": "{ not json",
+  });
+  try {
+    const run = fixture.run();
+    assert.equal(run.status, 2, "an unreadable manifest must not look like a passing tree");
+  } finally {
+    rmSync(fixture.dir, { recursive: true, force: true });
+  }
 });

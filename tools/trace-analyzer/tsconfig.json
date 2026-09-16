@@ -11,16 +11,13 @@
       "path": "../../packages/shared"
     },
     {
-      "path": "../../packages/core"
-    },
-    {
       "path": "../../packages/definitions"
     },
     {
-      "path": "../../packages/transport/iso-tp"
+      "path": "../../packages/protocols/uds"
     },
     {
-      "path": "../../packages/protocols/uds"
+      "path": "../../packages/transport/can"
     }
   ],
   "exclude": ["src/**/*.spec.ts"]

@@ -22,7 +22,7 @@
     }
   },
   "dependencies": {
-    "@vdp/shared": "0.1.0",
-    "@vdp/core": "0.1.0"
+    "@vdp/diagnostic-ir": "0.1.0",
+    "@vdp/shared": "0.1.0"
   }
 }
