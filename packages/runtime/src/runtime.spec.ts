@@ -29,6 +29,7 @@ import { SafetyManager } from "@vdp/core";
 import { genericPackage } from "@vdp/definitions";
 import { FixedClock, FixedIdGenerator, InMemorySessionStore, RecordingEventBus } from "@vdp/domain";
 import { createLogger } from "@vdp/shared";
+import { UnknownEcuError } from "@vdp/shared";
 import type { CanBus, CanFilter, CanFrame } from "@vdp/transport-can";
 import { describe, test } from "vitest";
 import { createDiagnosticRuntime, parseEcuAddress, unknownEcu } from "./index.js";
@@ -154,8 +155,15 @@ describe("address helpers", () => {
     assert.equal(parseEcuAddress("0x-1"), undefined);
   });
 
-  test("unknownEcu errors are descriptive", () => {
-    assert.match(unknownEcu("0x7e8").message, /0x7e8/);
+  test("unknownEcu errors are descriptive and classifiable", () => {
+    const error = unknownEcu("0x7e8");
+    assert.match(error.message, /0x7e8/);
+    // The class is the point, not the sentence: the workbench answers a wrong address with
+    // something an operator can act on (409) by matching this type and code, and would
+    // otherwise have been reduced to comparing prose. E23 was exactly that.
+    assert.ok(error instanceof UnknownEcuError);
+    assert.equal(error.code, "E_ECU_UNKNOWN");
+    assert.equal(error.ecuId, "0x7e8");
   });
 });
 

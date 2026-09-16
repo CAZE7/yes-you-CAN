@@ -198,7 +198,7 @@ export const fetchSignalAnalysis = (signalId) =>
 /**
  * Injects chaos/faults into the transport layer (Task 4).
  *
- * @param {{ dropBurst?: number, dropRate?: number, corruptSequenceCanId?: number }} query
+ * @param {{ dropBurst?: number, dropBurstCanId?: string | number, dropRate?: number, corruptSequenceCanId?: string | number }} query
  * @returns {Promise<{ status: import("../src/views.js").ChaosStatusView }>}
  */
 export const injectChaos = (query) => request("/api/chaos/inject", post(query));
@@ -214,3 +214,29 @@ export const resetChaos = () => request("/api/chaos/reset", post({}));
  * @returns {Promise<{ status: import("../src/views.js").ChaosStatusView }>}
  */
 export const fetchChaosStatus = () => request("/api/chaos/status");
+
+/**
+ * The scenario catalog of the connected vehicle.
+ *
+ * `options` and `note` come from the server's projection (`apps/web/src/scenario-view.ts`,
+ * spec in `apps/web/test/scenario-view.spec.ts`): the picker shows what it was given and
+ * decides nothing of its own, because a front-end module has no test runner here.
+ *
+ * @returns {Promise<import("../src/views.js").ScenarioCatalogView>}
+ */
+export const fetchScenarios = () => request("/api/simulator/scenarios");
+
+/**
+ * Run one scenario on the connected virtual vehicle.
+ *
+ * A refused run (no behaviour model on this adapter, unknown id) answers 409 with the
+ * sentence the backend chose, and `request` puts that sentence into the thrown error —
+ * the panel shows it unchanged rather than rephrasing a fact about the vehicle.
+ *
+ * @param {{ id: string }} query
+ * @returns {Promise<{
+ *   run: import("../src/views.js").ScenarioRunView,
+ *   panel: import("../src/views.js").ScenarioPanelView,
+ * }>}
+ */
+export const runScenario = (query) => request("/api/simulator/scenario", post(query));

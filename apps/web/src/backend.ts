@@ -61,6 +61,7 @@ import {
 import {
   AdapterUnsupportedError,
   type Logger,
+  TransportClosedError,
   TransportError,
   createLogger,
   messageOf,
@@ -70,7 +71,9 @@ import {
   ChaosLab,
   DEFAULT_VIN,
   HighFidelityVehicle,
+  SCENARIO_CATALOG,
   VirtualVehicle,
+  scenarioById,
 } from "@vdp/simulators";
 import {
   FileSystemSessionRepository,
@@ -137,6 +140,14 @@ export type {
 import { buildAnalysisInput } from "./analysis-input.js";
 import { toDtcView } from "./dtc-view.js";
 import { toEcuView, toFreezeFrameView } from "./ecu-view.js";
+import {
+  type ScenarioCatalogView,
+  type ScenarioPanelView,
+  type ScenarioRunView,
+  toScenarioCatalogView,
+  toScenarioPanelView,
+  toScenarioRunView,
+} from "./scenario-view.js";
 import { formatCanId, toMarkerView, toSampleView, toTraceView } from "./trace-view.js";
 import { toVehicleResolutionView } from "./vehicle-view.js";
 
@@ -221,6 +232,8 @@ export class DemoBackend {
   private guidedDiagnosisSteps = 0;
   private chaosDropRate = 0;
   private chaosDropBurst = 0;
+  /** The id the last armed burst was aimed at; `undefined` is the bus-wide form. */
+  private chaosDropBurstCanId: number | undefined;
   /**
    * Turns raw protocol codes into described fault entries. Descriptions come
    * from definition packages only — a code nobody documented stays undescribed
@@ -255,14 +268,6 @@ export class DemoBackend {
   /** Adapter the user selected, with its settings. */
   get adapterSelection(): AdapterSelection {
     return this.selection;
-  }
-
-  /**
-   * The bus the engine talks to. Exposed for tests and embedding so a caller can
-   * drive frames directly (e.g. the replay regression suites).
-   */
-  get canBus(): CanBus | undefined {
-    return this.bus;
   }
 
   /**
@@ -405,7 +410,13 @@ export class DemoBackend {
           detail: described.probe.detail,
         });
       }
-      const bus = await this.openBus();
+      const inner = await this.openBus();
+      // Chaos belongs *in* the path, not beside it (0.E E24): this wrapper is the bus the
+      // runtime and the raw-trace recorder see, so a switch thrown after `start` changes
+      // what the session experiences instead of counting what a bystander watched. With no
+      // rule armed it is a pass-through — one call per frame, no behaviour of its own.
+      this.chaosBus = new CanChaosBus(inner);
+      const bus = this.chaosBus;
       this.bus = bus;
 
       // Raw trace: every frame on the bus is recorded verbatim (AGENTS 18).
@@ -458,9 +469,7 @@ export class DemoBackend {
       if (this.selection.id === SIMULATOR_5ECU_ADAPTER_ID) {
         this.hfVehicle = new HighFidelityVehicle({ vin: this.vin, logger: this.log });
         await this.hfVehicle.start();
-        const bus = this.hfVehicle.testerBus;
-        this.bus = bus;
-        return bus;
+        return this.hfVehicle.testerBus;
       }
       this.vehicle = this.createVirtualVehicle();
       await this.vehicle.start();
@@ -1028,34 +1037,109 @@ export class DemoBackend {
 
   /**
    * Injects chaos into CAN transport (Task 4).
+   *
+   * The switches act on the bus the session runs on, which exists only while
+   * something is connected — `start()` installs the chaos layer there (E24). Before a
+   * connection there is nothing to inject into, and answering that with a silent
+   * no-op is how the panel came to report a chaos that never touched the vehicle:
+   * refused instead, with the reason, as a `TransportClosedError` the HTTP layer
+   * turns into 409 (ADR 0018: a refusal is an answer with reasons).
+   *
+   * `dropBurstCanId` aims the burst at one arbitration id; left out, the burst takes
+   * the next `dropBurst` frames of the whole connection. Aiming is what makes the
+   * switch meaningful per ECU, and the panel shows which of the two is armed
+   * (`chaosStatus().dropBurstScope`) because a burst aimed at an id nobody uses takes
+   * nothing — measured in 0.E E24 as 6 of 6 frames on the demo vehicle against 0 of 6
+   * on the managed one, both reporting `active: true`.
    */
   injectChaos(options: {
     dropBurst?: number;
+    dropBurstCanId?: number;
     dropRate?: number;
     corruptSequenceCanId?: number;
   }): void {
-    if (!this.chaosBus && this.bus) {
-      this.chaosBus = new CanChaosBus(this.bus);
+    const chaosBus = this.chaosBus;
+    if (!chaosBus) {
+      throw new TransportClosedError(
+        "chaos needs an open connection — start the vehicle first, the switches act on the live bus",
+        { adapter: this.selection.id },
+      );
     }
-    if (this.chaosBus) {
-      if (options.dropBurst !== undefined) {
-        this.chaosDropBurst = options.dropBurst;
-        ChaosLab.injectBurstFrameDrop(this.chaosBus, 0x7e0, options.dropBurst);
-      }
-      if (options.dropRate !== undefined) {
-        this.chaosDropRate = options.dropRate;
-        ChaosLab.injectDropRate(this.chaosBus, options.dropRate);
-      }
-      if (options.corruptSequenceCanId !== undefined) {
-        ChaosLab.injectIsoTpSequenceCorruption(this.chaosBus, options.corruptSequenceCanId);
-      }
+    if (options.dropBurst !== undefined) {
+      this.chaosDropBurst = options.dropBurst;
+      this.chaosDropBurstCanId = options.dropBurstCanId;
+      ChaosLab.injectBurstFrameDrop(chaosBus, options.dropBurstCanId, options.dropBurst);
+    }
+    if (options.dropRate !== undefined) {
+      this.chaosDropRate = options.dropRate;
+      ChaosLab.injectDropRate(chaosBus, options.dropRate);
+    }
+    if (options.corruptSequenceCanId !== undefined) {
+      ChaosLab.injectIsoTpSequenceCorruption(chaosBus, options.corruptSequenceCanId);
     }
   }
 
+  /**
+   * The scenario catalog of the virtual vehicle (AGENTS 32).
+   *
+   * Data, not a copy: the list is the simulator's own catalog projected for a picker, so
+   * a new scenario is in the workbench the moment it is in the catalog — no second list
+   * here that a commit could forget (AGENTS 34.24).
+   */
+  scenarios(): ScenarioCatalogView {
+    return toScenarioCatalogView(SCENARIO_CATALOG);
+  }
+
+  /**
+   * Run one scenario on the connected virtual vehicle and report both verdicts.
+   *
+   * The answer is data, never a thrown error: "this adapter has no behaviour model" and
+   * "no such scenario" are states of the *request*, and a 500 with a stack trace would
+   * describe neither. `ok: false` says what is missing in the caller's words.
+   */
+  async runScenario(
+    id: string,
+  ): Promise<
+    { ok: true; run: ScenarioRunView; panel: ScenarioPanelView } | { ok: false; error: string }
+  > {
+    const vehicle = this.hfVehicle;
+    if (vehicle === undefined) {
+      return {
+        ok: false,
+        error:
+          'no scenario support on this connection — select the "High-fidelity virtual vehicle" adapter',
+      };
+    }
+    const scenario = scenarioById(id.trim());
+    if (scenario === undefined) {
+      const known = SCENARIO_CATALOG.map((entry) => entry.id).join(", ");
+      return { ok: false, error: `unknown scenario "${id}" — known: ${known}` };
+    }
+    const run = await vehicle.runScenario(scenario);
+    const memory = vehicle.modules().flatMap((module) =>
+      vehicle.model.dtcMemoryOf(module.ecuId).map((dtc) => ({
+        ecu: module.ecuId,
+        code: dtc.code,
+        status: dtc.status ?? 0,
+        active: ((dtc.status ?? 0) & 0x01) !== 0,
+      })),
+    );
+    const view = toScenarioRunView(run, memory);
+    // The panel's rows are projected here, not in the browser: `public/*.js` has no test
+    // runner, and every one of those rows is a claim about the vehicle (ADR 0030 §2).
+    return { ok: true, run: view, panel: toScenarioPanelView(view) };
+  }
+
+  /**
+   * Disarms every rule on the live bus. The counters keep their values: they report
+   * what happened on this connection, and a reset that also erased the record would
+   * make the panel's numbers untrustworthy in exactly the moment someone checks them.
+   */
   resetChaos(): void {
     this.chaosBus?.clearRules();
     this.chaosDropRate = 0;
     this.chaosDropBurst = 0;
+    this.chaosDropBurstCanId = undefined;
   }
 
   chaosStatus(): ChaosStatusView {
@@ -1066,6 +1150,14 @@ export class DemoBackend {
       active: isActuallyActive,
       dropRate: this.chaosDropRate,
       dropBurstRemaining: burstRemaining,
+      dropBurstTarget:
+        this.chaosDropBurstCanId === undefined ? null : formatCanId(this.chaosDropBurstCanId),
+      dropBurstScope:
+        this.chaosDropBurst <= 0
+          ? "none"
+          : this.chaosDropBurstCanId === undefined
+            ? "bus-wide"
+            : "targeted",
       droppedFrames: this.chaosBus?.dropped.length ?? 0,
       corruptedFrames: this.chaosBus?.corruptedCount ?? 0,
       delayedFrames: this.chaosBus?.delayedCount ?? 0,

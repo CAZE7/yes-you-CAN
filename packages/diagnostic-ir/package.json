@@ -20,8 +20,5 @@
       "types": "./dist/src/index.d.ts",
       "default": "./dist/src/index.js"
     }
-  },
-  "dependencies": {
-    "@vdp/shared": "0.1.0"
   }
 }

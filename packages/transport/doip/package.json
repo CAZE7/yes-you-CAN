@@ -23,7 +23,9 @@
   },
   "dependencies": {
     "@vdp/shared": "0.1.0",
-    "@vdp/transport-can": "0.1.0",
+    "@vdp/transport-can": "0.1.0"
+  },
+  "devDependencies": {
     "@vdp/protocols-uds": "0.1.0"
   }
 }

@@ -100,7 +100,8 @@ Workflow entfernt, entfernt sonst still die Gates.
 
 `npm run ci` bleibt das lokale Tor; sobald die `workflows`-Berechtigung da ist
 (E10), gehört der Quality-Job direkt in den Workflow, und dieser Test darf
-zurückgebaut werden.
+zurückgebaut werden. Für die Coverage-Gates gilt dasselbe Muster seit 2026-09-16 —
+aber als eigener Punkt, weil sie nicht kostenlos sind: §6.
 
 ### 5. Keine Build-Orchestrierung auf Vorrat (kein Turborepo, kein Nx)
 
@@ -111,6 +112,105 @@ Repository gated —, um ein Problem zu lösen, das noch nicht existiert. Der
 Architekturtest schlägt fehl, sobald ein Orchestrator als Abhängigkeit, als
 Konfigurationsdatei oder in einem Skript auftaucht; die Entscheidung muss dann
 bewusst neu getroffen werden.
+
+### 6. Der Coverage-Gate bekommt denselben Träger — CI-only, weil er die Suite doppelt
+
+§4 gilt für Tore, die nichts kosten (Biome und zwei `tsc`-Durchläufe ≈ 2 s). Die
+Coverage-Schwellen aus ADR 0027/0028 waren davon ausgenommen: `npm test` läuft ohne
+`--coverage`, kein Workflow führt `npm run test:coverage` aus, und `ci.yml` ist mit
+dieser App nicht schreibbar — zum dritten Mal gemessen 2026-09-16, wortgleich zu E10:
+`refusing to allow a GitHub App to create or update workflow
+'.github/workflows/ci.yml' without 'workflows' permission'`. Ein Schwellwert, den
+niemand ausführt, ist ein Wunschzettel in der Konfiguration: weder ein Sinken der
+Coverage noch ein Absenken des Bodens fällt auf.
+
+Neu: `tests/architecture/coverage-gate.test.ts`. Nur unter `CI`, und das Kind ist
+wörtlich `npm run test:coverage`, damit Tor und Kommando nicht zwei Definitionen
+derselben Zahl werden. Vier Einbauten, die erst der Lauf gezeigt hat: Rekursionssperre
+`VDP_COVERAGE_CHILD=1` (`test:coverage` fährt das Projekt `architecture` und damit
+diesen Test selbst); `VITEST_JUNIT_FILE` wird dem Kind genommen (zwei Schreiber an
+einer CI-Artefaktdatei sind schlechter als keine); `retry: 0` gegen den CI-Default
+zwei, weil ein Retry hier keine neu versuchte Behauptung ist, sondern eine zweite
+volle Suite — gemessen dreimal dieselbe Threshold-Meldung und 203 s statt 65 s; und
+eine `::notice` pro Zweig (derselbe Kanal, den `tools/test-reporters/flaky-reporter.ts`
+nutzt), weil die Job-Logs mit diesen Zugangsdaten nicht abrufbar sind. Ein Tor, das
+nichts berichtet, ist von einem Tor, das nicht lief, nicht zu unterscheiden.
+
+Was diese Zeile wert war, ist die zweite Hälfte der Geschichte: der erste Anlauf maß
+40 s pro Bein, und das las sich als „das Kind läuft hier nie". Die Annotations
+antworteten in einem Lesegang — `mode=armed (CI=true)`, dann `mode=measured` mit
+28 bis 36 s pro Bein. Sechs Messläufe später sind es vierzehn Werte, zwei pro Kopf, alle
+Beine `success`: 27,6 / 28,1 / 28,2 / 28,7 / 32,0 / 34,3 / 35,0 / 35,0 / 35,1 / 35,2 / 35,5 /
+35,8 / 36,3 / 38,0 s. Die untere Kante liegt seither unverändert, die obere ist auf 38,0 s
+gerutscht — am Kopf 0c17922, dem mit der größten Suite und der angehobenen
+`apps/web/src`-Schwelle (1.36); ob das der Grund ist, ist nicht gemessen, gemessen ist die
+Folge: **eine Spanne, die über Köpfe hinweg gebildet wird, muss mit den Köpfen wachsen**,
+sonst steht am Ende eine bequeme Zahl, die keine Messung mehr ist. Welches Bein oben liegt, wechselt:
+Node 22 führte drei Runden, in der vierten lag Node 24 vorn (36,3 s gegen 35,1 s), in der
+fünften wieder Node 22 (28,7 s gegen 28,2 s) — ein Muster aus drei Stichproben war eine
+Überziehung, und die fünfte Runde erledigt auch die zweite Vermutung: die
+94,68/86,59/96,02-Stufe war *vier Läufe lang* die von Node 22; an diesem Kopf meldet
+Node 22 94,77 / 86,71 / 96,05 und Node 24 94,71 / 86,63 / 96,03, die Stufen sind also
+über die Beine gewandert — und am Kopf 0c17922 ist es wieder umgekehrt (Node 22
+95,06 / 87,03 / 96,33 gegen Node 24 95,00 / 86,94 / 96,31, dieselbe Tabelle bis auf die
+Wanderung der letzten Stelle). Zwei Effekte, und keiner ist eine
+Konstante. Die Runner sind schneller als die Entwicklungssandbox, die
+für dieselbe Kind-Suite 66 s braucht; die Kosten, die gegen
+`npm run ci` sprechen, sind also maschinenabhängig und stehen mit beiden Zahlen da.
+
+**Nachtrag am Kopf `c419100` (1.37): der Selbstbericht war nicht zu lesen, und deshalb
+steht hier eine andere Zahl.** Die 14 Werte oben sind die Sekunden, die
+`coverage-gate.test.ts` über `::notice` meldet; diese Runde war weder der Log
+verfügbar (`gh run view --log --job 104677105260` → `failed to get run log: Get
+"https://results-receiver.actions.githubusercontent.com/…"`) noch die Annotation
+(`check-runs/<id>/annotations` leer) — der Kanal des Selbstberichts ist die Log-Datei,
+und die ist von hier nicht abrufbar. Erreichbar war die Steps-Zeit der Jobs
+(`actions/jobs/<id>`, `started_at`/`completed_at`): der Schritt „Run the full test
+suite" — `npm test`, und in ihm der Träger-Kindlauf — brauchte 41 s auf beiden Beinen
+(Node 22 05:28:52→05:29:33, Node 24 05:28:57→05:29:38), der ganze Job 57 s bzw. 56 s.
+Diese Zahl wird **nicht** in die Liste der 14 aufgenommen: ein Schritt und ein
+Selbstbericht sind zwei verschiedene Größen, und eine Spanne mit einem
+nicht vergleichbaren Wert fortzuschreiben wäre genau die Bequemlichkeit, die der
+Abschnitt sonst einfordert. Was sie trägt: beide Beine grün mit der angehobenen
+`apps/web/src`-Schwelle 76/72, also gilt der neue Boden auch auf der Runner-Maschine
+und nicht nur im ruhigen Lokal-Lauf.
+
+Zweiter Kopf mit derselben Einschränkung (1.38, `6ef2ba1`): beide Beine grün,
+Testschritt 42 s auf beiden Beinen (gegen 41 s / 41 s am Kopf `56c0a98`) — dass die
+beiden Beine hier gleichauf liegen, ist ein Wertepaar, kein Muster: über die 14
+Trägersekunden oben wechselt die Führung weiter. Der neue Boden 76/72 gilt damit auch
+auf diesem Kopf, und die ausgezogene Grammatikdatei (`route-input.ts`, 100/100/100/100)
+ist dort genauso gemessen wie lokal.
+Der Selbstbericht war auch diesmal nicht zu lesen, aus einem etwas anderen Grund als
+oben notiert: `actions/jobs/<id>/logs` löst inzwischen auf einen signierten Blob auf,
+und der Abruf endet mit `EOF`; `annotation_count` desselben Jobs ist leer.
+
+Dritter Befund aus demselben Vergleich: der Ist-Wert atmet. 94,74 / 86,66 / 96,09 /
+96,04 lokal im ruhigen Lauf, 86,67 Zweige unter Last, und auf dem Node-22-Bein
+94,68 / 86,59 / 96,02 gegen 94,74 / 86,66 / 96,04 auf Node 24 — derselbe Commit.
+Ursache ist ein einzelner Zweig in `tools/simulators/src/chaos-lab.ts` (der
+Realtime-`sleep`-Fallback, Zeile 58: in Unit-Läufen bewusst nie erwartet, bei Last
+dann und wann doch, 91,66 ↔ 93,33 Zweige dieser Datei). Die Lastverschiebung ist
+innerhalb eines Beamts messbar (Node 24 meldete auf demselben Commit 86,66 dreimal und
+86,67 einmal); der Abstand *zwischen* den Nodes (86,59/86,60 Zweige, 94,68 Statements,
+96,02 Zeilen auf Node 22 gegen 94,74 / 96,04 auf Node 24, in allen vier Läufen) war ein
+zweiter Effekt — im fünften Lauf ist er umgekehrt (94,77 / 96,05 auf Node 22 gegen 94,71 /
+96,03 auf Node 24, Kopf 391f04f), also ist auch er ein Momentwert und keine
+Laufwerkseigenschaft. Die Spanne über alle fünf Runden: Statements 94,68–94,77, Zweige
+86,59–86,71, Zeilen 96,02–96,05. Der nächste Push (nur Doku, kein Code) trennt die beiden
+Erklärungen sauber: Node 24 meldete auf demselben Stand *exakt* dieselbe Tabelle
+(94,71 / 86,63 / 96,03), Node 22 wackelte um 0,02 Zweige (86,71 → 86,69) — dasselbe
+Messobjekt, ein Bein reproduzierbar, das andere von seiner Auslastung abhängig. Die
+Träger-Dauer blieb in beiden Fällen in der Spanne (32,0 s und 35,2 s). Beides
+verschiebt keinen Boden — die Böden bleiben 80/90. Wer eine Coverage-Zahl in die
+Dokumentation schreibt, schreibt einen Momentwert hin; die Tore bleiben Böden mit
+Abstand (80 Zweige, 90 Zeilen) und werden keine Zusicherung auf die letzte Kommastelle.
+
+Biss gemessen: `lines` auf 99 gehoben (Ist 96,04) → genau dieser Test fällt als
+einziger seines Projekts, mit der Meldung des Kindes im Text. Bewusst **nicht** in
+`npm run ci` aufgenommen, weil das lokal eine halbe Suite obendrauf in der Schleife
+vor jedem Push wäre; `npm run test:coverage` bleibt der eigene Weg, der Testlauf ist
+der CI-Weg.
 
 ## Konsequenzen
 

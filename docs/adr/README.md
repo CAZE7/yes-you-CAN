@@ -45,3 +45,9 @@ er wird durch einen neuen ersetzt, der den alten als `superseded` markiert.
 | [0037](0037-diagnostic-ir-dtc-and-session-path.md) | Diagnostic IR, zweite Etappe: Fehlerspeicher und Sitzung laufen durch sie, eine Identitätsregel | accepted |
 | [0038](0038-evidence-engine-and-ai-input.md) | Evidence Engine: die Analyse liest nur Belege, und jede Antwort nennt Fassung und Zitate | accepted |
 | [0039](0039-fault-injection-at-the-link-seam.md) | Fault-Injection auf dem Draht; eine abgeschnittene Antwort ist ein Fehler, kein leerer Speicher | accepted |
+| [0040](0040-vehicle-behaviour-model-and-scenario-engine.md) | Das Fahrzeugmodell erzeugt die Fehler, die Szenario-Engine schreibt sie vor | accepted |
+| [0041](0041-uds-server-api-for-simulators.md) | Der UDS-Server hat eine Simulator-API; Casts in interne Maps sind keine | accepted |
+| [0042](0042-manifest-and-import-graph-one-gate.md) | `package.json` ist eine Behauptung über Importe; ein Werkzeug prüft sie | accepted |
+| [0040](0040-vehicle-behaviour-model-and-scenario-engine.md) | Das Fahrzeugmodell erzeugt die Fehler, die Szenario-Engine schreibt sie vor | accepted |
+| [0041](0041-uds-server-api-for-simulators.md) | Der UDS-Server hat eine Simulator-API; Casts in interne Maps sind keine | accepted |
+| [0042](0042-manifest-and-import-graph-one-gate.md) | `package.json` ist eine Behauptung über Importe; ein Werkzeug prüft sie | accepted |

@@ -4,34 +4,11 @@ import { VirtualVehicle } from "@vdp/simulators";
 import { MemorySessionRepository } from "@vdp/storage";
 import { test } from "vitest";
 import { waitFor } from "../../../tests/helpers/wait.js";
+import { json, withServer } from "../../../tests/helpers/workbench.js";
 import { createWebAdapterCatalog } from "../src/adapters.js";
 import { DemoBackend } from "../src/backend.js";
-import { WebServer } from "../src/server.js";
 
 const logger = createLogger("web", { level: "ERROR" });
-
-async function withServer<T>(run: (base: string, server: WebServer) => Promise<T>): Promise<T> {
-  const server = new WebServer({ port: 0, liveIntervalMs: 60 });
-  const { port } = await server.listen();
-  try {
-    return await run(`http://127.0.0.1:${port}`, server);
-  } finally {
-    await server.close();
-  }
-}
-
-async function json(
-  base: string,
-  path: string,
-  init?: RequestInit,
-): Promise<{ status: number; body: unknown }> {
-  const response = await fetch(`${base}${path}`, init);
-  const type = response.headers.get("content-type") ?? "";
-  return {
-    status: response.status,
-    body: type.includes("json") ? await response.json() : await response.text(),
-  };
-}
 
 /* --------------------------------------------------------------- catalog */
 
@@ -64,6 +41,42 @@ test("the high-fidelity 5-ECU vehicle simulator adapter can be selected and conn
   } finally {
     await backend.stop();
   }
+});
+
+test("an application-managed bus refuses to be created from the catalog", async () => {
+  // The refusal is the whole contract of `managedBy: "application"`: the buses of the
+  // simulators and of the replay live and die with the backend that owns their model, so
+  // a caller that reaches past the application must not get a second, detached one.
+  const catalog = createWebAdapterCatalog();
+  for (const id of ["simulator", "simulator-5ecu", "replay"]) {
+    const entry = catalog.get(id);
+    assert.ok(entry, `${id} is in the catalog`);
+    assert.equal(entry.managedBy, "application", `${id} is application-managed`);
+    const failure = await entry.create({}, {}).catch((error: unknown) => error);
+    assert.ok(failure instanceof Error, `${id} refuses instead of handing out a bus`);
+    assert.match(
+      (failure as Error).message,
+      /created by the application/,
+      "the refusal names the way that works",
+    );
+  }
+});
+
+test("the catalog flags decide the sections, not the caller's mood", () => {
+  const ids = (options: Parameters<typeof createWebAdapterCatalog>[0]): string[] =>
+    createWebAdapterCatalog(options).ids();
+  for (const id of ["simulator", "simulator-5ecu"]) {
+    assert.ok(ids({}).includes(id), `${id} is in by default`);
+    assert.ok(!ids({ simulator: false }).includes(id), `${id} leaves with the simulator flag`);
+  }
+  assert.ok(ids({}).includes("replay"));
+  assert.ok(!ids({ replay: false }).includes("replay"));
+  // `--list-adapters` runs on a machine without hardware; the host flag is what makes
+  // that list honest instead of a catalogue of devices that are not plugged in.
+  assert.deepEqual(ids({ simulator: false, replay: false, host: false }), []);
+  const hostOnly = ids({ simulator: false, replay: false });
+  assert.ok(hostOnly.length > 0, "the host adapters stay when only they are asked for");
+  assert.ok(!hostOnly.includes("simulator"));
 });
 
 /* ------------------------------------------------------------------- API */
@@ -294,4 +307,98 @@ test("the state reports which transport is selected", async () => {
   assert.deepEqual(state.adapterSelection, { id: "simulator", config: {} });
   assert.equal(state.adapterProbe?.available, true);
   await backend.stop();
+});
+
+/**
+ * The scenario engine through the workbench's own backend (AGENTS 32).
+ *
+ * `DemoBackend` is the layer the HTTP server talks to, so this is where "the workbench can
+ * run a scenario" is decided: the catalog has to come from the simulator's data, a run has
+ * to reach the vehicle's modules, and a connection without a behaviour model has to say so
+ * as an answer instead of an exception.
+ */
+test("the 5-ECU vehicle serves the scenario catalog and runs one", async () => {
+  const backend = new DemoBackend({
+    logger,
+    selection: { id: "simulator-5ecu", config: {} },
+    discovery: { windowMs: 100, probeDelayMs: 0 },
+  });
+  try {
+    await backend.start();
+    const catalog = backend.scenarios();
+    assert.ok(
+      catalog.scenarios.some((entry) => entry.id === "under-voltage-at-start"),
+      "the picker lists the catalog it was built from",
+    );
+    assert.ok(
+      catalog.scenarios.every((entry) => entry.expectations.length > 0),
+      "every scenario says in the list what it predicts — a row without a claim is a button with no test",
+    );
+    // The panel is served projected, not raw: the browser module has no test runner, so
+    // the labels and the counts are decided here (ADR 0030 §2).
+    assert.equal(catalog.options.length, catalog.scenarios.length);
+    assert.match(catalog.options[0]?.hint ?? "", /Schritte · ~/);
+    assert.match(catalog.note, /^\d+ Szenarien/);
+
+    const unknown = await backend.runScenario("not-a-scenario");
+    assert.equal(unknown.ok, false);
+    if (!unknown.ok) {
+      assert.match(unknown.error, /known: under-voltage-at-start/, "and names what does exist");
+    }
+
+    const result = await backend.runScenario("  under-voltage-at-start  ");
+    assert.equal(result.ok, true, JSON.stringify(result));
+    if (!result.ok) return;
+    const run = result.run;
+    assert.equal(run.scenarioId, "under-voltage-at-start");
+    assert.equal(run.passed, true, `the run disagreed with itself: ${JSON.stringify(run.checks)}`);
+    assert.ok(run.checks.length > 0 && run.checks.every((check) => check.passed));
+    assert.ok(
+      run.memory.some((entry) => entry.ecu === "bcm" && entry.code === "B1001"),
+      "the code has to be in the module the panel reads, not only in the run's report",
+    );
+    assert.equal(
+      typeof run.model.supplyVoltage,
+      "number",
+      "and the physical number the code was latched on comes along",
+    );
+    const panel = result.panel;
+    assert.equal(panel.verdict.tone, "ok", panel.verdict.detail);
+    assert.equal(panel.checks.length, run.checks.length);
+    assert.ok(
+      panel.memory.some((entry) => entry.cells[1] === "B1001" && entry.cells[3] === "bestätigt"),
+      "the same code, spelled the way the table shows it: confirmed, not current",
+    );
+    assert.match(panel.memoryNote, /^1 von \d+ dokumentierten Codes/, "and the denominator");
+    assert.ok(
+      panel.model.some((entry) => entry.label === "Versorgung" && / V$/.test(entry.value)),
+      "a model row carries its unit — that is the mapping the panel must not get wrong",
+    );
+  } finally {
+    await backend.stop();
+  }
+});
+
+test("a connection without a behaviour model says so, and does not throw", async () => {
+  const backend = new DemoBackend({
+    logger,
+    selection: { id: "simulator", config: {} },
+    discovery: { windowMs: 100, probeDelayMs: 0 },
+  });
+  try {
+    await backend.start();
+    // The catalog is data the app can always show; the run is what needs the model.
+    const catalog = backend.scenarios();
+    assert.ok(catalog.scenarios.length > 0);
+    assert.equal(
+      catalog.note,
+      `${catalog.scenarios.length} Szenarien aus dem Katalog des Fahrzeugs — jede Ursache wird gesetzt, bevor eine Erwartung gilt`,
+      "the note counts the same list the picker shows — no second number to drift",
+    );
+    const refused = await backend.runScenario("can-bus-dropouts");
+    assert.equal(refused.ok, false);
+    if (!refused.ok) assert.match(refused.error, /High-fidelity/);
+  } finally {
+    await backend.stop();
+  }
 });

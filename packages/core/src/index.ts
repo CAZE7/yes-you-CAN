@@ -19,7 +19,6 @@ export * from "./diagnostics/ecu-session.js";
 export * from "./diagnostics/engine.js";
 export * from "./dtc/scanner.js";
 export * from "./dtc/freeze-frame.js";
-export * from "./dtc/freeze-frame.js";
 export * from "./dtc/clear.js";
 export * from "./writes/transaction.js";
 export * from "./writes/port.js";

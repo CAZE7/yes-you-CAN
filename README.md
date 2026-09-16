@@ -3,7 +3,7 @@
 [![CI](https://github.com/CAZE7/yes-you-CAN/actions/workflows/ci.yml/badge.svg)](https://github.com/CAZE7/yes-you-CAN/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](./package.json)
-[![Tests](https://img.shields.io/badge/tests-1731%20passed-brightgreen)](#tests)
+[![Tests](https://img.shields.io/badge/tests-2010%20passed-brightgreen)](#tests)
 [![TypeScript](https://img.shields.io/badge/TypeScript-7%20%2F%20tsgo-blue)](./tsconfig.base.json)
 
 Fahrzeugdiagnose-Plattform: CAN und DoIP lesen, Steuergeräte identifizieren, das
@@ -119,6 +119,25 @@ Live-Messwerte. Die Demo bestimmt das Fahrzeug aus der VIN und zeigt zu P0420
 zwei Ausfallmuster mit fünf auswertbaren Messfenstern. Kein Adapter, kein
 Fahrzeug.
 
+Der Adapter „High-Fidelity Virtual Vehicle (5-ECU)" fährt zusätzlich ein
+**Verhaltensmodell** (ADR 0040): Spannung, Anlasserlast, Lichtmaschine,
+Motortemperatur, Räder und die Verdrahtung jedes Moduls — ein Fehler wird nicht
+gesetzt, er entsteht, wenn ein Monitor eine Bedingung lange genug gemessen hat.
+Dazu gibt es die **Szenario-Engine**: `GET /api/simulator/scenarios` listet den
+Katalog, `POST /api/simulator/scenario {"id": "under-voltage-at-start"}` läuft ein
+Szenario und meldet jede Prüfung mit Begründung. Seit 2026-09-16 liegt beides in der
+Workbench: der Reiter „Szenarien“ wählt aus dem Katalog, startet den Lauf auf dem
+gewählten Adapter und zeigt das Ergebnis als Urteil, Check-Liste, Fehlerspeicher,
+Endzustand und Zeitlinie (Projektion in `apps/web/src/scenario-view.ts`; ein Adapter ohne
+`runScenario` wird als ohne Szenarien ausgewiesen). Der Fehlerspeicher dekodiert dabei den
+Statusbyte — 14 Zeilen sind das dokumentierte Vokabular des Fahrzeugs, gemeldet ist einer,
+und die Note unter der Tabelle sagt genau das. Gemessen am laufenden Demo-Server:
+der Lauf endet mit `passed: true` (8 Checks, u. a. `supplyVoltage < 11,5 → 10,7`),
+und der sich anschließende `POST /api/dtc/scan` liest `B1001` mit Status `0x2E`
+über UDS — geheilt, aber im Speicher, mit Beschreibung und Schweregrad aus dem
+Definitions-Paket. Im Panel desselben Laufs steht dazu `bestätigt` (nicht „jetzt
+fehlgeschlagen“) und `1 von 14 dokumentierten Codes sind im Fehlerspeicher gemeldet`.
+
 Mit echtem Adapter:
 
 ```bash
@@ -134,8 +153,8 @@ npm run typecheck     # Build + strikter noEmit-Pass über Tests, Konfiguration,
 npx biome check .     # Lint + Format (Biome 1.9): 2-space, 100-char, organizeImports
 npm test              # Build + Vitest: alle 6 Ebenen (unit, protocol, regression, replay, integration, architecture)
 npm run test:unit     # nur Unit-Specs — schnelle Feedback-Schleife
-npm run test:coverage # Suite + V8-Coverage (global 90/80 als Durchschnitt; per-file laut vitest.config.ts, ADR 0020)
-npm run ci            # Build + Typecheck + Biome + Test — entspricht der CI
+npm run test:coverage # Suite + V8-Coverage (global 90/80; per-file laut vitest.config.ts) — in der CI erzwungen seit ADR 0029 §6
+npm run ci            # Build + Typecheck + Biome + Test — die Gates der CI ohne den Coverage-Lauf
 ```
 
 Einzelnes Paket bzw. einzelne Test-Datei:
@@ -183,16 +202,28 @@ Zeitraum aus, Doppelklick zeigt die gesamte Aufnahme.
 
 ## Tests
 
-1731 Tests / 115 Dateien in 37,5 s, Vitest 5 mit Projektkonfiguration (ADR 0010,
+2010 bestandene Tests / 136 geprüfte Dateien (`npm test` in 54 s; `npm run
+test:coverage` in 67 s), Vitest 5 mit Projektkonfiguration (ADR 0010,
 Schritt 1 — ersetzt ADR 0008). Der `architecture`-Lauf prüft die Struktur *und*
-führt die Quality-Gates aus (ADR 0029). Unit-Specs liegen co-lokatiert neben dem
+führt die Quality-Gates aus (ADR 0029) — unter `CI` auch die Coverage-Gates, als
+Kind-Lauf von `npm run test:coverage` (ADR 0029 §6), weil kein Workflow sie selbst
+aufrufen kann (0.E E20) — einschließlich
+`npm run check:manifests`, das verlangt, dass jedes `package.json` zu den
+tatsächlichen Importen passt (ADR 0042). Unit-Specs liegen co-lokatiert neben dem
 Code (`src/*.spec.ts`); Property-Tests laufen mit fast-check, Coverage-Gates mit
 `npm run test:coverage` (global 90 % lines / 80 % branches als
-Projekt-Durchschnitt, Ist 94,62 Statements / 87,52 Zweige / 96,44 Funktionen / 95,90 Zeilen — seit ADR 0027 wird die ganze
+Projekt-Durchschnitt, Ist 95,16 Statements / 87,27 Zweige / 96,55 Funktionen /
+96,44 Zeilen — gemessen am Stand vom 2026-09-16, und die letzten Stellen wandern mit
+Last und Node-Version (86,59 bis 86,71 Zweige auf demselben Baum,
+ADR 0029 §6) — seit ADR 0027 wird die ganze
 Fläche gemessen: `packages/**/src`, `apps/web/src/**` und `tools/**`, weil die
 Workbench-Schicht vorher in keiner Zahl vorkam; per-file-Gates für
 `shared`/`core`/`protocols`/`adapters`/`transport`/`storage`/`charts`/`reports`/`ai` (95/85 seit 2026-09-14)/`diagnostic-ir` (95/85 seit ADR 0034)/`definitions`
-und seit ADR 0027 eine **Bodenschwelle** 69/54 für `apps/web/src/**`; `tools/**` ist
+und seit ADR 0027 eine **Bodenschwelle** für `apps/web/src/**`, am 2026-09-16 von
+69/54 auf 75/66 und am selben Stand auf 76/72 gehoben, nachdem die nachgetesteten Randpfade der
+Workbench (Freeze Frame, Body-Limit, Marker, Adapter-Absagen, dazu die Replay-Quellen, der
+werfende Event-Listener und die Chaos-Arme von `backend.ts`) die dünnsten Dateien gehoben hatten —
+erst Tests, dann Gate (ADR 0017); `tools/**` ist
 gemessen, aber ohne Gate (dort steht `flaky-reporter.ts` bei 0 %, weil kein CI-Job ihn
 aufrufen kann — 0.E E10);
 
@@ -228,8 +259,12 @@ nicht — der laufende Test schon.
 | `GET /api/stream` | SSE: Samples, Trace, DTCs, Marker, Fahrzeugbestimmung |
 | `GET /lib/*` | kompiliertes `@vdp/charts` für den Browser (ADR 0011) |
 | `POST /api/start` | Simulator verbinden, ECUs entdecken |
+| `GET /api/simulator/scenarios` | Katalog der Fahrzeugszenarien (Ursachen, Erwartungen, Begründungen) |
+| `POST /api/simulator/scenario` | ein Szenario auf dem 5-ECU-Fahrzeug laufen lassen (ADR 0040) |
 | `POST /api/vehicle/resolve` | Fahrzeug bestimmen: Kandidaten mit Belegen und Widersprüchen (read-only) |
 | `POST /api/dtc/scan` | Fehlerspeicher lesen |
+| `POST /api/dtc/snapshot` | Freeze Frame zu einem Code lesen: `rxId` als `0x7E8`, `7e8` oder Zahl, `code` Pflicht, Recordnummer optional (Default `0xff`); eine Adresse, die niemand auf dem Bus hat, ist `409` mit Satz, nicht `500` (AGENTS 0.E E23) |
+| `POST /api/chaos/inject` \| `/api/chaos/status` \| `/api/chaos/reset` | Rahmen verwerfen und Sequenzen korrumpieren **auf dem Bus der Sitzung** (seit 1.38; vorher zählte die Schicht nebenan, 0.E E24): `dropBurst` mit oder ohne `dropBurstCanId` (ohne = die nächsten N Rahmen dieser Verbindung), `dropRate` als Bruchteil 0…1, Korruptur je Antwort-Id; `status` meldet Ziel und Reichweite des Bursts (`dropBurstTarget`, `dropBurstScope`), ohne offene Verbindung antwortet der Aufruf `409` mit Satz statt stumm zu tun |
 | `POST /api/live/start` \| `/stop` | Live-Messung |
 | `POST /api/analyze` | Analyse (lokaler Regel-Provider) — nennt, über welches Auto sie spricht, auf welcher Fassung sie beruht und welche Belege sie gelesen hat |
 | `POST /api/session/save` | Session persistieren |

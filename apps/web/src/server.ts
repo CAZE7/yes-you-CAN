@@ -30,6 +30,8 @@ import {
   type Logger,
   SafetyViolationError,
   StorageError,
+  TransportClosedError,
+  UnknownEcuError,
   createLogger,
   messageOf,
 } from "@vdp/shared";
@@ -37,6 +39,7 @@ import { SIMULATOR_ADAPTER_ID, createWebAdapterCatalog } from "./adapters.js";
 import { DemoBackend } from "./backend.js";
 import type { VehicleStateView } from "./backend.js";
 import { resolveContained } from "./paths.js";
+import { HttpError, parseBurstCount, parseCanId, parseDropRate } from "./route-input.js";
 
 export interface ServerOptions {
   port?: number;
@@ -77,17 +80,6 @@ const SECURITY_HEADERS: Record<string, string> = {
   "referrer-policy": "no-referrer",
   "cross-origin-resource-policy": "same-origin",
 };
-
-/** Error carrying the HTTP status the request should fail with. */
-class HttpError extends Error {
-  constructor(
-    readonly statusCode: number,
-    message: string,
-  ) {
-    super(message);
-    this.name = "HttpError";
-  }
-}
 
 // Compiled file lives at apps/web/dist/src/server.js, so the public directory is
 // two levels up. When the module runs from TypeScript sources (vitest), the
@@ -418,12 +410,25 @@ export class WebServer {
 
     // Chaos Lab Controls (Task 4)
     if (path === "/api/chaos/inject" && method === "POST") {
+      // Ids and counts are the operator's input like every other address in this API:
+      // both spellings through one grammar, and a burst count that is not a positive
+      // integer is a refusal with a sentence instead of an armed rule of `NaN` frames.
       const body = await this.readBody<{
         dropBurst?: number;
+        dropBurstCanId?: number | string;
         dropRate?: number;
-        corruptSequenceCanId?: number;
+        corruptSequenceCanId?: number | string;
       }>(request);
-      this.backend.injectChaos(body);
+      const dropBurstCanId =
+        body.dropBurstCanId === undefined ? undefined : parseCanId(body.dropBurstCanId);
+      const corruptSequenceCanId =
+        body.corruptSequenceCanId === undefined ? undefined : parseCanId(body.corruptSequenceCanId);
+      this.backend.injectChaos({
+        ...(body.dropBurst === undefined ? {} : { dropBurst: parseBurstCount(body.dropBurst) }),
+        ...(dropBurstCanId === undefined ? {} : { dropBurstCanId }),
+        ...(body.dropRate === undefined ? {} : { dropRate: parseDropRate(body.dropRate) }),
+        ...(corruptSequenceCanId === undefined ? {} : { corruptSequenceCanId }),
+      });
       return this.sendJson(response, 200, { status: this.backend.chaosStatus() });
     }
     if (path === "/api/chaos/reset" && method === "POST") {
@@ -432,6 +437,23 @@ export class WebServer {
     }
     if (path === "/api/chaos/status" && method === "GET") {
       return this.sendJson(response, 200, { status: this.backend.chaosStatus() });
+    }
+
+    // Scenario engine (AGENTS 32): the catalog, and one run on the virtual vehicle.
+    if (path === "/api/simulator/scenarios" && method === "GET") {
+      // The catalog view *is* the response body: `scenarios`, `options`, `note` — the
+      // projection runs in `backend.ts`, so the route stays a route (ADR 0014).
+      return this.sendJson(response, 200, this.backend.scenarios());
+    }
+    if (path === "/api/simulator/scenario" && method === "POST") {
+      const body = await this.readBody<{ id?: string }>(request);
+      const id = typeof body.id === "string" ? body.id : "";
+      if (id.trim().length === 0) {
+        return this.sendJson(response, 400, { error: "a scenario run needs an id" });
+      }
+      const result = await this.backend.runScenario(id);
+      if (!result.ok) return this.sendJson(response, 409, { error: result.error });
+      return this.sendJson(response, 200, { run: result.run, panel: result.panel });
     }
 
     if (path === "/api/live/start" && method === "POST") {
@@ -621,19 +643,6 @@ export class WebServer {
   }
 }
 
-/** Parse a CAN identifier from the UI (`0x7E8`, `7e8` or `2024`). */
-function parseCanId(value: unknown): number {
-  if (typeof value === "number" && Number.isInteger(value) && value >= 0) return value;
-  if (typeof value !== "string" || value.trim().length === 0)
-    throw new HttpError(400, "an ECU response id (rxId) is required");
-  const text = value.trim().toLowerCase().replace(/^0x/, "");
-  const parsed = Number.parseInt(text, 16);
-  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 0x1fffffff) {
-    throw new HttpError(400, `"${value}" is not a CAN identifier`);
-  }
-  return parsed;
-}
-
 /**
  * Read the operator's precondition assertions.
  *
@@ -663,6 +672,12 @@ function statusFor(error: unknown): number {
   if (error instanceof AdapterUnsupportedError) return 400;
   if (error instanceof SafetyViolationError) return 403;
   if (error instanceof StorageError) return 404;
+  // A wrong address is the operator's to fix, not the server's to explain: 409 says
+  // "this is not the state this session is in" (E23), where 500 said "something broke".
+  if (error instanceof UnknownEcuError) return 409;
+  // Same class as the unknown address above: the operator asked a connection that is not
+  // open for something (chaos on a bus that does not run yet) — 409, not a server defect.
+  if (error instanceof TransportClosedError) return 409;
   return 500;
 }
 

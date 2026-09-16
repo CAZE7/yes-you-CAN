@@ -447,6 +447,173 @@ describe("lifecycle", () => {
   });
 });
 
+describe("the DID and DTC API a simulator is meant to use", () => {
+  test("registerDid adds a live value that keeps answering live", async () => {
+    const env = h();
+    let reads = 0;
+    env.server.registerDid({
+      did: 0x2001,
+      value: () => new Uint8Array([0x00, ++reads]),
+    });
+    assert.equal(env.server.hasDid(0x2001), true);
+    assert.ok(env.server.registeredDids.includes(0x2001));
+    await env.send([SID.READ_DATA_BY_IDENTIFIER, 0x20, 0x01]);
+    await env.send([SID.READ_DATA_BY_IDENTIFIER, 0x20, 0x01]);
+    assert.equal(env.sent[0]?.[4], 1, "the first read computed its value");
+    assert.equal(env.sent[1]?.[4], 2, "and the second did too — a DID stays a reading");
+  });
+
+  test("an unregistered DID is out of range, not a zero", async () => {
+    const env = h();
+    assert.equal(env.server.hasDid(0x2fff), false);
+    await env.send([SID.READ_DATA_BY_IDENTIFIER, 0x2f, 0xff]);
+    assert.deepEqual(Array.from(env.sent[0] ?? []), [
+      0x7f,
+      SID.READ_DATA_BY_IDENTIFIER,
+      NRC.REQUEST_OUT_OF_RANGE,
+    ]);
+    assert.equal(env.server.unregisterDid(0x2fff), false, "removing nothing says so");
+    env.server.registerDid({ did: 0x2fff, value: () => new Uint8Array([1]) });
+    assert.equal(env.server.unregisterDid(0x2fff), true);
+    assert.equal(env.server.hasDid(0x2fff), false);
+  });
+
+  test("registerWritableDid stores through the hook and does not freeze the reading", async () => {
+    const env = h();
+    const written: number[][] = [];
+    let stored = 700;
+    env.server.registerWritableDid({
+      did: 0x2100,
+      value: () => new Uint8Array([(stored >> 8) & 0xff, stored & 0xff]),
+      write: (payload) => {
+        written.push(Array.from(payload));
+        stored = ((payload[0] ?? 0) << 8) | (payload[1] ?? 0);
+      },
+    });
+    await env.send([SID.DIAGNOSTIC_SESSION_CONTROL, SESSION.EXTENDED]);
+    await env.send([SID.WRITE_DATA_BY_IDENTIFIER, 0x21, 0x00, 0x02, 0xc0]);
+    assert.deepEqual(written, [[0x02, 0xc0]], "the module's own store ran");
+    assert.equal(stored, 704, "and the value it keeps is the one the tester wrote");
+    await env.send([SID.READ_DATA_BY_IDENTIFIER, 0x21, 0x00]);
+    const read = env.sent.at(-1) ?? new Uint8Array();
+    assert.deepEqual(Array.from(read.subarray(3)), [0x02, 0xc0], "the read answers from the store");
+  });
+
+  test("a hook may refuse, and the refusal is the NRC it names", async () => {
+    const env = h();
+    env.server.registerWritableDid({
+      did: 0x2100,
+      value: () => new Uint8Array([0x00, 0x00]),
+      write: (payload) => (payload.length === 2 ? undefined : NRC.REQUEST_OUT_OF_RANGE),
+    });
+    await env.send([SID.DIAGNOSTIC_SESSION_CONTROL, SESSION.EXTENDED]);
+    await env.send([SID.WRITE_DATA_BY_IDENTIFIER, 0x21, 0x00, 0x03]);
+    assert.deepEqual(Array.from(env.sent.at(-1) ?? []), [
+      0x7f,
+      SID.WRITE_DATA_BY_IDENTIFIER,
+      NRC.REQUEST_OUT_OF_RANGE,
+    ]);
+  });
+
+  test("a hook that throws is a generalReject, never a crash and never a success", async () => {
+    const env = h();
+    env.server.registerWritableDid({
+      did: 0x2100,
+      value: () => new Uint8Array([0x00, 0x00]),
+      write: () => {
+        throw new Error("flash wear levelling is not a simulator feature");
+      },
+    });
+    await env.send([SID.DIAGNOSTIC_SESSION_CONTROL, SESSION.EXTENDED]);
+    await env.send([SID.WRITE_DATA_BY_IDENTIFIER, 0x21, 0x00, 0x01, 0x02]);
+    assert.deepEqual(Array.from(env.sent.at(-1) ?? []), [
+      0x7f,
+      SID.WRITE_DATA_BY_IDENTIFIER,
+      NRC.GENERAL_REJECT,
+    ]);
+    assert.equal(env.server.stats.negativeResponses >= 1, true, "and it was counted");
+  });
+
+  test("without a hook a write still replaces the value — the behaviour fixtures rely on", async () => {
+    const env = h();
+    await env.send([SID.DIAGNOSTIC_SESSION_CONTROL, SESSION.EXTENDED]);
+    await env.send([SID.WRITE_DATA_BY_IDENTIFIER, 0x0c, 0x00, 0xaa, 0xbb]);
+    assert.deepEqual(Array.from(env.sent.at(-1) ?? []), [
+      P + SID.WRITE_DATA_BY_IDENTIFIER,
+      0x0c,
+      0x00,
+    ]);
+    await env.send([SID.READ_DATA_BY_IDENTIFIER, 0x0c, 0x00]);
+    assert.deepEqual(Array.from(env.sent.at(-1)?.subarray(3) ?? []), [0xaa, 0xbb]);
+  });
+
+  test("a read-only DID answers conditionsNotCorrect to a write", async () => {
+    const env = h();
+    await env.send([SID.DIAGNOSTIC_SESSION_CONTROL, SESSION.EXTENDED]);
+    await env.send([SID.WRITE_DATA_BY_IDENTIFIER, 0x12, 0x34, 0x01]);
+    assert.deepEqual(Array.from(env.sent.at(-1) ?? []), [
+      0x7f,
+      SID.WRITE_DATA_BY_IDENTIFIER,
+      NRC.CONDITIONS_NOT_CORRECT,
+    ]);
+  });
+
+  test("setDtc upserts a record without losing what the fixture declared", async () => {
+    const env = h();
+    env.server.setDtc({
+      code: "P0420",
+      status: 0x2f,
+      snapshot: new Uint8Array([0x01, 0x02]),
+    });
+    env.server.setDtcStatus("P0420", 0x2e);
+    const memory = env.server.dtcMemory;
+    const entry = memory.find((dtc) => dtc.code === "P0420");
+    assert.equal(entry?.status, 0x2e, "the status is what the last write said");
+    assert.deepEqual(Array.from(entry?.snapshot ?? []), [0x01, 0x02], "the record survives it");
+    assert.deepEqual(Array.from(env.server.dtcMemory.map((dtc) => dtc.code)), ["P0420", "P0301"]);
+  });
+
+  test("removeDtc takes a code out of memory, which a clear does not do", async () => {
+    const env = h();
+    assert.equal(env.server.removeDtc("P0301"), true);
+    assert.equal(env.server.removeDtc("P0301"), false, "and says so the second time");
+    await env.send([SID.READ_DTC_INFORMATION, DTC_REPORT.REPORT_SUPPORTED_DTC]);
+    const response = env.sent[0] ?? new Uint8Array();
+    const body = response.subarray(3);
+    assert.equal(body.length % 4, 0, "the answer is a whole number of records");
+    assert.equal(body.length, 4, "only P0420 is left");
+  });
+
+  test("a record request for a code without a record answers with the echo, not bytes", async () => {
+    // P0301 declares extended data and no snapshot. Answering a snapshot request with
+    // *something* plausible would be the worse failure, so the record is empty and the
+    // DTC bytes are echoed back exactly as they arrived.
+    const env = h();
+    await env.send([
+      SID.READ_DTC_INFORMATION,
+      DTC_REPORT.REPORT_DTC_SNAPSHOT_RECORD_BY_DTC_NUMBER,
+      0x03,
+      0x01,
+      0x00,
+      0x01,
+    ]);
+    const response = env.sent[0] ?? new Uint8Array();
+    assert.equal(response[0], P + SID.READ_DTC_INFORMATION);
+    assert.deepEqual(
+      Array.from(response.subarray(1, 5)),
+      [DTC_REPORT.REPORT_DTC_SNAPSHOT_RECORD_BY_DTC_NUMBER, 0x03, 0x01, 0x00],
+      "sub-function, the two DTC bytes and the echoed status, as they arrived",
+    );
+    assert.equal(response[5], 0x02, "the record's own status byte follows");
+    assert.equal(response[6], 0x01, "then the requested record number");
+    assert.equal(
+      response.length,
+      7,
+      "and nothing after that: no bytes are invented for a record there is none of",
+    );
+  });
+});
+
 describe("failure handling", () => {
   test("a broken transport does not turn the error path into an unhandled rejection", async () => {
     // `start()` calls the handler as `void this.handle(payload)`. If the catch block

@@ -28,6 +28,7 @@
     "@vdp/application": "0.1.0",
     "@vdp/charts": "0.1.0",
     "@vdp/definitions": "0.1.0",
+    "@vdp/diagnostic-ir": "0.1.0",
     "@vdp/domain": "0.1.0",
     "@vdp/protocols-uds": "0.1.0",
     "@vdp/reports": "0.1.0",

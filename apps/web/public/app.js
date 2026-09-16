@@ -9,6 +9,7 @@
 import * as api from "/api.js";
 import { $, button, child, el, input, kv, messageOf, must, row, select } from "/dom.js";
 import { GraphBoard } from "/graphs.js";
+import { mountScenarioPanel, refreshScenarioCatalog } from "/scenario.js";
 import { renderVehicleResolution } from "/vehicle.js";
 
 /** @typedef {import("../src/views.js").AppState} AppState */
@@ -90,6 +91,10 @@ for (const rawTab of document.querySelectorAll(".tab")) {
       board.refresh();
       loadHistory();
     }
+    // The scenario catalog belongs to the *selected adapter*, so it is read when the tab
+    // is opened rather than once at boot — a boot-time fetch would freeze the answer of
+    // whichever adapter happened to be connected when the page loaded (AGENTS 32).
+    if (view === "scenarios") void refreshScenarioCatalog();
   });
 }
 
@@ -1485,6 +1490,15 @@ function renderChaosStatus(status) {
   );
   must("#chaos-drop-rate-label").textContent = `${Math.round(status.dropRate * 100)} %`;
   must("#chaos-burst-remaining-label").textContent = `${status.dropBurstRemaining} Frames`;
+  // Was der Burst adressiert, kommt als Satzteil der Projektion — nicht als Rat des
+  // Browsers: ein Burst auf einer Id, über die niemand spricht, nimmt nichts weg, und
+  // das muss hier zu lesen sein (AGENTS 0.E E24).
+  must("#chaos-burst-target-label").textContent =
+    status.dropBurstScope === "none"
+      ? "nichts"
+      : status.dropBurstScope === "bus-wide"
+        ? "alle Rahmen"
+        : (status.dropBurstTarget ?? "unbekannt");
   must("#chaos-dropped-count").textContent = String(status.droppedFrames);
   must("#chaos-corrupted-count").textContent = String(status.corruptedFrames);
   must("#chaos-delayed-count").textContent = String(status.delayedFrames);
@@ -1508,10 +1522,25 @@ async function refreshChaos() {
 
 button("#btn-chaos-burst-inject").addEventListener("click", async () => {
   const count = Number.parseInt(input("#chaos-burst-input").value, 10);
+  if (!Number.isFinite(count) || count < 1) {
+    logChaosEvent("Burst-Anzahl fehlt — eine Zahl ab 1 nötig, es wurde nichts injiziert.");
+    return;
+  }
+  const target = input("#chaos-burst-can-id").value.trim();
   try {
-    const { status } = await api.injectChaos({ dropBurst: Number.isFinite(count) ? count : 5 });
+    const { status } = await api.injectChaos({
+      dropBurst: count,
+      // Leeres Feld ist die bus-weite Form; die Id selbst prüft der Server, damit
+      // „7e8xyz“ hier nicht zu einem anderen Steuergerät wird.
+      ...(target.length > 0 ? { dropBurstCanId: target } : {}),
+    });
     renderChaosStatus(status);
-    logChaosEvent(`Drop-Burst von ${count} Frames injiziert.`);
+    logChaosEvent(
+      `Drop-Burst von ${count} Frames injiziert — ` +
+        (status.dropBurstScope === "targeted"
+          ? `auf ${status.dropBurstTarget}.`
+          : "auf jeden Rahmen dieser Verbindung."),
+    );
   } catch (error) {
     logError(error);
   }
@@ -1529,13 +1558,17 @@ button("#btn-chaos-rate-inject").addEventListener("click", async () => {
 });
 
 button("#btn-chaos-corrupt-inject").addEventListener("click", async () => {
-  const canId = Number.parseInt(input("#chaos-corrupt-can-id").value, 16);
+  const canId = input("#chaos-corrupt-can-id").value.trim();
+  if (canId.length === 0) {
+    logChaosEvent("Keine CAN-ID eingetragen — es wurde nichts korrumpiert.");
+    return;
+  }
   try {
-    const { status } = await api.injectChaos({
-      corruptSequenceCanId: Number.isFinite(canId) ? canId : 0x7e8,
-    });
+    // Die Id geht als Text, der Server prüft die Grammatik; ein stiller Default wie das
+    // vorige `?? 0x7e8` adressiert im Tippfall ein Steuergerät, das niemand gemeint hat.
+    const { status } = await api.injectChaos({ corruptSequenceCanId: canId });
     renderChaosStatus(status);
-    logChaosEvent(`Sequenzfehler auf CAN-ID 0x${canId.toString(16).toUpperCase()} injiziert.`);
+    logChaosEvent(`Sequenzfehler auf CAN-ID ${canId} injiziert.`);
   } catch (error) {
     logError(error);
   }
@@ -1640,3 +1673,4 @@ button("#btn-signal-analyze").addEventListener("click", async () => {
 
 connectStream();
 void loadAdapters();
+mountScenarioPanel();

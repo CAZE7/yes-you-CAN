@@ -22,12 +22,52 @@ import {
 import { type SessionDefinition, SessionStateMachine, standardSessions } from "./session-state.js";
 import type { UdsTiming } from "./timing.js";
 
+/**
+ * The write hook of a writable DID (ISO 14229-1 §11.6).
+ *
+ * Two spellings are accepted on purpose: a handler that answers with an NRC refuses the
+ * write and the server replies with that code, and a handler that just stores the bytes
+ * returns nothing and the write is accepted. A handler that *throws* is a bug and not a
+ * refusal — the server answers `generalReject` (0x10) and logs it, exactly as it does for
+ * a failing read.
+ *
+ * This is a union of two signatures rather than `number | void` in one, because Biome is
+ * right that a `void` inside a union is confusing — and both spellings have to stay
+ * writable, or every simulator that stores a value in a block body gets a type error.
+ */
+export type ServerDidWriteHook = (payload: Uint8Array) => number | undefined;
+
 export interface ServerDid {
   did: number;
   /** Function so live values can change between reads (simulator). */
   value: () => Uint8Array;
   writable?: boolean;
   /** Restrict to sessions; default: all. */
+  sessions?: readonly number[];
+  /**
+   * Store what the tester wrote (ISO 14229-1 §11.6).
+   *
+   * A DID that is *computed* — a coding block in flash emulation, an adaptation
+   * value the ECU keeps in its own memory — cannot be modelled by replacing the
+   * read closure, because the closure is what computes the live value. The hook
+   * is the official way in: `registerWritableDid()` exists so a simulator never
+   * has to reach into the server's map.
+   */
+  write?: ServerDidWriteHook;
+}
+
+/** A DID the tester may write: the hook is required, so `writable` cannot be forgotten. */
+export interface WritableServerDid {
+  did: number;
+  /** The value a read answers with — live, so the write may be validated against it. */
+  value: () => Uint8Array;
+  /** Store the payload; answer an NRC to refuse it, `undefined` to accept it. */
+  write: ServerDidWriteHook;
+  /**
+   * Restrict the identifier to sessions; default: all. Which sessions may *write* at
+   * all is the session machine's decision (`SessionDefinition.services`), so this
+   * list is only for a DID that is readable in one session and not in another.
+   */
   sessions?: readonly number[];
 }
 
@@ -116,7 +156,7 @@ export class UdsServer {
     this.options = options;
     this.log = (options.logger ?? createLogger("uds", { level: "INFO" })).child("uds");
     this.now = options.clock ?? (() => Date.now());
-    for (const did of options.dids ?? []) this.dids.set(did.did, did);
+    for (const did of options.dids ?? []) this.registerDid(did);
     for (const routine of options.routines ?? []) this.routines.set(routine.id, routine);
     this.dtcs = [...(options.dtcs ?? [])];
     // The service table is the single source for "what does this ECU implement":
@@ -170,11 +210,93 @@ export class UdsServer {
     this.unsubscribe = null;
   }
 
+  /**
+   * Register (or replace) one data identifier.
+   *
+   * The constructor's `dids` option is the declarative form of the same thing; this
+   * is the imperative form a simulator needs when a value only becomes observable
+   * after the vehicle model is wired up. Registering is the *official* way — poking
+   * the server's map through a cast is not, and a cast hides a rename of the
+   * private field from the compiler forever.
+   */
+  registerDid(definition: ServerDid): void {
+    this.dids.set(definition.did, definition);
+    this.log.debug("DID registered", { ecu: this.name, did: `0x${definition.did.toString(16)}` });
+  }
+
+  /** Register a DID the tester may write, with the ECU's own store hook. */
+  registerWritableDid(definition: WritableServerDid): void {
+    this.registerDid({
+      did: definition.did,
+      value: definition.value,
+      writable: true,
+      write: definition.write,
+      ...(definition.sessions ? { sessions: definition.sessions } : {}),
+    });
+  }
+
+  /** Remove a DID again. Returns whether one was registered. */
+  unregisterDid(did: number): boolean {
+    return this.dids.delete(did);
+  }
+
+  /** Whether this ECU answers the identifier at all. */
+  hasDid(did: number): boolean {
+    return this.dids.has(did);
+  }
+
+  /** Every registered identifier, ascending — the ECU's own answer to "what do you have?". */
+  get registeredDids(): readonly number[] {
+    return Array.from(this.dids.keys()).sort((a, b) => a - b);
+  }
+
+  /**
+   * Upsert a fault-memory entry (simulator helper for tests and fixtures).
+   *
+   * A monitor that fires records a code *with* the operating point it fired at, so
+   * this — and not `setDtcStatus()` alone — is the form a vehicle model uses.
+   * Declared fields survive an update: a status change must not silently drop the
+   * freeze frame the definition carries, and a re-raised fault keeps its snapshot
+   * unless the caller passes a new one.
+   */
+  setDtc(dtc: ServerDtc): void {
+    const entry = this.dtcs.find((candidate) => candidate.code === dtc.code);
+    if (!entry) {
+      this.dtcs.push({ ...dtc });
+      return;
+    }
+    this.dtcs[this.dtcs.indexOf(entry)] = {
+      ...entry,
+      ...dtc,
+      status: dtc.status,
+      ...(dtc.snapshot === undefined ? { snapshot: entry.snapshot } : {}),
+      ...(dtc.extendedData === undefined ? { extendedData: entry.extendedData } : {}),
+    };
+  }
+
   /** Test/simulator helper: change a DTC status (e.g. to simulate a fault appearing). */
   setDtcStatus(code: string, status: number): void {
-    const entry = this.dtcs.find((d) => d.code === code);
-    if (entry) entry.status = status;
-    else this.dtcs.push({ code, status });
+    this.setDtc({ code, status });
+  }
+
+  /**
+   * Take a code out of the fault memory entirely (simulator helper).
+   *
+   * This is not clearing: `0x14` resets statuses and leaves a still-present fault
+   * in place (ISO 14229-1 §11.3), while a healed fault disappears from memory only
+   * after the ECU's own aging counter expires. A model that recovers has to be able
+   * to express that difference.
+   */
+  removeDtc(code: string): boolean {
+    const index = this.dtcs.findIndex((dtc) => dtc.code === code);
+    if (index < 0) return false;
+    this.dtcs.splice(index, 1);
+    return true;
+  }
+
+  /** The fault memory as this ECU holds it, newest entry last. */
+  get dtcMemory(): readonly ServerDtc[] {
+    return this.dtcs;
   }
 
   /** Back to the default session (simulator helper for tests and fixtures). */
@@ -423,6 +545,9 @@ export class UdsServer {
       }
       case DTC_REPORT.REPORT_DTC_SNAPSHOT_RECORD_BY_DTC_NUMBER: {
         const requested = payload.subarray(2, 5);
+        // The DTC number is two bytes here; the third request byte is the DTCStatus of
+        // the request, echoed back in the response, not part of the identity
+        // (ISO 14229-1 §10.2.9). Matching it would refuse every record a real tester asks for.
         const record = this.dtcs.find((dtc) => {
           const encoded = encodeDtcToBytes(dtc.code);
           return encoded[0] === requested[0] && encoded[1] === requested[1];
@@ -501,8 +626,30 @@ export class UdsServer {
       return negativeResponse(SID.WRITE_DATA_BY_IDENTIFIER, NRC.REQUEST_OUT_OF_RANGE);
     if (!definition.writable)
       return negativeResponse(SID.WRITE_DATA_BY_IDENTIFIER, NRC.CONDITIONS_NOT_CORRECT);
-    // Keep the write observable for the simulator/tests.
-    this.dids.set(did, { ...definition, value: () => payload.subarray(3).slice() });
+    // A DID with a write hook stores the payload itself, and stays *live* afterwards:
+    // replacing the read closure (the form without a hook) would freeze a computed
+    // value at what the tester happened to write. The hook may refuse — a coding
+    // block with the wrong length or an adaptation outside its range is a
+    // `requestOutOfRange`/`conditionsNotCorrect` answer, not a silent success.
+    if (definition.write) {
+      let refusal: number | undefined;
+      try {
+        refusal = definition.write(payload.subarray(3).slice());
+      } catch (error) {
+        this.log.error("DID write handler failed", {
+          ecu: this.name,
+          did: `0x${did.toString(16)}`,
+          error: messageOf(error),
+        });
+        return negativeResponse(SID.WRITE_DATA_BY_IDENTIFIER, NRC.GENERAL_REJECT);
+      }
+      if (typeof refusal === "number")
+        return negativeResponse(SID.WRITE_DATA_BY_IDENTIFIER, refusal);
+    } else {
+      // Keep the write observable for the simulator/tests.
+      this.dids.set(did, { ...definition, value: () => payload.subarray(3).slice() });
+    }
+    this.log.info("DID written", { ecu: this.name, did: `0x${did.toString(16)}`, writable: true });
     return new Uint8Array([
       positiveResponseSid(SID.WRITE_DATA_BY_IDENTIFIER),
       (did >> 8) & 0xff,

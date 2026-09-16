@@ -266,7 +266,14 @@ export class VirtualVehicle {
     return dids;
   }
 
-  private buildPayload(
+  /**
+   * Encode one DID payload from its signals.
+   *
+   * `protected` for the same reason as {@link VirtualVehicle.signalValue}: a vehicle
+   * with its own behaviour model answers the values, and must not need a second
+   * encoder for the definition-declared layout.
+   */
+  protected buildPayload(
     definition: EcuDefinition,
     _did: number,
     signals: readonly SignalDefinition[],
@@ -311,8 +318,12 @@ export class VirtualVehicle {
   /**
    * Simple physical model so graphs show realistic movement.
    * Deterministic per seed, so recordings are reproducible (AGENTS 31/32).
+   *
+   * `protected`, not private: a vehicle that owns a real behaviour model answers
+   * here (see `HighFidelityVehicle`) instead of overriding the DIDs one by one, so
+   * live values, freeze frames and encoded payloads keep one source.
    */
-  private signalValue(ecuId: string, signal: SignalDefinition): number | string | boolean {
+  protected signalValue(ecuId: string, signal: SignalDefinition): number | string | boolean {
     if (signal.encoding === "ascii") return this.asciiValue(ecuId, signal);
     if (signal.encoding === "bool") return true;
 
@@ -439,7 +450,8 @@ export function defaultDtcsFor(
  * not equal the idle baseline — otherwise the snapshot carries no information and
  * a decoder bug would go unnoticed.
  */
-function freezeFrameValue(signal: SignalDefinition): number {
+/** The operating point a *static* fixture records; see `buildFreezeFrame`. */
+export function freezeFrameValue(signal: SignalDefinition): number {
   switch (signal.id) {
     case "engine.rpm":
       return 3120;
@@ -456,10 +468,22 @@ function freezeFrameValue(signal: SignalDefinition): number {
   }
 }
 
-/** Encode the declared freeze frame fields into the record the server returns. */
-function buildFreezeFrame(
+/** Where a freeze frame's field values come from (a fixture, or the live model). */
+export type FreezeFrameValues = (signal: SignalDefinition) => number;
+
+/**
+ * Encode the declared freeze frame fields into the record the server returns.
+ *
+ * The value function is the seam: the default answers with the documented operating
+ * point of a stored fixture, while a vehicle model hands in the values the engine
+ * actually had at the moment its monitor latched. Both go through the same
+ * definition-declared layout, so a snapshot is either right for both or wrong for
+ * both — a second encoder for the live case would be a second idea of the format.
+ */
+export function buildFreezeFrame(
   dtc: DtcDefinition,
   signalById: ReadonlyMap<string, SignalDefinition>,
+  valueFor: FreezeFrameValues = freezeFrameValue,
 ): { snapshot: Uint8Array } | undefined {
   const fields = dtc.freezeFrame ?? [];
   if (fields.length === 0) return undefined;
@@ -479,7 +503,7 @@ function buildFreezeFrame(
       fieldSignals.reduce((max, signal) => Math.max(max, signal.byteOffset + signal.length), 0);
     const payload = new Uint8Array(length);
     for (const signal of fieldSignals) {
-      const value = freezeFrameValue(signal);
+      const value = valueFor(signal);
       const encoded = encodeSignal(signal, value, { payloadLength: length });
       for (let i = 0; i < signal.length; i++)
         payload[signal.byteOffset + i] = encoded[signal.byteOffset + i] ?? 0;

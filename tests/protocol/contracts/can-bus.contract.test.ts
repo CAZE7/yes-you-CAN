@@ -27,7 +27,7 @@ import { GenericCanAdapter } from "@vdp/adapter-generic-can";
 import { FakeSocketCanBinding, SocketCanAdapter } from "@vdp/adapter-socketcan";
 import { AdapterUnsupportedError, TransportError, fromHex, toHex } from "@vdp/shared";
 import { createLogger } from "@vdp/shared";
-import { createVirtualCanNetwork } from "@vdp/simulators";
+import { CanChaosBus, createVirtualCanNetwork } from "@vdp/simulators";
 import type { CanBus, CanFrame } from "@vdp/transport-can";
 import { ReplayTransport, createFrame } from "@vdp/transport-can";
 import { test } from "vitest";
@@ -113,6 +113,18 @@ const subjects: CanBusSubject[] = [
   {
     name: "virtual bus (simulator)",
     create: () => virtualFixture(),
+  },
+  {
+    // A chaos run is still a `CanBus`, so the port applies to the proxy and not only to
+    // what it wraps. The proxy keeps its own subscriber list, which is exactly where a
+    // filter can go missing: it stored the filters and delivered to every listener, so
+    // a chaos subscriber saw frames it had excluded. Nothing checked that, because the
+    // contract did not run against it — the entry, not the fix, is the finding.
+    name: "chaos proxy (simulator)",
+    create: () => {
+      const inner = virtualFixture();
+      return { ...inner, bus: new CanChaosBus(inner.bus) };
+    },
   },
   {
     name: "generic CAN adapter",

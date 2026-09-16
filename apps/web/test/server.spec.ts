@@ -2,49 +2,12 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createLogger } from "@vdp/shared";
 import { test } from "vitest";
-import { waitFor } from "../../../tests/helpers/wait.js";
+import { json, waitForSamples, withServer } from "../../../tests/helpers/workbench.js";
 import type { DtcView } from "../src/backend.js";
 import { WebServer } from "../src/server.js";
 import type { VehicleResolutionView } from "../src/vehicle-view.js";
 import type { AnalysisView } from "../src/views.js";
-
-const logger = createLogger("web", { level: "ERROR" });
-
-/** Start a server on an ephemeral port and give back helpers plus a teardown. */
-async function withServer<T>(run: (base: string, server: WebServer) => Promise<T>): Promise<T> {
-  const server = new WebServer({ port: 0, liveIntervalMs: 60 });
-  const { port } = await server.listen();
-  try {
-    return await run(`http://127.0.0.1:${port}`, server);
-  } finally {
-    await server.close();
-  }
-}
-
-async function json(
-  base: string,
-  path: string,
-  init?: RequestInit,
-): Promise<{ status: number; body: unknown; type: string }> {
-  const response = await fetch(`${base}${path}`, init);
-  const type = response.headers.get("content-type") ?? "";
-  return {
-    status: response.status,
-    body: type.includes("json") ? await response.json() : await response.text(),
-    type,
-  };
-}
-
-/** Wait until the recording holds at least `count` samples of `signal`. */
-async function waitForSamples(base: string, count = 1, signal = "engine.rpm"): Promise<void> {
-  await waitFor(
-    async () =>
-      ((await json(base, "/api/history")).body as { samples: Array<{ signal: string }> }).samples,
-    (samples) => samples.filter((sample) => sample.signal === signal).length >= count,
-  );
-}
 
 test("the index page and every front end asset are served", async () => {
   await withServer(async (base) => {
@@ -329,7 +292,6 @@ test("API calls before start fail with a clear message instead of crashing", asy
   } finally {
     await server.close();
   }
-  void logger;
 });
 
 test("sessions can be saved, listed and downloaded as a package", async () => {
@@ -688,5 +650,70 @@ test("guided diagnosis, coding/adaptation, signal analysis, and chaos endpoints 
     assert.equal(chaosStatus.status, 200);
     const chaosReset = await json(base, "/api/chaos/reset", { method: "POST" });
     assert.equal(chaosReset.status, 200);
+  });
+});
+
+/**
+ * The scenario endpoints on the wire (AGENTS 32, 28).
+ *
+ * Three statuses are the contract, and each is a different kind of answer: 200 with the
+ * catalog (data the app always has), 400 when the request says nothing (an empty `id` is
+ * the caller's mistake, not the platform's), 409 when the *connection* cannot do it (a
+ * simulator without a behaviour model). A run through the selected 5-ECU vehicle answers
+ * 200 with the verdicts of the run and the fault memories it left behind.
+ */
+test("the scenario endpoints answer by what is missing: nothing, an id, or a model", async () => {
+  await withServer(async (base) => {
+    const list = await json(base, "/api/simulator/scenarios");
+    assert.equal(list.status, 200);
+    const scenarios = (list.body as { scenarios: { id: string; steps: number }[] }).scenarios;
+    assert.ok(scenarios.length >= 4, "the catalog is served as it is");
+    assert.ok(scenarios.every((entry) => entry.steps > 0));
+
+    const noId = await json(base, "/api/simulator/scenario", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    assert.equal(noId.status, 400, "an empty request is the caller's error");
+
+    const noModel = await json(base, "/api/simulator/scenario", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "under-voltage-at-start" }),
+    });
+    assert.equal(noModel.status, 409, "the default simulator has no behaviour model");
+    assert.match(String((noModel.body as { error: string }).error), /High-fidelity/);
+
+    const selected = await json(base, "/api/adapter/select", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "simulator-5ecu" }),
+    });
+    assert.equal(selected.status, 200, JSON.stringify(selected.body));
+    // Selecting does not connect — the workbench starts a run explicitly (AGENTS 28), and
+    // a scenario needs the vehicle behind that connection, not just the choice of one.
+    const started = await json(base, "/api/start", { method: "POST" });
+    assert.equal(started.status, 200, JSON.stringify(started.body));
+
+    const run = await json(base, "/api/simulator/scenario", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "under-voltage-at-start" }),
+    });
+    assert.equal(run.status, 200, JSON.stringify(run.body));
+    const view = (run.body as { run: { passed: boolean; checks: unknown[]; memory: unknown[] } })
+      .run;
+    assert.equal(view.passed, true);
+    assert.ok(view.checks.length > 0, "the run reports its verdicts, not only a boolean");
+    assert.ok(Array.isArray(view.memory), "and what the modules hold afterwards");
+
+    const unknown = await json(base, "/api/simulator/scenario", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "no-such-scenario" }),
+    });
+    assert.equal(unknown.status, 409);
+    assert.match(String((unknown.body as { error: string }).error), /known: /);
   });
 });

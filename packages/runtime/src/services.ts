@@ -61,7 +61,7 @@ import type {
 } from "@vdp/domain";
 import { policyForWriteOperation } from "@vdp/domain";
 import type { Logger } from "@vdp/shared";
-import { messageOf, toHex } from "@vdp/shared";
+import { UnknownEcuError, messageOf, toHex } from "@vdp/shared";
 import { capabilitiesFromServices } from "./capability-map.js";
 import {
   decodedToReading,
@@ -90,8 +90,8 @@ import {
   vehicleDeterminationOf,
 } from "./vehicle-resolution.js";
 
-export function unknownEcu(ecuId: string): Error {
-  return new Error(`unknown ECU "${ecuId}" — connect first or check the id`);
+export function unknownEcu(ecuId: string): UnknownEcuError {
+  return new UnknownEcuError(ecuId);
 }
 
 /** Parse an address-form ECU reference like "0x7e8"; undefined otherwise. */
