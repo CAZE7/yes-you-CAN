@@ -90,3 +90,21 @@ Weitere Festlegungen:
   das erzwingt ADR 0015 automatisiert.
 - Die doppelte Buchhaltung (Engine-Zustand + Projektionen) ist der bewusste Preis
   der Zwischenphase und endet mit Phase 4.
+
+- **Die Naht gilt auch für alles, was am Draht beobachtet oder eingreift** (seit
+  2026-09-16, AGENTS 0.E E24): `openBus()` ist der eine Punkt, an dem die Workbench
+  einen Bus bekommt, und eine Schicht, die den Verkehr stören oder zählen will, muss
+  **um** diesen Bus herum gebaut werden — nicht daneben. Ein `CanChaosBus`, den
+  `injectChaos()` nach dem Verbinden selbst anlegte, zählte Rahmen, während Runtime,
+  Roh-Trace und ISO-TP das Original lasen; die Schalter meldeten `active: true` für
+  eine Wirkung, die keine war. `start()` wickelt jetzt ein, und was oberhalb der Naht
+  liegt — UDS, Messung, Session — ist damit auch unter Störung noch identisch für
+  Simulator, Replay und Hardware, was die Ursprungsbehauptung dieses ADR erst prüfbar
+  macht.
+- **Eine Route bleibt eine Route** (dieselbe Runde): `apps/web/src/server.ts` hält
+  Pfad, Status und Antwortformat, sonst nichts. Was ein Mensch eingeben darf und wie
+  eine Projektion aussieht, liegt in `route-input.ts` (Grammatik der Adressen, Zahlen
+  und Bruchteile) beziehungsweise in den `*-view.ts`-Modulen; der Anlass war
+  gemessen, nicht vermutet — die Datei maß 823 Zeilen über dem Budget von 800, und
+  das Größen-Tor erlaubt eine Ausnahme nur mit Zahl, also wurde geschnitten (784
+  Zeilen, `route-input.ts` 65 Zeilen mit eigener Spec).
