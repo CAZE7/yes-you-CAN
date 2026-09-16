@@ -175,6 +175,16 @@ Abschnitt sonst einfordert. Was sie trägt: beide Beine grün mit der angehobene
 `apps/web/src`-Schwelle 76/72, also gilt der neue Boden auch auf der Runner-Maschine
 und nicht nur im ruhigen Lokal-Lauf.
 
+Zweiter Kopf mit derselben Einschränkung (1.38, `6ef2ba1`): beide Beine grün,
+Testschritt 42 s auf beiden Beinen (gegen 41 s / 41 s am Kopf `56c0a98`) — dass die
+beiden Beine hier gleichauf liegen, ist ein Wertepaar, kein Muster: über die 14
+Trägersekunden oben wechselt die Führung weiter. Der neue Boden 76/72 gilt damit auch
+auf diesem Kopf, und die ausgezogene Grammatikdatei (`route-input.ts`, 100/100/100/100)
+ist dort genauso gemessen wie lokal.
+Der Selbstbericht war auch diesmal nicht zu lesen, aus einem etwas anderen Grund als
+oben notiert: `actions/jobs/<id>/logs` löst inzwischen auf einen signierten Blob auf,
+und der Abruf endet mit `EOF`; `annotation_count` desselben Jobs ist leer.
+
 Dritter Befund aus demselben Vergleich: der Ist-Wert atmet. 94,74 / 86,66 / 96,09 /
 96,04 lokal im ruhigen Lauf, 86,67 Zweige unter Last, und auf dem Node-22-Bein
 94,68 / 86,59 / 96,02 gegen 94,74 / 86,66 / 96,04 auf Node 24 — derselbe Commit.
