@@ -26,8 +26,14 @@ import type { VirtualCanBus } from "./virtual-can.js";
 export type CanChaosRule =
   /** Drops all frames where predicate returns true. */
   | { kind: "drop-predicate"; match: (frame: CanFrame) => boolean }
-  /** Drops N frames matching the target CAN ID. */
-  | { kind: "drop-count"; id: number; count: number }
+  /**
+   * Drops N frames. With `id` only frames carrying that arbitration id; without it
+   * the next N frames of this bus, whatever they address. The second form is what a
+   * "drop a burst of N frames" switch on a whole connection means: aimed at one id,
+   * the burst silently takes nothing on a vehicle that does not talk on that id
+   * (AGENTS 0.E E24 measured exactly that silence).
+   */
+  | { kind: "drop-count"; id?: number; count: number }
   /** Corrupts payload of matching frames. */
   | { kind: "corrupt-payload"; id: number; modifier: (data: Uint8Array) => Uint8Array }
   /** Delays matching frames by ms. */
@@ -128,7 +134,11 @@ export class CanChaosBus implements CanBus {
         this.droppedFrames.push(frame);
         return; // Dropped on send
       }
-      if (rule.kind === "drop-count" && rule.id === frame.id && rule.count > 0) {
+      if (
+        rule.kind === "drop-count" &&
+        (rule.id === undefined || rule.id === frame.id) &&
+        rule.count > 0
+      ) {
         rule.count--;
         this.droppedFrames.push(frame);
         return; // Dropped on send
@@ -157,7 +167,11 @@ export class CanChaosBus implements CanBus {
         this.droppedFrames.push(frame);
         return;
       }
-      if (rule.kind === "drop-count" && rule.id === frame.id && rule.count > 0) {
+      if (
+        rule.kind === "drop-count" &&
+        (rule.id === undefined || rule.id === frame.id) &&
+        rule.count > 0
+      ) {
         rule.count--;
         this.droppedFrames.push(frame);
         return;
@@ -243,12 +257,15 @@ export const ChaosLab = {
   },
 
   /**
-   * Configures burst loss: drops the next N frames on a specific arbitration ID.
+   * Configures burst loss: drops the next N frames, on one arbitration ID when an id
+   * is given and on the whole bus when it is not (`canId: undefined`).
    */
-  injectBurstFrameDrop(bus: CanChaosBus, canId: number, dropCount: number): void {
+  injectBurstFrameDrop(bus: CanChaosBus, canId: number | undefined, dropCount: number): void {
     bus.addRule({
       kind: "drop-count",
-      id: canId,
+      // No `id: undefined` in the object: `exactOptionalPropertyTypes` distinguishes
+      // "field absent" from "field undefined", and the bus-wide form is the absence.
+      ...(canId === undefined ? {} : { id: canId }),
       count: dropCount,
     });
   },

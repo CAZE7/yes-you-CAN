@@ -259,6 +259,22 @@ describe("CanChaosBus", () => {
     assert.equal(lab.remainingBurstDrops, 1, "the preset reports its budget through the bus");
   });
 
+  test("a burst without an id is the next N frames of this bus, whatever they address", async () => {
+    // The form a connection-wide switch needs (AGENTS 0.E E24): aimed at one arbitration id,
+    // a burst is a no-op on a vehicle that does not talk on it — and reports itself active.
+    const { lab } = chaos();
+    ChaosLab.injectBurstFrameDrop(lab, undefined, 2);
+    await lab.send(frame(0x100, [1]));
+    await lab.send(frame(0x200, [2]));
+    await lab.send(frame(0x300, [3]));
+    assert.equal(
+      lab.dropped.length,
+      2,
+      "the budget is a count of frames, not of frames per id, when no id is given",
+    );
+    assert.equal(lab.remainingBurstDrops, 0, "and it is spent afterwards");
+  });
+
   test("drops and corruption bite on the way in as well as on the way out", async () => {
     const { bus, lab } = chaos();
     const seen: CanFrame[] = [];
