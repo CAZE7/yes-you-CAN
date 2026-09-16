@@ -93,7 +93,10 @@ dasselbe Objekt nötig: Daten, die ein Test abarbeitet und ein Simulator ausfüh
    Katalog und Lauf (`ScenarioSummary`, `ScenarioRunView`), `GET /api/simulator/scenarios`
    und `POST /api/simulator/scenario` liefern sie; die Typen hängen an `views.ts`, weil das
    Frontend dagegen typgeprüft wird (ADR 0030). Bewusst **kein** Panel in `public/app.js`
-   gebaut: `app.js` steht mit 1097 Zeilen schon außerhalb des Größenbudgets (0.E E15),
+   gebaut: `app.js` steht mit 1642 Zeilen schon außerhalb des Größenbudgets (Ausnahmeeintrag in
+   `tests/architecture/hygiene.test.ts`, Zahl nachgemessen 2026-09-16 — das Tor prüft neuerlich die
+   Zahl im Ausnahmetext gegen die gemessene, weil beide Zahlen dort als Prosa standen und um 545
+   Zeilen verfault waren),
    und eine View, die niemand abdecken kann, ist Schulden statt Funktion. Der Endpoint ist
    die nach oben offene Fläche; das Panel ist ein eigener, kleiner Schritt.
 

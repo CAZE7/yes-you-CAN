@@ -43,6 +43,19 @@ interface SourceFile {
   isTest: boolean;
 }
 
+/**
+ * Lines in the file, counted the way `wc -l` counts them: a trailing newline
+ * terminates the last line, it does not add one. The size budget compares against this
+ * number, so an off-by-one flags a file that sits exactly on the budget — and every
+ * exemption that quotes its measured size (see the size test) would quote a figure no
+ * reader can reproduce with a shell command.
+ */
+function countLines(raw: string): number {
+  if (raw.length === 0) return 0;
+  const lines = raw.split("\n").length;
+  return raw.endsWith("\n") ? lines - 1 : lines;
+}
+
 function isTestPath(rel: string): boolean {
   return rel.endsWith(".spec.ts") || rel.endsWith(".test.ts") || rel.startsWith("tests/");
 }
@@ -180,7 +193,7 @@ function collectSources(): SourceFile[] {
         code: scan(raw, false),
         codeOnly: scan(raw, true),
         raw,
-        lineCount: raw.split("\n").length,
+        lineCount: countLines(raw),
         isTest: isTestPath(rel),
       });
     }
@@ -439,13 +452,14 @@ test("modules stay reviewable: no production file above the size budget", () => 
     {
       file: "apps/web/src/backend.ts",
       reason:
-        "1117 lines — split tracked as AGENTS 0.E E15; the wire contract moved to views.ts in " +
-        "E19 (1326 → 1117), the budget keeps the rest from growing",
+        "1420 lines — split tracked as AGENTS 0.E E15; the wire contract moved to views.ts in " +
+        "E19 (1326 → 1117) and the file has grown since, so the budget only keeps the *rest* " +
+        "from growing unnoticed",
     },
     {
       file: "apps/web/public/app.js",
       reason:
-        "1097 lines — browser front end without a bundler; served as one module, and typed " +
+        "1642 lines — browser front end without a bundler; served as one module, and typed " +
         "against views.ts since E19 (JSDoc costs lines instead of hiding them)",
     },
   ];
@@ -477,6 +491,28 @@ test("modules stay reviewable: no production file above the size budget", () => 
     shrunk.map((entry) => entry.file),
     [],
     "these files are back inside the size budget — drop their exemption",
+  );
+
+  // A reason that states a size has to state the *measured* one. Both numbers in
+  // this list were prose nobody checked, and they rotted by ~300 and ~550 lines
+  // while the files grew — until one of them was copied into AGENTS 0.E and an ADR
+  // (measured 2026-09-16: `backend.ts` claimed 1117 and ran 1420, `app.js` claimed
+  // 1097 and ran 1642). An exemption whose evidence is stale is a description of a
+  // file that does not exist, and it stops being a reason to allow anything.
+  const staleFigures = oversize.flatMap((entry) => {
+    const file = production.find((source) => source.rel === entry.file);
+    if (file === undefined || entry.reason.includes(`${file.lineCount} lines`)) return [];
+    const claimed = /\d+ lines/.exec(entry.reason)?.[0] ?? "no size at all";
+    return [
+      `${entry.file}: its reason claims "${claimed}" while the file measures ` +
+        `${file.lineCount} lines — restate the number or split the file`,
+    ];
+  });
+  assert.deepEqual(
+    staleFigures,
+    [],
+    "size exemption reasons must quote the measured line count (it is the whole evidence " +
+      "for the exemption; the gate cannot carry a number that nobody re-measures)",
   );
 });
 
