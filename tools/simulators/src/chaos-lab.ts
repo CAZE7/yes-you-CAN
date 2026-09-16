@@ -19,6 +19,7 @@ import type {
   CanFrame,
   FrameListener,
 } from "@vdp/transport-can";
+import { frameMatchesFilters } from "@vdp/transport-can";
 import type { VirtualCanBus } from "./virtual-can.js";
 
 /** Types of chaos injected at the CAN bus level. */
@@ -177,7 +178,10 @@ export class CanChaosBus implements CanBus {
   }
 
   private emit(frame: CanFrame): void {
+    // The filters a subscriber passed are part of its contract; a chaos proxy that
+    // stores them and ignores them hands the caller frames it asked not to see.
     for (const entry of this.listeners) {
+      if (entry.filters !== undefined && !frameMatchesFilters(frame, entry.filters)) continue;
       entry.listener(frame);
     }
   }
