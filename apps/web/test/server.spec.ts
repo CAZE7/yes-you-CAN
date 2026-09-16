@@ -2,49 +2,12 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createLogger } from "@vdp/shared";
 import { test } from "vitest";
-import { waitFor } from "../../../tests/helpers/wait.js";
+import { json, waitForSamples, withServer } from "../../../tests/helpers/workbench.js";
 import type { DtcView } from "../src/backend.js";
 import { WebServer } from "../src/server.js";
 import type { VehicleResolutionView } from "../src/vehicle-view.js";
 import type { AnalysisView } from "../src/views.js";
-
-const logger = createLogger("web", { level: "ERROR" });
-
-/** Start a server on an ephemeral port and give back helpers plus a teardown. */
-async function withServer<T>(run: (base: string, server: WebServer) => Promise<T>): Promise<T> {
-  const server = new WebServer({ port: 0, liveIntervalMs: 60 });
-  const { port } = await server.listen();
-  try {
-    return await run(`http://127.0.0.1:${port}`, server);
-  } finally {
-    await server.close();
-  }
-}
-
-async function json(
-  base: string,
-  path: string,
-  init?: RequestInit,
-): Promise<{ status: number; body: unknown; type: string }> {
-  const response = await fetch(`${base}${path}`, init);
-  const type = response.headers.get("content-type") ?? "";
-  return {
-    status: response.status,
-    body: type.includes("json") ? await response.json() : await response.text(),
-    type,
-  };
-}
-
-/** Wait until the recording holds at least `count` samples of `signal`. */
-async function waitForSamples(base: string, count = 1, signal = "engine.rpm"): Promise<void> {
-  await waitFor(
-    async () =>
-      ((await json(base, "/api/history")).body as { samples: Array<{ signal: string }> }).samples,
-    (samples) => samples.filter((sample) => sample.signal === signal).length >= count,
-  );
-}
 
 test("the index page and every front end asset are served", async () => {
   await withServer(async (base) => {
@@ -329,7 +292,6 @@ test("API calls before start fail with a clear message instead of crashing", asy
   } finally {
     await server.close();
   }
-  void logger;
 });
 
 test("sessions can be saved, listed and downloaded as a package", async () => {

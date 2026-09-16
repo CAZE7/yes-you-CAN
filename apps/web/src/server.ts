@@ -640,12 +640,20 @@ export class WebServer {
 
 /** Parse a CAN identifier from the UI (`0x7E8`, `7e8` or `2024`). */
 function parseCanId(value: unknown): number {
-  if (typeof value === "number" && Number.isInteger(value) && value >= 0) return value;
+  // One grammar for both spellings. A number is not exempt from the range, and hex text
+  // is not exempt from being hex: `Number.parseInt` stops at the first character it
+  // cannot read, so "7e8xyz" used to answer as 0x7E8 and an id typed one key too long
+  // became a *different* ECU's answer. Refusing is the only honest option here.
+  const isAddress = (id: number): boolean => Number.isInteger(id) && id >= 0 && id <= 0x1fffffff;
+  if (typeof value === "number") {
+    if (!isAddress(value)) throw new HttpError(400, `"${value}" is not a CAN identifier`);
+    return value;
+  }
   if (typeof value !== "string" || value.trim().length === 0)
     throw new HttpError(400, "an ECU response id (rxId) is required");
   const text = value.trim().toLowerCase().replace(/^0x/, "");
-  const parsed = Number.parseInt(text, 16);
-  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 0x1fffffff) {
+  const parsed = /^[0-9a-f]+$/.test(text) ? Number.parseInt(text, 16) : Number.NaN;
+  if (Number.isNaN(parsed) || !isAddress(parsed)) {
     throw new HttpError(400, `"${value}" is not a CAN identifier`);
   }
   return parsed;
