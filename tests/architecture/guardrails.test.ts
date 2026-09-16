@@ -610,14 +610,14 @@ test("no build orchestrator is introduced without revisiting the decision", () =
  * the packages an analysis may read must not be able to reach the write chain —
  * not directly, and not through three hops.
  *
- * It is deliberately computed from `dependency-rules.json` instead of listing the
+ * It is deliberately computed from `architecture/architecture.yaml` instead of listing the
  * forbidden names, so the day someone widens `@vdp/ai`'s allowlist the test fails
  * with the reason, and the day someone widens a *middle* package the same happens.
  */
 test("the read-only layers stay read-only: no path from ai or the IR to a write", () => {
-  const rules = JSON.parse(
-    readFileSync(join(root, "tools/architecture/dependency-rules.json"), "utf8"),
-  ) as { packages: Record<string, { mayImport: string[] }> };
+  const rules = JSON.parse(readFileSync(join(root, "architecture/architecture.yaml"), "utf8")) as {
+    packages: Record<string, { mayImport: string[] }>;
+  };
   const WRITE_CAPABLE = "@vdp/core";
   const edges = new Map<string, ReadonlySet<string>>(
     Object.entries(rules.packages).map(([name, entry]) => [name, new Set(entry.mayImport)]),

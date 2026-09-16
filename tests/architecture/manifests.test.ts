@@ -204,7 +204,7 @@ test("every manifest matches its imports", () => {
 
 test("the manifest rule reads the graph, it does not restate it (ADR 0031)", () => {
   const tool = readFileSync(MANIFEST_TOOL, "utf8");
-  // The allowed-edge list belongs to dependency-rules.json. A second copy here would be
+  // The allowed-edge list belongs to architecture/architecture.yaml. A second copy here would be
   // a second rule, and the two would drift exactly like the lint config did before ADR
   // 0029 — so the manifest tool must not contain a single `mayImport` entry.
   assert.doesNotMatch(tool, /mayImport/, "the manifest tool must not restate the layer rules");

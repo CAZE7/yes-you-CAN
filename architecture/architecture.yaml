@@ -1,72 +1,104 @@
 {
-  "schemaVersion": 1,
-  "description": "The one source of the architecture/dependency rule (AGENTS 28, master backlog P0 #2). Read by tools/architecture/check-dependencies.mjs (the tool that fails a build) and by tests/architecture/dependencies.test.ts (the suite that keeps the tool honest). Nothing else may restate these edges — a second copy is a second rule.",
+  "schemaVersion": 2,
+  "description": "The one source of the architecture rule and the AI context layer (AGENTS 28, master backlog P0 #2, ADR 0031/0042/0043). Read by tools/architecture/check-dependencies.mjs (fails the build on a forbidden edge), tools/architecture/ai-context.mjs (generates the .ai/generated/<topic>-context.md bundles), tests/architecture (keeps both tools honest). Nothing else may restate these edges or these layer assignments — a second copy is a second rule. Format: this file is written in JSON syntax, which is valid YAML 1.2, so it parses with Node's built-in JSON.parse without any runtime dependency (ADR 0002) and with any YAML reader at the same time. If you need YAML comments or flow style, you need a parser, and a parser is a dependency.",
+  "layers": {
+    "foundation": "Shared primitives and the DOM-free chart core. Nothing may sit below this layer; these packages import nothing.",
+    "contract": "Pure data contracts and projections (domain model, diagnostic IR, definitions). No I/O, no protocol, no transport, no node builtins — that is what makes them the stable middle.",
+    "application": "Commands, queries and actions: the vocabulary of what a client may ask the platform to do. Speaks domain only.",
+    "protocol": "Diagnostic protocol logic (UDS ISO 14229, KWP2000, OEM hooks) that speaks through a link seam, never through a bus or adapter.",
+    "transport": "Frame layer (CAN), segmentation (ISO-TP ISO 15765-2) and the DoIP link (ISO 13400). Below protocols, above adapters.",
+    "adapter": "Hardware and interface adapters that implement the CanBus contract. Hardware specifics stay here and nowhere else.",
+    "core": "The diagnostic engine: session, discovery, DTC scan/track, measurement, write port. The widest package below runtime.",
+    "runtime": "The composition root: domain services, command/query handlers, domain events, audit. Headless — no HTTP, DOM or UI toolkit.",
+    "persistence": "Session persistence, versioned migrations and export formats. The only layer below the app that touches files.",
+    "presentation": "Charts and reports: rendering what the core produced. They read the diagnostic IR and domain views; they never reach a vehicle.",
+    "ai": "Analysis providers: they read the diagnostic IR (evidence set, hypotheses) and nothing else. An analysis proposes; the write chain decides.",
+    "ui": "The workbench application. The app depends on the layers, never the other way round.",
+    "tool": "Development and QA tools (simulators, golden sessions, trace analyzer, definition importer). A tool, not a layer: nothing imports them."
+  },
   "packages": {
     "@vdp/shared": {
+      "layer": "foundation",
       "mayImport": [],
       "why": "Foundation: no dependencies at all."
     },
     "@vdp/charts": {
+      "layer": "foundation",
       "mayImport": [],
       "why": "DOM-free chart core; knows its own types and nothing else."
     },
     "@vdp/protocols-oem": {
+      "layer": "protocol",
       "mayImport": [],
       "why": "Manufacturer hook types and registry; fills gaps, depends on nothing."
     },
     "@vdp/domain": {
+      "layer": "contract",
       "mayImport": ["@vdp/shared"],
       "why": "Domain contracts: shared primitives only — never protocols, transports or I/O."
     },
     "@vdp/diagnostic-ir": {
+      "layer": "contract",
       "mayImport": ["@vdp/shared"],
       "why": "The diagnostic IR: observations with provenance between raw protocol form and projections. It knows no protocol, no transport and no I/O — that is what makes it the stable middle (P0 #6)."
     },
     "@vdp/application": {
+      "layer": "application",
       "mayImport": ["@vdp/domain"],
       "why": "Application layer: commands/queries/actions speak domain only."
     },
     "@vdp/definitions": {
+      "layer": "contract",
       "mayImport": ["@vdp/shared"],
       "why": "Definitions are data + validation; no diagnostic logic."
     },
     "@vdp/transport-can": {
+      "layer": "transport",
       "mayImport": ["@vdp/shared"],
       "why": "Frame layer; nothing below it."
     },
     "@vdp/transport-iso-tp": {
+      "layer": "transport",
       "mayImport": ["@vdp/shared", "@vdp/transport-can"],
       "why": "Segmentation sits on frames."
     },
     "@vdp/transport-doip": {
+      "layer": "transport",
       "mayImport": ["@vdp/shared", "@vdp/transport-can"],
       "why": "DoIP presents itself as a CAN-like link; it never pulls in the protocol layer."
     },
     "@vdp/protocols-uds": {
+      "layer": "protocol",
       "mayImport": ["@vdp/shared"],
       "why": "Speaks through a link interface, never through a bus or adapter."
     },
     "@vdp/protocols-kwp2000": {
+      "layer": "protocol",
       "mayImport": ["@vdp/shared", "@vdp/protocols-uds"],
       "why": "Legacy ECUs share the UDS primitives."
     },
     "@vdp/adapter-generic-can": {
+      "layer": "adapter",
       "mayImport": ["@vdp/shared", "@vdp/transport-can"],
       "why": "Adapter implements the bus contract; hardware specifics stay here."
     },
     "@vdp/adapter-elm327": {
+      "layer": "adapter",
       "mayImport": ["@vdp/shared", "@vdp/transport-can"],
       "why": "Serial ELM327 protocol and stream belong to the adapter."
     },
     "@vdp/adapter-canable": {
+      "layer": "adapter",
       "mayImport": ["@vdp/shared", "@vdp/transport-can", "@vdp/adapter-elm327"],
       "why": "CANable reuses the ELM327 stream/protocol."
     },
     "@vdp/adapter-socketcan": {
+      "layer": "adapter",
       "mayImport": ["@vdp/shared", "@vdp/transport-can"],
       "why": "Native SocketCAN binding."
     },
     "@vdp/adapter-host": {
+      "layer": "adapter",
       "mayImport": [
         "@vdp/shared",
         "@vdp/transport-can",
@@ -77,6 +109,7 @@
       "why": "Host bindings (tty, bindings loader) and the side-effect-free probe catalog."
     },
     "@vdp/core": {
+      "layer": "core",
       "mayImport": [
         "@vdp/shared",
         "@vdp/diagnostic-ir",
@@ -89,6 +122,7 @@
       "why": "The diagnostic core: protocols + transports + definitions (still the widest package below runtime)."
     },
     "@vdp/runtime": {
+      "layer": "runtime",
       "mayImport": [
         "@vdp/shared",
         "@vdp/diagnostic-ir",
@@ -103,18 +137,22 @@
       "why": "Composition root: wires the transport seam, so it may reach the concrete transports while domain/application stay free of them."
     },
     "@vdp/storage": {
+      "layer": "persistence",
       "mayImport": ["@vdp/shared", "@vdp/core"],
       "why": "Persistence and export formats below the runtime."
     },
     "@vdp/reports": {
+      "layer": "presentation",
       "mayImport": ["@vdp/core", "@vdp/diagnostic-ir"],
       "why": "Report rendering prints what the core produced — and reads the diagnostic IR directly, because a section that shows an unproven statement has to use the IR's own evidence words instead of restating them (P0 #6, ADR 0037)."
     },
     "@vdp/ai": {
+      "layer": "ai",
       "mayImport": ["@vdp/shared", "@vdp/diagnostic-ir"],
       "why": "Provider abstraction stays orthogonal to diagnostics: it may read observations and their evidence — the diagnostic IR, which names no transport, no protocol and no write — and nothing above it. That is the machine-checked form of „an analysis provider never touches the vehicle“ (AGENTS 22, P0 #16/#39, ADR 0038)."
     },
     "@vdp/simulators": {
+      "layer": "tool",
       "mayImport": [
         "@vdp/shared",
         "@vdp/core",
@@ -126,6 +164,7 @@
       "why": "Virtual vehicle answers like a real ECU stack."
     },
     "@vdp/golden-sessions": {
+      "layer": "tool",
       "mayImport": [
         "@vdp/shared",
         "@vdp/diagnostic-ir",
@@ -138,14 +177,17 @@
       "why": "Recorded sessions plus their expectation: it records against the simulator, replays through the real core and compares in the IR vocabulary. A tool, not a layer — nothing imports it."
     },
     "@vdp/trace-analyzer": {
+      "layer": "tool",
       "mayImport": ["@vdp/shared", "@vdp/definitions", "@vdp/protocols-uds", "@vdp/transport-can"],
       "why": "Offline trace tooling decodes with the protocol layer, without the core."
     },
     "@vdp/definition-importer": {
+      "layer": "tool",
       "mayImport": ["@vdp/shared", "@vdp/definitions"],
       "why": "Imports definition data; validation is the definitions package."
     },
     "@vdp/web": {
+      "layer": "ui",
       "mayImport": [
         "@vdp/shared",
         "@vdp/domain",
@@ -204,5 +246,96 @@
         "why": "Domain and application stay protocol-, transport- and I/O-free (AGENTS 1, 3)."
       }
     ]
+  },
+  "topics": {
+    "uds": {
+      "title": "UDS / protocol layer",
+      "summary": "Adding or changing a UDS service, NRC handling, session control or the link seam between protocol and transport.",
+      "packages": [
+        "@vdp/protocols-uds",
+        "@vdp/protocols-kwp2000",
+        "@vdp/protocols-oem",
+        "@vdp/transport-iso-tp",
+        "@vdp/transport-can",
+        "@vdp/core"
+      ],
+      "adrs": ["0013", "0039", "0041"],
+      "docs": ["docs/api/uds.md", "docs/api/transport.md"],
+      "flows": ["docs/flows/diagnostic-read.md", "docs/flows/diagnostic-write.md"],
+      "examples": ["tests/examples/diagnostic-read.example.ts"]
+    },
+    "transport": {
+      "title": "Transport / adapter layer",
+      "summary": "Adding a CAN adapter, changing ISO-TP segmentation, or wiring a new physical link into the bus contract.",
+      "packages": [
+        "@vdp/transport-can",
+        "@vdp/transport-iso-tp",
+        "@vdp/transport-doip",
+        "@vdp/adapter-generic-can",
+        "@vdp/adapter-elm327",
+        "@vdp/adapter-canable",
+        "@vdp/adapter-socketcan",
+        "@vdp/adapter-host"
+      ],
+      "adrs": ["0001", "0013"],
+      "docs": ["docs/api/transport.md"],
+      "flows": ["docs/flows/diagnostic-read.md"],
+      "examples": []
+    },
+    "diagnostic-ir": {
+      "title": "Diagnostic IR",
+      "summary": "Observations with provenance: adding a new observation shape, or changing how evidence, DTC or session data are represented between raw form and projections.",
+      "packages": [
+        "@vdp/diagnostic-ir",
+        "@vdp/core",
+        "@vdp/runtime",
+        "@vdp/reports",
+        "@vdp/ai"
+      ],
+      "adrs": ["0033", "0034", "0037", "0038"],
+      "docs": ["docs/api/diagnostic-ir.md", "docs/api/evidence.md"],
+      "flows": ["docs/flows/dtc-analysis.md", "docs/flows/ai-analysis.md"],
+      "examples": ["tests/examples/evidence-flow.example.ts"]
+    },
+    "dtc": {
+      "title": "DTC system and variant knowledge",
+      "summary": "Fault memory, freeze frames, DTC knowledge per variant, and the scan → observation → evidence chain.",
+      "packages": [
+        "@vdp/core",
+        "@vdp/diagnostic-ir",
+        "@vdp/definitions",
+        "@vdp/runtime"
+      ],
+      "adrs": ["0023", "0024", "0025", "0026", "0037"],
+      "docs": ["docs/api/diagnostic-ir.md"],
+      "flows": ["docs/flows/dtc-analysis.md"],
+      "examples": ["tests/examples/dtc-analysis.example.ts"]
+    },
+    "simulator": {
+      "title": "Simulator and replay",
+      "summary": "Vehicle behaviour model, scenario engine, fault injection, golden sessions and recording/replay.",
+      "packages": [
+        "@vdp/simulators",
+        "@vdp/golden-sessions",
+        "@vdp/protocols-uds",
+        "@vdp/core",
+        "@vdp/definitions",
+        "@vdp/transport-can",
+        "@vdp/transport-iso-tp"
+      ],
+      "adrs": ["0005", "0036", "0039", "0040", "0041"],
+      "docs": ["docs/api/uds.md"],
+      "flows": ["docs/flows/recording-replay.md"],
+      "examples": ["tests/examples/simulator-scenario.example.ts"]
+    },
+    "ai": {
+      "title": "AI analysis layer",
+      "summary": "Analysis providers, the evidence contract of the analysis input, citations and versioned answers.",
+      "packages": ["@vdp/ai", "@vdp/diagnostic-ir", "@vdp/core", "@vdp/runtime"],
+      "adrs": ["0033", "0038"],
+      "docs": ["docs/api/evidence.md", "docs/api/hypothesis.md"],
+      "flows": ["docs/flows/ai-analysis.md"],
+      "examples": ["tests/examples/evidence-flow.example.ts"]
+    }
   }
 }

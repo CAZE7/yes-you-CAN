@@ -44,6 +44,7 @@
     "demo": "npm run build && node apps/web/dist/src/server.js --demo --sessions=./sessions-local",
     "check:deps": "node tools/architecture/check-dependencies.mjs",
     "check:manifests": "node tools/architecture/check-package-manifests.mjs",
+    "ai:context": "node tools/architecture/ai-context.mjs",
     "golden:record": "npm run build && node tools/golden-sessions/dist/src/cli.js --out tests/fixtures/golden-sessions --verify"
   },
   "devDependencies": {

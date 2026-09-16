@@ -3,12 +3,19 @@
  * The architecture/dependency rule as a tool (AGENTS 28; master backlog P0 #2,
  * item #22).
  *
- * The rule itself lives in exactly one place: `dependency-rules.json` next to
- * this file. This tool reads it, builds the real import graph of every workspace
- * package and fails with a non-zero exit code on any edge the rules do not
- * allow — *before* a test run has to explain it. The architecture test suite
- * calls this tool (with `--json`) instead of restating the graph, so a rule
- * change cannot land in one place and be missing in the other.
+ * The rule itself lives in exactly one place: `architecture/architecture.yaml`
+ * at the repository root. This tool reads it, builds the real import graph of
+ * every workspace package and fails with a non-zero exit code on any edge the
+ * rules do not allow — *before* a test run has to explain it. The architecture
+ * test suite calls this tool (with `--json`) instead of restating the graph,
+ * so a rule change cannot land in one place and be missing in the other.
+ *
+ * The file is named `.yaml` but written in JSON syntax (valid YAML 1.2):
+ * `JSON.parse` reads it without a runtime dependency (ADR 0002), and any YAML
+ * reader can read it too. Beyond the dependency rule it also carries the layer
+ * assignment of every package and the AI context `topics`
+ * (`tools/architecture/ai-context.mjs` generates `.ai/generated/<topic>`
+ * bundles from them) — one manifest, one source (ADR 0043).
  *
  * Why not dependency-cruiser: it would be a second rule vocabulary for a rule
  * that is already written down, and its configuration would restate the allow
@@ -28,7 +35,7 @@ import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOT = resolve(HERE, "../..");
-const DEFAULT_RULES = join(HERE, "dependency-rules.json");
+const DEFAULT_RULES = join(DEFAULT_ROOT, "architecture", "architecture.yaml");
 
 /** Workspace roots, mirroring the `workspaces` field of the root manifest. */
 const WORKSPACE_ROOTS = [
@@ -131,20 +138,47 @@ function prefixMatches(name, prefix) {
 /** Unknown keys are errors: a typo in a rule must not look like a passing rule. */
 function checkSchema(rules) {
   const problems = [];
-  const allowedTop = ["schemaVersion", "description", "packages", "rules"];
+  const allowedTop = ["schemaVersion", "description", "layers", "packages", "rules", "topics"];
   for (const key of Object.keys(rules)) {
     if (!allowedTop.includes(key)) problems.push(`unknown top-level key "${key}"`);
   }
+  // `layers` is the manifest's layer vocabulary. When it is present the file
+  // is the full manifest: every package carries a `layer` from it. When it is
+  // absent (a minimal rules file, e.g. a fixture) the `layer` key is simply
+  // unknown — the edge rule stays the only rule.
+  const hasLayers = Object.keys(rules.layers ?? {}).length > 0;
+  if (rules.layers !== undefined && !hasLayers)
+    problems.push('"layers" must name at least one layer');
   const allowedRuleKeys = ["nodeBuiltins", "ui", "layerRules", "portableLayers"];
   for (const key of Object.keys(rules.rules ?? {})) {
     if (!allowedRuleKeys.includes(key)) problems.push(`unknown key in rules: "${key}"`);
   }
   for (const [name, entry] of Object.entries(rules.packages ?? {})) {
+    const allowedKeys = hasLayers ? ["layer", "mayImport", "why"] : ["mayImport", "why"];
     for (const key of Object.keys(entry)) {
-      if (!["mayImport", "why"].includes(key))
-        problems.push(`unknown key in packages.${name}: "${key}"`);
+      if (!allowedKeys.includes(key)) problems.push(`unknown key in packages.${name}: "${key}"`);
     }
     if (!entry.why) problems.push(`packages.${name} has no "why"`);
+    if (hasLayers && (!entry.layer || !Object.keys(rules.layers).includes(entry.layer)))
+      problems.push(
+        `packages.${name} has no valid "layer" (known layers: ${Object.keys(rules.layers).join(", ")})`,
+      );
+  }
+  for (const [topicName, topic] of Object.entries(rules.topics ?? {})) {
+    for (const key of Object.keys(topic ?? {})) {
+      if (!["title", "summary", "packages", "adrs", "docs", "flows", "examples"].includes(key))
+        problems.push(`unknown key in topics.${topicName}: "${key}"`);
+    }
+    if (!topic?.title || !topic?.summary)
+      problems.push(`topics.${topicName} needs a "title" and a "summary"`);
+    for (const pkg of topic?.packages ?? []) {
+      if (!(pkg in (rules.packages ?? {})))
+        problems.push(`topics.${topicName}.packages names unknown package "${pkg}"`);
+    }
+    for (const adr of topic?.adrs ?? []) {
+      if (!/^\d{4}$/.test(adr))
+        problems.push(`topics.${topicName}.adrs entry "${adr}" is not an ADR number`);
+    }
   }
   for (const rule of rules.rules?.layerRules ?? []) {
     for (const key of Object.keys(rule)) {
@@ -170,7 +204,7 @@ function evaluate(rules, packages, root) {
     if (!declared.has(pkg.name)) {
       violations.push({
         rule: "unplaced-package",
-        message: `${pkg.name} is not placed in the architecture graph — add it to dependency-rules.json`,
+        message: `${pkg.name} is not placed in the architecture graph — add it to architecture/architecture.yaml`,
       });
     }
   }
@@ -178,7 +212,7 @@ function evaluate(rules, packages, root) {
     if (!known.has(name)) {
       violations.push({
         rule: "stale-package",
-        message: `dependency-rules.json declares ${name}, but no such workspace package exists`,
+        message: `architecture.yaml declares ${name}, but no such workspace package exists`,
       });
     }
   }
