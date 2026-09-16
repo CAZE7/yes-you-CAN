@@ -268,14 +268,6 @@ export class DemoBackend {
   }
 
   /**
-   * The bus the engine talks to. Exposed for tests and embedding so a caller can
-   * drive frames directly (e.g. the replay regression suites).
-   */
-  get canBus(): CanBus | undefined {
-    return this.bus;
-  }
-
-  /**
    * Adapters this host can use, with a live probe result each.
    *
    * Probing never opens a bus, so listing is safe while a vehicle is connected

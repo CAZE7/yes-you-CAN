@@ -452,9 +452,10 @@ test("modules stay reviewable: no production file above the size budget", () => 
     {
       file: "apps/web/src/backend.ts",
       reason:
-        "1427 lines — split tracked as AGENTS 0.E E15; the wire contract moved to views.ts in " +
-        "E19 (1326 → 1117) and the file has grown since, so the budget only keeps the *rest* " +
-        "from growing unnoticed",
+        "1419 lines — split tracked as AGENTS 0.E E15; the wire contract moved to views.ts in " +
+        "E19 (1326 → 1117), the file grew again, and `get canBus()` (which nothing had used " +
+        "since the replay suites moved to injected buses) is gone: 1427 → 1419. The budget only " +
+        "keeps the *rest* from growing unnoticed",
     },
     {
       file: "apps/web/public/app.js",
