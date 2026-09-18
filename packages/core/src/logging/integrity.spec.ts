@@ -4,6 +4,7 @@ import {
   createRawTraceManifest,
   hashRawTrace,
   verifyRawTraceManifest,
+  withRawTraceManifest,
 } from "./integrity.js";
 import type { RawTraceEntry } from "./session-logger.js";
 
@@ -26,8 +27,43 @@ function entry(payloadHex: string, t = 10): RawTraceEntry {
 describe("raw trace integrity", () => {
   test("is deterministic and independent of presentation formatting", () => {
     const first = entry("62f190");
-    const second = { ...first, timestamp: "another presentation", canIdHex: "0x7e8", payloadHex: "62F190" };
+    const second = {
+      ...first,
+      timestamp: "another presentation",
+      canIdHex: "0x7e8",
+      payloadHex: "62F190",
+    };
     assert.equal(hashRawTrace([first]), hashRawTrace([second]));
+  });
+
+  test("pins the digest so a manifest stays verifiable across runtimes", () => {
+    // Computed with node:crypto before the portable hash landed; the value is
+    // the contract, not the implementation behind it.
+    assert.equal(
+      hashRawTrace([entry("62f190")]),
+      "070a82e0bc3f124be00254d4bcea1cc95d4f843375551c15cf41f7b53bcac141",
+    );
+  });
+
+  test("covers extended and CAN-FD frames in the canonical form", () => {
+    const frame = {
+      ...entry("1122334455667788"),
+      canId: 0x1fffffff,
+      canIdHex: "0x1FFFFFFF",
+      extended: true,
+      fd: true,
+    };
+    const manifest = createRawTraceManifest([frame]);
+    assert.equal(verifyRawTraceManifest([frame], manifest), true);
+    assert.notEqual(hashRawTrace([frame]), hashRawTrace([entry("1122334455667788")]));
+  });
+
+  test("attaches a manifest to a session payload without touching the trace", () => {
+    const payload = { trace: [entry("62f190")], note: "untouched" };
+    const withManifest = withRawTraceManifest(payload);
+    assert.equal(withManifest.note, "untouched");
+    assert.equal(withManifest.trace, payload.trace);
+    assert.equal(verifyRawTraceManifest(withManifest.trace, withManifest.rawTraceManifest), true);
   });
 
   test("detects tampering, reordering, and truncation", () => {
