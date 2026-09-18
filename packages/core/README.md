@@ -26,7 +26,8 @@ Evidenz-Sammlung in IR-Form. Die breiteste Schicht *unter* dem Runtime.
   `hypotheses.ts` (Ranking-Heuristik), `guided-diagnosis.ts`
 - `vehicle/`: VIN-Analyse (`analyseVin`), Identität
 - `safety/`: `SafetyManager` (bewertet Write-Kontexte, erteilt Permits)
-- `logging/`: `SessionLogger` (Roh-Trace + Session-Daten)
+- `logging/`: `SessionLogger` (Roh-Trace + Session-Daten), `integrity.ts`
+  (Roh-Trace-Manifest: SHA-256 über den kanonischen Rahmenstrom, ADR 0044)
 
 ## Does NOT do
 
@@ -67,6 +68,9 @@ Bus (CanBus) → IsoTpConnection → UdsClient → Discovery/Session
 - **Engine = internes Detail des Runtime** (ADR 0014): nichts außerhalb
   des Runtime greift direkt in `DiagnosticEngine` (Workbench nutzt
   `createDiagnosticRuntime`).
+- **Kein `node:`-Builtin** — der Core läuft auch im Worker und in der Vorschau;
+  Digest, Uhr und Zufal kommen aus `@vdp/shared` oder von einer injizierten Naht
+  (`architecture.yaml` → `rules.nodeBuiltins`, ADR 0044).
 - **per-file-Coverage 88/80** — neue Dateien kommen mit Tests.
 
 ## Tests

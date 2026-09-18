@@ -6,9 +6,16 @@
  * that can be stored next to a session export. Hashing is deliberately based on a
  * canonical representation, not JSON.stringify of Uint8Array objects, so the same
  * recording has the same digest in Node, a replay worker, and an export pipeline.
+ *
+ * The digest itself is the portable `sha256Hex` primitive of `@vdp/shared` — this layer
+ * stays free of `node:` builtins (AGENTS 28, `architecture/architecture.yaml` →
+ * `rules.nodeBuiltins`), and `node:crypto` is a builtin; ADR 0044 records why the
+ * primitive sits in the foundation package instead of a dependency here. The canonical
+ * stream is byte-for-byte the one `createHash("sha256")` used to receive, so a manifest
+ * written before that switch still verifies (pinned in `integrity.spec.ts`).
  */
 
-import { createHash } from "node:crypto";
+import { sha256Hex } from "@vdp/shared";
 import type { RawTraceEntry } from "./session-logger.js";
 
 export const RAW_TRACE_HASH_ALGORITHM = "sha256" as const;
@@ -39,15 +46,18 @@ function canonicalEntry(entry: RawTraceEntry): string {
   ].join("|");
 }
 
+/** The one record format the digest covers: length-prefixed, so separators cannot
+ * create an ambiguous stream (a `|` inside a channel name changes no boundary). */
+function canonicalRecord(entry: RawTraceEntry): string {
+  const line = canonicalEntry(entry);
+  return `${line.length}:${line}\n`;
+}
+
 /** Return the stable SHA-256 digest for an ordered raw trace. */
 export function hashRawTrace(entries: readonly RawTraceEntry[]): string {
-  const hash = createHash(RAW_TRACE_HASH_ALGORITHM);
-  // Length-prefix each record so separators cannot create an ambiguous stream.
-  for (const entry of entries) {
-    const line = canonicalEntry(entry);
-    hash.update(`${line.length}:${line}\n`, "utf8");
-  }
-  return hash.digest("hex");
+  // SHA-256 of the concatenated records is the same value as feeding the records to
+  // one hash in order, so the portable primitive needs no streaming API of its own.
+  return sha256Hex(entries.map(canonicalRecord).join(""));
 }
 
 /** Create the manifest that travels with a raw recording. */
@@ -73,11 +83,4 @@ export function verifyRawTraceManifest(
     manifest.entries === entries.length &&
     manifest.sha256 === hashRawTrace(entries)
   );
-}
-
-/** Add a manifest to a session JSON payload without changing the raw trace itself. */
-export function withRawTraceManifest<T extends { trace: readonly RawTraceEntry[] }>(
-  payload: T,
-): T & { rawTraceManifest: RawTraceManifest } {
-  return { ...payload, rawTraceManifest: createRawTraceManifest(payload.trace) };
 }

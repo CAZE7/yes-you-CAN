@@ -12,8 +12,8 @@
 import type { DtcRecord } from "@vdp/protocols-uds";
 import { toHex } from "@vdp/shared";
 import type { CanFrame } from "@vdp/transport-can";
-import { createRawTraceManifest, type RawTraceManifest } from "./integrity.js";
 import type { Marker, MeasurementSample } from "../measurements/recorder.js";
+import { type RawTraceManifest, createRawTraceManifest } from "./integrity.js";
 
 export interface RawTraceEntry {
   timestamp: string;

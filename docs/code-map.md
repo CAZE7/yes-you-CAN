@@ -31,6 +31,7 @@ nicht diese Datei.
 | Szenario hinzufügen | `tools/simulators/src/scenario-catalog.ts` | `scenarios.ts` (`VehicleScenario`-Form), `scenarios.spec.ts` |
 | Fault-Injection / Chaos | `tools/simulators/src/{faulty-link,chaos-lab}.ts` | `apps/web/src/backend.ts` (Chaos-Schalter, ADR 0029) |
 | Recording / Replay | `packages/core/src/logging/session-logger.ts` | `packages/storage/src/{repository,zip}.ts`, `tools/golden-sessions/`, `tests/replay/` |
+| Aufnahme beglaubigen (Roh-Trace-Digest) | `packages/core/src/logging/integrity.ts` (Manifest + kanonischer Satzstrom) | `packages/shared/src/hash.ts` (`sha256Hex` — das Primitiv, ADR 0044), `packages/storage/src/` (wo eine Datei entsteht) |
 | Session-Schema / Migration | `packages/core/src/session/session.ts` | `packages/storage/src/migrations.ts`, ADR 0007 |
 | Fahrzeugauflösung (VIN → Fahrzeug) | `packages/runtime/src/vehicle-resolution.ts` | `packages/definitions/src/resolve.ts`, ADR 0023/0026 |
 | Chart-Rendering | `packages/charts/src/` | `apps/web/public/` (DOM-Teil) |

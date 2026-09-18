@@ -3,7 +3,7 @@
 [![CI](https://github.com/CAZE7/yes-you-CAN/actions/workflows/ci.yml/badge.svg)](https://github.com/CAZE7/yes-you-CAN/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](./package.json)
-[![Tests](https://img.shields.io/badge/tests-2037%20passed-brightgreen)](#tests)
+[![Tests](https://img.shields.io/badge/tests-2048%20passed-brightgreen)](#tests)
 [![TypeScript](https://img.shields.io/badge/TypeScript-7%20%2F%20tsgo-blue)](./tsconfig.base.json)
 
 Fahrzeugdiagnose-Plattform: CAN und DoIP lesen, Steuergeräte identifizieren, das
@@ -103,7 +103,7 @@ Verwechslung, gegen die die Fahrzeugachse existiert.
 
 | Paket | Zweck |
 |---|---|
-| `@vdp/shared` | Fehler, Byte/Hex, Logger (Raw-Logging opt-in), Events |
+| `@vdp/shared` | Fehler, Byte/Hex, Logger (Raw-Logging opt-in), Events, portabler SHA-256 für die Aufnahme-Beglaubigung (ADR 0044) |
 | `@vdp/domain` | Domänen-Verträge: Projektionen, Ports, Capabilities, Risiko-Policy, Ereigniskatalog (ADR 0014) |
 | `@vdp/application` | Command-Bus, Commands/Queries, Capability-getriebene Aktionen (ADR 0014) |
 | `@vdp/transport-can` | `CanFrame`, `CanBus`, Adapter-Registry, `ReplayTransport` |
@@ -115,7 +115,7 @@ Verwechslung, gegen die die Fahrzeugachse existiert.
 | `@vdp/definitions` | versioniertes Schema (v3: Fahrzeuge, Motoren, Getriebe, VIN-Matching, **DTC-Wissen pro Variante**), Validator, Migration v1→v2→v3, WMI-Referenz (ISO 3780), Resolver mit Belegen, Wissensauflösung nach Spezifität, Pakete mit Provenance (ADR 0023, 0024) |
 | `@vdp/charts` | DOM-freie, getestete Graphen-Mathematik: Viewport, Cursor, Decimierung, Statistik (ADR 0011) |
 | `@vdp/diagnostic-ir` | die eine Zwischenstufe zwischen Rohform und Projektion: Beobachtungen mit Beleg, Fenster, Belege und Hypothesen der Analyse (ADR 0034, 0037, 0038) |
-| `@vdp/core` | Engine, ECU-Explorer, DTC-System (variantenbewusst: `setVehicle` schichtet Wissen über die Paketbeschreibung), Recorder, Logger, Safety |
+| `@vdp/core` | Engine, ECU-Explorer, DTC-System (variantenbewusst: `setVehicle` schichtet Wissen über die Paketbeschreibung), Recorder, Logger, Safety, Roh-Trace-Manifest (Digest über den kanonischen Satzstrom, ADR 0044) |
 | `@vdp/runtime` | `createDiagnosticRuntime`: Services, Command-Handler, Domänen-Events — headless (ADR 0014) |
 | `@vdp/adapters-*` | ELM327, CANable (slcan), SocketCAN, generisch |
 | `@vdp/storage` | Session-Repository, Migrationen, ZIP-Export |
@@ -222,8 +222,8 @@ Zeitraum aus, Doppelklick zeigt die gesamte Aufnahme.
 
 ## Tests
 
-2037 bestandene Tests / 141 geprüfte Dateien (`npm test` in 67 s; `npm run
-test:coverage` in 73 s — gemessen 2026-09-16), Vitest 5 mit Projektkonfiguration
+2048 bestandene Tests / 143 geprüfte Dateien (`npm test` in 56 s; `npm run
+test:coverage` in 62 s — gemessen 2026-09-18), Vitest 5 mit Projektkonfiguration
 (ADR 0010, Schritt 1 — ersetzt ADR 0008). Seit ADR 0043 gehören dazu 17
 ausführbare Doku-Beispiele in `tests/examples/*.example.ts` (Projekt
 `integration`) — sie zeigen die API so, wie sie benutzt wird. Der
@@ -235,8 +235,8 @@ aufrufen kann (0.E E20) — einschließlich
 tatsächlichen Importen passt (ADR 0042). Unit-Specs liegen co-lokatiert neben dem
 Code (`src/*.spec.ts`); Property-Tests laufen mit fast-check, Coverage-Gates mit
 `npm run test:coverage` (global 90 % lines / 80 % branches als
-Projekt-Durchschnitt, Ist 95,16 Statements / 87,27 Zweige / 96,55 Funktionen /
-96,44 Zeilen — gemessen am Stand vom 2026-09-16, und die letzten Stellen wandern mit
+Projekt-Durchschnitt, Ist 95,19 Statements / 87,29 Zweige / 96,52 Funktionen /
+96,45 Zeilen — gemessen am Stand vom 2026-09-18, und die letzten Stellen wandern mit
 Last und Node-Version (86,59 bis 86,71 Zweige auf demselben Baum,
 ADR 0029 §6) — seit ADR 0027 wird die ganze
 Fläche gemessen: `packages/**/src`, `apps/web/src/**` und `tools/**`, weil die

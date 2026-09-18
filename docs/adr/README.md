@@ -62,3 +62,4 @@ AI-Context-Topics) steht in [`architecture/architecture.yaml`](../../architectur
 | [0041](0041-uds-server-api-for-simulators.md) | Der UDS-Server hat eine Simulator-API; Casts in interne Maps sind keine | accepted |
 | [0042](0042-manifest-and-import-graph-one-gate.md) | `package.json` ist eine Behauptung über Importe; ein Werkzeug prüft sie | accepted |
 | [0043](0043-ai-context-layer.md) | Die AI-Kontextschicht: eine Doku-Ebene über einer maschinenlesbaren Architektur | accepted |
+| [0044](0044-portable-raw-trace-digest.md) | Der Roh-Trace-Digest ist ein Primitiv in `@vdp/shared`: eine portable Schicht kennt kein `node:crypto` | accepted |
