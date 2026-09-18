@@ -47,6 +47,7 @@ System
 ├── AI              @vdp/ai
 ├── UI              @vdp/web (apps/web)
 └── tool            @vdp/simulators, @vdp/golden-sessions,
+                    @vdp/formal-conformance,
                     @vdp/trace-analyzer, @vdp/definition-importer
 ```
 
@@ -255,11 +256,13 @@ Die zulässigen Kanten pro Paket stehen dort unter `packages.*.mayImport` —
 - **Tests:** `apps/web/test/*.spec.ts` (Integration, `--demo`-Server),
   per-file-Gate 76/72.
 
-### tool — `@vdp/simulators`, `@vdp/golden-sessions`, `@vdp/trace-analyzer`, `@vdp/definition-importer`
+### tool — `@vdp/simulators`, `@vdp/golden-sessions`, `@vdp/formal-conformance`, `@vdp/trace-analyzer`, `@vdp/definition-importer`
 
 - **Purpose:** Virtuelles Fahrzeug mit Verhaltensmodell + Szenario-Engine +
-  Fault-Injection (ADR 0039/0040), Aufzeichnung/Replay mit Erwartung
-  (ADR 0036), Offline-Trace-Analyse, Definition-Import.
+  Fault-Injection (ADR 0039/0040) und strenge Szenario-Dateien
+  (`parseScenarioFile`, ADR 0046), Aufzeichnung/Replay mit Erwartung
+  (ADR 0036), Konformanz-Vektoren gegen die Haskell-Referenz (ADR 0045),
+  Offline-Trace-Analyse, Definition-Import.
 - **Allowed dependencies:** siehe `architecture.yaml` — Tools dürfen breit
   lesen, weil *nichts sie importiert*.
 - **Forbidden dependencies:** nichts über die Manifest-Kanten hinaus; aber:
@@ -267,7 +270,8 @@ Die zulässigen Kanten pro Paket stehen dort unter `packages.*.mayImport` —
   als Runtime-Dependency deklrieren (CI-Gate über die Import-Graph-Prüfung).
 - **Main entry points:** `tools/simulators/src/index.ts`
   (`VirtualVehicle`, `HighFidelityVehicle`, `SCENARIO_CATALOG`, `runScenario`),
-  `tools/golden-sessions/src/cli.ts`, `tools/trace-analyzer/src/index.ts`.
+  `tools/golden-sessions/src/cli.ts`, `tools/formal-conformance/src/cli.ts`
+  (`npm run formal:conform`), `tools/trace-analyzer/src/index.ts`.
 - **Important contracts:** Der Simulator antwortet wie ein echtes
   ECU-Stack *über den Draht* — Tests poken nie Simulator-Felder direkt
   (ADR 0040); `runScenario` assertet nie, er liefert `ScenarioRun`;

@@ -251,10 +251,14 @@ test("analysis returns a labelled result from the local provider", async () => {
 
     // Versions and citations (P0 #42): the answer says which prompt, which build and
     // which definition produced it, and cites the evidence items it read.
-    assert.equal(analysis.provenance?.promptVersion, "2026-09-14.1");
+    assert.equal(analysis.provenance?.promptVersion, "2026-09-16.1");
     assert.equal(analysis.provenance?.runtimeVersion, "0.1.0");
     assert.equal(analysis.provenance?.definitionVersion, "simulator@1.0.0");
     assert.ok((analysis.provenance?.evidence.length ?? 0) > 0);
+    // ADR 0046: the answer names the recording it read — the session id, not an
+    // invention; the test only demands *a* id, the mapping spec pins the source.
+    assert.equal(typeof analysis.provenance?.recordingId, "string");
+    assert.ok((analysis.provenance?.recordingId ?? "").length > 0);
     const cited = analysis.findings.find((finding) => finding.id === "dtc-P0420")?.basedOn ?? [];
     assert.ok(
       cited.every((id) => analysis.provenance?.evidence.includes(id)),

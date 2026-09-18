@@ -12,7 +12,22 @@
  * `@vdp/diagnostic-ir` and nothing else, which the dependency rule enforces.
  */
 
-import type { EvidenceSet, Hypothesis } from "@vdp/diagnostic-ir";
+import type { DiscriminatingTest, EvidenceSet, Hypothesis } from "@vdp/diagnostic-ir";
+
+/**
+ * The scenario a session was recorded against, if any (master prompt §14).
+ *
+ * A reproducible experiment has a name and a seed, and an answer that does not
+ * say which script was running reads like field data. Nothing here is invented:
+ * the caller passes the file/catalog id and the declared determinism, or passes
+ * nothing and the field stays absent.
+ */
+export interface AnalysisScenario {
+  id: string;
+  title?: string;
+  /** The seed a scenario file declared; absent when the runner named none. */
+  seed?: number;
+}
 
 export interface AnalysisSignalSummary {
   signal: string;
@@ -109,6 +124,13 @@ export interface AnalysisProvenance extends AnalysisVersions {
   model?: string;
   /** Item ids of the evidence the answer was built from — empty means "from none". */
   evidence: readonly string[];
+  /**
+   * Which recording the answer was about (P0 #42: reproducibility). It travels in
+   * the provenance, not the summary text, because a reader needs a pointer to
+   * open, not a sentence to trust — and, like the versions, it comes from the
+   * request, never from the answer.
+   */
+  recordingId?: string;
 }
 
 export interface AnalysisInput {
@@ -149,6 +171,14 @@ export interface AnalysisInput {
   evidence?: EvidenceSet;
   /** Documented patterns, judged against the recording (P0 #40). */
   hypotheses?: readonly Hypothesis[];
+  /**
+   * Which session/recording these observations came from (master prompt §14).
+   * An answer that cannot say which recording it read cannot be re-asked; the
+   * field is the pointer, the provenance repeats it where a reader looks.
+   */
+  recordingId?: string;
+  /** The scenario the session was driven by, if a script was on the bench (§14). */
+  scenario?: AnalysisScenario;
   versions?: AnalysisVersions;
 }
 
@@ -181,6 +211,16 @@ export interface AnalysisResult {
   warnings?: string[];
   /** Versions and citations, so the same question can be asked again (P0 #42). */
   provenance?: AnalysisProvenance;
+  /**
+   * The next test, machine-readable (P0 #40, master prompt §13/§14).
+   *
+   * The prose recommendation says it in a sentence; this names the hypothesis it
+   * discriminates and the documented check — and it only ever references what the
+   * input offered: a provider cannot invent a test the definition package did not
+   * document, and a `hypothesisId` outside the input is dropped, like a citation
+   * to a missing item.
+   */
+  nextTest?: DiscriminatingTest;
 }
 
 export interface AnalysisProvider {

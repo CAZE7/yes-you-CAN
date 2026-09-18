@@ -845,3 +845,105 @@ describe("ISO-TP round-trip properties", () => {
     );
   });
 });
+
+/* ------------------------------------------------------------------ *
+ * Wire conformance guards (ISO 15765-2 §9.4/§9.5, ADR 0045):         *
+ * frames that a conformant peer would reject must not be delivered  *
+ * as if they were valid — on either side of the connection.          *
+ * ------------------------------------------------------------------ */
+
+/** A receiver whose bus is reachable for raw frame injection (no sender involved). */
+function createRawReceiver(fd = false): {
+  wire: Wire;
+  receiverBus: VirtualBus;
+  receiver: IsoTpConnection;
+  received: Uint8Array[];
+} {
+  const wire = createWire();
+  const receiverBus = new VirtualBus(wire);
+  if (fd) {
+    receiverBus.capabilities = {
+      can: true,
+      canFd: true,
+      doip: false,
+      isoTpOffload: false,
+      channels: 1,
+    };
+  }
+  const receiver = new IsoTpConnection(receiverBus, {
+    txId: 0x7e8,
+    rxId: 0x7e0,
+    ...(fd ? { fd: true } : {}),
+    timing: { nAsMs: 0, nBsMs: 500, nCrMs: 500, stMinMs: 0, stMinTxMs: 0 },
+    sleep: async () => undefined,
+    now: () => Date.now(),
+  });
+  const received: Uint8Array[] = [];
+  receiver.onUnsolicited((payload) => received.push(payload));
+  receiver.open();
+  return { wire, receiverBus, receiver, received };
+}
+
+describe("ISO-TP wire conformance guards", () => {
+  test("a Single Frame whose declared length the frame does not carry is dropped, not delivered short", async () => {
+    const { receiverBus, received } = createRawReceiver();
+    // SF_DL 3 with a single data byte: the frame promises more than it carries.
+    receiverBus.inject(0x7e0, new Uint8Array([0x03, 0x11]));
+    await until(() => true);
+    assert.equal(received.length, 0, "SF_DL 3 with 1 byte on the wire must not deliver");
+    // The drop leaves no stuck state: the next well-formed frame is delivered.
+    receiverBus.inject(0x7e0, new Uint8Array([0x02, 0x61, 0x62]));
+    await until(() => received.length === 1);
+    assert.equal(received[0]?.length, 2);
+  });
+
+  test("the Single Frame escape form is refused on classic CAN and honoured on CAN FD", async () => {
+    const classic = createRawReceiver();
+    // 00 + explicit length 2 — reserved for classic CAN, §9.4.
+    classic.receiverBus.inject(0x7e0, new Uint8Array([0x00, 0x02, 0x61, 0x62]));
+    await until(() => true);
+    assert.equal(classic.received.length, 0);
+
+    const fd = createRawReceiver(true);
+    fd.receiverBus.inject(0x7e0, new Uint8Array([0x00, 0x03, 0x61, 0x62, 0x63]));
+    await until(() => fd.received.length === 1);
+    assert.deepEqual(Array.from(fd.received[0] ?? []), [0x61, 0x62, 0x63]);
+  });
+
+  test("a First Frame claiming a Single-Frame length never opens a reception", async () => {
+    const { receiverBus, received } = createRawReceiver();
+    receiverBus.inject(0x7e0, new Uint8Array([0x17, 0x03, 0x61, 0x62, 0x63]));
+    // A conformant receiver treats FF_DL ≤ 7 as invalid; a following CF must not
+    // complete anything, because no reception was ever opened.
+    receiverBus.inject(0x7e0, new Uint8Array([0x21, 0x64, 0x65, 0x66]));
+    await until(() => true);
+    assert.equal(received.length, 0, "FF_DL 3 must be dropped, CF after it must be too");
+  });
+
+  test("an escape-form First Frame is refused on classic CAN", async () => {
+    const { receiverBus, wire, received } = createRawReceiver();
+    receiverBus.inject(0x7e0, new Uint8Array([0x10, 0x00, 0x00, 0x00, 0x00, 0x14]));
+    await until(() => true);
+    assert.equal(received.length, 0);
+    // Refusal means refusal: no Flow Control may be sent for the rejected frame.
+    assert.equal(wire.frames.filter((f) => f.id === 0x7e8).length, 0);
+  });
+
+  test("transmitting an empty payload is refused before the wire", async () => {
+    const pair = createPair();
+    await assert.rejects(
+      () => pair.tester.sendOnly(new Uint8Array(0)),
+      (error: unknown) => error instanceof Error && /empty payload/i.test(error.message),
+    );
+    assert.equal(pair.wire.frames.length, 0);
+  });
+
+  test("a payload beyond the 12-bit FF_DL is refused on classic CAN instead of escaping onto the wire", async () => {
+    const pair = createPair();
+    await assert.rejects(
+      () => pair.tester.sendOnly(new Uint8Array(4096)),
+      (error: unknown) => error instanceof Error && /4095/.test(error.message),
+    );
+    assert.equal(pair.wire.frames.length, 0);
+  });
+});

@@ -149,6 +149,12 @@ export interface AnalysisSources {
   /** The runtime's evidence snapshot — items to cite, hypotheses to weigh. */
   evidence: EvidenceSnapshot;
   versions: AnalysisVersions;
+  /**
+   * The scenario the bench script of this session was (master prompt §14). The
+   * backend records it when a scenario run completes; without one the field
+   * stays absent, and the answer is about field data, not a simulation.
+   */
+  scenario?: AnalysisInput["scenario"];
 }
 
 export function buildAnalysisInput(sources: AnalysisSources): AnalysisInput {
@@ -172,6 +178,8 @@ export function buildAnalysisInput(sources: AnalysisSources): AnalysisInput {
     notes: (session?.notes ?? []).map((note) => note.text),
     evidence: evidence.evidence,
     hypotheses: evidence.hypotheses,
+    ...(session?.id !== undefined ? { recordingId: session.id } : {}),
+    ...(sources.scenario !== undefined ? { scenario: sources.scenario } : {}),
     versions: sources.versions,
   };
 }

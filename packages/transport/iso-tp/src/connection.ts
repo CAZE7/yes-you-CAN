@@ -328,6 +328,14 @@ export class IsoTpConnection {
   }
 
   private async transmit(payload: Uint8Array): Promise<void> {
+    // ISO 15765-2 §9.4: SF_DL is 1..7 on classic CAN (or 8..capacity−2 in the FD
+    // escape form) — a zero-length payload has no encoding, and sending PCI 0x00
+    // on classic would read as an invalid frame at every conformant peer.
+    if (payload.length === 0) {
+      throw new IsoTpError("cannot transmit an empty payload — ISO-TP requires 1 byte at least", {
+        payloadLength: 0,
+      });
+    }
     if (payload.length <= this.singleFrameCapacity) {
       await this.sendSingleFrame(payload);
       return;
@@ -362,6 +370,17 @@ export class IsoTpConnection {
   private async sendMultiFrame(payload: Uint8Array): Promise<void> {
     const capacity = this.framePayloadCapacity;
     const length = payload.length;
+    // The 32-bit escape form of FF_DL exists for CAN FD (ISO 15765-2 §9.5.2); on
+    // classic CAN the length is a 12-bit field with 4095 as its ceiling. Sending an
+    // escape frame over classic is a wire violation, so it is refused here — at the
+    // one place that knows both the payload and the link type — instead of being
+    // silently truncated into an unanswerable reception.
+    if (capacity <= 8 && length > 0xfff) {
+      throw new IsoTpError(
+        `payload of ${length} bytes exceeds the 4095-byte limit of classic CAN segmentation`,
+        { payloadLength: length, limit: 0xfff, tooLong: true },
+      );
+    }
     // Drop any Flow Control left over from a previous transmission.
     this.fcQueue = [];
     this.waitCount = 0;
@@ -442,7 +461,12 @@ export class IsoTpConnection {
         }
         if (fc.status === FLOW_STATUS.OVERFLOW) {
           reject(
-            new IsoTpError("Flow Control reported buffer overflow — message too long for receiver"),
+            new IsoTpError(
+              "Flow Control reported buffer overflow — message too long for receiver",
+              {
+                flowControl: "overflow",
+              },
+            ),
           );
           return;
         }
@@ -564,9 +588,35 @@ export class IsoTpConnection {
     const type = pci & 0xf0;
 
     if (type === FRAME_TYPE.SINGLE) {
-      const length = pci & 0x0f;
-      const payload =
-        length === 0 ? body.subarray(2, 2 + (body[1] ?? 0)) : body.subarray(1, 1 + length);
+      // SF_DL lives in the low nibble; 0 selects the explicit-length escape form.
+      // The escape form exists only where there is room for its length byte (CAN FD)
+      // — on classic CAN, SF_DL 0 is reserved (§9.4), and a declared length that the
+      // frame cannot carry is a wire violation, not a shorter message. A receiver that
+      // delivered either as valid would hand the application bytes the sender never
+      // promised (ISO-TP conformance, ADR 0045).
+      const declared = pci & 0x0f;
+      const headerLength = declared === 0 ? 2 : 1;
+      const length = declared === 0 ? (body[1] ?? 0) : declared;
+      if (
+        declared === 0 &&
+        this.framePayloadCapacity <= 8 // escape form without room for it: reserved
+      ) {
+        this.log.debug("single frame escape form on classic CAN — dropped", { pci });
+        return;
+      }
+      if (
+        length < 1 ||
+        length > this.framePayloadCapacity - headerLength ||
+        body.length < headerLength + length
+      ) {
+        this.log.debug("single frame length not carried by the frame — dropped", {
+          pci,
+          declared: length,
+          frame: body.length,
+        });
+        return;
+      }
+      const payload = body.subarray(headerLength, headerLength + length);
       this.stats.rxSingleFrames++;
       this.rxState = null;
       this.deliver(payload.slice());
@@ -584,6 +634,16 @@ export class IsoTpConnection {
         ? ((body[2] ?? 0) << 24) | ((body[3] ?? 0) << 16) | ((body[4] ?? 0) << 8) | (body[5] ?? 0)
         : ffDl;
       const headerLength = escaped ? 6 : 2;
+      // FF_DL ≤ 7 claims a message a Single Frame would carry — a wire violation that
+      // would otherwise start a reception for a message no conformant sender sends.
+      // The escape form is CAN-FD-only, and there it must exceed the 12-bit field.
+      if (
+        (escaped ? length <= 0xfff : length <= 7) ||
+        (escaped && this.framePayloadCapacity <= 8)
+      ) {
+        this.log.debug("first frame with an invalid FF_DL — dropped", { ffDl, escaped, length });
+        return;
+      }
       const first = body.subarray(headerLength);
       this.rxState = {
         expectedLength: length,
@@ -609,6 +669,7 @@ export class IsoTpConnection {
         this.stats.sequenceErrors++;
         const error = new IsoTpError(
           `ISO-TP sequence error: expected ${state.nextSequence}, got ${sequence}`,
+          { sequenceError: true, expected: state.nextSequence, got: sequence },
         );
         this.rxState = null;
         this.failPending(error);

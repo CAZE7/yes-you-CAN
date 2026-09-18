@@ -13,6 +13,7 @@ import {
   ANALYSIS_PROMPT_VERSION,
   AnalysisError,
   type AnalysisInput,
+  type AnalysisResult,
   AnalysisService,
   HeuristicAnalysisProvider,
   HttpAnalysisProvider,
@@ -1045,4 +1046,170 @@ test("an unproven claim caps the answer, an open question only names itself", as
     Math.min(withGap.confidence, 0.3),
     "the cap is the same one a missing determination gets: 0.3",
   );
+});
+
+/* ------------------------------------------------------------------ *
+ * §14 additions: machine-readable next test, recording pointer,    *
+ * scenario echo — all derived from the input, never invented.       *
+ * ------------------------------------------------------------------ */
+
+test("the nextTest the heuristic reports is the leading hypothesis' own undecided check", async () => {
+  const provider = new HeuristicAnalysisProvider();
+  const undecided = hypothesis({
+    id: "vacuum-leak",
+    code: "P0171",
+    claim: "Vacuum leak",
+    outcome: "untested",
+    confidence: 0.3,
+    nextTest: {
+      signal: "engine.maf_airflow",
+      name: "MAF at idle",
+      expect: "within 10 % of spec at 800 rpm",
+      measurable: true,
+    },
+  });
+  const result = await provider.analyze(
+    sampleInput({ evidence: evidenceSet(), hypotheses: [hypothesis(), undecided] }),
+  );
+  // The confirmed fixture has no undecided check, so the first hypothesis with
+  // one wins — and what it reports is the check the package documented, byte for
+  // byte, plus a citation of the hypothesis id.
+  assert.ok(result.nextTest, "the answer carries a machine-readable next step");
+  assert.equal(result.nextTest.hypothesisId, "vacuum-leak");
+  assert.deepEqual(result.nextTest.test, undecided.nextTest);
+  assert.match(result.nextTest.rationale, /P0171/);
+});
+
+test("a refuted hypothesis offers no next test, and no undecided check means no field", async () => {
+  const provider = new HeuristicAnalysisProvider();
+  const refuted = hypothesis({
+    id: "injector",
+    code: "P0171",
+    claim: "Weak injector",
+    outcome: "refuted",
+    confidence: 0.1,
+    nextTest: { signal: "engine.rail_pressure", expect: "rises with demand", measurable: true },
+  });
+  const refutedResult = await provider.analyze(
+    sampleInput({ evidence: evidenceSet(), hypotheses: [refuted] }),
+  );
+  assert.equal(refutedResult.nextTest, undefined, "a refuted pattern is not a next step");
+
+  const allDecided = hypothesis({ id: "done", outcome: "confirmed" });
+  const decidedResult = await provider.analyze(
+    sampleInput({ evidence: evidenceSet(), hypotheses: [allDecided] }),
+  );
+  assert.equal(
+    decidedResult.nextTest,
+    undefined,
+    "without an undecided check the field stays absent",
+  );
+});
+
+test("the recording id travels from the input into the provenance — and not from the answer", async () => {
+  const provider = new HeuristicAnalysisProvider();
+  const result = await provider.analyze(
+    sampleInput({ evidence: evidenceSet(), recordingId: "sess_42" }),
+  );
+  assert.equal(result.provenance?.recordingId, "sess_42");
+  const client: HttpClient = {
+    async fetch() {
+      return {
+        ok: true,
+        status: 200,
+        async text() {
+          return JSON.stringify({
+            summary: "s",
+            findings: [],
+            recommendations: [],
+            confidence: 0.4,
+            provenance: { recordingId: "sess-from-the-gateway" },
+          });
+        },
+      };
+    },
+  };
+  const http = new HttpAnalysisProvider({
+    endpoint: "https://example.test/v1",
+    httpClient: client,
+  });
+  const httpResult = await http.analyze(
+    sampleInput({ evidence: evidenceSet(), recordingId: "sess_42" }),
+  );
+  assert.equal(
+    httpResult.provenance?.recordingId,
+    "sess_42",
+    "a gateway that reports a recording is claiming one; the request's recording is the fact",
+  );
+});
+
+test("a gateway may nominate a next test, but only over the input's own checks", async () => {
+  const nominate = (answer: Record<string, unknown>): Promise<AnalysisResult> => {
+    const client: HttpClient = {
+      async fetch() {
+        return {
+          ok: true,
+          status: 200,
+          async text() {
+            return JSON.stringify(answer);
+          },
+        };
+      },
+    };
+    const http = new HttpAnalysisProvider({
+      endpoint: "https://example.test/v1",
+      httpClient: client,
+    });
+    const undecided = hypothesis({
+      id: "vacuum-leak",
+      code: "P0171",
+      outcome: "untested",
+      confidence: 0.3,
+      nextTest: { signal: "engine.maf_airflow", expect: "within 10 % of spec", measurable: true },
+    });
+    return http.analyze(sampleInput({ evidence: evidenceSet(), hypotheses: [undecided] }));
+  };
+
+  const kept = await nominate({
+    summary: "s",
+    findings: [],
+    recommendations: [],
+    confidence: 0.5,
+    nextTest: {
+      hypothesisId: "vacuum-leak",
+      test: { signal: "engine.maf_airflow" },
+      rationale: "run this first",
+    },
+  });
+  assert.equal(kept.nextTest?.hypothesisId, "vacuum-leak");
+  assert.equal(kept.nextTest?.rationale, "run this first", "the gateway's own words survive");
+  assert.deepEqual(kept.nextTest?.test, (kept.nextTest ?? { test: undefined }).test);
+
+  const invented = await nominate({
+    summary: "s",
+    findings: [],
+    recommendations: [],
+    confidence: 0.5,
+    nextTest: { hypothesisId: "made-up", test: { signal: "engine.maf_airflow" } },
+  });
+  assert.equal(invented.nextTest, undefined, "a hypothesis id outside the input is not a citation");
+
+  const mismatched = await nominate({
+    summary: "s",
+    findings: [],
+    recommendations: [],
+    confidence: 0.5,
+    nextTest: { hypothesisId: "vacuum-leak", test: { signal: "engine.something_else" } },
+  });
+  assert.equal(
+    mismatched.nextTest,
+    undefined,
+    "the check must be the one that hypothesis documents",
+  );
+});
+
+test("the instruction asks for basedOn citations and a nextTest pointer — and says no invention", () => {
+  assert.match(analysisInstruction(), /nextTest/);
+  assert.match(analysisInstruction(), /hypothesisId/);
+  assert.match(analysisInstruction(), /invention/);
 });

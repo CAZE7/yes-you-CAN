@@ -68,6 +68,16 @@ bekommt hier zuerst eine Zeile.
 | **Fault Injection** | Beschädigung/Abschneiden von Antworten *an der Link-Seam* — die Plattform muss den Schaden sehen wie an einem echten Bus (ADR 0039). | `tools/simulators/src/faulty-link.ts` |
 | **Trace** | Der Roh-CAN-Trace einer Session (NDJSON), Replay-fähig. | `packages/core/src/session/types.ts` |
 
+## Formale Referenz und Konformanz (ADR 0045/0046)
+
+| Begriff | Bedeutung | Definiert in |
+|---|---|---|
+| **Konformanz-Vektor** (test vector) | Ein vollständiger Fall in `tools/formal-conformance/vectors/*.json`: Eingangstranskript, Zeit, erwartetes Ausgangstranskript und Zustandsübergänge. TypeScript **und** Haskell werden gegen dieselbe Datei grading — die Datei ist der Vertrag, nicht der Test. | `tools/formal-conformance/src/vectors.ts` |
+| **Differentialtest** | Dasselbe Vektor-Set über beide Implementierungen (TypeScript-Läufer ⇔ Haskell-Referenz) und ein strukturierter Diff (`diffPaths`), kein Seitentest mit eigener Erwartungsprosa. Findet der Läufer keine Haskell-Toolchain, meldet der Bericht `haskell NOT RUN` — ehrlich, statt still grün. | `tools/formal-conformance/src/{isotp,safety}-runner.ts`, `formal/ConformanceDriver.hs` |
+| **Formale Referenz** | Die Haskell-Modelle in `formal/` — ausführbare Spezifikation des Produktionsvertrags (ISO-TP-Zustandsmaschine, Safety-Kette). **Nie** eine Laufzeitabhängigkeit; der Vergleich ist Werkzeug, kein Build-Tor. | `formal/README.md` |
+| **Szenariodatei** | Deklaratives JSON unter `scenarios/` mit Pflicht-Determinismus, das `parseScenarioFile` (strenge Grammatik, kein Raten) in `VehicleScenario` + kausale Schritte übersetzt. Kein Engine-Setter, weil das Modell keinen hat. | `tools/simulators/src/scenario-file.ts` |
+| **Next Test** (`AnalysisResult.nextTest`) | Der von der Analyse empfohlene entscheidende Test: **nur** ein `DiscriminatingTest` aus den Hypothesen (erster nicht-widerlegter Vorschlag), HTTP-seitig citation-validiert — nichts Erfundenes. | `packages/ai/src/{types,heuristic,http}.ts` |
+
 ## Verbotene Doppelnamen (bekannte Fallstricke)
 
 | Verwende | Nicht | Warum |

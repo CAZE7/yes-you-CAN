@@ -19,6 +19,12 @@ Antworten (ADR 0039).
   blockiert andere Anfragen auf derselben Verbindung — nicht pro Anfrage
 - Fehler-Klassen für abgeschnittene/ungültige Segmente (Daten, nicht
   stiller Leerlauf)
+- Wire-Guards nach ISO 15765-2: leere Payload und Classic-CAN > 4095 Bytes
+  sind Absagen beim `send`, Fluchtzeichen-/DL-Verletzungen im Kopf-Byte
+  werden im Empfang verworfen — strukturierte Details (Klasse + `tooLong`,
+  `sequenceError`, `overflow`) statt Prosa; die Vektoren dazu sind der
+  gemeinsame Maßstab mit der Haskell-Referenz (`@vdp/formal-conformance`,
+  ADR 0045)
 
 ## Does NOT do
 

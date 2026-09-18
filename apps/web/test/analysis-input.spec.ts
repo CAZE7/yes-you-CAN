@@ -405,6 +405,41 @@ describe("buildAnalysisInput", () => {
     });
     assert.deepEqual(input.anomalies, [{ signal: "engine.rpm", reason: "no value in the window" }]);
   });
+
+  test("the recording and the run scenario travel with the input (master prompt §14)", () => {
+    const input = buildAnalysisInput({
+      session: session(),
+      identity: undefined,
+      dtcs: [],
+      statistics: [],
+      anomalies: [],
+      evidence: evidence([]),
+      versions: { promptVersion: "p", runtimeVersion: "r" },
+      scenario: { id: "alternator_failure", title: "Lichtmaschinen-Ausfall", seed: 4242 },
+    });
+    // The id is the session's own id — provenance has to point at the file a human
+    // can reopen, not at a copy with a invented name.
+    assert.equal(input.recordingId, "session_web");
+    assert.deepEqual(input.scenario, {
+      id: "alternator_failure",
+      title: "Lichtmaschinen-Ausfall",
+      seed: 4242,
+    });
+  });
+
+  test("no session and no scenario leave both fields absent, not empty", () => {
+    const input = buildAnalysisInput({
+      session: undefined,
+      identity: undefined,
+      dtcs: [],
+      statistics: [],
+      anomalies: [],
+      evidence: evidence([]),
+      versions: { promptVersion: "p", runtimeVersion: "r" },
+    });
+    assert.equal("recordingId" in input, false, "no session is not a recording with no id");
+    assert.equal("scenario" in input, false, "a field measurement is not a simulated scenario");
+  });
 });
 
 function dtcRow(fields: FixturePatch<AnalysisDtcSource>): AnalysisDtcSource {

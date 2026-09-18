@@ -1097,6 +1097,14 @@ export class DemoBackend {
    * "no such scenario" are states of the *request*, and a 500 with a stack trace would
    * describe neither. `ok: false` says what is missing in the caller's words.
    */
+  /**
+   * The scenario most recently run on this connection. The analysis input names
+   * it so an answer can say what it was reasoning about (master prompt §14); it
+   * lives here because this object is the only one that knows a scenario ever
+   * ran — the analysis layer must not guess it from the fault codes alone.
+   */
+  private lastScenario: { id: string; title?: string } | undefined;
+
   async runScenario(
     id: string,
   ): Promise<
@@ -1116,6 +1124,10 @@ export class DemoBackend {
       return { ok: false, error: `unknown scenario "${id}" — known: ${known}` };
     }
     const run = await vehicle.runScenario(scenario);
+    // The analysis input names the scenario this session was driven by (§14);
+    // recording it here, at the one place a scenario ever runs, keeps the
+    // claim “this answer was made about that script” checkable.
+    this.lastScenario = { id: scenario.id, title: scenario.title };
     const memory = vehicle.modules().flatMap((module) =>
       vehicle.model.dtcMemoryOf(module.ecuId).map((dtc) => ({
         ecu: module.ecuId,
@@ -1239,6 +1251,7 @@ export class DemoBackend {
       statistics: runtime.measurements.statistics(),
       anomalies: runtime.measurements.anomalies(),
       evidence: runtime.evidence.snapshot(),
+      ...(this.lastScenario !== undefined ? { scenario: this.lastScenario } : {}),
       versions: {
         promptVersion: ANALYSIS_PROMPT_VERSION,
         runtimeVersion: PLATFORM_VERSION,

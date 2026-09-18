@@ -1,0 +1,891 @@
+{
+  "vectorSet": "iso15765-2",
+  "modelDomain": "Classic CAN (8-byte frames), normal addressing, no padding. Inputs are raw frame payload bytes; sent frames decode through the canonical codec. Flow Control carries only the block size and STmin the config advertises. `payloadLength: n` materialises n copies of 0x5A. CAN FD escape frames, extended addressing, bus-off behaviour and wall-clock pacing are outside the modelled domain and untested here.",
+  "vectors": [
+    {
+      "name": "rx-single-frame-delivered",
+      "side": "rx",
+      "input": [
+        {
+          "in": [3, 97, 98, 99]
+        }
+      ],
+      "expect": {
+        "delivered": [97, 98, 99],
+        "error": null,
+        "sentFrames": [],
+        "counters": {
+          "sequenceErrors": 0,
+          "timeouts": 0,
+          "retries": 0
+        }
+      }
+    },
+    {
+      "name": "rx-single-frame-padding-ignored",
+      "side": "rx",
+      "input": [
+        {
+          "in": [2, 97, 98, 0, 0, 0, 0, 0]
+        }
+      ],
+      "expect": {
+        "delivered": [97, 98],
+        "error": null,
+        "sentFrames": [],
+        "counters": {
+          "sequenceErrors": 0,
+          "timeouts": 0,
+          "retries": 0
+        }
+      }
+    },
+    {
+      "name": "rx-single-frame-shorter-than-declared-dropped",
+      "side": "rx",
+      "input": [
+        {
+          "in": [3, 17]
+        },
+        {
+          "in": [2, 97, 98]
+        }
+      ],
+      "expect": {
+        "delivered": [97, 98],
+        "error": null,
+        "sentFrames": [],
+        "counters": {
+          "sequenceErrors": 0,
+          "timeouts": 0,
+          "retries": 0
+        }
+      }
+    },
+    {
+      "name": "rx-single-frame-escape-on-classic-dropped",
+      "side": "rx",
+      "input": [
+        {
+          "in": [0, 2, 97, 98]
+        },
+        {
+          "in": [1, 99]
+        }
+      ],
+      "expect": {
+        "delivered": [99],
+        "error": null,
+        "sentFrames": [],
+        "counters": {
+          "sequenceErrors": 0,
+          "timeouts": 0,
+          "retries": 0
+        }
+      }
+    },
+    {
+      "name": "rx-first-frame-consecutive-frames-complete",
+      "side": "rx",
+      "input": [
+        {
+          "in": [16, 20, 160, 161, 162, 163, 164, 165]
+        },
+        {
+          "in": [33, 166, 167, 168, 169, 170, 171, 172]
+        },
+        {
+          "in": [34, 173, 174, 175, 176, 177, 178, 179]
+        }
+      ],
+      "expect": {
+        "delivered": [
+          160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177,
+          178, 179
+        ],
+        "error": null,
+        "sentFrames": [
+          {
+            "pci": "flow-control",
+            "status": 0,
+            "blockSize": 0,
+            "stMin": 0
+          }
+        ],
+        "counters": {
+          "sequenceErrors": 0,
+          "timeouts": 0,
+          "retries": 0
+        }
+      }
+    },
+    {
+      "name": "rx-wrong-sequence-number-aborts-reception",
+      "side": "rx",
+      "input": [
+        {
+          "in": [16, 20, 160, 161, 162, 163, 164, 165]
+        },
+        {
+          "in": [35, 166, 167, 168, 169, 170, 171, 172]
+        }
+      ],
+      "expect": {
+        "delivered": null,
+        "error": null,
+        "sentFrames": [
+          {
+            "pci": "flow-control",
+            "status": 0,
+            "blockSize": 0,
+            "stMin": 0
+          }
+        ],
+        "counters": {
+          "sequenceErrors": 1,
+          "timeouts": 0,
+          "retries": 0
+        }
+      }
+    },
+    {
+      "name": "rx-consecutive-frame-without-first-counted-as-sequence-error",
+      "side": "rx",
+      "input": [
+        {
+          "in": [33, 97, 98]
+        }
+      ],
+      "expect": {
+        "delivered": null,
+        "error": null,
+        "sentFrames": [],
+        "counters": {
+          "sequenceErrors": 1,
+          "timeouts": 0,
+          "retries": 0
+        }
+      }
+    },
+    {
+      "name": "rx-flow-control-frame-ignored-on-receive",
+      "side": "rx",
+      "input": [
+        {
+          "in": [48, 2, 5]
+        }
+      ],
+      "expect": {
+        "delivered": null,
+        "error": null,
+        "sentFrames": [],
+        "counters": {
+          "sequenceErrors": 0,
+          "retries": 0,
+          "timeouts": 0
+        }
+      }
+    },
+    {
+      "name": "rx-unknown-pci-dropped",
+      "side": "rx",
+      "input": [
+        {
+          "in": [64, 1]
+        }
+      ],
+      "expect": {
+        "delivered": null,
+        "error": null,
+        "sentFrames": [],
+        "counters": {
+          "sequenceErrors": 0,
+          "timeouts": 0,
+          "retries": 0
+        }
+      }
+    },
+    {
+      "name": "rx-first-frame-with-single-frame-length-dropped",
+      "side": "rx",
+      "input": [
+        {
+          "in": [16, 3, 97, 98]
+        },
+        {
+          "in": [33, 97, 98, 99]
+        }
+      ],
+      "expect": {
+        "delivered": null,
+        "error": null,
+        "sentFrames": [],
+        "counters": {
+          "sequenceErrors": 1,
+          "timeouts": 0,
+          "retries": 0
+        }
+      }
+    },
+    {
+      "name": "rx-escape-form-first-frame-on-classic-dropped",
+      "side": "rx",
+      "input": [
+        {
+          "in": [16, 0, 0, 0, 0, 20, 0, 0]
+        }
+      ],
+      "expect": {
+        "delivered": null,
+        "error": null,
+        "sentFrames": [],
+        "counters": {
+          "sequenceErrors": 0,
+          "timeouts": 0,
+          "retries": 0
+        }
+      }
+    },
+    {
+      "name": "rx-first-frame-accepts-the-4095-ceiling",
+      "side": "rx",
+      "input": [
+        {
+          "in": [31, 255, 160, 161, 162, 163, 164, 165]
+        }
+      ],
+      "expect": {
+        "delivered": null,
+        "error": null,
+        "sentFrames": [
+          {
+            "pci": "flow-control",
+            "status": 0,
+            "blockSize": 0,
+            "stMin": 0
+          }
+        ],
+        "counters": {
+          "sequenceErrors": 0,
+          "timeouts": 0,
+          "retries": 0
+        }
+      }
+    },
+    {
+      "name": "rx-block-size-2-reissues-flow-control",
+      "side": "rx",
+      "config": {
+        "blockSize": 2
+      },
+      "input": [
+        {
+          "in": [16, 34, 128, 129, 130, 131, 132, 133]
+        },
+        {
+          "in": [33, 134, 135, 136, 137, 138, 139, 140]
+        },
+        {
+          "in": [34, 141, 142, 143, 144, 145, 146, 147]
+        },
+        {
+          "in": [35, 148, 149, 150, 151, 152, 153, 154]
+        },
+        {
+          "in": [36, 155, 156, 157, 158, 159, 160, 161]
+        }
+      ],
+      "expect": {
+        "delivered": [
+          128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145,
+          146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161
+        ],
+        "error": null,
+        "sentFrames": [
+          {
+            "pci": "flow-control",
+            "status": 0,
+            "blockSize": 2,
+            "stMin": 0
+          },
+          {
+            "pci": "flow-control",
+            "status": 0,
+            "blockSize": 2,
+            "stMin": 0
+          }
+        ],
+        "counters": {
+          "sequenceErrors": 0,
+          "timeouts": 0,
+          "retries": 0
+        }
+      }
+    },
+    {
+      "name": "rx-n-cr-timeout-aborts-open-reception",
+      "side": "rx",
+      "input": [
+        {
+          "in": [16, 20, 160, 161, 162, 163, 164, 165]
+        },
+        {
+          "tickMs": 61
+        },
+        {
+          "checkCr": true
+        }
+      ],
+      "expect": {
+        "delivered": null,
+        "error": "timeout-nCr",
+        "sentFrames": [
+          {
+            "pci": "flow-control",
+            "status": 0,
+            "blockSize": 0,
+            "stMin": 0
+          }
+        ],
+        "counters": {
+          "sequenceErrors": 0,
+          "timeouts": 1,
+          "retries": 0
+        }
+      }
+    },
+    {
+      "name": "rx-n-cr-not-fired-within-window",
+      "side": "rx",
+      "input": [
+        {
+          "in": [16, 20, 160, 161, 162, 163, 164, 165]
+        },
+        {
+          "tickMs": 30
+        },
+        {
+          "checkCr": true
+        }
+      ],
+      "expect": {
+        "delivered": null,
+        "error": null,
+        "sentFrames": [
+          {
+            "pci": "flow-control",
+            "status": 0,
+            "blockSize": 0,
+            "stMin": 0
+          }
+        ],
+        "counters": {
+          "sequenceErrors": 0,
+          "timeouts": 0,
+          "retries": 0
+        }
+      }
+    },
+    {
+      "name": "rx-chunks-beyond-declared-length-are-truncated",
+      "side": "rx",
+      "input": [
+        {
+          "in": [16, 10, 240, 241, 242, 243, 244, 245]
+        },
+        {
+          "in": [33, 246, 247, 248, 249, 0]
+        }
+      ],
+      "expect": {
+        "delivered": [240, 241, 242, 243, 244, 245, 246, 247, 248, 249],
+        "error": null,
+        "sentFrames": [
+          {
+            "pci": "flow-control",
+            "status": 0,
+            "blockSize": 0,
+            "stMin": 0
+          }
+        ],
+        "counters": {
+          "sequenceErrors": 0,
+          "timeouts": 0,
+          "retries": 0
+        }
+      }
+    },
+    {
+      "name": "rx-sequence-numbers-wrap-at-16",
+      "side": "rx",
+      "input": [
+        {
+          "in": [16, 118, 0, 1, 2, 3, 4, 5]
+        },
+        {
+          "in": [33, 6, 7, 8, 9, 10, 11, 12]
+        },
+        {
+          "in": [34, 13, 14, 15, 16, 17, 18, 19]
+        },
+        {
+          "in": [35, 20, 21, 22, 23, 24, 25, 26]
+        },
+        {
+          "in": [36, 27, 28, 29, 30, 31, 32, 33]
+        },
+        {
+          "in": [37, 34, 35, 36, 37, 38, 39, 40]
+        },
+        {
+          "in": [38, 41, 42, 43, 44, 45, 46, 47]
+        },
+        {
+          "in": [39, 48, 49, 50, 51, 52, 53, 54]
+        },
+        {
+          "in": [40, 55, 56, 57, 58, 59, 60, 61]
+        },
+        {
+          "in": [41, 62, 63, 64, 65, 66, 67, 68]
+        },
+        {
+          "in": [42, 69, 70, 71, 72, 73, 74, 75]
+        },
+        {
+          "in": [43, 76, 77, 78, 79, 80, 81, 82]
+        },
+        {
+          "in": [44, 83, 84, 85, 86, 87, 88, 89]
+        },
+        {
+          "in": [45, 90, 91, 92, 93, 94, 95, 96]
+        },
+        {
+          "in": [46, 97, 98, 99, 100, 101, 102, 103]
+        },
+        {
+          "in": [47, 104, 105, 106, 107, 108, 109, 110]
+        },
+        {
+          "in": [32, 111, 112, 113, 114, 115, 116, 117]
+        }
+      ],
+      "expect": {
+        "delivered": [
+          0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+          25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46,
+          47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68,
+          69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90,
+          91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110,
+          111, 112, 113, 114, 115, 116, 117
+        ],
+        "error": null,
+        "sentFrames": [
+          {
+            "pci": "flow-control",
+            "status": 0,
+            "blockSize": 0,
+            "stMin": 0
+          }
+        ],
+        "counters": {
+          "sequenceErrors": 0,
+          "timeouts": 0,
+          "retries": 0
+        }
+      }
+    },
+    {
+      "name": "tx-single-frame-answer-delivers-response",
+      "side": "tx",
+      "payload": [34, 241, 144],
+      "peer": [
+        {
+          "after": 0,
+          "frame": [2, 98, 145]
+        }
+      ],
+      "expect": {
+        "delivered": [98, 145],
+        "error": null,
+        "sentFrames": [
+          {
+            "pci": "single",
+            "payload": [34, 241, 144]
+          }
+        ],
+        "counters": {
+          "sequenceErrors": 0,
+          "timeouts": 0,
+          "retries": 0
+        }
+      }
+    },
+    {
+      "name": "tx-minimum-first-frame-at-eight-bytes",
+      "side": "tx",
+      "payloadLength": 8,
+      "peer": [
+        {
+          "after": 0,
+          "frame": [48, 0, 0]
+        },
+        {
+          "after": 1,
+          "frame": [2, 98, 9]
+        }
+      ],
+      "expect": {
+        "delivered": [98, 9],
+        "error": null,
+        "sentFrames": [
+          {
+            "pci": "first",
+            "totalLength": 8,
+            "payload": [90, 90, 90, 90, 90, 90]
+          },
+          {
+            "pci": "consecutive",
+            "sn": 1,
+            "payload": [90, 90]
+          }
+        ],
+        "counters": {
+          "sequenceErrors": 0,
+          "timeouts": 0,
+          "retries": 0
+        }
+      }
+    },
+    {
+      "name": "tx-multi-frame-completes-on-flow-control",
+      "side": "tx",
+      "payload": [
+        160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177,
+        178, 179
+      ],
+      "peer": [
+        {
+          "after": 0,
+          "frame": [48, 0, 0]
+        },
+        {
+          "after": 2,
+          "frame": [2, 98, 1]
+        }
+      ],
+      "expect": {
+        "delivered": [98, 1],
+        "error": null,
+        "sentFrames": [
+          {
+            "pci": "first",
+            "totalLength": 20,
+            "payload": [160, 161, 162, 163, 164, 165]
+          },
+          {
+            "pci": "consecutive",
+            "sn": 1,
+            "payload": [166, 167, 168, 169, 170, 171, 172]
+          },
+          {
+            "pci": "consecutive",
+            "sn": 2,
+            "payload": [173, 174, 175, 176, 177, 178, 179]
+          }
+        ],
+        "counters": {
+          "sequenceErrors": 0,
+          "timeouts": 0,
+          "retries": 0
+        }
+      }
+    },
+    {
+      "name": "tx-no-flow-control-times-out-on-n-bs",
+      "side": "tx",
+      "config": {
+        "nBsMs": 40
+      },
+      "payload": [
+        160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177,
+        178, 179
+      ],
+      "peer": [],
+      "expect": {
+        "delivered": null,
+        "error": "timeout-nBs",
+        "sentFrames": [
+          {
+            "pci": "first",
+            "totalLength": 20,
+            "payload": [160, 161, 162, 163, 164, 165]
+          }
+        ],
+        "counters": {
+          "sequenceErrors": 0,
+          "timeouts": 1,
+          "retries": 0
+        }
+      }
+    },
+    {
+      "name": "tx-wait-then-clear-to-send-completes",
+      "side": "tx",
+      "payload": [
+        192, 193, 194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209,
+        210, 211
+      ],
+      "peer": [
+        {
+          "after": 0,
+          "frame": [49, 0, 0]
+        },
+        {
+          "after": 0,
+          "frame": [48, 0, 0]
+        },
+        {
+          "after": 2,
+          "frame": [2, 98, 1]
+        }
+      ],
+      "expect": {
+        "delivered": [98, 1],
+        "error": null,
+        "sentFrames": [
+          {
+            "pci": "first",
+            "totalLength": 20,
+            "payload": [192, 193, 194, 195, 196, 197]
+          },
+          {
+            "pci": "consecutive",
+            "sn": 1,
+            "payload": [198, 199, 200, 201, 202, 203, 204]
+          },
+          {
+            "pci": "consecutive",
+            "sn": 2,
+            "payload": [205, 206, 207, 208, 209, 210, 211]
+          }
+        ],
+        "counters": {
+          "sequenceErrors": 0,
+          "timeouts": 0,
+          "retries": 0
+        }
+      }
+    },
+    {
+      "name": "tx-wait-frames-above-wftmax-abort",
+      "side": "tx",
+      "config": {
+        "wftMax": 2,
+        "nBsMs": 1000
+      },
+      "payload": [17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17],
+      "peer": [
+        {
+          "after": 0,
+          "frame": [49, 0, 0]
+        },
+        {
+          "after": 0,
+          "frame": [49, 0, 0]
+        },
+        {
+          "after": 0,
+          "frame": [49, 0, 0]
+        }
+      ],
+      "expect": {
+        "delivered": null,
+        "error": "wftmax",
+        "sentFrames": [
+          {
+            "pci": "first",
+            "totalLength": 20,
+            "payload": [17, 17, 17, 17, 17, 17]
+          }
+        ],
+        "counters": {
+          "sequenceErrors": 0,
+          "timeouts": 1,
+          "retries": 0
+        }
+      }
+    },
+    {
+      "name": "tx-flow-control-overflow-aborts",
+      "side": "tx",
+      "payloadLength": 32,
+      "peer": [
+        {
+          "after": 0,
+          "frame": [50, 0, 0]
+        }
+      ],
+      "expect": {
+        "delivered": null,
+        "error": "buffer-overflow",
+        "sentFrames": [
+          {
+            "pci": "first",
+            "totalLength": 32,
+            "payload": [90, 90, 90, 90, 90, 90]
+          }
+        ],
+        "counters": {
+          "sequenceErrors": 0,
+          "timeouts": 0,
+          "retries": 0
+        }
+      }
+    },
+    {
+      "name": "tx-block-size-pauses-for-next-flow-control",
+      "side": "tx",
+      "payload": [
+        128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145,
+        146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161
+      ],
+      "peer": [
+        {
+          "after": 0,
+          "frame": [48, 2, 0]
+        },
+        {
+          "after": 2,
+          "frame": [48, 0, 0]
+        },
+        {
+          "after": 4,
+          "frame": [2, 98, 5]
+        }
+      ],
+      "expect": {
+        "delivered": [98, 5],
+        "error": null,
+        "sentFrames": [
+          {
+            "pci": "first",
+            "totalLength": 34,
+            "payload": [128, 129, 130, 131, 132, 133]
+          },
+          {
+            "pci": "consecutive",
+            "sn": 1,
+            "payload": [134, 135, 136, 137, 138, 139, 140]
+          },
+          {
+            "pci": "consecutive",
+            "sn": 2,
+            "payload": [141, 142, 143, 144, 145, 146, 147]
+          },
+          {
+            "pci": "consecutive",
+            "sn": 3,
+            "payload": [148, 149, 150, 151, 152, 153, 154]
+          },
+          {
+            "pci": "consecutive",
+            "sn": 4,
+            "payload": [155, 156, 157, 158, 159, 160, 161]
+          }
+        ],
+        "counters": {
+          "sequenceErrors": 0,
+          "timeouts": 0,
+          "retries": 0
+        }
+      }
+    },
+    {
+      "name": "tx-n-bs-timeout-retries-then-completes",
+      "side": "tx",
+      "config": {
+        "maxRetries": 1,
+        "nBsMs": 40
+      },
+      "payload": [
+        160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177,
+        178, 179
+      ],
+      "peer": [
+        {
+          "after": 1,
+          "frame": [48, 0, 0]
+        },
+        {
+          "after": 3,
+          "frame": [2, 98, 1]
+        }
+      ],
+      "expect": {
+        "delivered": [98, 1],
+        "error": null,
+        "sentFrames": [
+          {
+            "pci": "first",
+            "totalLength": 20,
+            "payload": [160, 161, 162, 163, 164, 165]
+          },
+          {
+            "pci": "first",
+            "totalLength": 20,
+            "payload": [160, 161, 162, 163, 164, 165]
+          },
+          {
+            "pci": "consecutive",
+            "sn": 1,
+            "payload": [166, 167, 168, 169, 170, 171, 172]
+          },
+          {
+            "pci": "consecutive",
+            "sn": 2,
+            "payload": [173, 174, 175, 176, 177, 178, 179]
+          }
+        ],
+        "counters": {
+          "sequenceErrors": 0,
+          "timeouts": 1,
+          "retries": 1
+        }
+      }
+    },
+    {
+      "name": "tx-empty-payload-refused-before-the-wire",
+      "side": "tx",
+      "payload": [],
+      "peer": [],
+      "expect": {
+        "delivered": null,
+        "error": "empty-payload",
+        "sentFrames": [],
+        "counters": {
+          "sequenceErrors": 0,
+          "timeouts": 0,
+          "retries": 0
+        }
+      }
+    },
+    {
+      "name": "tx-payload-above-4095-refused-on-classic-can",
+      "side": "tx",
+      "payloadLength": 4096,
+      "peer": [],
+      "expect": {
+        "delivered": null,
+        "error": "message-too-long",
+        "sentFrames": [],
+        "counters": {
+          "sequenceErrors": 0,
+          "timeouts": 0,
+          "retries": 0
+        }
+      }
+    }
+  ]
+}

@@ -23,7 +23,7 @@ nicht diese Datei.
 | DTC-Analyse / -Ablauf | `packages/core/src/dtc/` (scanner, freeze-frame, clear) | `packages/diagnostic-ir/src/dtc.ts`, `packages/runtime/src/services.ts` (`DtcService`), `docs/flows/dtc-analysis.md` |
 | DTC-Wissen (Varianten, Beschreibungen) | `packages/definitions/src/<oem>/` | `packages/definitions/src/validate.ts` (Qualitäts-Gates, ADR 0025), `tools/definition-importer/` |
 | Evidence / Hypothesen-Logik | `packages/core/src/evidence/{collect,hypotheses,guided-diagnosis}.ts` | `packages/diagnostic-ir/src/evidence.ts`, `packages/runtime/src/evidence-service.ts` |
-| AI-Analyse / Provider | `packages/ai/src/` | `apps/web/src/analysis-input.ts` (Input-Bau), ADR 0038 (Kontrakt) |
+| AI-Analyse / Provider | `packages/ai/src/` | `apps/web/src/analysis-input.ts` (Input-Bau inkl. `recordingId`/`scenario`), ADR 0038/0046 (Kontrakt) |
 | Write-Operation hinzufügen | `packages/core/src/writes/` (neues `WriteOperation`-Modul) | `createWritePort`-Wiring in `packages/runtime/src/runtime.ts`, `SafetyManager`-Policy in `packages/domain/src/risk.ts`, ADR 0032/AGENTS 26 |
 | UI-View / -Panel | `apps/web/src/views.ts` (Wire-Contract) + `apps/web/public/` | `apps/web/src/backend.ts`, `apps/web/test/`, ADR 0030 |
 | Neue HTTP-Route | `apps/web/src/server.ts` | `apps/web/src/route-input.ts` (Grammatik-Prüfung), `apps/web/src/backend.ts` |
@@ -40,6 +40,10 @@ nicht diese Datei.
 | Neues Workspace-Paket | `packages/<name>/` mit `package.json` + `tsconfig.json` | `architecture.yaml` (`packages` + ggf. `topics`), Root-`tsconfig.json` (references), `tsconfig.typecheck.json` (paths), `vitest.config.ts` (falls neue Test-Ebene), `package-lock.json` (npm install) |
 | Neues Testbeispiel / ausführbare Doku | `tests/examples/` | `vitest.config.ts` (Projekt `integration` pickt `tests/examples/**/*.example.ts` auf) |
 | AI-Kontext-Bundle anpassen | `architecture/architecture.yaml` → `topics` | `tools/architecture/ai-context.mjs`, `tests/architecture/ai-context.test.ts` |
+| Impact einer Änderung bestimmen | `npm run architecture:impact -- <datei\|paket>` | `tools/architecture/impact.mjs` (Rückwärtsschluss der `mayImport`-Kanten aus dem Manifest), `npm run ai:context:changed` (`.ai/generated/changed-context.md`), ADR 0046 |
+| Szenariodatei (.json) ändern / ergänzen | `tools/simulators/src/scenario-file.ts` (`parseScenarioFile` — die Grammatik) | `tools/simulators/scenario.schema.json` + `scenarios/README.md` (dieselbe Grammatik, im selben PR), `tests/integration/scenario-file.test.ts`, ADR 0046 |
+| Konformanz-Vektor ändern / ergänzen | `tools/formal-conformance/vectors/{isotp,safety}.json` (der Vertrag) | `tools/formal-conformance/src/{vectors,isotp-runner,safety-runner}.ts`, `formal/*.hs` (Referenzseite — dieselbe Datei, keine Abschrift!), `npm run formal:conform`, ADR 0045 |
+| Formales Referenzmodell (Haskell) ändern | `formal/` (Runner: `formal/README.md`) | Dieselbe Vektordatei, `tests/protocol/formal-conformance.test.ts` (Skip mit Grund ohne Toolchain), ADR 0045 |
 
 ## Regelmuster (wiederkehrende Fragen)
 

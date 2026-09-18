@@ -1,20 +1,109 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://yes-you-can.dev/scenario.schema.json",
+  "description": "Grammar of a scenario file (tools/simulators/src/scenario-file.ts is the executable definition — this document mirrors it and the loader owns any disagreement). Steps advance model time through `wait`; expectations are judged by the runner, never set directly; `determinism` is required because a file that does not fix seed and clock is not reproducible.",
   "type": "object",
-  "required": ["scenario", "steps", "expect"],
+  "required": ["scenario", "steps", "expect", "determinism"],
   "properties": {
+    "$schema": { "type": "string" },
     "scenario": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$" },
     "title": { "type": "string" },
-    "vehicle": { "type": "string" },
-    "steps": { "type": "array", "items": { "type": "object", "minProperties": 1 } },
-    "expect": { "type": "array", "items": { "type": "object" } },
+    "summary": { "type": "string" },
+    "vehicle": { "const": "high-fidelity-simulator" },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "description": "Exactly one cause key (ignition, battery, alternator, load, wait, sensor, ecu, bus) plus optional holdMs.",
+        "properties": {
+          "holdMs": { "type": "integer", "minimum": 0 },
+          "wait": { "type": "integer", "minimum": 1 },
+          "ignition": { "enum": ["lock", "off", "acc", "on", "start"] },
+          "battery": {
+            "oneOf": [
+              { "type": "number", "minimum": 0, "maximum": 30 },
+              {
+                "type": "object",
+                "required": ["volts"],
+                "properties": { "volts": { "type": "number", "minimum": 0, "maximum": 30 } }
+              }
+            ]
+          },
+          "alternator": {
+            "oneOf": [{ "const": "fail" }, { "type": "number", "minimum": 0, "maximum": 1 }]
+          },
+          "load": {
+            "oneOf": [
+              { "const": "low" },
+              { "const": "medium" },
+              { "const": "high" },
+              { "type": "number", "minimum": 0, "maximum": 300 },
+              {
+                "type": "object",
+                "required": ["amps"],
+                "properties": { "amps": { "type": "number", "minimum": 0, "maximum": 300 } }
+              }
+            ]
+          },
+          "sensor": {
+            "type": "object",
+            "required": ["signal", "mode"],
+            "properties": {
+              "signal": { "type": "string" },
+              "mode": {
+                "enum": [
+                  "open-circuit",
+                  "short-to-battery",
+                  "short-to-ground",
+                  "stuck",
+                  "drift-high",
+                  "drift-low"
+                ]
+              },
+              "value": { "type": "number" }
+            }
+          },
+          "ecu": {
+            "type": "object",
+            "required": ["name"],
+            "properties": {
+              "name": { "type": "string" },
+              "mode": { "enum": ["power-cut", "supply-resistance", "connector-loose", "bus-open"] },
+              "state": { "const": "offline" }
+            }
+          },
+          "bus": {
+            "type": "object",
+            "required": ["mode"],
+            "properties": {
+              "mode": { "enum": ["open", "stutter"] },
+              "ecu": { "type": "string" },
+              "dropRate": { "type": "number", "minimum": 0, "maximum": 1 }
+            }
+          }
+        }
+      }
+    },
+    "expect": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "description": "One expectation: a dtc (nested or flat) or a comparison like { battery_voltage: \"< 12.0\" } or { battery_voltage: { operator, value, unit? } }.",
+        "minProperties": 1
+      }
+    },
     "determinism": {
       "type": "object",
       "required": ["clock", "seed"],
-      "properties": { "clock": { "const": "model-time" }, "seed": { "type": "integer" } },
+      "properties": {
+        "clock": { "const": "model-time" },
+        "seed": { "type": "integer", "minimum": 0 }
+      },
       "additionalProperties": false
     },
+    "closedWorld": { "type": "boolean", "default": true },
     "uses": { "type": "array", "items": { "type": "string" } }
   },
   "additionalProperties": false

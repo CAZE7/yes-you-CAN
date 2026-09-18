@@ -204,12 +204,17 @@
         "@vdp/adapter-host"
       ],
       "why": "The workbench speaks to the vehicle exclusively through the runtime (command/query bus). It reads the diagnostic IR to hand the evidence set to an analysis provider: restating evidence vocabulary in the app would put a second copy of the claim's source where the IR already says it (P0 #6/#39, ADR 0037/0038)."
+    },
+    "@vdp/formal-conformance": {
+      "layer": "tool",
+      "mayImport": ["@vdp/shared", "@vdp/core", "@vdp/transport-can", "@vdp/transport-iso-tp"],
+      "why": "Runs the shared test vectors against the production TypeScript (ISO-TP transport, write-safety chain) and compares both sides with the Haskell reference. A tool, not a layer — nothing imports it; it may reach core and the transports because its whole job is to drive them. (ADR 0045)"
     }
   },
   "rules": {
     "nodeBuiltins": {
-      "allowedIn": ["@vdp/adapter-host", "@vdp/storage", "@vdp/web", "@vdp/golden-sessions"],
-      "why": "Portable layers (domain, application, protocols, transports, core, runtime) must stay free of node:fs and sockets; file system and host bindings belong to storage, host adapters and apps. @vdp/golden-sessions is a tool, not a layer — nothing imports it, and its CLI is the part that reads and writes the fixture files on disk."
+      "allowedIn": ["@vdp/adapter-host", "@vdp/storage", "@vdp/web", "@vdp/golden-sessions", "@vdp/formal-conformance"],
+      "why": "Portable layers (domain, application, protocols, transports, core, runtime) must stay free of node:fs and sockets; file system and host bindings belong to storage, host adapters and apps. @vdp/golden-sessions is a tool, not a layer — nothing imports it, and its CLI is the part that reads and writes the fixture files on disk. @vdp/formal-conformance is a tool whose CLI reads the vector files and runs the Haskell toolchain — the same file-and-process boundary golden-sessions owns, for the same reason (ADR 0045)."
     },
     "ui": {
       "package": "@vdp/web",
@@ -336,6 +341,15 @@
       "docs": ["docs/api/evidence.md", "docs/api/hypothesis.md"],
       "flows": ["docs/flows/ai-analysis.md"],
       "examples": ["tests/examples/evidence-flow.example.ts"]
+    },
+    "formal": {
+      "title": "Formal reference and conformance vectors",
+      "summary": "Changing the ISO-TP transport or the write-safety chain, the Haskell reference models in formal/, or the shared test vectors both are graded against.",
+      "packages": ["@vdp/transport-iso-tp", "@vdp/core", "@vdp/formal-conformance"],
+      "adrs": ["0045"],
+      "docs": ["docs/api/transport.md", "docs/api/runtime.md"],
+      "flows": ["docs/flows/diagnostic-write.md"],
+      "examples": []
     }
   }
 }

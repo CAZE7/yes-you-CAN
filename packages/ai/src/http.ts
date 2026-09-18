@@ -10,6 +10,7 @@
  * went.
  */
 
+import type { DiscriminatingTest } from "@vdp/diagnostic-ir";
 import { type Logger, createLogger, messageOf } from "@vdp/shared";
 import { analysisInstruction } from "./prompt.js";
 import { citableIds, knownCitations, provenanceOf } from "./provenance.js";
@@ -179,6 +180,7 @@ function normalise(
   const result = asRecord(answer);
   const model = options.model;
   const citable = citableIds(input);
+  const nextTest = nextTestOfAnswer(result.nextTest, input);
   return {
     provider: isText(result.provider) ? result.provider : "http",
     ...(model ? { model } : {}),
@@ -194,6 +196,36 @@ function normalise(
     // From the request, never from the answer: a gateway that reports its own prompt
     // version is making a claim (see `provenance.ts`).
     provenance: provenanceOf(input, { provider: "http", ...(model ? { model } : {}) }),
+    ...(nextTest !== undefined ? { nextTest } : {}),
+  };
+}
+
+/**
+ * A gateway may nominate the next test — only as a pointer into the input.
+ *
+ * The hypothesis id must be one the input carried, and the check is then taken
+ * from that hypothesis' own documented `nextTest`: an outside answer may choose
+ * which undecided check to run and add a rationale, but it cannot invent the
+ * test. Anything else — unknown id, decided hypothesis, mismatched signal — is
+ * dropped, the same rule that governs citations here.
+ */
+function nextTestOfAnswer(raw: unknown, input: AnalysisInput): DiscriminatingTest | undefined {
+  const record = asRecord(raw);
+  const hypothesisId = record.hypothesisId;
+  if (typeof hypothesisId !== "string") return undefined;
+  const hypothesis = (input.hypotheses ?? []).find((entry) => entry.id === hypothesisId);
+  if (hypothesis === undefined || hypothesis.nextTest === undefined) return undefined;
+  if (record.test !== undefined && asRecord(record.test).signal !== hypothesis.nextTest.signal) {
+    return undefined;
+  }
+  const discriminatesAgainst = asArray(record.discriminatesAgainst).filter(isText);
+  return {
+    hypothesisId: hypothesis.id,
+    test: hypothesis.nextTest,
+    rationale: isText(record.rationale)
+      ? record.rationale
+      : `the gateway nominated the undecided check documented for ${hypothesis.code}`,
+    ...(discriminatesAgainst.length > 0 ? { discriminatesAgainst } : {}),
   };
 }
 

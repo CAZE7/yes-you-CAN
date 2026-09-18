@@ -1,21 +1,26 @@
 {
   "$schema": "../tools/simulators/scenario.schema.json",
   "scenario": "alternator_failure",
-  "title": "Alternator failure causes a low-system-voltage DTC",
+  "title": "Alternator failure drains the battery until the BCM stores its supply fault",
+  "summary": "The alternator stops at 0 % while the engine still runs; the 45 A of consumers are paid by the battery alone. The terminal voltage slides through the BCM's window, and the code follows the drain — it is never set by the file.",
   "vehicle": "high-fidelity-simulator",
   "steps": [
     { "ignition": "on" },
     { "alternator": "fail" },
-    { "wait": 5000 },
-    { "load": "high" }
+    { "load": { "amps": 45 } },
+    { "wait": 9000 }
   ],
   "expect": [
-    { "dtc": "P0562", "ecu": "engine", "state": "active" },
-    { "battery_voltage": { "operator": "<", "value": 11.5, "unit": "V" } }
+    {
+      "dtc": {
+        "code": "B1001",
+        "ecu": "bcm",
+        "state": "active",
+        "because": "the drain crosses the BCM's 11.5 V window well before the ten seconds the script gives it"
+      }
+    },
+    { "battery_voltage": { "operator": "<", "value": 12.0, "unit": "V" } }
   ],
-  "determinism": {
-    "clock": "model-time",
-    "seed": 4242
-  },
+  "determinism": { "clock": "model-time", "seed": 4242 },
   "uses": ["simulator", "tests", "replay", "chaos", "ai", "demo", "regression"]
 }
