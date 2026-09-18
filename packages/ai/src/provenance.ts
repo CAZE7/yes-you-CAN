@@ -55,6 +55,7 @@ export function provenanceOf(
     ...versions,
     provider: options.provider,
     ...(options.model !== undefined ? { model: options.model } : {}),
+    ...(input.recordingId !== undefined ? { recordingId: input.recordingId } : {}),
     evidence: (input.evidence?.items ?? []).map((item) => item.id),
   };
 }

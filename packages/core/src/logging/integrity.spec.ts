@@ -1,10 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
-import {
-  createRawTraceManifest,
-  hashRawTrace,
-  verifyRawTraceManifest,
-} from "./integrity.js";
+import { createRawTraceManifest, hashRawTrace, verifyRawTraceManifest } from "./integrity.js";
 import type { RawTraceEntry } from "./session-logger.js";
 
 function entry(payloadHex: string, t = 10): RawTraceEntry {
@@ -26,7 +22,12 @@ function entry(payloadHex: string, t = 10): RawTraceEntry {
 describe("raw trace integrity", () => {
   test("is deterministic and independent of presentation formatting", () => {
     const first = entry("62f190");
-    const second = { ...first, timestamp: "another presentation", canIdHex: "0x7e8", payloadHex: "62F190" };
+    const second = {
+      ...first,
+      timestamp: "another presentation",
+      canIdHex: "0x7e8",
+      payloadHex: "62F190",
+    };
     assert.equal(hashRawTrace([first]), hashRawTrace([second]));
   });
 

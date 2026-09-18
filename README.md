@@ -35,8 +35,10 @@ maschinengeprüft, Doku-Drift ist ein Fehler:
 | So benutzt man die API (ausführbar) | `tests/examples/*.example.ts` — laufen im Vitest-Projekt `integration` |
 
 Für einen Arbeitskontext zu einem Thema (UDS, Transport, IR, DTC, Simulator,
-AI): `npm run ai:context <topic>` → `.ai/generated/<topic>-context.md`
-(generiert aus derselben Regel, nie committet).
+AI, Formal): `npm run ai:context <topic>` → `.ai/generated/<topic>-context.md`
+(generiert aus derselben Regel, nie committet). Auf Arbeitszweigen greift
+`npm run ai:context:changed` — die Union der Topics, die die Git-Änderungen
+berühren (Kern: `npm run architecture:impact`, ADR 0046).
 
 ## Schichten
 
@@ -122,6 +124,8 @@ Verwechslung, gegen die die Fahrzeugachse existiert.
 | `@vdp/reports` | HTML- und PDF-Report (eigener PDF-Writer), inklusive Sektion „Observations & gaps“ (ADR 0037) |
 | `@vdp/ai` | austauschbare Analyse-Provider mit VIN-Redaktion; der Input ist die Diagnostic IR (Belege, Hypothesen, Fahrzeugbestimmung) und jede Antwort nennt Versionen und zitiert Beleg-Ids (§22, ADR 0026, 0038) |
 | `@vdp/simulators` | virtuelles Fahrzeug + virtuelles CAN-Netz |
+| `@vdp/golden-sessions` | goldene Sitzungen: Aufnahme, Erwartung, Lauf — der Simulator liefert, der echte Core replayt (ADR 0036) |
+| `@vdp/formal-conformance` | Konformanz-Vektoren für ISO-TP und Safety-Kette: dieselbe Datei für TypeScript und Haskell-Referenz, `npm run formal:conform` (ADR 0045) |
 | `@vdp/trace-analyzer` | Offline-Trace-Analyse |
 | `@vdp/definition-importer` | DBC/CSV/JSON → validiertes Definition-Paket |
 | `@vdp/web` | Node HTTP + SSE, Vanilla-ESM-Oberfläche |
@@ -172,6 +176,8 @@ npm run build         # tsc -b über alle Projekt-Referenzen (TypeScript 7 / tsg
 npm run typecheck     # Build + strikter noEmit-Pass über Tests, Konfiguration, Specs und Frontend-JS
 npx biome check .     # Lint + Format (Biome 1.9): 2-space, 100-char, organizeImports
 npm test              # Build + Vitest: alle 6 Ebenen (unit, protocol, regression, replay, integration, architecture)
+npm run formal:conform # Konformanz-Vektoren gegen den Produktions-TS (Haskell-Vergleich nur mit Toolchain, sonst NOT RUN) (ADR 0045)
+npm run architecture:impact -- <datei|paket>  # betroffene Pakete/ADRs/Tests, aus der einen Regel abgeleitet (ADR 0046)
 npm run test:unit     # nur Unit-Specs — schnelle Feedback-Schleife
 npm run test:coverage # Suite + V8-Coverage (global 90/80; per-file laut vitest.config.ts) — in der CI erzwungen seit ADR 0029 §6
 npm run ci            # Build + Typecheck + Biome + Test — die Gates der CI ohne den Coverage-Lauf
@@ -222,8 +228,8 @@ Zeitraum aus, Doppelklick zeigt die gesamte Aufnahme.
 
 ## Tests
 
-2037 bestandene Tests / 141 geprüfte Dateien (`npm test` in 67 s; `npm run
-test:coverage` in 73 s — gemessen 2026-09-16), Vitest 5 mit Projektkonfiguration
+2227 bestandene Tests / 154 geprüfte Dateien (`npm test` in 68 s; `npm run
+test:coverage` in 75 s — gemessen 2026-09-18), Vitest 5 mit Projektkonfiguration
 (ADR 0010, Schritt 1 — ersetzt ADR 0008). Seit ADR 0043 gehören dazu 17
 ausführbare Doku-Beispiele in `tests/examples/*.example.ts` (Projekt
 `integration`) — sie zeigen die API so, wie sie benutzt wird. Der
@@ -235,8 +241,8 @@ aufrufen kann (0.E E20) — einschließlich
 tatsächlichen Importen passt (ADR 0042). Unit-Specs liegen co-lokatiert neben dem
 Code (`src/*.spec.ts`); Property-Tests laufen mit fast-check, Coverage-Gates mit
 `npm run test:coverage` (global 90 % lines / 80 % branches als
-Projekt-Durchschnitt, Ist 95,16 Statements / 87,27 Zweige / 96,55 Funktionen /
-96,44 Zeilen — gemessen am Stand vom 2026-09-16, und die letzten Stellen wandern mit
+Projekt-Durchschnitt, Ist 94,19 Statements / 86,28 Zweige / 96,07 Funktionen /
+95,59 Zeilen — gemessen am Stand vom 2026-09-18, und die letzten Stellen wandern mit
 Last und Node-Version (86,59 bis 86,71 Zweige auf demselben Baum,
 ADR 0029 §6) — seit ADR 0027 wird die ganze
 Fläche gemessen: `packages/**/src`, `apps/web/src/**` und `tools/**`, weil die

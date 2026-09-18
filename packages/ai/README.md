@@ -15,11 +15,16 @@ einzige Ort, an dem „Analyse“ im System existiert.
 - `service.ts`: `AnalysisService` — Provider-Registry, `analyze()`,
   Historie, `listProviders()` (inkl. `sendsDataOffBox`-Label)
 - `types.ts`: `AnalysisInput` (dtcs mit `evidence: {proven, line, itemId}`,
-  signals, hypotheses, versions), `AnalysisResult` (findings mit `basedOn`,
-  citations, `provenance`), `AnalysisProvider`
+  signals, hypotheses, versions — dazu `recordingId` und `scenario` als
+  Provenanz des Gelesenen, ADR 0046), `AnalysisResult` (findings mit
+  `basedOn`, citations, `provenance`, optionales `nextTest:
+  DiscriminatingTest`), `AnalysisProvider`
 - `heuristic.ts`: `HeuristicAnalysisProvider` — der lokale Provider
   (deterministisch, off-box-frei)
-- `http.ts`: `HttpAnalysisProvider` für Modell-Gateways (+ `redactVin`)
+- `http.ts`: `HttpAnalysisProvider` für Modell-Gateways (+ `redactVin`);
+  ein vorgeschlagener `nextTest` zählt nur mit gültiger Citation
+- `heuristic.ts`-`nextTestOf`: der führende nicht-widerlegte Dokumentations-
+  Check der Hypothesen — nichts Erfundenes, nur was die Pakete schon nennen
 - `prompt.ts`: Prompt-Bau mit `promptVersion` *im Prompttext selbst*
 - `provenance.ts`: Provenance-Helfer für Zitate
 

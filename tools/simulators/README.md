@@ -24,6 +24,8 @@ Fahrzeug testbar ist (Regel 34.9).
 - `scenarios.ts`: `VehicleScenario`, `runScenario` (liefert `ScenarioRun`,
   **assertet nie**), `applyCause`/`undoCause`
 - `scenario-catalog.ts`: `SCENARIO_CATALOG` + `findScenario`
+- `scenario-file.ts`: `parseScenarioFile` — die strenge Grammatik der
+  Szenariodateien unter `scenarios/` (Determinismus-Pflicht; ADR 0046)
 - `faulty-link.ts`: Fault-Injection an der **Link-Seam** (ADR 0039)
 - `chaos-lab.ts`: `CanChaosBus` (Frame-Drops, Korruption) für die Workbench
 
@@ -39,7 +41,7 @@ Fahrzeug testbar ist (Regel 34.9).
 ## Public API
 
 `src/index.ts`: alle obigen Module (inkl. `HEARTBEAT_IDS`,
-`SCENARIO_CATALOG`, `createRandom`).
+`SCENARIO_CATALOG`, `createRandom`, `parseScenarioFile`).
 
 ## Dependencies
 

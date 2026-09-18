@@ -16,9 +16,12 @@ architecture/architecture.yaml   (Regeln: Layer, Kanten, Topics)
 
 1. **Thema identifizieren** (UDS? DTC? Transport? AI? Simulator?).
 2. **Kontext-Bundle generieren**:
-   `npm run ai:context uds|transport|diagnostic-ir|dtc|simulator|ai`
+   `npm run ai:context uds|transport|diagnostic-ir|dtc|simulator|ai|formal`
    → `.ai/generated/<topic>-context.md` (Regeln, Pakete, APIs, ADRs,
-   Flows, Beispiele — aus `architecture/architecture.yaml`).
+   Flows, Beispiele — aus `architecture/architecture.yaml`). Bei
+   Arbeitszweigen zusätzlich `npm run ai:context:changed` →
+   `.ai/generated/changed-context.md` (die Union der Topics, die die
+   Git-Änderungen berühren — Kern: `tools/architecture/impact.mjs`, ADR 0046).
 3. **Lese-Reihenfolge** (je nach Thema):
 
 | Lese-Paket | Wann |

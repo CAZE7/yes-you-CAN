@@ -1,0 +1,1118 @@
+{
+  "vectorSet": "write-safety",
+  "modelDomain": "The permit rule table (SafetyManager.evaluate), the full staged flow through WritePort with a scripted operation, and the raw stage-order table of DiagnosticTransaction. Counts, not wording, are compared: failed counts every blocking reason, unproven counts those that are missing proofs \u2014 and unproven \u2286 failed is asserted by the harness on every vector. Reasons that only an untyped caller can produce (e.g. a missing required field) are not vector territory. Risk drives the brake rule: low risk does not require the parking brake. On the flow family the unproven counter reads what the finished result carries \u2014 the port's run() result hands over the failed reasons, the precheck()/pre-check path keeps the unproven distinction (ADR 0033); the vectors therefore state unproven only where the production flow actually answers it.",
+  "config": {
+    "minBatteryVoltage": 12
+  },
+  "vectors": [
+    {
+      "family": "precheck",
+      "name": "precheck-granted-with-brake-at-high-risk",
+      "context": {
+        "risk": "high",
+        "userConfirmed": true,
+        "backupAvailable": true,
+        "sessionType": 3,
+        "definitionVersion": "1.0.0"
+      },
+      "vehicle": {
+        "stationary": true,
+        "ignitionOn": true,
+        "batteryVoltage": 12.6,
+        "parkingBrake": true
+      },
+      "expect": {
+        "granted": true,
+        "failed": 0,
+        "unproven": 0
+      }
+    },
+    {
+      "family": "precheck",
+      "name": "precheck-denied-vehicle-moving",
+      "context": {
+        "risk": "low",
+        "userConfirmed": true,
+        "backupAvailable": true,
+        "sessionType": 3,
+        "definitionVersion": "1.0.0"
+      },
+      "vehicle": {
+        "stationary": false,
+        "ignitionOn": true,
+        "batteryVoltage": 12.6,
+        "parkingBrake": false
+      },
+      "expect": {
+        "granted": false,
+        "failed": 1,
+        "unproven": 0
+      }
+    },
+    {
+      "family": "precheck",
+      "name": "precheck-denied-voltage-below-floor",
+      "context": {
+        "risk": "low",
+        "userConfirmed": true,
+        "backupAvailable": true,
+        "sessionType": 3,
+        "definitionVersion": "1.0.0"
+      },
+      "vehicle": {
+        "stationary": true,
+        "ignitionOn": true,
+        "batteryVoltage": 11.99,
+        "parkingBrake": false
+      },
+      "expect": {
+        "granted": false,
+        "failed": 1,
+        "unproven": 0
+      }
+    },
+    {
+      "family": "precheck",
+      "name": "precheck-granted-voltage-exactly-at-floor",
+      "context": {
+        "risk": "low",
+        "userConfirmed": true,
+        "backupAvailable": true,
+        "sessionType": 3,
+        "definitionVersion": "1.0.0"
+      },
+      "vehicle": {
+        "stationary": true,
+        "ignitionOn": true,
+        "batteryVoltage": 12,
+        "parkingBrake": false
+      },
+      "expect": {
+        "granted": true,
+        "failed": 0,
+        "unproven": 0
+      }
+    },
+    {
+      "family": "precheck",
+      "name": "precheck-unproven-voltage-never-measured",
+      "context": {
+        "risk": "low",
+        "userConfirmed": true,
+        "backupAvailable": true,
+        "sessionType": 3,
+        "definitionVersion": "1.0.0"
+      },
+      "vehicle": {
+        "stationary": true,
+        "ignitionOn": true,
+        "batteryVoltage": null,
+        "parkingBrake": false
+      },
+      "expect": {
+        "granted": false,
+        "failed": 1,
+        "unproven": 1
+      }
+    },
+    {
+      "family": "precheck",
+      "name": "precheck-floor-is-configurable-per-manager",
+      "minBatteryVoltage": 10,
+      "context": {
+        "risk": "low",
+        "userConfirmed": true,
+        "backupAvailable": true,
+        "sessionType": 3,
+        "definitionVersion": "1.0.0"
+      },
+      "vehicle": {
+        "stationary": true,
+        "ignitionOn": true,
+        "batteryVoltage": 11.5,
+        "parkingBrake": false
+      },
+      "expect": {
+        "granted": true,
+        "failed": 0,
+        "unproven": 0
+      }
+    },
+    {
+      "family": "precheck",
+      "name": "precheck-denied-ignition-off",
+      "context": {
+        "risk": "low",
+        "userConfirmed": true,
+        "backupAvailable": true,
+        "sessionType": 3,
+        "definitionVersion": "1.0.0"
+      },
+      "vehicle": {
+        "stationary": true,
+        "ignitionOn": false,
+        "batteryVoltage": 12.6,
+        "parkingBrake": false
+      },
+      "expect": {
+        "granted": false,
+        "failed": 1,
+        "unproven": 0
+      }
+    },
+    {
+      "family": "precheck",
+      "name": "precheck-unproven-ignition-unknown",
+      "context": {
+        "risk": "low",
+        "userConfirmed": true,
+        "backupAvailable": true,
+        "sessionType": 3,
+        "definitionVersion": "1.0.0"
+      },
+      "vehicle": {
+        "stationary": true,
+        "ignitionOn": null,
+        "batteryVoltage": 12.6,
+        "parkingBrake": false
+      },
+      "expect": {
+        "granted": false,
+        "failed": 1,
+        "unproven": 1
+      }
+    },
+    {
+      "family": "precheck",
+      "name": "precheck-denied-brake-not-engaged-at-high-risk",
+      "context": {
+        "risk": "high",
+        "userConfirmed": true,
+        "backupAvailable": true,
+        "sessionType": 3,
+        "definitionVersion": "1.0.0"
+      },
+      "vehicle": {
+        "stationary": true,
+        "ignitionOn": true,
+        "batteryVoltage": 12.6,
+        "parkingBrake": false
+      },
+      "expect": {
+        "granted": false,
+        "failed": 1,
+        "unproven": 0
+      }
+    },
+    {
+      "family": "precheck",
+      "name": "precheck-unproven-brake-unknown-at-high-risk",
+      "context": {
+        "risk": "high",
+        "userConfirmed": true,
+        "backupAvailable": true,
+        "sessionType": 3,
+        "definitionVersion": "1.0.0"
+      },
+      "vehicle": {
+        "stationary": true,
+        "ignitionOn": true,
+        "batteryVoltage": 12.6,
+        "parkingBrake": null
+      },
+      "expect": {
+        "granted": false,
+        "failed": 1,
+        "unproven": 1
+      }
+    },
+    {
+      "family": "precheck",
+      "name": "precheck-low-risk-ignores-the-brake-question",
+      "context": {
+        "risk": "low",
+        "userConfirmed": true,
+        "backupAvailable": true,
+        "sessionType": 3,
+        "definitionVersion": "1.0.0"
+      },
+      "vehicle": {
+        "stationary": true,
+        "ignitionOn": true,
+        "batteryVoltage": 12.6,
+        "parkingBrake": false
+      },
+      "expect": {
+        "granted": true,
+        "failed": 0,
+        "unproven": 0
+      }
+    },
+    {
+      "family": "precheck",
+      "name": "precheck-denied-without-user-confirmation",
+      "context": {
+        "risk": "low",
+        "userConfirmed": false,
+        "backupAvailable": true,
+        "sessionType": 3,
+        "definitionVersion": "1.0.0"
+      },
+      "vehicle": {
+        "stationary": true,
+        "ignitionOn": true,
+        "batteryVoltage": 12.6,
+        "parkingBrake": false
+      },
+      "expect": {
+        "granted": false,
+        "failed": 1,
+        "unproven": 0
+      }
+    },
+    {
+      "family": "precheck",
+      "name": "precheck-denied-without-backup",
+      "context": {
+        "risk": "low",
+        "userConfirmed": true,
+        "backupAvailable": false,
+        "sessionType": 3,
+        "definitionVersion": "1.0.0"
+      },
+      "vehicle": {
+        "stationary": true,
+        "ignitionOn": true,
+        "batteryVoltage": 12.6,
+        "parkingBrake": false
+      },
+      "expect": {
+        "granted": false,
+        "failed": 1,
+        "unproven": 0
+      }
+    },
+    {
+      "family": "precheck",
+      "name": "precheck-denied-in-default-session",
+      "context": {
+        "risk": "low",
+        "userConfirmed": true,
+        "backupAvailable": true,
+        "sessionType": 1,
+        "definitionVersion": "1.0.0"
+      },
+      "vehicle": {
+        "stationary": true,
+        "ignitionOn": true,
+        "batteryVoltage": 12.6,
+        "parkingBrake": false
+      },
+      "expect": {
+        "granted": false,
+        "failed": 1,
+        "unproven": 0
+      }
+    },
+    {
+      "family": "precheck",
+      "name": "precheck-denied-without-definition-version",
+      "context": {
+        "risk": "low",
+        "userConfirmed": true,
+        "backupAvailable": true,
+        "sessionType": 3,
+        "definitionVersion": null
+      },
+      "vehicle": {
+        "stationary": true,
+        "ignitionOn": true,
+        "batteryVoltage": 12.6,
+        "parkingBrake": false
+      },
+      "expect": {
+        "granted": false,
+        "failed": 1,
+        "unproven": 0
+      }
+    },
+    {
+      "family": "precheck",
+      "name": "precheck-unproven-ecu-type-never-read",
+      "context": {
+        "risk": "low",
+        "userConfirmed": true,
+        "backupAvailable": true,
+        "sessionType": 3,
+        "definitionVersion": "1.0.0",
+        "expectedEcuType": "engine"
+      },
+      "vehicle": {
+        "stationary": true,
+        "ignitionOn": true,
+        "batteryVoltage": 12.6,
+        "parkingBrake": false
+      },
+      "expect": {
+        "granted": false,
+        "failed": 1,
+        "unproven": 1
+      }
+    },
+    {
+      "family": "precheck",
+      "name": "precheck-denied-ecu-type-mismatch",
+      "context": {
+        "risk": "low",
+        "userConfirmed": true,
+        "backupAvailable": true,
+        "sessionType": 3,
+        "definitionVersion": "1.0.0",
+        "expectedEcuType": "engine",
+        "actualEcuType": "gearbox"
+      },
+      "vehicle": {
+        "stationary": true,
+        "ignitionOn": true,
+        "batteryVoltage": 12.6,
+        "parkingBrake": false
+      },
+      "expect": {
+        "granted": false,
+        "failed": 1,
+        "unproven": 0
+      }
+    },
+    {
+      "family": "precheck",
+      "name": "precheck-denied-software-variant-mismatch",
+      "context": {
+        "risk": "low",
+        "userConfirmed": true,
+        "backupAvailable": true,
+        "sessionType": 3,
+        "definitionVersion": "1.0.0",
+        "expectedSoftwareVariant": "A",
+        "actualSoftwareVariant": "B"
+      },
+      "vehicle": {
+        "stationary": true,
+        "ignitionOn": true,
+        "batteryVoltage": 12.6,
+        "parkingBrake": false
+      },
+      "expect": {
+        "granted": false,
+        "failed": 1,
+        "unproven": 0
+      }
+    },
+    {
+      "family": "precheck",
+      "name": "precheck-unproven-doip-tls-never-asked",
+      "context": {
+        "risk": "low",
+        "userConfirmed": true,
+        "backupAvailable": true,
+        "sessionType": 3,
+        "definitionVersion": "1.0.0",
+        "network": {
+          "tls": null,
+          "routing": true
+        }
+      },
+      "vehicle": {
+        "stationary": true,
+        "ignitionOn": true,
+        "batteryVoltage": 12.6,
+        "parkingBrake": false
+      },
+      "expect": {
+        "granted": false,
+        "failed": 1,
+        "unproven": 1
+      }
+    },
+    {
+      "family": "precheck",
+      "name": "precheck-denied-doip-tls-off",
+      "context": {
+        "risk": "low",
+        "userConfirmed": true,
+        "backupAvailable": true,
+        "sessionType": 3,
+        "definitionVersion": "1.0.0",
+        "network": {
+          "tls": false,
+          "routing": true
+        }
+      },
+      "vehicle": {
+        "stationary": true,
+        "ignitionOn": true,
+        "batteryVoltage": 12.6,
+        "parkingBrake": false
+      },
+      "expect": {
+        "granted": false,
+        "failed": 1,
+        "unproven": 0
+      }
+    },
+    {
+      "family": "precheck",
+      "name": "precheck-denied-unauthorized-devices-in-segment",
+      "context": {
+        "risk": "low",
+        "userConfirmed": true,
+        "backupAvailable": true,
+        "sessionType": 3,
+        "definitionVersion": "1.0.0",
+        "network": {
+          "tls": true,
+          "routing": true,
+          "unauthorized": true
+        }
+      },
+      "vehicle": {
+        "stationary": true,
+        "ignitionOn": true,
+        "batteryVoltage": 12.6,
+        "parkingBrake": false
+      },
+      "expect": {
+        "granted": false,
+        "failed": 1,
+        "unproven": 0
+      }
+    },
+    {
+      "family": "precheck",
+      "name": "precheck-counts-every-failure-and-keeps-unproven-a-subset",
+      "context": {
+        "risk": "high",
+        "userConfirmed": true,
+        "backupAvailable": true,
+        "sessionType": 3,
+        "definitionVersion": "1.0.0"
+      },
+      "vehicle": {
+        "stationary": false,
+        "ignitionOn": null,
+        "batteryVoltage": 11.5,
+        "parkingBrake": true
+      },
+      "expect": {
+        "granted": false,
+        "failed": 3,
+        "unproven": 1
+      }
+    },
+    {
+      "family": "flow",
+      "name": "flow-full-stages-verified-with-rollback-available",
+      "permitExpiry": "fresh",
+      "bindingSessionType": 3,
+      "context": {
+        "risk": "low",
+        "userConfirmed": true,
+        "backupAvailable": true,
+        "definitionVersion": "1.0.0"
+      },
+      "vehicle": {
+        "stationary": true,
+        "ignitionOn": true,
+        "batteryVoltage": 12.6,
+        "parkingBrake": false
+      },
+      "script": {
+        "prepareOk": true,
+        "executeOk": true,
+        "verify": "match",
+        "rollback": "ok"
+      },
+      "expect": {
+        "ok": true,
+        "state": "verified",
+        "writeReached": true,
+        "verified": true,
+        "rolledBack": false,
+        "failed": 0,
+        "unproven": 0
+      }
+    },
+    {
+      "family": "flow",
+      "name": "flow-denied-before-the-permit-no-write-no-rollback",
+      "permitExpiry": "fresh",
+      "bindingSessionType": 3,
+      "context": {
+        "risk": "low",
+        "userConfirmed": true,
+        "backupAvailable": true,
+        "definitionVersion": "1.0.0"
+      },
+      "vehicle": {
+        "stationary": true,
+        "ignitionOn": true,
+        "batteryVoltage": 11.5,
+        "parkingBrake": false
+      },
+      "script": {
+        "prepareOk": true,
+        "executeOk": true,
+        "verify": "match",
+        "rollback": "ok"
+      },
+      "expect": {
+        "ok": false,
+        "state": "aborted",
+        "writeReached": false,
+        "verified": false,
+        "rolledBack": false,
+        "failed": 1,
+        "unproven": 0
+      }
+    },
+    {
+      "family": "flow",
+      "name": "flow-unproven-voltage-aborts-the-transaction",
+      "permitExpiry": "fresh",
+      "bindingSessionType": 3,
+      "context": {
+        "risk": "low",
+        "userConfirmed": true,
+        "backupAvailable": true,
+        "definitionVersion": "1.0.0"
+      },
+      "vehicle": {
+        "stationary": true,
+        "ignitionOn": true,
+        "batteryVoltage": null,
+        "parkingBrake": false
+      },
+      "script": {
+        "prepareOk": true,
+        "executeOk": true,
+        "verify": "match",
+        "rollback": "ok"
+      },
+      "expect": {
+        "ok": false,
+        "state": "aborted",
+        "writeReached": false,
+        "verified": false,
+        "rolledBack": false,
+        "failed": 1,
+        "unproven": 0
+      }
+    },
+    {
+      "family": "flow",
+      "name": "flow-prepare-failure-aborts-before-the-permit",
+      "permitExpiry": "fresh",
+      "bindingSessionType": 3,
+      "context": {
+        "risk": "low",
+        "userConfirmed": true,
+        "backupAvailable": true,
+        "definitionVersion": "1.0.0"
+      },
+      "vehicle": {
+        "stationary": true,
+        "ignitionOn": true,
+        "batteryVoltage": 12.6,
+        "parkingBrake": false
+      },
+      "script": {
+        "prepareOk": false,
+        "executeOk": true,
+        "verify": "match",
+        "rollback": "ok"
+      },
+      "expect": {
+        "ok": false,
+        "state": "aborted",
+        "writeReached": false,
+        "verified": false,
+        "rolledBack": false,
+        "failed": 1,
+        "unproven": 0
+      }
+    },
+    {
+      "family": "flow",
+      "name": "flow-without-a-verify-hook-the-write-stays-unverified-but-stands",
+      "permitExpiry": "fresh",
+      "bindingSessionType": 3,
+      "context": {
+        "risk": "low",
+        "userConfirmed": true,
+        "backupAvailable": true,
+        "definitionVersion": "1.0.0"
+      },
+      "vehicle": {
+        "stationary": true,
+        "ignitionOn": true,
+        "batteryVoltage": 12.6,
+        "parkingBrake": false
+      },
+      "script": {
+        "prepareOk": true,
+        "executeOk": true,
+        "verify": "absent",
+        "rollback": "absent"
+      },
+      "expect": {
+        "ok": true,
+        "state": "executed",
+        "writeReached": true,
+        "verified": false,
+        "rolledBack": false,
+        "failed": 0,
+        "unproven": 0
+      }
+    },
+    {
+      "family": "flow",
+      "name": "flow-read-back-mismatch-is-not-a-verified-write",
+      "permitExpiry": "fresh",
+      "bindingSessionType": 3,
+      "context": {
+        "risk": "low",
+        "userConfirmed": true,
+        "backupAvailable": true,
+        "definitionVersion": "1.0.0"
+      },
+      "vehicle": {
+        "stationary": true,
+        "ignitionOn": true,
+        "batteryVoltage": 12.6,
+        "parkingBrake": false
+      },
+      "script": {
+        "prepareOk": true,
+        "executeOk": true,
+        "verify": "mismatch",
+        "rollback": "ok"
+      },
+      "expect": {
+        "ok": false,
+        "state": "executed",
+        "writeReached": true,
+        "verified": false,
+        "rolledBack": false,
+        "failed": 1,
+        "unproven": 0
+      }
+    },
+    {
+      "family": "flow",
+      "name": "flow-failed-write-with-working-rollback-is-rolled-back",
+      "permitExpiry": "fresh",
+      "bindingSessionType": 3,
+      "context": {
+        "risk": "low",
+        "userConfirmed": true,
+        "backupAvailable": true,
+        "definitionVersion": "1.0.0"
+      },
+      "vehicle": {
+        "stationary": true,
+        "ignitionOn": true,
+        "batteryVoltage": 12.6,
+        "parkingBrake": false
+      },
+      "script": {
+        "prepareOk": true,
+        "executeOk": false,
+        "writeBeforeFail": false,
+        "verify": "match",
+        "rollback": "ok"
+      },
+      "expect": {
+        "ok": false,
+        "state": "rolled-back",
+        "writeReached": false,
+        "verified": false,
+        "rolledBack": true,
+        "failed": 1,
+        "unproven": 0
+      }
+    },
+    {
+      "family": "flow",
+      "name": "flow-failed-write-without-rollback-stays-aborted",
+      "permitExpiry": "fresh",
+      "bindingSessionType": 3,
+      "context": {
+        "risk": "low",
+        "userConfirmed": true,
+        "backupAvailable": true,
+        "definitionVersion": "1.0.0"
+      },
+      "vehicle": {
+        "stationary": true,
+        "ignitionOn": true,
+        "batteryVoltage": 12.6,
+        "parkingBrake": false
+      },
+      "script": {
+        "prepareOk": true,
+        "executeOk": false,
+        "writeBeforeFail": false,
+        "verify": "match",
+        "rollback": "absent"
+      },
+      "expect": {
+        "ok": false,
+        "state": "aborted",
+        "writeReached": false,
+        "verified": false,
+        "rolledBack": false,
+        "failed": 1,
+        "unproven": 0
+      }
+    },
+    {
+      "family": "flow",
+      "name": "flow-failed-rollback-leaves-the-write-aborted-not-undone",
+      "permitExpiry": "fresh",
+      "bindingSessionType": 3,
+      "context": {
+        "risk": "low",
+        "userConfirmed": true,
+        "backupAvailable": true,
+        "definitionVersion": "1.0.0"
+      },
+      "vehicle": {
+        "stationary": true,
+        "ignitionOn": true,
+        "batteryVoltage": 12.6,
+        "parkingBrake": false
+      },
+      "script": {
+        "prepareOk": true,
+        "executeOk": false,
+        "writeBeforeFail": false,
+        "verify": "match",
+        "rollback": "fail"
+      },
+      "expect": {
+        "ok": false,
+        "state": "aborted",
+        "writeReached": false,
+        "verified": false,
+        "rolledBack": false,
+        "failed": 1,
+        "unproven": 0
+      }
+    },
+    {
+      "family": "flow",
+      "name": "flow-write-happened-then-failed-still-reached-the-bus",
+      "permitExpiry": "fresh",
+      "bindingSessionType": 3,
+      "context": {
+        "risk": "low",
+        "userConfirmed": true,
+        "backupAvailable": true,
+        "definitionVersion": "1.0.0"
+      },
+      "vehicle": {
+        "stationary": true,
+        "ignitionOn": true,
+        "batteryVoltage": 12.6,
+        "parkingBrake": false
+      },
+      "script": {
+        "prepareOk": true,
+        "executeOk": false,
+        "writeBeforeFail": true,
+        "verify": "match",
+        "rollback": "ok"
+      },
+      "expect": {
+        "ok": false,
+        "state": "rolled-back",
+        "writeReached": true,
+        "verified": false,
+        "rolledBack": true,
+        "failed": 1,
+        "unproven": 0
+      }
+    },
+    {
+      "family": "flow",
+      "name": "flow-expired-permit-is-rechecked-before-the-bus-sees-a-frame",
+      "permitExpiry": "expired",
+      "bindingSessionType": 3,
+      "context": {
+        "risk": "low",
+        "userConfirmed": true,
+        "backupAvailable": true,
+        "definitionVersion": "1.0.0"
+      },
+      "vehicle": {
+        "stationary": true,
+        "ignitionOn": true,
+        "batteryVoltage": 12.6,
+        "parkingBrake": false
+      },
+      "script": {
+        "prepareOk": true,
+        "executeOk": true,
+        "verify": "match",
+        "rollback": "ok"
+      },
+      "expect": {
+        "ok": false,
+        "state": "rolled-back",
+        "writeReached": false,
+        "verified": false,
+        "rolledBack": true,
+        "failed": 1,
+        "unproven": 0
+      }
+    },
+    {
+      "family": "flow",
+      "name": "flow-high-risk-without-brake-proof-never-reaches-the-permit",
+      "permitExpiry": "fresh",
+      "bindingSessionType": 3,
+      "context": {
+        "risk": "high",
+        "userConfirmed": true,
+        "backupAvailable": true,
+        "definitionVersion": "1.0.0"
+      },
+      "vehicle": {
+        "stationary": true,
+        "ignitionOn": true,
+        "batteryVoltage": 12.6,
+        "parkingBrake": null
+      },
+      "script": {
+        "prepareOk": true,
+        "executeOk": true,
+        "verify": "match",
+        "rollback": "ok"
+      },
+      "expect": {
+        "ok": false,
+        "state": "aborted",
+        "writeReached": false,
+        "verified": false,
+        "rolledBack": false,
+        "failed": 1,
+        "unproven": 0
+      }
+    },
+    {
+      "family": "flow",
+      "name": "flow-default-session-is-a-denial-not-a-silence",
+      "permitExpiry": "fresh",
+      "bindingSessionType": 1,
+      "context": {
+        "risk": "low",
+        "userConfirmed": true,
+        "backupAvailable": true,
+        "definitionVersion": "1.0.0"
+      },
+      "vehicle": {
+        "stationary": true,
+        "ignitionOn": true,
+        "batteryVoltage": 12.6,
+        "parkingBrake": false
+      },
+      "script": {
+        "prepareOk": true,
+        "executeOk": true,
+        "verify": "match",
+        "rollback": "ok"
+      },
+      "expect": {
+        "ok": false,
+        "state": "aborted",
+        "writeReached": false,
+        "verified": false,
+        "rolledBack": false,
+        "failed": 1,
+        "unproven": 0
+      }
+    },
+    {
+      "family": "stages",
+      "name": "stages-verify-without-execute-is-refused-and-aborts",
+      "ops": [
+        {
+          "op": "verify"
+        }
+      ],
+      "expect": {
+        "state": "aborted",
+        "stageOk": [false]
+      }
+    },
+    {
+      "family": "stages",
+      "name": "stages-confirm-from-open-is-refused",
+      "ops": [
+        {
+          "op": "confirm",
+          "grant": true
+        }
+      ],
+      "expect": {
+        "state": "aborted",
+        "stageOk": [false]
+      }
+    },
+    {
+      "family": "stages",
+      "name": "stages-the-happy-order-advances-step-by-step",
+      "ops": [
+        {
+          "op": "prepare"
+        },
+        {
+          "op": "confirm",
+          "grant": true
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "verify"
+        }
+      ],
+      "expect": {
+        "state": "verified",
+        "stageOk": [true, true, true, true]
+      }
+    },
+    {
+      "family": "stages",
+      "name": "stages-double-execute-after-completion-aborts",
+      "ops": [
+        {
+          "op": "prepare"
+        },
+        {
+          "op": "confirm",
+          "grant": true
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "execute"
+        }
+      ],
+      "expect": {
+        "state": "aborted",
+        "stageOk": [true, true, true, false]
+      }
+    },
+    {
+      "family": "stages",
+      "name": "stages-rollback-after-verified-cannot-move-a-terminal-transaction",
+      "ops": [
+        {
+          "op": "prepare"
+        },
+        {
+          "op": "confirm",
+          "grant": true
+        },
+        {
+          "op": "execute"
+        },
+        {
+          "op": "verify"
+        },
+        {
+          "op": "rollback"
+        }
+      ],
+      "expect": {
+        "state": "verified",
+        "stageOk": [true, true, true, true, false]
+      }
+    },
+    {
+      "family": "stages",
+      "name": "stages-a-failing-prepare-body-fails-the-stage-without-abort",
+      "ops": [
+        {
+          "op": "prepare",
+          "bodyOk": false
+        }
+      ],
+      "expect": {
+        "state": "open",
+        "stageOk": [false]
+      }
+    },
+    {
+      "family": "stages",
+      "name": "stages-skipping-confirm-strands-the-execute",
+      "ops": [
+        {
+          "op": "prepare"
+        },
+        {
+          "op": "execute",
+          "grant": false
+        }
+      ],
+      "expect": {
+        "state": "aborted",
+        "stageOk": [true, false]
+      }
+    },
+    {
+      "family": "stages",
+      "name": "stages-verify-before-execute-is-refused-even-after-confirm",
+      "ops": [
+        {
+          "op": "prepare"
+        },
+        {
+          "op": "confirm",
+          "grant": true
+        },
+        {
+          "op": "verify",
+          "bodyOk": false
+        }
+      ],
+      "expect": {
+        "state": "aborted",
+        "stageOk": [true, true, false]
+      }
+    },
+    {
+      "family": "stages",
+      "name": "stages-execute-without-a-granted-permit-aborts",
+      "ops": [
+        {
+          "op": "prepare",
+          "bodyOk": true
+        },
+        {
+          "op": "confirm",
+          "grant": false
+        },
+        {
+          "op": "execute",
+          "bodyOk": true
+        }
+      ],
+      "expect": {
+        "state": "aborted",
+        "stageOk": [true, true, false]
+      }
+    }
+  ]
+}

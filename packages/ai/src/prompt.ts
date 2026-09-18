@@ -12,7 +12,7 @@
  * a date and a revision.
  */
 
-export const ANALYSIS_PROMPT_VERSION = "2026-09-14.1";
+export const ANALYSIS_PROMPT_VERSION = "2026-09-16.1";
 
 /**
  * The instruction, version stamped in.
@@ -29,6 +29,9 @@ export function analysisInstruction(): string {
     "measured values. A code's description is only as broad as its source: variant " +
     "knowledge speaks for one vehicle, package wording speaks manufacturer-wide. " +
     "Where the input marks a statement unproven, say that it is unproven instead of " +
-    "dropping it, and cite the evidence item ids you relied on in `basedOn`."
+    "dropping it, and cite the evidence item ids you relied on in `basedOn`. " +
+    "Nominate at most one next test as `nextTest`, referencing a `hypothesisId` " +
+    "from the input and the check that hypothesis documents — never a test of " +
+    "your own invention."
   );
 }

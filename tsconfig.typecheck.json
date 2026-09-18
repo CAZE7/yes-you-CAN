@@ -38,6 +38,7 @@
       "@vdp/golden-sessions": ["./tools/golden-sessions/src/index.ts"],
       "@vdp/trace-analyzer": ["./tools/trace-analyzer/src/index.ts"],
       "@vdp/definition-importer": ["./tools/definition-importer/src/index.ts"],
+      "@vdp/formal-conformance": ["./tools/formal-conformance/src/index.ts"],
       "@vdp/web": ["./apps/web/src/server.ts"]
     }
   },

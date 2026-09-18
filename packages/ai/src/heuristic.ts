@@ -145,6 +145,7 @@ export class HeuristicAnalysisProvider implements AnalysisProvider {
 
     const vehicle = vehicleOf(input);
     const caveats = caveatsOf(input);
+    const nextTest = nextTestOf(input);
     // What the session leaves open, named in the answer. Not a caveat: an open
     // question is not a claim without a source (see `caveatsOf`).
     const openQuestions = input.evidence === undefined ? [] : itemsOf(input.evidence, "gap");
@@ -182,8 +183,31 @@ export class HeuristicAnalysisProvider implements AnalysisProvider {
         ...caveats,
       ],
       provenance: provenanceOf(input, { provider: this.id }),
+      ...(nextTest !== undefined ? { nextTest } : {}),
     };
   }
+}
+
+/**
+ * The next test the input justifies: the first documented check of the leading
+ * hypothesis that measurement has not decided yet.
+ *
+ * Derivation, not invention — the test object is the one the definition
+ * package wrote into that hypothesis (`Hypothesis.nextTest`), and the id names
+ * the hypothesis it discriminates. No heuristic, no package entry, no result
+ * field: the recommendation then stays prose, which is what §22 asks of an
+ * answer that cannot cite a check.
+ */
+function nextTestOf(input: AnalysisInput): NonNullable<AnalysisResult["nextTest"]> | undefined {
+  for (const hypothesis of input.hypotheses ?? []) {
+    if (hypothesis.outcome === "refuted" || hypothesis.nextTest === undefined) continue;
+    return {
+      hypothesisId: hypothesis.id,
+      test: hypothesis.nextTest,
+      rationale: `first documented check for ${hypothesis.code} that this recording has not decided`,
+    };
+  }
+  return undefined;
 }
 
 function summarise(input: AnalysisInput, findings: AnalysisFinding[], vehicle: string): string {
