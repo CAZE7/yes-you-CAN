@@ -51,7 +51,7 @@
     "golden:record": "npm run build && node tools/golden-sessions/dist/src/cli.js --out tests/fixtures/golden-sessions --verify"
   },
   "devDependencies": {
-    "@biomejs/biome": "^1.9.4",
+    "@biomejs/biome": "^2.5.13",
     "@types/node": "^26.5.0",
     "@vitest/coverage-v8": "5.0.0",
     "fast-check": "4.9.0",
