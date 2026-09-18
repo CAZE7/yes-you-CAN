@@ -230,8 +230,14 @@ export default defineConfig({
         // 85,58/71,26 -> 99,09/90,80 with its own spec (19 tests over probes, NRC
         // handling, session timing and the write precondition). The gap of ~2 points is
         // what makes the gate bite: a new uncovered file in core now fails the run.
-        'packages/core/src/**': { lines: 88, branches: 80, perFile: true },
-        'packages/protocols/**/src/**': { lines: 90, branches: 75, perFile: true },
+        // Raised 88/80 -> 92/82 on 2026-09-18 after the port/adaptation/coding backfill
+        // (E-branch round): weakest lines `evidence/guided-diagnosis.ts` 97,22, weakest
+        // branches `measurements/signal-analysis.ts` 84,46 — the rest of that file's
+        // open arms are noUncheckedIndexedAccess fallbacks and are documented as such.
+        'packages/core/src/**': { lines: 92, branches: 82, perFile: true },
+        // Raised 90/75 -> 93/78 on 2026-09-18: weakest lines `client.ts` 98,15, weakest
+        // branches `server.ts` 80,60.
+        'packages/protocols/**/src/**': { lines: 93, branches: 78, perFile: true },
         // Adapter glue — hardware paths are injected, not mocked away.
         // Raised 65/45 → 85/75 on 2026-09-12: `host/catalog.ts` was the reason
         // the old gate existed (68.0/48.6, the thinnest file in the tree) and now
@@ -242,14 +248,18 @@ export default defineConfig({
         // Raised 85/75 -> 92/78 on 2026-09-14 (E16): `elm327/protocol.ts` 96,3/76,0 and
         // `elm327/stream.ts` 88,2/100 are at 100/100 now, and the weakest files measured
         // 95,40 lines / 83,78 branches (`host/selection.ts`) in the same run.
-        'packages/adapters/**/src/**': { lines: 92, branches: 78, perFile: true },
+        // Lines raised 92 -> 93 on 2026-09-18: weakest file `host/selection.ts` 95,40
+        // lines / 83,78 branches — branches keep their headroom.
+        'packages/adapters/**/src/**': { lines: 93, branches: 78, perFile: true },
         // Raised 75/50 → 85/70 on 2026-09-12: after the DoIP backfill the
         // weakest transport file is iso-tp/connection.ts at 92.9/75.3 and
         // doip/transport.ts went from 78.6/68.3 to 98.5/88.7 (ADR 0017).
         // Raised 85/70 -> 88/72 on 2026-09-14 after `transport/can/src/bus.ts` was
         // backfilled to 100/100 (registry lookups and the unknown-adapter message, E16);
         // weakest measured: `iso-tp/connection.ts` 92,85 lines / 75,62 branches.
-        'packages/transport/**/src/**': { lines: 88, branches: 72, perFile: true },
+        // Raised 88/72 -> 90/74 on 2026-09-18: weakest measured `can/frame.ts` 93,33
+        // lines / `iso-tp/connection.ts` 78,12 branches.
+        'packages/transport/**/src/**': { lines: 90, branches: 74, perFile: true },
         // Raised from 70/45 on 2026-09-11 after backfilling the crash-tolerance,
         // migration-persistence and list-resilience paths (ADR 0017: tests first).
         // Raised again 90/55 -> 95/80 on 2026-09-12 after the corrupt-archive and
@@ -272,7 +282,9 @@ export default defineConfig({
         // lines, and the weakest branches are 83,33 (`report.ts`, after the variant-
         // knowledge tests of ADR 0026) — 3,3 points of room, so a new branch in the
         // export path has to arrive with a test.
-        'packages/reports/**/src/**': { lines: 95, branches: 80, perFile: true },
+        // Branches raised 80 -> 82 on 2026-09-18: report.ts 100 lines / 84,62 branches,
+        // pdf.ts 100/90,32.
+        'packages/reports/**/src/**': { lines: 95, branches: 82, perFile: true },
         // New on 2026-09-12: measured heuristic.ts 94.9/79.5, http.ts 100/87.7,
         // service.ts 100/100 after the transport, timeout and gateway-junk tests.
         // Raised 90/75 -> 95/85 on 2026-09-14 after the analysis-input backfill
@@ -281,7 +293,11 @@ export default defineConfig({
         // arms included), http.ts 100/87,7 — the binding file — service.ts 100/100.
         // 85 sits 2,7 points under the weakest branch count, so a new untested branch in
         // `ai` is a red run instead of a drift.
-        'packages/ai/**/src/**': { lines: 95, branches: 85, perFile: true },
+        // Raised 95/85 -> 95/88 on 2026-09-18 after the heuristic boundary round
+        // (spreads around zero average, moderate correlations, ellipsis warnings):
+        // weakest branches `http.ts` 98,41 — its one open arm is an unreachable
+        // fallback documented in the code.
+        'packages/ai/**/src/**': { lines: 95, branches: 88, perFile: true },
         // New on 2026-09-12 with the vehicle-definition layer (ADR 0023): the
         // resolver decides which car a workshop is looking at, so its criteria,
         // its weights and its evidence strings are all tested per file. Measured
@@ -291,7 +307,10 @@ export default defineConfig({
         // throw fires only when a schema version is added to
         // SUPPORTED_SCHEMA_VERSIONS without a migration step, so no input can
         // reach it — that is the point of the line, and it says so in a comment.
-        'packages/definitions/**/src/**': { lines: 85, branches: 80, perFile: true },
+        // Raised 85/80 -> 88/81 on 2026-09-18: weakest is still `migrate.ts` at
+        // 92,31/83,33 — its last throw fires only when a schema version is added
+        // without a migration step (see comment above).
+        'packages/definitions/**/src/**': { lines: 88, branches: 81, perFile: true },
         // New on 2026-09-14 with the measurement scope widened to the whole tree
         // (ADR 0027), raised on 2026-09-16 after the E17 round and again after its
         // remainder (tests first, then the gate — ADR 0017). This is a FLOOR, not a
@@ -328,11 +347,16 @@ export default defineConfig({
         // Raised 75/70 → 90/75 on 2026-09-12: `group.ts` was the reason the old
         // gate existed (77.0/77.6, one refactor away from red) and is now at
         // 99.1/91.3; the weakest chart file is viewport.ts at 92.5/77.1.
-        'packages/charts/**/src/**': { lines: 90, branches: 75, perFile: true },
+        // Raised 90/75 -> 95/85 on 2026-09-18 after the viewport/series/decimate/group
+        // boundary round (guards, degenerate inputs, extremes ordering, cap tests):
+        // group.ts and scale.ts measure 100/100, weakest branches `decimate.ts`
+        // 91,67 — its open arms are empty-input guards and dead fallbacks.
+        'packages/charts/**/src/**': { lines: 95, branches: 85, perFile: true },
         // New 2026-09-14 with the diagnostic IR (P0 #6): builders and evidence
         // helpers are pure data transformation, so they are gated like shared —
         // every branch of "value, or the reason there is none" is a test case.
-        'packages/diagnostic-ir/**/src/**': { lines: 95, branches: 85, perFile: true },
+        // Branches raised 85 -> 90 on 2026-09-18: weakest `signal.ts` 95,83.
+        'packages/diagnostic-ir/**/src/**': { lines: 95, branches: 90, perFile: true },
       },
     },
   },

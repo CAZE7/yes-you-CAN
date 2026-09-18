@@ -43,11 +43,11 @@ Messwerte (domain MeasurementReading / IR SignalReading)
 
 - **DOM-frei** (ADR 0011) — der Kern läuft in Node-Tests ohne Browser.
 - **Dependency-frei** (ADR 0002) — `mayImport: []`.
-- **Getestet:** der Kern trägt seine eigene Suite (per-file-Gate 95/80).
+- **Getestet:** der Kern trägt seine eigene Suite (per-file-Gate 95/85).
 
 ## Tests
 
-Co-lokatierte `src/*.spec.ts` (Projekt `unit`, per-file-Gate 90/75).
+Co-lokatierte `src/*.spec.ts` (Projekt `unit`, per-file-Gate 95/85).
 
 ## Examples
 

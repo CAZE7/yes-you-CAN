@@ -4,11 +4,13 @@
  * A decoder must never be the only witness for a diagnosis. This module hashes the
  * lossless raw CAN/UDS trace before projection and produces a small, portable manifest
  * that can be stored next to a session export. Hashing is deliberately based on a
- * canonical representation, not JSON.stringify of Uint8Array objects, so the same
- * recording has the same digest in Node, a replay worker, and an export pipeline.
+ * canonical representation, not JSON.stringify of Uint8Array objects, and on the
+ * dependency-free SHA-256 in `@vdp/shared` instead of `node:crypto` — so the same
+ * recording has the same digest in Node, a replay worker, and an export pipeline,
+ * and this portable layer imports no `node:` builtin (architecture.yaml).
  */
 
-import { createHash } from "node:crypto";
+import { sha256HexUtf8 } from "@vdp/shared";
 import type { RawTraceEntry } from "./session-logger.js";
 
 export const RAW_TRACE_HASH_ALGORITHM = "sha256" as const;
@@ -41,13 +43,16 @@ function canonicalEntry(entry: RawTraceEntry): string {
 
 /** Return the stable SHA-256 digest for an ordered raw trace. */
 export function hashRawTrace(entries: readonly RawTraceEntry[]): string {
-  const hash = createHash(RAW_TRACE_HASH_ALGORITHM);
   // Length-prefix each record so separators cannot create an ambiguous stream.
-  for (const entry of entries) {
-    const line = canonicalEntry(entry);
-    hash.update(`${line.length}:${line}\n`, "utf8");
-  }
-  return hash.digest("hex");
+  // Hashing the joined stream equals feeding each line to `hash.update`: SHA-256
+  // is a Merkle–Damgård hash, so the digest only sees the concatenated bytes.
+  const stream = entries
+    .map((entry) => {
+      const line = canonicalEntry(entry);
+      return `${line.length}:${line}\n`;
+    })
+    .join("");
+  return sha256HexUtf8(stream);
 }
 
 /** Create the manifest that travels with a raw recording. */

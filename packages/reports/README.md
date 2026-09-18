@@ -48,7 +48,7 @@ VehicleSessionData + EvidenceSet (IR)
   Defekt.
 - **PDF-Strings sind Latin-1** (ADR 0021) — der Encoder ist die eine Stelle
   für Text/Länge/Offsets.
-- **Getestet:** `src/*.spec.ts` (Gate 95/80).
+- **Getestet:** `src/*.spec.ts` (Gate 95/82).
 
 ## Tests
 

@@ -63,11 +63,11 @@ export interface HypothesisInput {
 /** Likelihoods as prior weights — the package's word, turned into a number once. */
 const LIKELIHOOD_PRIOR: Record<string, number> = {
   common: 0.6,
-  plausible: 0.45,
+  possible: 0.45,
   rare: 0.25,
 };
 
-/** What a pattern without any `likelihood` starts from: below "plausible", on purpose. */
+/** What a pattern without any `likelihood` starts from: below "possible", on purpose. */
 const UNKNOWN_PRIOR = 0.4;
 
 /**

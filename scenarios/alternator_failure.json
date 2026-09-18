@@ -3,12 +3,7 @@
   "scenario": "alternator_failure",
   "title": "Alternator failure causes a low-system-voltage DTC",
   "vehicle": "high-fidelity-simulator",
-  "steps": [
-    { "ignition": "on" },
-    { "alternator": "fail" },
-    { "wait": 5000 },
-    { "load": "high" }
-  ],
+  "steps": [{ "ignition": "on" }, { "alternator": "fail" }, { "wait": 5000 }, { "load": "high" }],
   "expect": [
     { "dtc": "P0562", "ecu": "engine", "state": "active" },
     { "battery_voltage": { "operator": "<", "value": 11.5, "unit": "V" } }

@@ -744,4 +744,92 @@ describe("rankHypotheses", () => {
       "no measurement, no claim",
     );
   });
+
+  test("equal scores on one code order by pattern id, so a rerun prints the same list", () => {
+    const session = sessionData();
+    const entry = dtc({
+      knowledge: knowledge([
+        pattern({ id: "zzz-late", name: "Late pattern" }),
+        pattern({ id: "aaa-early", name: "Early pattern" }),
+      ]),
+    });
+    const evidence = collectEvidence({ session: session.data, dtcs: [entry], collectedAt: AT });
+    const rankedEntries = rankHypotheses({ evidence, dtcs: [entry] });
+    assert.deepEqual(
+      rankedEntries.map((entry) => entry.id),
+      ["aaa-early", "zzz-late"],
+      "same code, same confidence — the id breaks the tie, not the scan order",
+    );
+  });
+
+  test("a likelihood word the ranking does not know degrades to the unknown prior", () => {
+    const [hypothesis] = ranked({
+      patterns: [pattern({ likelihood: "legendary" as unknown as "common" })],
+      samplesOf: samples([["2026-09-14T09:01:59.000Z", 1]]),
+    });
+    assert.equal(
+      hypothesis?.confidence,
+      0.7,
+      "0.4 unknown prior + 0.25 confirmed + 0.05 conclusive — an invented word must not score above 'common' (0.9)",
+    );
+    assert.match(hypothesis?.reason ?? "", /confirmed/);
+  });
+
+  test("the 'possible' prior sits between common and rare", () => {
+    const [hypothesis] = ranked({
+      patterns: [pattern({ likelihood: "possible" })],
+      samplesOf: samples([["2026-09-14T09:01:59.000Z", 1]]),
+    });
+    assert.equal(hypothesis?.likelihood, "possible");
+    assert.equal(
+      hypothesis?.confidence,
+      0.75,
+      "0.45 prior + 0.25 confirmed + 0.05 conclusive — below 'common' (0.9), above 'rare' (0.55)",
+    );
+  });
+
+  test("a scan record without an ECU keeps its hypothesis free of an invented one", () => {
+    const session = sessionData();
+    const entry = dtc({ ecuId: undefined, knowledge: knowledge([pattern()]) });
+    const evidence = collectEvidence({ session: session.data, dtcs: [entry], collectedAt: AT });
+    const [hypothesis] = rankHypotheses({ evidence, dtcs: [entry] });
+    assert.ok(hypothesis);
+    assert.ok(!("ecuId" in hypothesis));
+  });
+
+  test("a pattern without a likelihood carries none instead of a made-up prior", () => {
+    const [hypothesis] = ranked({
+      patterns: [pattern({ likelihood: undefined })],
+      samplesOf: samples([["2026-09-14T09:01:59.000Z", 1]]),
+    });
+    assert.ok(hypothesis);
+    assert.ok(!("likelihood" in hypothesis));
+    assert.equal(
+      hypothesis?.confidence,
+      0.7,
+      "0.4 unknown prior + 0.25 confirmed + 0.05 conclusive — below the 'common' 0.9 cap",
+    );
+  });
+
+  test("a signal name that repeats the signal id is not carried twice", () => {
+    const [hypothesis] = ranked({
+      patterns: [
+        pattern({
+          checks: [
+            {
+              signal: "engine.rpm",
+              signalName: "engine.rpm",
+              expect: "idle",
+              min: 600,
+              max: 900,
+              measurable: true,
+            },
+          ],
+        }),
+      ],
+      samplesOf: samples([["2026-09-14T09:01:59.000Z", 750]]),
+    });
+    assert.equal(hypothesis?.checks[0]?.test.name, undefined);
+    assert.equal(hypothesis?.outcome, "confirmed");
+  });
 });

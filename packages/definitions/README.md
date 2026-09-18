@@ -61,7 +61,7 @@ tools/definition-importer → packages/definitions/src/<oem>/*.json (Daten)
 
 ## Tests
 
-Co-lokatierte `src/*.spec.ts` (Gate 85/80 seit ADR 0023); Import-Pipeline in
+Co-lokatierte `src/*.spec.ts` (Gate 88/81, seit ADR 0023 angehoben); Import-Pipeline in
 `tools/definition-importer/src/*.spec.ts`.
 
 ## Examples

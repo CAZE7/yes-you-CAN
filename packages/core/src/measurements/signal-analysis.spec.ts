@@ -306,3 +306,56 @@ describe("Signal Analysis: Anomaly Detection", () => {
     assert.equal(noSpikes.length, 0);
   });
 });
+
+describe("Signal Analysis: Boundary Inputs", () => {
+  test("statistics without two finite samples carry no rate of change", () => {
+    const stats = computeAdvancedStatistics([
+      makeSample(0, 1),
+      { ...makeSample(1000, 0), value: Number.NaN },
+    ]);
+    assert.ok(stats);
+    assert.equal(stats.count, 1);
+    assert.ok(!("rateOfChange" in stats));
+  });
+
+  test("statistics over simultaneous samples carry no rate of change", () => {
+    const stats = computeAdvancedStatistics([makeSample(5, 1), makeSample(5, 3)]);
+    assert.ok(stats);
+    assert.equal(stats.count, 2);
+    assert.ok(!("rateOfChange" in stats), "a zero time delta has no rate");
+  });
+
+  test("fft over simultaneous timestamps falls back to the default sample rate", () => {
+    const spectrum = computeFft([
+      { t: 5, value: 1 },
+      { t: 5, value: 2 },
+      { t: 5, value: 3 },
+    ]);
+    // 10 Hz default over an 8-point transform: bins sit at multiples of 1.25 Hz.
+    assert.equal(spectrum.frequencies[1], 1.25);
+  });
+
+  test("fft of a single value is a flat zero spectrum", () => {
+    const spectrum = computeFft([5]);
+    assert.equal(spectrum.magnitudes.length, 4);
+    assert.equal(spectrum.dominantMagnitude, 0);
+  });
+
+  test("correlation names the moderate band on both sides", () => {
+    const rising = [1, 2, 3, 4, 5, 6, 7, 8];
+    const looselyFollowing = [2, 5, 1, 6, 3, 8, 4, 7];
+    const positive = computeCrossCorrelation(rising, looselyFollowing);
+    assert.ok(positive.pearsonR >= 0.3 && positive.pearsonR < 0.7);
+    assert.equal(positive.interpretation, "moderate_positive");
+
+    const looselyOpposing = [5, 8, 3, 7, 2, 6, 1, 4];
+    const negative = computeCrossCorrelation(rising, looselyOpposing);
+    assert.ok(negative.pearsonR > -0.7 && negative.pearsonR <= -0.3);
+    assert.equal(negative.interpretation, "moderate_negative");
+  });
+
+  test("a gentle slope within the limit raises no rate-of-change anomaly", () => {
+    const ramp = [makeSample(0, 0), makeSample(1000, 1), makeSample(2000, 2), makeSample(3000, 3)];
+    assert.deepEqual(detectSignalAnomalies(ramp, { maxRateOfChangePerSec: 10 }), []);
+  });
+});

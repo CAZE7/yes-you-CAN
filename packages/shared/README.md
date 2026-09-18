@@ -6,12 +6,13 @@
 ## Purpose
 
 Die gemeinsame Basis des gesamten Baums: Byte-Handling, Fehler-Vokabular,
-Events, Ids und der Logger. Jedes andere Paket loggt, parsen und id-bildet
-über dieses — eine zweite Vokabel wäre ein Defekt.
+Events, Ids, plattformfreies SHA-256 und der Logger. Jedes andere Paket loggt,
+parst, hasht und id-bildet über dieses — eine zweite Vokabel wäre ein Defekt.
 
 ## Responsibilities
 
-- Bytes ↔ Hex ↔ ASCII (`bytes.ts`, `bytes-ascii.ts`)
+- Bytes ↔ Hex ↔ ASCII (`bytes.ts`, ASCII-Fälle in `bytes-ascii.spec.ts`)
+- SHA-256 ohne Plattform (`sha256.ts`: `sha256`, `sha256Hex`, `sha256HexUtf8`)
 - Fehler mit Code und Kontext (`errors.ts`, inkl. `MemorySink` für Tests)
 - Domain-Event-Transport (`events.ts`)
 - Typisierte Ids mit Präfixen (`ids.ts`)
@@ -26,8 +27,9 @@ Events, Ids und der Logger. Jedes andere Paket loggt, parsen und id-bildet
 ## Public API
 
 `src/index.ts` exportiert `bytes.ts`, `errors.ts`, `events.ts`, `ids.ts`,
-`logger.ts` komplett. Wichtige Namen: `fromHex`, `toHex`, `ErrorMessage`,
-`createLogger`, `MemorySink`, `EventBus`-Primitiven, Id-Präfix-Hilfen.
+`logger.ts`, `sha256.ts` komplett. Wichtige Namen: `fromHex`, `toHex`, `ErrorMessage`,
+`createLogger`, `MemorySink`, `EventBus`-Primitiven, Id-Präfix-Hilfen,
+`sha256HexUtf8`.
 
 ## Dependencies
 

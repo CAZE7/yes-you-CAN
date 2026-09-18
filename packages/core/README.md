@@ -26,7 +26,8 @@ Evidenz-Sammlung in IR-Form. Die breiteste Schicht *unter* dem Runtime.
   `hypotheses.ts` (Ranking-Heuristik), `guided-diagnosis.ts`
 - `vehicle/`: VIN-Analyse (`analyseVin`), Identität
 - `safety/`: `SafetyManager` (bewertet Write-Kontexte, erteilt Permits)
-- `logging/`: `SessionLogger` (Roh-Trace + Session-Daten)
+- `logging/`: `SessionLogger` (Roh-Trace + Session-Daten), `integrity.ts`
+  (SHA-256-Manifest über `@vdp/shared` — portabel, kein `node:crypto`)
 
 ## Does NOT do
 
@@ -67,7 +68,7 @@ Bus (CanBus) → IsoTpConnection → UdsClient → Discovery/Session
 - **Engine = internes Detail des Runtime** (ADR 0014): nichts außerhalb
   des Runtime greift direkt in `DiagnosticEngine` (Workbench nutzt
   `createDiagnosticRuntime`).
-- **per-file-Coverage 88/80** — neue Dateien kommen mit Tests.
+- **per-file-Coverage 92/82** — neue Dateien kommen mit Tests.
 
 ## Tests
 

@@ -136,7 +136,7 @@ export interface Hypothesis {
   /** What the package thinks the cause is. */
   claim: string;
   explanation?: string;
-  /** The package's own prior — `common` | `plausible` | `rare`, or absent. */
+  /** The package's own prior — `common` | `possible` | `rare`, or absent. */
   likelihood?: string;
   outcome: HypothesisOutcome;
   confidence: number;

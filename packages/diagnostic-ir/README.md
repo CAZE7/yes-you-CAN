@@ -57,7 +57,7 @@ Verbrauchen in Runtime/Reports/AI.
 - **Jede Observation trägt `evidence`** — `proven` (mit Herkunft) oder
   `unproven` (mit Grund). Fehlende Evidenz ist ein Fehlschlag (ADR 0033).
 - **`mayImport` bleibt `["@vdp/shared"]`** — der Dependency-Checker fällt
-  (per-file-Coverage 95/85).
+  (per-file-Coverage 95/90).
 - **Item-Ids sind Schlüssel, keine Sätze** — nie als Antwort rendern.
 - **Observation ≠ Enrichment**: zwei Hälften, zwei eigene Belege.
 - Vokabel-Kontrakt: [`docs/glossary.md`](../../docs/glossary.md)
@@ -65,7 +65,7 @@ Verbrauchen in Runtime/Reports/AI.
 
 ## Tests
 
-Co-lokatierte `src/*.spec.ts` (Projekt `unit`, Gate 95/85).
+Co-lokatierte `src/*.spec.ts` (Projekt `unit`, Gate 95/90).
 
 ## Examples
 

@@ -3,7 +3,7 @@
 [![CI](https://github.com/CAZE7/yes-you-CAN/actions/workflows/ci.yml/badge.svg)](https://github.com/CAZE7/yes-you-CAN/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](./package.json)
-[![Tests](https://img.shields.io/badge/tests-2037%20passed-brightgreen)](#tests)
+[![Tests](https://img.shields.io/badge/tests-2116%20passed-brightgreen)](#tests)
 [![TypeScript](https://img.shields.io/badge/TypeScript-7%20%2F%20tsgo-blue)](./tsconfig.base.json)
 
 Fahrzeugdiagnose-Plattform: CAN und DoIP lesen, Steuergeräte identifizieren, das
@@ -222,8 +222,9 @@ Zeitraum aus, Doppelklick zeigt die gesamte Aufnahme.
 
 ## Tests
 
-2037 bestandene Tests / 141 geprüfte Dateien (`npm test` in 67 s; `npm run
-test:coverage` in 73 s — gemessen 2026-09-16), Vitest 5 mit Projektkonfiguration
+2116 bestandene Tests / 143 geprüfte Dateien + 1 übersprungener CI-Träger (`npm test`
+in 62 s; `npm run test:coverage` in 77 s — gemessen 2026-09-18), Vitest 5 mit
+Projektkonfiguration
 (ADR 0010, Schritt 1 — ersetzt ADR 0008). Seit ADR 0043 gehören dazu 17
 ausführbare Doku-Beispiele in `tests/examples/*.example.ts` (Projekt
 `integration`) — sie zeigen die API so, wie sie benutzt wird. Der
@@ -235,13 +236,13 @@ aufrufen kann (0.E E20) — einschließlich
 tatsächlichen Importen passt (ADR 0042). Unit-Specs liegen co-lokatiert neben dem
 Code (`src/*.spec.ts`); Property-Tests laufen mit fast-check, Coverage-Gates mit
 `npm run test:coverage` (global 90 % lines / 80 % branches als
-Projekt-Durchschnitt, Ist 95,16 Statements / 87,27 Zweige / 96,55 Funktionen /
-96,44 Zeilen — gemessen am Stand vom 2026-09-16, und die letzten Stellen wandern mit
+Projekt-Durchschnitt, Ist 95,67 Statements / 88,81 Zweige / 96,61 Funktionen /
+96,75 Zeilen — gemessen am Stand vom 2026-09-18, und die letzten Stellen wandern mit
 Last und Node-Version (86,59 bis 86,71 Zweige auf demselben Baum,
 ADR 0029 §6) — seit ADR 0027 wird die ganze
 Fläche gemessen: `packages/**/src`, `apps/web/src/**` und `tools/**`, weil die
 Workbench-Schicht vorher in keiner Zahl vorkam; per-file-Gates für
-`shared`/`core`/`protocols`/`adapters`/`transport`/`storage`/`charts`/`reports`/`ai` (95/85 seit 2026-09-14)/`diagnostic-ir` (95/85 seit ADR 0034)/`definitions`
+`shared`/`core` (92/82)/`protocols` (93/78)/`adapters` (93/78)/`transport` (90/74)/`storage`/`charts` (95/85)/`reports` (95/82)/`ai` (95/88)/`diagnostic-ir` (95/90)/`definitions` (88/81)
 und seit ADR 0027 eine **Bodenschwelle** für `apps/web/src/**`, am 2026-09-16 von
 69/54 auf 75/66 und am selben Stand auf 76/72 gehoben, nachdem die nachgetesteten Randpfade der
 Workbench (Freeze Frame, Body-Limit, Marker, Adapter-Absagen, dazu die Replay-Quellen, der

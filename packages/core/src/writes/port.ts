@@ -290,20 +290,25 @@ export class WritePort {
     // The permit stage: evaluate, then ask. A failed precondition aborts with the
     // reasons; a refused permit (fail-closed) ends the transaction as well,
     // because continuing without one is exactly what AGENTS 26 forbids.
+    // `unproven` rides a local, not the stage report: reports carry only
+    // reasons/warnings/detail, so routing it through `confirmReport` silently
+    // dropped the distinction P0 #5 asks the caller to see.
+    let confirmUnproven: readonly string[] = [];
     const confirmReport = await transaction.stage("confirm", () => {
       const sessionType = this.sessionTypeOf(transaction, binding);
       const described = operation.describe(transaction, input, prepared, sessionType);
       const checks = this.options.safety.evaluate(described.context, binding.vehicleState);
       const warnings = Array.from(new Set([...checks.warnings, ...(described.warnings ?? [])]));
-      if (!checks.ok)
+      if (!checks.ok) {
+        // The caller gets the distinction through the result: which of these
+        // reasons is a missing proof rather than a violation? (P0 #5)
+        confirmUnproven = [...checks.unproven];
         return {
           ok: false,
           reasons: [...checks.failed],
           warnings,
-          // The caller gets the distinction through the result: which of these
-          // reasons is a missing proof rather than a violation? (P0 #5)
-          unproven: [...checks.unproven],
         };
+      }
       try {
         const permit = this.options.safety.requestPermit(described.context, binding.vehicleState);
         transaction.confirm(permit, {
@@ -330,7 +335,7 @@ export class WritePort {
         false,
         confirmReport.reasons,
         confirmReport.warnings,
-        "unproven" in confirmReport ? (confirmReport.unproven as readonly string[]) : [],
+        confirmUnproven,
       );
     }
 

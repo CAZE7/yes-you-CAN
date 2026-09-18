@@ -270,6 +270,24 @@ describe("invalid input is rejected (strict) or reported (lenient)", () => {
     );
   });
 
+  test("ascii rejects a non-string instead of stringifying it", () => {
+    const signal = baseSignal({ encoding: "ascii", length: 4 });
+    assert.throws(() => encodeValue(signal, 42), /expects a string/);
+  });
+
+  test("boolean and numeric-string values encode on numeric signals", () => {
+    const signal = baseSignal({ encoding: "uint8", length: 1 });
+    assert.deepEqual([...encodeValue(signal, true)], [1]);
+    assert.deepEqual([...encodeValue(signal, false)], [0]);
+    assert.deepEqual([...encodeValue(signal, "42")], [42]);
+  });
+
+  test("a bitmask encodes a boolean switch as well as a raw pattern", () => {
+    const signal = baseSignal({ encoding: "bitmask", length: 1 });
+    assert.deepEqual([...encodeValue(signal, true)], [1]);
+    assert.deepEqual([...encodeValue(signal, false)], [0]);
+  });
+
   test("out-of-range values are flagged, not silently accepted", () => {
     const signal = baseSignal({ encoding: "uint8", length: 1, min: 0, max: 100 });
     const decoded = decoder.decode(signal, encodeSignal(signal, 200));
