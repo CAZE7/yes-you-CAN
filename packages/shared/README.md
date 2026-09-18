@@ -14,6 +14,9 @@ Events, Ids und der Logger. Jedes andere Paket loggt, parsen und id-bildet
 - Bytes ↔ Hex ↔ ASCII (`bytes.ts`, `bytes-ascii.ts`)
 - Fehler mit Code und Kontext (`errors.ts`, inkl. `MemorySink` für Tests)
 - Domain-Event-Transport (`events.ts`)
+- Portabler Digest über Bytes oder Text (`hash.ts` → `sha256Hex`, SHA-256 nach
+  FIPS 180-4 — die Antwort auf „hat sich die Aufnahme geändert?", ohne
+  `node:crypto` in einer portablen Schicht; ADR 0044)
 - Typisierte Ids mit Präfixen (`ids.ts`)
 - Logger mit Levels, Sinks und `child()` (`logger.ts`)
 
@@ -25,9 +28,9 @@ Events, Ids und der Logger. Jedes andere Paket loggt, parsen und id-bildet
 
 ## Public API
 
-`src/index.ts` exportiert `bytes.ts`, `errors.ts`, `events.ts`, `ids.ts`,
+`src/index.ts` exportiert `bytes.ts`, `errors.ts`, `events.ts`, `hash.ts`, `ids.ts`,
 `logger.ts` komplett. Wichtige Namen: `fromHex`, `toHex`, `ErrorMessage`,
-`createLogger`, `MemorySink`, `EventBus`-Primitiven, Id-Präfix-Hilfen.
+`createLogger`, `MemorySink`, `sha256Hex`, `EventBus`-Primitiven, Id-Präfix-Hilfen.
 
 ## Dependencies
 
@@ -42,6 +45,10 @@ Basisrichtung: **alle → shared**. shared importiert niemanden.
 - **Dependency-frei** (ADR 0002, Leitplanke 0.D) — der Dependency-Checker fällt.
 - **100 % Linien-Coverage** ist per-file-Gate (`vitest.config.ts`) — eine neue
   Zeile kommt mit ihrem Test.
+- **Der Digest ist eine Referenz, kein Akzent.** `sha256Hex` liefert byte-identisch
+  das, was `createHash("sha256")` liefert (getestet gegen die Referenzimplemen-
+  tierung und gegen die veröffentlichten Vektoren von FIPS 180-4) — ein gespeicherter
+  Digest, der nach einer Umbenennung nicht mehr prüft, ist eine verlorene Aufnahme.
 - Fehler werden nie still geschluckt; der Logger ist die einzige
   Ausgabe-Schicht (AGENTS 33).
 

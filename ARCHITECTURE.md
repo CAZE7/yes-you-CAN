@@ -58,7 +58,7 @@ Die zulässigen Kanten pro Paket stehen dort unter `packages.*.mayImport` —
 ### foundation — `@vdp/shared`, `@vdp/charts`
 
 - **Purpose:** Primbausteine für den ganzen Baum (Bytes, Fehler, Events, Ids,
-  Logger) und ein DOM-freies Chart-Kernpaket.
+  Logger, ein portabler SHA-256 — ADR 0044) und ein DOM-freies Chart-Kernpaket.
 - **Allowed dependencies:** keine.
 - **Forbidden dependencies:** alles. `@vdp/shared` importiert buchstäblich nichts.
 - **Main entry points:** `packages/shared/src/index.ts`, `packages/charts/src/index.ts`.
