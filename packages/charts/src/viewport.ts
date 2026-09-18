@@ -49,10 +49,6 @@ export class TimeViewport {
     return { from: this.from, to: this.to };
   }
 
-  includes(t: number): boolean {
-    return t >= this.from && t <= this.to;
-  }
-
   /** Set the window; span and position are clamped to min/max span and bounds. */
   setRange(from: number, to: number): void {
     if (!Number.isFinite(from) || !Number.isFinite(to)) return;

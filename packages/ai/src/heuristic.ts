@@ -263,7 +263,7 @@ function caveatsOf(input: AnalysisInput): string[] {
 }
 
 /** Where the wording came from, phrased once — see the module note on scope keys. */
-function scopeClause(scope: string | undefined): string | undefined {
+function scopeClause(scope: string | undefined): string {
   if (scope === undefined) return "no scan record carries knowledge for this code";
   if (scope === "package")
     return "manufacturer-wide wording only — nothing variant-specific is documented";
@@ -274,8 +274,7 @@ function scopeClause(scope: string | undefined): string | undefined {
 function detailOf(dtc: AnalysisDtc): string {
   const parts = [dtc.description ?? "No description available for this code."];
   if (dtc.conditions !== undefined) parts.push(`sets when: ${dtc.conditions}`);
-  const scope = scopeClause(dtc.scope);
-  if (scope !== undefined) parts.push(scope);
+  parts.push(scopeClause(dtc.scope));
   return parts.join(" — ");
 }
 

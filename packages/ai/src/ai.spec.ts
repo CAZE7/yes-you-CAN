@@ -386,6 +386,44 @@ test("a gateway answer full of junk is normalised, not trusted", async () => {
   }
 });
 
+test("a well-formed gateway answer passes through untouched", async () => {
+  const httpClient: HttpClient = {
+    async fetch() {
+      return fakeResponse({
+        provider: "gateway-x",
+        summary: "Oil pressure sinks under load",
+        confidence: 0.8,
+        findings: [
+          {
+            id: "f1",
+            severity: "warning",
+            title: "Öldruck",
+            detail: "sinkt",
+            relatedSignals: ["engine.oil_pressure", 7],
+            relatedDtcs: ["P0520", null],
+          },
+        ],
+        recommendations: ["check oil"],
+        generatedAt: "2026-01-02T03:04:05.000Z",
+        warnings: ["verify with a gauge", 42],
+      });
+    },
+  };
+  const provider = new HttpAnalysisProvider({
+    endpoint: "https://gateway.example/analyze",
+    httpClient,
+    logger,
+  });
+  const result = await provider.analyze(sampleInput({ signals: [] }));
+
+  assert.equal(result.provider, "gateway-x");
+  assert.equal(result.summary, "Oil pressure sinks under load");
+  assert.equal(result.generatedAt, "2026-01-02T03:04:05.000Z");
+  assert.deepEqual(result.warnings, ["verify with a gauge"]);
+  assert.deepEqual(result.findings[0]?.relatedSignals, ["engine.oil_pressure"]);
+  assert.deepEqual(result.findings[0]?.relatedDtcs, ["P0520"]);
+});
+
 test("confidence is clamped into [0, 1] and never becomes NaN", async () => {
   // JSON knows neither NaN nor Infinity — both become null, hence the 0.3
   // default. The string case is the one that proves the clamp hardening.
@@ -882,6 +920,134 @@ test("a ranked pattern becomes a finding that cites the evidence behind it", asy
 
   const code = result.findings.find((finding) => finding.id === "dtc-P0420");
   assert.deepEqual(code?.basedOn, ["dtc:P0420@engine"], "the code cites its own item");
+});
+
+test("a spread around a zero average is reported in absolute terms", async () => {
+  const result = await new HeuristicAnalysisProvider().analyze(
+    sampleInput({
+      signals: [
+        {
+          signal: "test.zero_centered",
+          name: "Zero-centered test signal",
+          samples: 40,
+          min: -5.5,
+          max: 5.5,
+          average: 0,
+          delta: 11,
+          outOfRangeCount: 0,
+        },
+      ],
+      dtcs: [],
+      anomalies: [],
+    }),
+  );
+  const spread = result.findings.find((finding) => finding.id === "spread-test.zero_centered");
+  assert.ok(spread, result.findings.map((finding) => finding.id).join(", "));
+  assert.match(spread.detail, /-5\.5–5\.5/);
+  assert.match(spread.detail, /average of 0/);
+});
+
+test("a fault record without a code carries no citation", async () => {
+  const result = await new HeuristicAnalysisProvider().analyze(
+    sampleInput({
+      dtcs: [{ code: "", severity: "minor", ecu: "Engine" }],
+      signals: [],
+      anomalies: [],
+    }),
+  );
+  const finding = result.findings.find((entry) => entry.id === "dtc-");
+  assert.ok(finding);
+  assert.equal(finding.relatedDtcs, undefined);
+});
+
+test("a confirmed pattern for an uncited code stays at info and names no prior", async () => {
+  const bare = hypothesis({ code: "U0121" });
+  const { likelihood: _dropped, ...withoutPrior } = bare;
+  void _dropped;
+  const result = await new HeuristicAnalysisProvider().analyze(
+    sampleInput({
+      evidence: evidenceSet(),
+      hypotheses: [
+        {
+          ...withoutPrior,
+          // A malformed hypothesis must not crash the provider — unknown
+          // citations degrade to no citation (see `knownCitations`).
+          evidence: "dtc:P0420@engine" as unknown as string[],
+          nextTest: { signal: "engine.rpm", expect: "steady", measurable: true },
+        },
+      ],
+      dtcs: [],
+    }),
+  );
+  const [pattern] = result.findings.filter((finding) => finding.id.startsWith("pattern-"));
+  assert.equal(pattern?.severity, "info", "no code in the input, no severity to inherit");
+  assert.equal(pattern?.basedOn, undefined);
+  assert.ok(!pattern?.detail.includes("package prior"), pattern?.detail);
+  assert.ok(
+    result.recommendations.some((line) =>
+      line.includes("next test for U0121: engine.rpm · steady"),
+    ),
+    result.recommendations.join(" | "),
+  );
+});
+
+test("long open-question and unproven-claim lists are cut with an ellipsis", async () => {
+  const items: EvidenceItem[] = [
+    ...["Q1", "Q2", "Q3", "Q4"].map((subject) => ({
+      id: `gap:${subject}`,
+      kind: "gap" as const,
+      subject,
+      statement: `${subject} stays open`,
+      at: AT,
+      evidence: unproven(`${subject} stays open`, { at: AT }),
+    })),
+    ...["C1", "C2", "C3", "C4"].map((subject) => ({
+      id: `signal:${subject}`,
+      kind: "signal" as const,
+      subject,
+      statement: `${subject} is claimed`,
+      at: AT,
+      evidence: unproven(`${subject} is claimed`, { at: AT }),
+    })),
+  ];
+  const result = await new HeuristicAnalysisProvider().analyze(
+    sampleInput({ evidence: evidenceSet(items), signals: [], dtcs: [], anomalies: [] }),
+  );
+  const warnings = (result.warnings ?? []).join(" | ");
+  assert.match(warnings, /4 question\(s\) stay open in this session: Q1, Q2, Q3 …\./);
+  assert.match(warnings, /4 statement\(s\) in this session are unproven: C1, C2, C3 …/);
+});
+
+test("a vehicle record without a name or id is still unidentified", async () => {
+  const result = await new HeuristicAnalysisProvider().analyze(sampleInput({ vehicle: {} }));
+  assert.match(result.summary, /on an unidentified vehicle\./);
+});
+
+test("a check with only an upper bound, and one with no numbers at all", async () => {
+  const result = await new HeuristicAnalysisProvider().analyze(
+    sampleInput({
+      dtcs: [
+        {
+          ...P0420,
+          measure: {
+            signal: "cat.temp",
+            expect: "below 900 while driving",
+            max: 900,
+            measurable: true,
+          },
+        },
+        {
+          code: "P0300",
+          severity: "major",
+          ecu: "Engine",
+          measure: { signal: "engine.rpm", expect: "steady", measurable: false },
+        },
+      ],
+    }),
+  );
+  const lines = result.recommendations.join(" | ");
+  assert.ok(lines.includes("measure first: cat.temp · below 900 while driving · ≤ 900"), lines);
+  assert.ok(lines.includes("documented check, a person judges it: engine.rpm · steady"), lines);
 });
 
 test("an untested pattern is reported at `info`, and its next test becomes the recommendation", async () => {

@@ -68,7 +68,7 @@ Bus (CanBus) → IsoTpConnection → UdsClient → Discovery/Session
 - **Engine = internes Detail des Runtime** (ADR 0014): nichts außerhalb
   des Runtime greift direkt in `DiagnosticEngine` (Workbench nutzt
   `createDiagnosticRuntime`).
-- **per-file-Coverage 88/80** — neue Dateien kommen mit Tests.
+- **per-file-Coverage 92/82** — neue Dateien kommen mit Tests.
 
 ## Tests
 

@@ -211,3 +211,87 @@ describe("signal comparison", () => {
     assert.ok(result.summary.some((line) => line.includes("engine.rpm")));
   });
 });
+
+describe("comparison edges", () => {
+  test("a side without identity fields compares them as missing, loudly", () => {
+    const left = side({
+      vehicle: undefined,
+      vin: "VIN-LEFT",
+      definitionPackage: undefined,
+      adapter: undefined,
+      startedAt: "2026-09-11T08:00:00.000Z",
+    });
+    const right = side({
+      id: "s2",
+      label: "nachher",
+      vehicle: "Golf 8",
+      vin: undefined,
+      adapter: undefined,
+    });
+    const result = compareSessions(left, right);
+    assert.ok(
+      result.summary.some((line) => line.includes("Fahrzeug unterscheidet sich (— → Golf 8)")),
+      result.summary.join(" | "),
+    );
+    assert.ok(
+      result.summary.some((line) => line.includes("VIN unterscheidet sich (VIN-LEFT → —)")),
+      result.summary.join(" | "),
+    );
+    assert.equal(result.left.startedAt, "2026-09-11T08:00:00.000Z");
+    assert.equal(result.left.vehicle, undefined);
+    assert.equal(result.right.vin, undefined);
+
+    const bare = side({
+      vehicle: undefined,
+      vin: undefined,
+      definitionPackage: undefined,
+      adapter: undefined,
+      startedAt: undefined,
+    });
+    const same = compareSessions(bare, { ...bare, id: "s2", label: "nachher" });
+    assert.ok(same.metadata.every((entry) => entry.same));
+    assert.equal(same.left.vehicle, undefined);
+    assert.equal(same.left.vin, undefined);
+  });
+
+  test("a fault memory that only gains codes says only that", () => {
+    const result = compareSessions(
+      side({ dtcs: [dtc("P0420", 0x08)] }),
+      side({
+        id: "s2",
+        label: "nachher",
+        dtcs: [dtc("P0420", 0x08), { ...dtc("U0155", 0x08), description: "Lost communication" }],
+      }),
+    );
+    assert.ok(
+      !result.summary.some((line) => line.includes('nur in "vorher"')),
+      result.summary.join(" | "),
+    );
+    assert.ok(result.summary.some((line) => line.includes('nur in "nachher"')));
+    const added = result.dtcs.find((entry) => entry.code === "U0155");
+    assert.equal(added?.right?.description, "Lost communication");
+  });
+
+  test("a fault memory that only loses codes says only that", () => {
+    const result = compareSessions(
+      side({ dtcs: [dtc("P0420", 0x08), dtc("P0301", 0x02)] }),
+      side({ id: "s2", label: "nachher", dtcs: [dtc("P0420", 0x08)] }),
+    );
+    assert.ok(result.summary.some((line) => line.includes('nur in "vorher"')));
+    assert.ok(
+      !result.summary.some((line) => line.includes('nur in "nachher"')),
+      result.summary.join(" | "),
+    );
+  });
+
+  test("a changed signal keeps its unit and prints fractional averages with two decimals", () => {
+    const result = compareSessions(
+      side({ samples: [sample("engine.trim", 1.5, { unit: "%" })] }),
+      side({ id: "s2", label: "nachher", samples: [sample("engine.trim", 3.2, { unit: "%" })] }),
+    );
+    const [entry] = result.signals;
+    assert.equal(entry?.verdict, "changed");
+    assert.equal(entry?.unit, "%");
+    assert.match(entry?.reason ?? "", /1\.50 → 3\.20/);
+  });
+});

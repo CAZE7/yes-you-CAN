@@ -15,6 +15,7 @@ import {
   TimeViewport,
   computeYRange,
   decimate,
+  decimateLttb,
   decimateMinMax,
   formatClock,
   niceTicks,
@@ -61,6 +62,16 @@ test("series statistics return min/max/average/delta over a window (AGENTS 16)",
   const window = series.stats({ from: 0, to: 300 });
   assert.equal(window.max, 30);
   assert.equal(window.count, 4);
+
+  const falling = new Series({ id: "sensor.falling" });
+  falling.pushMany([
+    { t: 0, value: 20 },
+    { t: 100, value: 10 },
+  ]);
+  const down = falling.stats();
+  assert.equal(down.min, 10);
+  assert.equal(down.max, 20);
+  assert.equal(down.delta, 10);
 });
 
 test("valueAt snaps to the nearest sample and respects a tolerance", () => {
@@ -89,6 +100,100 @@ test("series respects its ring buffer limit", () => {
   assert.equal(series.length, 5);
   assert.equal(series.first?.t, 500);
   assert.equal(series.last?.t, 900);
+});
+
+test("series carries declared metadata and fills gaps without overwriting", () => {
+  const series = new Series({ id: "engine.rpm", color: "#ff0000", min: 0, max: 8000 });
+  assert.equal(series.color, "#ff0000");
+  assert.equal(series.min, 0);
+  assert.equal(series.max, 8000);
+
+  const live = new Series({ id: "live.signal" });
+  live.fillMissingMetadata({
+    name: "Live Signal",
+    unit: "rpm",
+    color: "#00ff00",
+    min: 0,
+    max: 100,
+  });
+  assert.equal(live.name, "Live Signal");
+  assert.equal(live.unit, "rpm");
+  assert.equal(live.color, "#00ff00");
+  assert.equal(live.min, 0);
+  assert.equal(live.max, 100);
+
+  // Documented values win over late arrivals; an empty fill changes nothing.
+  live.fillMissingMetadata({ name: "Other", unit: "x", color: "#000000", min: 5, max: 50 });
+  live.fillMissingMetadata({});
+  assert.equal(live.name, "Live Signal");
+  assert.equal(live.unit, "rpm");
+  assert.equal(live.color, "#00ff00");
+  assert.equal(live.min, 0);
+  assert.equal(live.max, 100);
+});
+
+test("pushMany tolerates empty and out-of-order batches", () => {
+  const series = new Series({ id: "engine.rpm" });
+  series.pushMany([]);
+  assert.equal(series.length, 0);
+
+  series.pushMany(line(0, 1000, 100));
+  series.pushMany([
+    { t: 50, value: 1 },
+    { t: 60, value: 2 },
+  ]);
+  assert.deepEqual(
+    series.all.map((p) => p.t),
+    [0, 50, 60, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000],
+  );
+});
+
+test("extent answers for a window and stays silent outside the data", () => {
+  const series = new Series({ id: "vehicle.speed" });
+  series.pushMany(line(100, 500, 100));
+  assert.deepEqual(series.extent({ from: 150, to: 350 }), { from: 200, to: 300 });
+  assert.equal(series.extent({ from: 600, to: 700 }), null);
+});
+
+test("valueAt answers at the edges and stays silent without data", () => {
+  const empty = new Series({ id: "empty" });
+  assert.equal(empty.valueAt(100), null);
+
+  const series = new Series({ id: "engine.rpm" });
+  series.pushMany(line(0, 1000, 100, (t) => t));
+  assert.equal(series.valueAt(-500)?.t, 0, "before the first sample the first sample wins");
+  assert.equal(series.valueAt(0)?.t, 0);
+  assert.equal(series.valueAt(5000)?.t, 1000, "past the last sample the last sample wins");
+});
+
+test("statistics skip non-finite samples and report nulls without any finite sample", () => {
+  const series = new Series({ id: "sensor.gappy" });
+  series.pushMany([
+    { t: 0, value: Number.NaN },
+    { t: 100, value: 10 },
+    { t: 200, value: 20 },
+  ]);
+  const stats = series.stats();
+  assert.equal(stats.count, 3);
+  assert.equal(stats.min, 10);
+  assert.equal(stats.max, 20);
+  // The denominator counts every point in the window, including skipped ones.
+  assert.equal(stats.average, 10);
+
+  const gaps = new Series({ id: "sensor.dead" });
+  gaps.pushMany([
+    { t: 0, value: Number.NaN },
+    { t: 100, value: Number.POSITIVE_INFINITY },
+  ]);
+  assert.deepEqual(gaps.stats(), {
+    count: 2,
+    min: null,
+    max: null,
+    average: null,
+    delta: null,
+    first: null,
+    last: null,
+  });
 });
 
 /* ----------------------------------------------------------------- decimation */
@@ -126,6 +231,37 @@ test("decimation is a no-op for small series and for maxPoints <= 0", () => {
   const points = line(0, 10, 1);
   assert.equal(decimate(points, 100).length, points.length);
   assert.deepEqual(decimate(points, 0), []);
+});
+
+test("min/max decimation keeps the extremes whichever came first", () => {
+  // Descending values: in every bucket the maximum precedes the minimum.
+  const reduced = decimateMinMax(
+    line(0, 9, 1, (t) => 10 - t),
+    4,
+  );
+  const values = reduced.map((p) => p.value);
+  assert.ok(values.includes(10), "the early maximum must survive");
+  assert.ok(values.includes(1), "the late minimum must survive");
+});
+
+test("min/max decimation answers degenerate inputs without decimation", () => {
+  assert.deepEqual(decimateMinMax([], 10), []);
+  const sameTime = [
+    { t: 5, value: 1 },
+    { t: 5, value: 2 },
+    { t: 5, value: 3 },
+  ];
+  assert.equal(decimateMinMax(sameTime, 2), sameTime, "a zero time span has no buckets");
+  const small = line(0, 10, 1);
+  assert.equal(decimateMinMax(small, 100), small);
+});
+
+test("lttb answers degenerate inputs without decimation", () => {
+  assert.deepEqual(decimateLttb([], 10), []);
+  const small = line(0, 10, 1);
+  assert.equal(decimateLttb(small, 100), small);
+  const many = line(0, 100, 1);
+  assert.equal(decimateLttb(many, 2), many, "fewer than 3 points cannot triangulate");
 });
 
 /* ------------------------------------------------------------------- viewport */
@@ -188,6 +324,44 @@ test("pixel mapping round-trips", () => {
   const x = viewport.toX(2000, 800);
   assert.equal(x, 400);
   assert.equal(viewport.toT(x, 800), 2000);
+});
+
+test("guards refuse nonsense instead of corrupting the window", () => {
+  const viewport = new TimeViewport({ span: 1000, minSpan: 100 });
+  viewport.setRange(200, 1200);
+  viewport.setRange(Number.NaN, 500);
+  viewport.setRange(500, Number.POSITIVE_INFINITY);
+  assert.deepEqual(viewport.range, { from: 200, to: 1200 });
+
+  viewport.zoomAt(Number.NaN, 500);
+  viewport.zoomAt(0, 500);
+  viewport.zoomAt(-2, 500);
+  assert.deepEqual(viewport.range, { from: 200, to: 1200 });
+
+  viewport.panByPixels(100, 0);
+  assert.deepEqual(viewport.range, { from: 200, to: 1200 });
+
+  viewport.fit();
+  assert.deepEqual(viewport.range, { from: 200, to: 1200 }, "fit without bounds keeps the window");
+
+  assert.equal(viewport.toT(400, 0), 200, "a zero-width plot maps every pixel to the left edge");
+});
+
+test("a window below minSpan expands around its center", () => {
+  const viewport = new TimeViewport({ span: 1000, minSpan: 100 });
+  viewport.setRange(500, 520);
+  assert.equal(viewport.span, 100);
+  assert.equal(viewport.from, 460);
+  assert.equal(viewport.to, 560);
+});
+
+test("mapping survives a collapsed window", () => {
+  const viewport = new TimeViewport({ span: 1000 });
+  viewport.from = viewport.to; // public fields: a collapsed window is representable
+  assert.equal(viewport.toX(500, 800), 0);
+  // The anchor ratio falls back to the center instead of dividing by zero.
+  viewport.zoomAt(2, 500);
+  assert.ok(viewport.span > 0);
 });
 
 /* ---------------------------------------------------------------------- group */
@@ -468,6 +642,78 @@ test("metadata that arrives late fills gaps without overwriting documented value
   assert.equal(ensured.color, "#4f9cf9", "documented values are never overwritten");
 });
 
+test("zoom limits from the group options reach the shared viewport", () => {
+  const group = new ChartGroup({
+    defaultSpanMs: 1000,
+    minSpanMs: 500,
+    maxSpanMs: 4000,
+    paddingFraction: 0.1,
+  });
+  assert.equal(group.viewport.minSpan, 500);
+  assert.equal(group.viewport.maxSpan, 4000);
+  assert.equal(group.viewport.paddingFraction, 0.1);
+  group.push("engine.rpm", line(0, 60_000, 100));
+  group.setSpan(100);
+  assert.equal(group.viewport.span, 500, "the minimum span clamps presets");
+  group.setSpan(60_000);
+  assert.equal(group.viewport.span, 4000, "the maximum span clamps presets");
+});
+
+test("switching follow off freezes the window but keeps the data", () => {
+  const group = new ChartGroup({ defaultSpanMs: 1000, follow: true });
+  group.push("engine.rpm", line(0, 5000, 100));
+  const reasons: string[] = [];
+  group.subscribe((reason) => reasons.push(reason));
+  group.setFollow(false);
+  assert.equal(group.follow, false);
+  assert.deepEqual(reasons, ["follow"]);
+  const frozen = group.viewport.range;
+  group.push("engine.rpm", line(5100, 9000, 100));
+  assert.deepEqual(group.viewport.range, frozen);
+});
+
+test("one throwing subscriber neither breaks the others nor stays silent", () => {
+  const group = new ChartGroup();
+  const seen: string[] = [];
+  group.subscribe((reason) => seen.push(reason));
+  group.subscribe(() => {
+    throw new Error("renderer boom");
+  });
+  group.subscribe(() => {
+    throw "string failure";
+  });
+  const calls: unknown[][] = [];
+  const original = console.debug;
+  console.debug = (...args: unknown[]) => {
+    calls.push(args);
+  };
+  try {
+    group.ensureSeries("engine.rpm");
+  } finally {
+    console.debug = original;
+  }
+  assert.deepEqual(seen, ["series"]);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0]?.[0], "[charts] subscriber failed");
+  assert.match(
+    String((calls[0]?.[1] as { error?: unknown } | undefined)?.error ?? ""),
+    /renderer boom/,
+  );
+  assert.match(
+    String((calls[1]?.[1] as { error?: unknown } | undefined)?.error ?? ""),
+    /string failure/,
+  );
+});
+
+test("the readout carries the series color for the legend", () => {
+  const group = new ChartGroup({ defaultSpanMs: 1000, follow: false });
+  group.ensureSeries("engine.rpm", { name: "Drehzahl", color: "#ff0000" });
+  group.push("engine.rpm", line(0, 2000, 100));
+  group.setCursor(1000);
+  const [row] = group.readout().rows;
+  assert.equal(row?.color, "#ff0000");
+});
+
 /* ---------------------------------------------------------------------- scale */
 
 test("nice ticks stay inside the range and keep a readable count", () => {
@@ -484,6 +730,11 @@ test("time ticks use round millisecond steps", () => {
   assert.ok(ticks.length >= 3);
   assert.ok(ticks.every((t) => Number.isInteger(t)));
   assert.equal(formatClock(65_432), "01:05.432");
+});
+
+test("tick generation is capped so a wild target cannot freeze the axis", () => {
+  assert.equal(niceTicks(0, 1, 1e12).length, 1001);
+  assert.equal(niceTimeTicks(0, 1, 1e12).length, 501);
 });
 
 test("y range widens a flat line and honours declared limits", () => {

@@ -18,6 +18,7 @@ import {
   runCoding,
 } from "../index.js";
 import { type WriteBinding, WritePort } from "./port.js";
+import { DiagnosticTransaction } from "./transaction.js";
 
 class FakeVirtualBcm implements CodingTargetEcu {
   id = "ecu-bcm";
@@ -441,5 +442,292 @@ describe("Virtual Adaptation System", () => {
 
     assert.equal(resultErr.ok, false);
     assert.match(resultErr.reasons.join("; "), /verification readback for idle_speed failed/);
+  });
+});
+
+describe("Adaptation Failure Paths", () => {
+  function adaptationPort(): WritePort {
+    const port = new WritePort({ safety: new SafetyManager() });
+    port.register(createAdaptationOperation());
+    return port;
+  }
+
+  test("a range rejection without a unit names no unit", async () => {
+    const port = adaptationPort();
+    const engine = new FakeVirtualEngine();
+    const result = await runAdaptation(
+      port,
+      {
+        target: engine,
+        channelDid: 0x2100,
+        channelName: "idle_speed",
+        requestedValue: 1200,
+        allowedRange: { min: 600, max: 900 },
+        userConfirmed: true,
+      },
+      engineBinding(engine),
+    );
+
+    assert.equal(result.ok, false);
+    assert.equal(engine.writeAttempts, 0);
+    assert.match(result.reasons.join("; "), /outside permitted range 600\.\.900/);
+    assert.ok(!result.reasons.join("; ").includes("rpm"));
+  });
+
+  test("a unit-less channel verifies without claiming a unit", async () => {
+    const port = adaptationPort();
+    const engine = new FakeVirtualEngine();
+    const result = await runAdaptation(
+      port,
+      {
+        target: engine,
+        channelDid: 0x2100,
+        channelName: "idle_speed",
+        requestedValue: 750,
+        allowedRange: { min: 600, max: 900 },
+        userConfirmed: true,
+      },
+      engineBinding(engine),
+    );
+
+    assert.equal(result.ok, true);
+    assert.equal(result.value?.verified, true);
+    assert.ok(result.value && !("unit" in result.value));
+  });
+
+  test("a target without a session type starts from the default session", async () => {
+    const port = adaptationPort();
+    const engine = new FakeVirtualEngine();
+    delete (engine as Partial<FakeVirtualEngine>).sessionType;
+    const result = await runAdaptation(
+      port,
+      {
+        target: engine,
+        channelDid: 0x2100,
+        channelName: "idle_speed",
+        requestedValue: 750,
+        allowedRange: { min: 600, max: 900, unit: "rpm" },
+        userConfirmed: true,
+      },
+      engineBinding(engine),
+    );
+
+    assert.equal(result.ok, true);
+    assert.equal(engine.sessionType, 0x03, "the switch still moves to the write session");
+  });
+
+  test("a refused session switch aborts the adaptation in prepare", async () => {
+    const port = adaptationPort();
+    const engine = new FakeVirtualEngine();
+    engine.throwOnSessionSwitch = true;
+    const result = await runAdaptation(
+      port,
+      {
+        target: engine,
+        channelDid: 0x2100,
+        channelName: "idle_speed",
+        requestedValue: 750,
+        allowedRange: { min: 600, max: 900, unit: "rpm" },
+        userConfirmed: true,
+      },
+      engineBinding(engine),
+    );
+
+    assert.equal(result.ok, false);
+    assert.equal(engine.writeAttempts, 0);
+    assert.match(result.reasons.join("; "), /session switch for adaptation failed/);
+    assert.equal(result.transaction.state, "aborted");
+  });
+
+  test("an unreadable backup aborts the adaptation in prepare", async () => {
+    const port = adaptationPort();
+    const engine = new FakeVirtualEngine();
+    engine.throwOnRead = true;
+    const result = await runAdaptation(
+      port,
+      {
+        target: engine,
+        channelDid: 0x2100,
+        channelName: "idle_speed",
+        requestedValue: 750,
+        allowedRange: { min: 600, max: 900, unit: "rpm" },
+        userConfirmed: true,
+      },
+      engineBinding(engine),
+    );
+
+    assert.equal(result.ok, false);
+    assert.equal(engine.writeAttempts, 0, "no backup, no write");
+    assert.match(result.reasons.join("; "), /failed to read current adaptation backup/);
+    assert.equal(result.transaction.state, "aborted");
+  });
+
+  test("rollback without a captured backup refuses instead of guessing", async () => {
+    const operation = createAdaptationOperation();
+    assert.ok(operation.rollback, "adaptation is the operation that can be undone");
+    const engine = new FakeVirtualEngine();
+    const transaction = new DiagnosticTransaction({
+      binding: { kind: "adaptation", risk: "medium", ecuId: engine.id, ecuName: engine.name },
+    });
+    const outcome = await operation.rollback(
+      transaction,
+      {
+        target: engine,
+        channelDid: 0x2100,
+        channelName: "idle_speed",
+        requestedValue: 750,
+        allowedRange: { min: 600, max: 900, unit: "rpm" },
+        userConfirmed: true,
+      },
+      "execute failed",
+    );
+
+    assert.equal(outcome.ok, false);
+    assert.match(outcome.reasons?.join("; ") ?? "", /no backup was captured/);
+  });
+
+  test("a rollback whose write fails is reported as an abort", async () => {
+    const port = adaptationPort();
+    const engine = new FakeVirtualEngine();
+    engine.writeAdaptation = async () => {
+      throw new Error("EEPROM programming voltage failure");
+    };
+    const result = await runAdaptation(
+      port,
+      {
+        target: engine,
+        channelDid: 0x2100,
+        channelName: "idle_speed",
+        requestedValue: 750,
+        allowedRange: { min: 600, max: 900, unit: "rpm" },
+        userConfirmed: true,
+      },
+      engineBinding(engine),
+    );
+
+    assert.equal(result.ok, false);
+    assert.equal(result.transaction.state, "aborted");
+    const rollback = result.stages.find((stage) => stage.stage === "rollback");
+    assert.equal(rollback?.state, "failed");
+    assert.match(rollback?.reasons.join("; ") ?? "", /failed to roll back adaptation/);
+  });
+});
+
+describe("Coding Failure Paths", () => {
+  function codingPort(): WritePort {
+    const port = new WritePort({ safety: new SafetyManager() });
+    port.register(createCodingOperation());
+    return port;
+  }
+
+  test("applyCodingChanges rejects bits and bytes outside their range", () => {
+    const original = new Uint8Array([0x00]);
+    assert.throws(
+      () => applyCodingChanges(original, [{ byteIndex: 0, bitIndex: 8, value: 1 }]),
+      /must be 0\.\.7/,
+    );
+    assert.throws(
+      () => applyCodingChanges(original, [{ byteIndex: 0, bitIndex: -1, value: 1 }]),
+      /must be 0\.\.7/,
+    );
+    assert.throws(
+      () => applyCodingChanges(original, [{ byteIndex: 0, bitIndex: 0, value: 2 }]),
+      /must be 0 or 1/,
+    );
+    assert.throws(
+      () => applyCodingChanges(original, [{ byteIndex: 0, value: 256 }]),
+      /must be 0\.\.255/,
+    );
+    assert.throws(
+      () => applyCodingChanges(original, [{ byteIndex: 0, value: -1 }]),
+      /must be 0\.\.255/,
+    );
+  });
+
+  test("applyCodingChanges clears a set bit and says what it cleared", () => {
+    const result = applyCodingChanges(new Uint8Array([0xff]), [
+      { byteIndex: 0, bitIndex: 3, value: 0 },
+    ]);
+    assert.equal(result.modified[0], 0xf7);
+    assert.match(result.diffSummary[0] ?? "", /Byte 0 Bit 3: 1 -> 0/);
+  });
+
+  test("a target without a session type starts coding from the default session", async () => {
+    const port = codingPort();
+    const bcm = new FakeVirtualBcm(new Uint8Array([0x00]));
+    delete (bcm as Partial<FakeVirtualBcm>).sessionType;
+    const result = await runCoding(
+      port,
+      {
+        target: bcm,
+        changes: [{ byteIndex: 0, bitIndex: 3, value: 1 }],
+        userConfirmed: true,
+      },
+      bcmBinding(bcm),
+    );
+
+    assert.equal(result.ok, true);
+    assert.equal(bcm.sessionType, 0x03, "the switch still moves to the write session");
+  });
+
+  test("a refused session switch aborts coding in prepare", async () => {
+    const port = codingPort();
+    const bcm = new FakeVirtualBcm(new Uint8Array([0x00]));
+    bcm.throwOnSessionSwitch = true;
+    const result = await runCoding(
+      port,
+      {
+        target: bcm,
+        changes: [{ byteIndex: 0, bitIndex: 3, value: 1 }],
+        userConfirmed: true,
+      },
+      bcmBinding(bcm),
+    );
+
+    assert.equal(result.ok, false);
+    assert.equal(bcm.writeAttempts, 0);
+    assert.match(result.reasons.join("; "), /session switch for coding failed/);
+    assert.equal(result.transaction.state, "aborted");
+  });
+
+  test("an unreadable coding backup aborts coding in prepare", async () => {
+    const port = codingPort();
+    const bcm = new FakeVirtualBcm(new Uint8Array([0x00]));
+    bcm.throwOnRead = true;
+    const result = await runCoding(
+      port,
+      {
+        target: bcm,
+        changes: [{ byteIndex: 0, bitIndex: 3, value: 1 }],
+        userConfirmed: true,
+      },
+      bcmBinding(bcm),
+    );
+
+    assert.equal(result.ok, false);
+    assert.equal(bcm.writeAttempts, 0, "no backup, no write");
+    assert.match(result.reasons.join("; "), /failed to read initial coding backup/);
+    assert.equal(result.transaction.state, "aborted");
+  });
+
+  test("coding rollback without a captured backup refuses instead of guessing", async () => {
+    const operation = createCodingOperation();
+    assert.ok(operation.rollback, "coding is an operation that can be undone");
+    const bcm = new FakeVirtualBcm(new Uint8Array([0x00]));
+    const transaction = new DiagnosticTransaction({
+      binding: { kind: "coding", risk: "high", ecuId: bcm.id, ecuName: bcm.name },
+    });
+    const outcome = await operation.rollback(
+      transaction,
+      {
+        target: bcm,
+        changes: [{ byteIndex: 0, bitIndex: 3, value: 1 }],
+        userConfirmed: true,
+      },
+      "execute failed",
+    );
+
+    assert.equal(outcome.ok, false);
+    assert.match(outcome.reasons?.join("; ") ?? "", /no backup was captured/);
   });
 });

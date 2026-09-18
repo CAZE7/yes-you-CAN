@@ -65,7 +65,7 @@ runtime.evidence.hypotheses() → Hypothesis[]
 
 ## Tests
 
-Co-lokatierte `src/*.spec.ts` (Gate 95/85); End-to-End-Kette
+Co-lokatierte `src/*.spec.ts` (Gate 95/88); End-to-End-Kette
 `tests/integration/scenario-chain.test.ts`.
 
 ## Examples

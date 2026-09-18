@@ -373,6 +373,101 @@ test("a refused session switch aborts before anything is written", async () => {
   assert.equal(result.transaction.state, "aborted");
 });
 
+test("a fault memory that cannot be read aborts the clear before anything is written", async () => {
+  const { port: writes } = port();
+  const ecu = new FakeEcu([record("P0420", 0x2f)]);
+  ecu.readDtcs = async () => {
+    throw new Error("no response");
+  };
+  const result = await runDtcClear(writes, { target: ecu, userConfirmed: true }, binding(ecu));
+
+  assert.equal(result.ok, false);
+  assert.equal(ecu.cleared, 0);
+  const prepare = result.stages.find((stage) => stage.stage === "prepare");
+  assert.equal(prepare?.state, "failed");
+  assert.match(prepare?.reasons[0] ?? "", /nicht lesbar/);
+  assert.equal(result.transaction.state, "aborted");
+});
+
+test("a stage that rejects with a non-error still yields a readable reason", async () => {
+  const { port: writes } = port();
+
+  // A rejected string travels verbatim — Promise.reject("boom") never becomes an Error.
+  const stringEcu = new FakeEcu([record("P0420", 0x2f)]);
+  stringEcu.readDtcs = () => Promise.reject("boom");
+  const stringResult = await runDtcClear(
+    writes,
+    { target: stringEcu, userConfirmed: true },
+    binding(stringEcu),
+  );
+  assert.equal(stringResult.ok, false);
+  assert.match(stringResult.reasons.join("; "), /boom/);
+
+  const numberEcu = new FakeEcu([record("P0420", 0x2f)]);
+  numberEcu.readDtcs = () => Promise.reject(42);
+  const numberResult = await runDtcClear(
+    writes,
+    { target: numberEcu, userConfirmed: true },
+    binding(numberEcu),
+  );
+  assert.equal(numberResult.ok, false);
+  assert.match(numberResult.reasons.join("; "), /unbekannter Fehler/);
+});
+
+test("a write without a definition version describes itself without one", () => {
+  const operation = createDtcClearOperation({ scanner: scanner() });
+  const ecu = new FakeEcu([record("P0420", 0x2f)]);
+  const transaction = new DiagnosticTransaction({
+    binding: { kind: "clear-dtc", risk: "medium", ecuId: ecu.id, ecuName: ecu.name },
+  });
+  const described = operation.describe(
+    transaction,
+    { target: ecu, userConfirmed: true },
+    undefined,
+    ecu.sessionType,
+  );
+  assert.ok(!("definitionVersion" in described.context));
+});
+
+test("verification without a logged permit refuses, even when the re-read is clean", async () => {
+  const operation = createDtcClearOperation({ scanner: scanner() });
+  assert.ok(operation.verify, "the operation verifies by re-read");
+  const ecu = new FakeEcu([]);
+  // A fresh transaction never confirmed anything — no permit was logged.
+  const transaction = new DiagnosticTransaction({
+    binding: { kind: "clear-dtc", risk: "medium", ecuId: ecu.id, ecuName: ecu.name },
+  });
+  const outcome = await operation.verify(
+    transaction,
+    { target: ecu, userConfirmed: true },
+    { before: [], sessionType: ecu.sessionType },
+    // The arm under test returns before touching the execute value.
+    undefined as unknown as ClearDtcResult,
+  );
+  assert.equal(outcome.ok, false);
+  assert.match(outcome.reasons?.join("; ") ?? "", /kein Write-Permit/);
+});
+
+test("an unverified clear says so in its audit description", async () => {
+  const { port: writes } = port();
+  const ecu = new FakeEcu([record("P0420", 0x2f)]);
+  ecu.clearDiagnosticInformation = async () => {
+    ecu.cleared++;
+  };
+  const descriptions: string[] = [];
+  const result = await runDtcClear(
+    writes,
+    {
+      target: ecu,
+      userConfirmed: true,
+      recordAction: (action) => descriptions.push(action.description),
+    },
+    binding(ecu),
+  );
+  assert.equal(result.value?.verified, false);
+  assert.match(descriptions.join("; "), /nicht vollständig bestätigt/);
+});
+
 /* ----------------------------------------------- the port as a machine */
 
 /**
@@ -494,6 +589,124 @@ test("a pre-check works without a session type — the default session is assume
   });
   assert.equal(result.ok, true);
   assert.match(result.transactionId, /^tx_/);
+});
+
+test("a prepare that fails without reasons still aborts with a named reason", async () => {
+  const port = testPort(
+    testOperation({
+      async prepare() {
+        return { ok: false, reasons: [] };
+      },
+    }),
+  );
+  const result = await runTestWrite(port);
+  assert.equal(result.ok, false);
+  assert.equal(result.transaction.state, "aborted");
+  assert.equal(result.transaction.reason, "prepare did not capture the previous state");
+});
+
+test("a permit refused at issue-time aborts the confirm stage instead of running on", async () => {
+  const safety = new SafetyManager();
+  safety.requestPermit = () => {
+    throw new Error("permit printer jammed");
+  };
+  const port = new WritePort({ safety });
+  port.register(testOperation());
+  const result = await runTestWrite(port);
+  assert.equal(result.ok, false);
+  assert.equal(result.transaction.state, "aborted");
+  assert.match(result.reasons.join("; "), /permit printer jammed/);
+});
+
+test("a failed confirm tells missing proofs apart from violations (P0 #5)", async () => {
+  const port = testPort(testOperation());
+  const { batteryVoltage: _omitted, ...restedState } = TEST_BINDING.vehicleState;
+  const result = await port.run<TestInput, string, string>(
+    "test-write",
+    { userConfirmed: true },
+    { ...TEST_BINDING, vehicleState: restedState },
+  );
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.unproven, [
+    "battery voltage unknown — cannot prove the supply is stable",
+  ]);
+  assert.ok(result.reasons.some((reason) => reason.includes("battery voltage unknown")));
+});
+
+test("a reason-less execute failure aborts with the operation kind as the reason", async () => {
+  const port = testPort(
+    testOperation({
+      async execute() {
+        return { ok: false, reasons: [] };
+      },
+    }),
+  );
+  const result = await runTestWrite(port);
+  assert.equal(result.ok, false);
+  assert.equal(result.transaction.state, "aborted");
+  assert.equal(result.transaction.reason, "test-write failed");
+  const rollback = result.stages.find((stage) => stage.stage === "rollback");
+  assert.equal(rollback?.state, "skipped");
+  assert.match(rollback?.reasons[0] ?? "", /provides no rollback/);
+});
+
+test("a write without a value finishes without claiming one", async () => {
+  const port = testPort(
+    testOperation({
+      async execute() {
+        return { ok: true };
+      },
+    }),
+  );
+  const result = await runTestWrite(port);
+  assert.equal(result.ok, true);
+  assert.ok(!("value" in result));
+});
+
+test("a run without a session type anywhere describes the write in the default session", async () => {
+  let seen: number | undefined;
+  const port = testPort(
+    testOperation({
+      describe(transaction, _input, _prepared, sessionType) {
+        seen = sessionType;
+        const definitionVersion = transaction.snapshot.binding.definitionVersion;
+        return {
+          context: {
+            ecuId: "ecu-test",
+            ecuName: "Test ECU",
+            newValue: "0x01",
+            risk: "low",
+            userConfirmed: true,
+            backupAvailable: true,
+            activeSessionType: 0x03,
+            ...(definitionVersion !== undefined ? { definitionVersion } : {}),
+          },
+        };
+      },
+    }),
+  );
+  const { sessionType: _omitted, ...withoutSessionType } = TEST_BINDING;
+  const result = await port.run<TestInput, string, string>(
+    "test-write",
+    { userConfirmed: true },
+    withoutSessionType,
+  );
+  assert.equal(result.ok, true);
+  assert.equal(seen, 0x01);
+});
+
+test("a run without a definition version is refused — nothing is verified, nothing runs", async () => {
+  const port = testPort(testOperation());
+  const { definitionVersion: _omitted, ...withoutDefinition } = TEST_BINDING;
+  const result = await port.run<TestInput, string, string>(
+    "test-write",
+    { userConfirmed: true },
+    withoutDefinition,
+  );
+  assert.equal(result.ok, false);
+  assert.ok(!("definitionVersion" in result.transaction.binding));
+  assert.match(result.reasons.join("; "), /no definition version/);
+  assert.equal(result.transaction.state, "aborted");
 });
 
 test("the port forgets old transactions first — an audit trail with a bound", async () => {

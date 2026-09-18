@@ -694,4 +694,24 @@ describe("DiagnosticEngine — the façade delegates", () => {
     assert.equal(engine.vehicleContext, undefined, "knowledge does not outlive the session");
     expect(() => engine.handleFor(0x7e8)).not.toThrow();
   });
+
+  test("an engine without options still answers the static queries", async () => {
+    const engine = new DiagnosticEngine({});
+    assert.deepEqual(engine.definitions, []);
+    assert.equal(engine.activePackage, undefined);
+    assert.equal(engine.vehicleSession, null);
+    await engine.disconnect();
+  });
+
+  test("readDtcSnapshot answers null when the ECU stored no frame for the code", async () => {
+    const ecu = createInMemoryEcu({ name: "engine", dtcs: [{ code: "P0420", status: 0x08 }] });
+    const engine = new DiagnosticEngine({
+      logger,
+      definitions: [packageWith()],
+      linkFactory: { open: () => ({ link: ecu.link, close: () => undefined }) },
+    });
+    await engine.attach({ txId: 0x7e0, rxId: 0x7e8, definitionEcuId: "test:engine" });
+    assert.equal(await engine.readDtcSnapshot(0x7e8, "P0300"), null);
+    await engine.disconnect();
+  });
 });

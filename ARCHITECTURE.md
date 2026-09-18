@@ -83,7 +83,7 @@ Die zulässigen Kanten pro Paket stehen dort unter `packages.*.mayImport` —
   [`docs/glossary.md`](docs/glossary.md)). `DiagnosticObservation`-Typen tragen
   immer `evidence: Evidence` — `proven` (mit Herkunft) oder `unproven` (mit
   Grund). Fehlende Evidenz ist ein Fehlschlag, keine Warnung (ADR 0033).
-- **Tests:** co-lokatierte `*.spec.ts`; `diagnostic-ir` mit per-file-Gate 95/85.
+- **Tests:** co-lokatierte `*.spec.ts`; `diagnostic-ir` mit per-file-Gate 95/90.
 
 ### application — `@vdp/application`
 
@@ -112,7 +112,7 @@ Die zulässigen Kanten pro Paket stehen dort unter `packages.*.mayImport` —
   Exception ohne Grund (ADR 0018/0039). Der `UdsServer` hat eine
   Simulator-API (`registerDid`, `registerWritableDid`, `setDtc`) — Casts in
   interne Maps sind verboten (ADR 0041).
-- **Tests:** `packages/protocols/*/src/*.spec.ts` (per-file-Gate 90/75),
+- **Tests:** `packages/protocols/*/src/*.spec.ts` (per-file-Gate 93/78),
   Konformanz-Suite `tests/protocol/`.
 
 ### transport — `@vdp/transport-can`, `@vdp/transport-iso-tp`, `@vdp/transport-doip`
@@ -128,7 +128,7 @@ Die zulässigen Kanten pro Paket stehen dort unter `packages.*.mayImport` —
   (`open/close/send/subscribe`); ISO-TP hält die Transaktionssperre pro
   Verbindung (ADR 0013); abgeschnittene Antworten sind Fehler, keine leeren
   Speicher (ADR 0039).
-- **Tests:** co-lokatierte Specs (per-file-Gate 88/72).
+- **Tests:** co-lokatierte Specs (per-file-Gate 90/74).
 
 ### adapter — `@vdp/adapter-*`
 
@@ -144,7 +144,7 @@ Die zulässigen Kanten pro Paket stehen dort unter `packages.*.mayImport` —
   `CanAdapterFactory` (`id`, `displayName`, `create`, `isAvailable`) — neue
   Hardware steckt in die Registry, berührt nicht den Engine (Regel 34.6).
   `node:`-Builtins (tty, os, …) sind nur hier erlaubt.
-- **Tests:** co-lokatierte Specs (per-file-Gate 92/78); Hardware-Smoke
+- **Tests:** co-lokatierte Specs (per-file-Gate 93/78); Hardware-Smoke
   `tests/hardware/vcan.test.ts` (manuell).
 
 ### core — `@vdp/core`
@@ -165,7 +165,7 @@ Die zulässigen Kanten pro Paket stehen dort unter `packages.*.mayImport` —
   (`dtcObservationOf`, `sessionObservationOf`); Schreiboperationen existieren
   nur als `WriteOperation` hinter `WritePort` (ADR 0032); fehlende Evidenz
   schlägt fehl (ADR 0033).
-- **Tests:** co-lokatierte Specs (per-file-Gate 88/80) +
+- **Tests:** co-lokatierte Specs (per-file-Gate 92/82) +
   `tests/protocol/`, `tests/replay/`, `tests/regression/`.
 
 ### runtime — `@vdp/runtime`
@@ -213,7 +213,7 @@ Die zulässigen Kanten pro Paket stehen dort unter `packages.*.mayImport` —
   statt Evidenz-Vokabeln zu kopieren (ADR 0037).
 - **Main entry points:** `packages/reports/src/index.ts`,
   `packages/charts/src/index.ts`.
-- **Tests:** co-lokatierte Specs (per-file-Gate: Reports 95/80, Charts 90/75).
+- **Tests:** co-lokatierte Specs (per-file-Gate: Reports 95/82, Charts 95/85).
 
 ### AI — `@vdp/ai`
 
@@ -232,7 +232,7 @@ Die zulässigen Kanten pro Paket stehen dort unter `packages.*.mayImport` —
 - **Important contracts:** Faktische Eingabe = `EvidenceSet` + Hypothesen +
   Versionen; Befunde zitieren Item-Ids; ein Zitat auf ein nicht existierendes
   Item fällt weg; keine Konfidenz, die der Beleg nicht trägt.
-- **Tests:** `packages/ai/src/*.spec.ts` (per-file-Gate 95/85).
+- **Tests:** `packages/ai/src/*.spec.ts` (per-file-Gate 95/88).
 
 ### UI — `@vdp/web` (`apps/web`)
 
