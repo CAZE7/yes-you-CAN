@@ -150,7 +150,10 @@ describe("TypeScript ⇄ Haskell differential", () => {
 
   test(
     "the Haskell reference reproduces the same results for every vector",
-    { skip: runner === null },
+    // Two `runghc` legs — each interprets the whole formal tree from source — do
+    // not fit the global 20 s window (measured on the runner: cold >20 s); the
+    // coverage gate carries the same bound for the same reason.
+    { skip: runner === null, timeout: 10 * 60_000 },
     async () => {
       assert.ok(runner !== null);
       for (const [set, file] of [
