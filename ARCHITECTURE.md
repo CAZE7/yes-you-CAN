@@ -201,7 +201,9 @@ Die zulässigen Kanten pro Paket stehen dort unter `packages.*.mayImport` —
   (`FileSystemSessionRepository`, `MemorySessionRepository`, `parseTraceLines`).
 - **Important contracts:** Migrations sind versioniert (ADR 0007); alte
   Sessions bleiben lesbar (Regel 34.14); `node:fs` ist hier erlaubt — das ist
-  der Dateizugriff der Plattform.
+  der Dateizugriff der Plattform; der Node-`IntegrityPort` gehört ebenfalls
+  hierher (`nodeIntegrityPort`, ADR 0047 — die Persistenz schreibt den Export,
+  dem das Manifest beiliegt).
 - **Tests:** `packages/storage/src/*.spec.ts` (per-file-Gate 95/80).
 
 ### presentation — `@vdp/reports`, (foundation) `@vdp/charts`
@@ -260,7 +262,8 @@ Die zulässigen Kanten pro Paket stehen dort unter `packages.*.mayImport` —
 
 - **Purpose:** Virtuelles Fahrzeug mit Verhaltensmodell + Szenario-Engine +
   Fault-Injection (ADR 0039/0040) und strenge Szenario-Dateien
-  (`parseScenarioFile`, ADR 0046), Aufzeichnung/Replay mit Erwartung
+  (`parseScenarioFile`, ADR 0046), deren Dateien der eine Katalog sind
+  (ADR 0048), Aufzeichnung/Replay mit Erwartung
   (ADR 0036), Konformanz-Vektoren gegen die Haskell-Referenz (ADR 0045),
   Offline-Trace-Analyse, Definition-Import.
 - **Allowed dependencies:** siehe `architecture.yaml` — Tools dürfen breit
@@ -269,7 +272,8 @@ Die zulässigen Kanten pro Paket stehen dort unter `packages.*.mayImport` —
   ein Tool ist keine Schicht — kein `packages/*` darf `@vdp/simulators` o. Ä.
   als Runtime-Dependency deklrieren (CI-Gate über die Import-Graph-Prüfung).
 - **Main entry points:** `tools/simulators/src/index.ts`
-  (`VirtualVehicle`, `HighFidelityVehicle`, `SCENARIO_CATALOG`, `runScenario`),
+  (`VirtualVehicle`, `HighFidelityVehicle`, `loadScenarioLibrary` — der Katalog
+  sind die Dateien unter `scenarios/`, `runScenario`),
   `tools/golden-sessions/src/cli.ts`, `tools/formal-conformance/src/cli.ts`
   (`npm run formal:conform`), `tools/trace-analyzer/src/index.ts`.
 - **Important contracts:** Der Simulator antwortet wie ein echtes

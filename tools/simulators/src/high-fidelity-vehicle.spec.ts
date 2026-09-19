@@ -18,6 +18,7 @@ import { type DtcRecord, UdsClient } from "@vdp/protocols-uds";
 import { createLogger } from "@vdp/shared";
 import { IsoTpConnection } from "@vdp/transport-iso-tp";
 import { afterAll, beforeAll, describe, test } from "vitest";
+import { scenarioFiles } from "../../../tests/helpers/scenario-files.js";
 import { HEARTBEAT_IDS, HighFidelityVehicle } from "./high-fidelity-vehicle.js";
 import type { VirtualEcu } from "./virtual-vehicle.js";
 
@@ -412,5 +413,30 @@ describe("HighFidelityVehicle, measured through UDS", () => {
     assert.ok(bcmEcu?.server.hasDid(0x0200), "the coding block is registered");
     assert.ok(vehicle.ecu("engine")?.server.hasDid(0x2100), "the adaptation channel too");
     assert.deepEqual(vehicle.ecu("engine")?.server.registeredDids.includes(0xf190), true);
+  });
+
+  test("a scenario run starts from the file's baseline — twice in a row on this car", async () => {
+    const file = scenarioFiles().find((entry) => entry.id === "alternator_failure");
+    assert.ok(file, "the catalog carries alternator_failure");
+    const seed = file.determinism.seed;
+    const first = await vehicle.runScenario(file.scenario, { seed });
+    // `finalState` is the model's live object — snapshot it before the next run moves it.
+    const firstState = {
+      ...first.finalState,
+      wheelSpeedKph: { ...first.finalState.wheelSpeedKph },
+    };
+    assert.equal(first.passed, true, `unexpected: ${first.unexpected.join(", ")}`);
+    assert.deepEqual(first.unexpected, []);
+    // Now the demo condition between two runs: the operator reads the panel while the
+    // wall-clock loop drives the car the script's lingering causes left behind — the
+    // battery keeps draining, monitors latch on a car nobody is diagnosing.
+    vehicle.advance(20_000);
+    // The second run inherits all of it. It must still be the same run: the file is
+    // the bench's contract, not a suggestion the car's history can overrule.
+    const second = await vehicle.runScenario(file.scenario, { seed });
+    assert.equal(second.passed, true, `unexpected: ${second.unexpected.join(", ")}`);
+    assert.deepEqual(second.unexpected, []);
+    assert.equal(second.finalState.timeMs, file.scenario.durationMs, "the clock starts at 0");
+    assert.deepEqual(second.finalState, firstState, "same file, same seed, same run");
   });
 });

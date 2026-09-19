@@ -28,7 +28,7 @@ nicht diese Datei.
 | UI-View / -Panel | `apps/web/src/views.ts` (Wire-Contract) + `apps/web/public/` | `apps/web/src/backend.ts`, `apps/web/test/`, ADR 0030 |
 | Neue HTTP-Route | `apps/web/src/server.ts` | `apps/web/src/route-input.ts` (Grammatik-Prüfung), `apps/web/src/backend.ts` |
 | Simulator-Verhalten (Fahrzeug-Modell) | `tools/simulators/src/vehicle-model.ts` + `vehicle-state.ts` | `vehicle-wiring.ts`, `vehicle-monitors.ts`, `tests/integration/scenario-chain.test.ts` |
-| Szenario hinzufügen | `tools/simulators/src/scenario-catalog.ts` | `scenarios.ts` (`VehicleScenario`-Form), `scenarios.spec.ts` |
+| Szenario hinzufügen | `scenarios/*.json` (der Katalog selbst, ADR 0048) | `tools/simulators/src/scenario-file.ts` (Grammatik) + `scenario-library.ts` (Lader), `scenarios/README.md` |
 | Fault-Injection / Chaos | `tools/simulators/src/{faulty-link,chaos-lab}.ts` | `apps/web/src/backend.ts` (Chaos-Schalter, ADR 0029) |
 | Recording / Replay | `packages/core/src/logging/session-logger.ts` | `packages/storage/src/{repository,zip}.ts`, `tools/golden-sessions/`, `tests/replay/` |
 | Session-Schema / Migration | `packages/core/src/session/session.ts` | `packages/storage/src/migrations.ts`, ADR 0007 |

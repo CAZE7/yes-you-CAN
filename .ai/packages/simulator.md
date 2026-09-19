@@ -10,7 +10,8 @@ Fault-Injection, Golden Sessions.
 2. [`../../docs/flows/recording-replay.md`](../../docs/flows/recording-replay.md).
 3. ADRs: 0005 (Simulator & Replay), 0036 (Golden Sessions), 0039
    (Fault-Injection an der Link-Seam), 0040 (Verhaltensmodell + Szenario-
-   Engine), 0041 (UDS-Server-API für Simulatoren).
+   Engine), 0041 (UDS-Server-API für Simulatoren), 0046 (Szenariodateien),
+   0048 (die Dateien unter `scenarios/` **sind** der Katalog).
 4. Das E2E-Beispiel: [`../../tests/integration/scenario-chain.test.ts`](../../tests/integration/scenario-chain.test.ts)
    und [`../../tests/examples/simulator-scenario.example.ts`](../../tests/examples/simulator-scenario.example.ts).
 
@@ -25,8 +26,14 @@ Fault-Injection, Golden Sessions.
    `registerWritableDid`, `setDtc` — Casts in interne Maps sind verboten.
 4. **Fault-Injection sitzt an der Link-Seam** (ADR 0039) — die Plattform
    muss den Schaden sehen wie an einem echten Bus.
-5. **Determinismus:** `createRandom(seed)`, Modellzeit statt Wanduhr;
-   Warten auf Bedingungen (`tests/helpers/wait.ts`), nie fixen Sleeps.
+5. **Determinismus als Kette:** der Seed der Szenariodatei läuft bis in den
+   Lauf (`runScenario(…, { seed })`, `lastScenario` → `AnalysisInput`);
+   Modellzeit statt Wanduhr; Warten auf Bedingungen
+   (`tests/helpers/wait.ts`), nie fixen Sleeps. Auf dem Fahrzeug stellt
+   `HighFidelityVehicle.runScenario` die Basislinie vor jedem Lauf selbst
+   her (`prepareScenarioRun` → `VehicleBehaviourModel.restart()`): der
+   geborene Zustand, Uhr bei 0 — derselbe Lauf wie in der Suite, nicht
+   der Zustand, den Wanduhr und Vorlauf hinterlassen haben.
 6. **Golden Sessions sind Daten** (ADR 0036): Aufzeichnung + Erwartung +
    Lauf; der Vergleich läuft im IR-Vokabular über den echten Core.
 

@@ -22,6 +22,7 @@ formal models in "IsoTpTranscript" and "SafetyTranscript".
 module Main (main) where
 
 import Control.Exception (SomeException, try)
+import IsoTpTranscript (finalizeResult, runReceiverVector, runSenderVector)
 import Json
   ( JValue (..),
     asArray,
@@ -30,6 +31,7 @@ import Json
     parseJson,
     renderJson,
   )
+import SafetyTranscript (fileDefaultMinVoltage, runSafetyVector)
 import System.Environment (getArgs)
 import System.Exit (exitWith, ExitCode (..))
 import System.IO (hPutStrLn, stderr)
@@ -78,8 +80,8 @@ renderVector set file (index, vector) = do
     -- the comparison tool shows it next to the TypeScript result, with the
     -- index so the failing vector can be found in the file.
     runIsoTp vector' = case lookupKey "side" vector' >>= asString of
-      Just "rx" -> either (Left . withIndex) id (runReceiverVector vector') >>= finalizeResult'
-      Just "tx" -> either (Left . withIndex) id (runSenderVector vector') >>= finalizeResult'
+      Just "rx" -> either (Left . withIndex) Right (runReceiverVector vector') >>= finalizeResult'
+      Just "tx" -> either (Left . withIndex) Right (runSenderVector vector') >>= finalizeResult'
       _ -> Left (withIndex "isotp vector without side rx|tx")
     finalizeResult' r = either (Left . withIndex) Right (finalizeResult r)
     runSafety file' vector' = either (Left . withIndex) Right (runSafetyVector (fileDefaultMinVoltage file') vector')

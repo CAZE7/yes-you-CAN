@@ -10,10 +10,10 @@
  */
 
 import type { DtcRecord } from "@vdp/protocols-uds";
-import { toHex } from "@vdp/shared";
+import { SessionError, toHex } from "@vdp/shared";
 import type { CanFrame } from "@vdp/transport-can";
 import type { Marker, MeasurementSample } from "../measurements/recorder.js";
-import { type RawTraceManifest, createRawTraceManifest } from "./integrity.js";
+import { type IntegrityPort, type RawTraceManifest, createRawTraceManifest } from "./integrity.js";
 
 export interface RawTraceEntry {
   timestamp: string;
@@ -41,6 +41,13 @@ export interface SessionLogOptions {
   /** Cap the raw trace so a long recording cannot exhaust memory. */
   maxTraceEntries?: number;
   clock?: () => number;
+  /**
+   * The hashing seam for {@link SessionLogger.rawTraceManifest} (ADR 0047). The core
+   * has no crypto of its own — Node callers pass `nodeIntegrityPort` from
+   * `@vdp/storage`, a browser or WASM host passes its own. Without it a logger still
+   * records; only the witness is refused, with the reason.
+   */
+  integrity?: IntegrityPort;
 }
 
 export class SessionLogger {
@@ -49,11 +56,13 @@ export class SessionLogger {
   private readonly startedAt: number;
   private readonly clock: () => number;
   private readonly maxTraceEntries: number;
+  private readonly integrity: IntegrityPort | undefined;
 
   constructor(options: SessionLogOptions = {}) {
     this.clock = options.clock ?? (() => Date.now());
     this.startedAt = this.clock();
     this.maxTraceEntries = options.maxTraceEntries ?? 200_000;
+    this.integrity = options.integrity;
   }
 
   get traceLength(): number {
@@ -183,7 +192,16 @@ export class SessionLogger {
     return `${lines.join("\n")}\n`;
   }
 
-  /** JSON export — lossless, raw and decoded values side by side. */
+  /**
+   * JSON export — lossless, raw and decoded values side by side.
+   *
+   * `rawTraceManifest` is the optional cryptographic witness for the `trace` block
+   * (ADR 0047): an export that carries it can be checked later against the bytes it
+   * claims to contain, and a reader that does not know the field still reads the
+   * session — both the replay parser (`recordingFromSessionJson`) and the golden
+   * parser keep unknown keys. An export without a manifest says so by not having one;
+   * nothing here invents a digest.
+   */
   static toJson(payload: {
     meta: Record<string, unknown>;
     samples: readonly MeasurementSample[];
@@ -191,6 +209,7 @@ export class SessionLogger {
     dtcs: readonly DtcRecord[];
     trace: readonly RawTraceEntry[];
     log: readonly DiagnosticLogEntry[];
+    rawTraceManifest?: RawTraceManifest;
   }): string {
     return JSON.stringify(
       {
@@ -203,15 +222,31 @@ export class SessionLogger {
         dtcs: payload.dtcs,
         trace: payload.trace.map((entry) => ({ ...entry, payload: entry.payloadHex })),
         log: payload.log,
+        ...(payload.rawTraceManifest === undefined
+          ? {}
+          : { rawTraceManifest: payload.rawTraceManifest }),
       },
       null,
       2,
     );
   }
 
-  /** Cryptographic witness for the current raw trace, ready to store beside an export. */
+  /**
+   * Cryptographic witness for the current raw trace, ready to store beside an export.
+   *
+   * A logger without an {@link IntegrityPort} refuses instead of inventing a digest:
+   * an export that claims provenance it did not compute is worse than one that says
+   * the witness is missing (ADR 0033, ADR 0047).
+   */
   rawTraceManifest(): RawTraceManifest {
-    return createRawTraceManifest(this.trace);
+    if (this.integrity === undefined) {
+      throw new SessionError(
+        "no IntegrityPort was injected — a raw-trace manifest needs a hasher " +
+          "(Node: nodeIntegrityPort from @vdp/storage)",
+        { traceEntries: this.trace.length },
+      );
+    }
+    return createRawTraceManifest(this.trace, this.integrity);
   }
 
   snapshot(): { trace: RawTraceEntry[]; log: DiagnosticLogEntry[] } {

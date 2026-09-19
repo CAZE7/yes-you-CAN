@@ -64,3 +64,5 @@ AI-Context-Topics) steht in [`architecture/architecture.yaml`](../../architectur
 | [0043](0043-ai-context-layer.md) | Die AI-Kontextschicht: eine Doku-Ebene über einer maschinenlesbaren Architektur | accepted |
 | [0045](0045-formal-reference-conformance-vectors.md) | Formale Referenz und Konformanz: gemeinsame Testvektoren statt Parallel-Exegese | accepted |
 | [0046](0046-scenario-files-impact-and-ai-input.md) | Szenariodateien, Next-Test in der Analyse und Impact aus einer Quelle | accepted |
+| [0047](0047-integrity-port.md) | Der Raw-Trace-Digest kommt durch einen Port: Core sagt, *was* gehasht wird, Storage liefert *wie* | accepted |
+| [0048](0048-scenario-files-are-the-catalog.md) | Szenario-Dateien sind der Katalog, und der Seed läuft bis zum Lauf durch | accepted |

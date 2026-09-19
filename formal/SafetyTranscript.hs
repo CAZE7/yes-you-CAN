@@ -35,7 +35,7 @@ module SafetyTranscript
   ) where
 
 import Data.Maybe (fromMaybe)
-import Json (JValue (..), asArray, asBool, asInt, asNumber, asString, lookupKey)
+import Json (JValue (..), asArray, asBool, asInt, asNumber, asObject, asString, lookupKey)
 
 data SafetyOutcome
   = Precheck Bool Int Int -- granted, failed, unproven
@@ -119,7 +119,9 @@ checkSafety minV cx vh = concat [vehicleRules, identityRules, writeRules, networ
                  Just True -> []
                else []
            )
-    identityRules = rulePair cxExpectedType cxActualType ++ rulePair cxExpectedVariant cxActualVariant
+    identityRules =
+      rulePair (cxExpectedType cx) (cxActualType cx)
+        ++ rulePair (cxExpectedVariant cx) (cxActualVariant cx)
     rulePair Nothing _ = []
     rulePair (Just _) Nothing = [Unproven]
     rulePair (Just e) (Just a) = [Violated | e /= a]
@@ -166,7 +168,11 @@ data Script = Script
 runFlow :: Double -> Ctx -> Veh -> Script -> SafetyOutcome
 runFlow minV cx vh sc
   | not (scPrepareOk sc) = Flow False "aborted" False False False 1 0
-  | not granted = Flow False "aborted" False False False (length fails) unprovenCount
+  -- ADR 0033: the port's run() result hands over the failed reasons only —
+  -- the unproven distinction lives in the precheck path. The flow therefore
+  -- never reports an unproven count, even when the denied permit's reason was
+  -- an unproven (not violated) rule.
+  | not granted = Flow False "aborted" False False False (length fails) 0
   | scPermitExpired sc = deniedAtExecute
   | not (scExecuteOk sc) = deniedAtExecute
   | otherwise = case scVerify sc of
@@ -174,7 +180,7 @@ runFlow minV cx vh sc
       "mismatch" -> Flow False "executed" True False False 1 0
       _ -> Flow True "executed" True False False 0 0
   where
-    (granted, _, unprovenCount) = counted fails
+    (granted, _, _) = counted fails
     fails = checkSafety minV cx vh
     deniedAtExecute = case scRollback sc of
       "ok" -> Flow False "rolled-back" (scWriteBeforeFail sc) False True 1 0
@@ -268,7 +274,7 @@ note msg = maybe (Left msg) Right
 contextOf :: Maybe Int -> JValue -> Either String Ctx
 contextOf defaultSession vector = case lookupKey "context" vector of
   Nothing -> Left "context missing"
-  Just ctxJson -> case asObjectOf ctxJson of
+  Just ctxJson -> case asObject ctxJson of
     Nothing -> Left "context must be an object"
     Just raw -> do
       let find k = lookup k raw
@@ -283,10 +289,10 @@ contextOf defaultSession vector = case lookupKey "context" vector of
       definitionVersion <- case find "definitionVersion" of
         Nothing -> Left "context.definitionVersion must be named (null for “absent”)"
         Just JNull -> Right Nothing
-        Just j -> note "context.definitionVersion must be a string or null" (asString j)
+        Just j -> fmap Just (note "context.definitionVersion must be a string" (asString j))
       let network = case find "network" of
             Nothing -> Nothing
-            Just net -> case asObjectOf net of
+            Just net -> case asObject net of
               Nothing -> Nothing
               Just entries ->
                 Just
@@ -331,15 +337,15 @@ vehicleOf vector = case lookupKey "vehicle" vector of
       ignition <- case find "ignitionOn" of
         Nothing -> Left "vehicle.ignitionOn must be named"
         Just JNull -> Right Nothing
-        Just j -> note "vehicle.ignitionOn must be a bool or null" (asBool j)
+        Just j -> fmap Just (note "vehicle.ignitionOn must be a bool" (asBool j))
       voltage <- case find "batteryVoltage" of
         Nothing -> Left "vehicle.batteryVoltage must be named"
         Just JNull -> Right Nothing
-        Just j -> note "vehicle.batteryVoltage must be a number or null" (asNumber j)
+        Just j -> fmap Just (note "vehicle.batteryVoltage must be a number" (asNumber j))
       brake <- case find "parkingBrake" of
         Nothing -> Left "vehicle.parkingBrake must be named"
         Just JNull -> Right Nothing
-        Just j -> note "vehicle.parkingBrake must be a bool or null" (asBool j)
+        Just j -> fmap Just (note "vehicle.parkingBrake must be a bool" (asBool j))
       pure (Veh stationary ignition voltage brake)
   where
     asObjectOf (JObj entries) = Just entries

@@ -112,8 +112,9 @@ decodeSent (pci : body) = case pci `div` 16 of
       else Right (JObj [("pci", JStr "consecutive"), ("sn", jint (pci `mod` 16)), ("payload", jbytes body)])
   3 ->
     let status = pci `mod` 16
-        bs = case body of { (_ : x : _) -> x; _ -> 0 }
-        st = case body of { (_ : _ : x : _) -> x; _ -> 0 }
+        -- Flow-control body after the PCI is exactly [blockSize, stMin].
+        bs = case body of { (x : _ : _) -> x; _ -> 0 }
+        st = case body of { (_ : x : _) -> x; _ -> 0 }
      in if status > 2
           then Left ("sent flow control with unknown status: " ++ show status)
           else Right (JObj [("pci", JStr "flow-control"), ("status", jint status), ("blockSize", jint bs), ("stMin", jint st)])
@@ -219,8 +220,11 @@ feed cfg res pstate now frame = case frame of
               let p =
                     Partial
                       { pExpected = ffDl
-                      , pChunks = [body]
-                      , pGot = length body
+                      , -- body[0] is the FF_DL low byte — PCI, not payload (the
+                        -- escape form reads two header bytes exactly like the
+                        -- transport's `handleFrame`).
+                        pChunks = [drop 1 body]
+                      , pGot = length body - 1
                       , pNextSn = 1
                       , pBlock = 0
                       , pLastAt = now
@@ -408,21 +412,30 @@ awaitFc cfg payload s = case dueFrames isFlowControlFrame (sSent s1) (sPeer s1) 
             ffData = take 6 payload
             ffFrame = (0x10 + (total `div` 256)) : (total `mod` 256) : ffData
          in awaitFc cfg payload $
-              (push ffFrame s1)
-                { sRes =
-                    (sRes s1)
-                      { trTimeouts = trTimeouts (sRes s1) + 1
-                      }
-                , sLeft = drop 6 payload
-                , sSn = 1
-                , sBlockLeft = -1
-                , sBlock = 0
-                , sWaits = 0
-                , sRetries = sRetries s1 + 1
-                }
+              let retried = push ffFrame s1
+               in retried
+                    { -- The counters build on the pushed state: updating from
+                      -- `sRes s1` here would erase the retry's First Frame from
+                      -- the transcript again — the run looked like it never
+                      -- retried while the schedule had moved on.
+                      sRes =
+                        (sRes retried)
+                          { trTimeouts = trTimeouts (sRes retried) + 1
+                          , trRetries = trRetries (sRes retried) + 1
+                          }
+                    , sLeft = drop 6 payload
+                    , sSn = 1
+                    , sBlockLeft = -1
+                    , sBlock = 0
+                    , sWaits = 0
+                    , sRetries = sRetries s1 + 1
+                    }
     | otherwise -> (sRes s1) {trTimeouts = trTimeouts (sRes s1) + 1, trError = Just "timeout-nBs"}
   where
-    s1 = captureResponse s {sWaits = 0}
+    -- No wait-budget reset here: the budget spans the whole transmission and the
+    -- retry branch below installs its own fresh `sWaits = 0`. Resetting on every
+    -- recursion made `wftMax` unreachable — the counter never climbed past 1.
+    s1 = captureResponse s
 
 sendCf :: Cfg -> [Int] -> S -> TranscriptResult
 sendCf cfg payload s

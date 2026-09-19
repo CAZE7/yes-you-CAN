@@ -1,0 +1,108 @@
+{
+  "$schema": "../tools/simulators/scenario.schema.json",
+  "scenario": "under-voltage-at-start",
+  "title": "Unterspannung beim Start — cranking drags the supply into the window",
+  "summary": "A tired battery at 12.3 V rests above the undervoltage threshold; 90 A of starter current drops it below, the BCM latches B1001, and the code heals once the alternator carries the load.",
+  "vehicle": "high-fidelity-simulator",
+  "steps": [
+    {
+      "ignition": "off"
+    },
+    {
+      "battery": 12.3
+    },
+    {
+      "wait": 200
+    },
+    {
+      "load": 20
+    },
+    {
+      "wait": 800
+    },
+    {
+      "ignition": "start",
+      "holdMs": 2000
+    },
+    {
+      "wait": 2000
+    },
+    {
+      "ignition": "on"
+    },
+    {
+      "wait": 3000
+    }
+  ],
+  "expect": [
+    {
+      "dtc": {
+        "code": "B1001",
+        "ecu": "bcm",
+        "state": "absent",
+        "atMs": 1000,
+        "because": "at rest, with the key off, 12.3 V is inside the window — nothing is stored yet"
+      }
+    },
+    {
+      "dtc": {
+        "code": "B1001",
+        "ecu": "bcm",
+        "state": "active",
+        "atMs": 1500,
+        "because": "cranking holds the supply below 11.5 V for longer than the debounce"
+      }
+    },
+    {
+      "dtc": {
+        "code": "P0300",
+        "ecu": "engine",
+        "state": "absent",
+        "because": "a slow crank with working coils is a starter statement, not a misfire: the monitor reads the supply, and 10.9 V is above its floor"
+      }
+    },
+    {
+      "dtc": {
+        "code": "B1001",
+        "ecu": "bcm",
+        "state": "stored",
+        "because": "the condition is over; the code stays in memory as a healed fault"
+      }
+    },
+    {
+      "supply_voltage": {
+        "operator": "<",
+        "value": 11.5,
+        "atMs": 1500,
+        "because": "the terminal voltage under starter load is what the monitor measures"
+      }
+    },
+    {
+      "engine_running": {
+        "equals": false,
+        "atMs": 1500,
+        "because": "at 1.5 s of cranking the engine has not caught yet — the code is not a no-start"
+      }
+    },
+    {
+      "engine_running": {
+        "equals": true,
+        "atMs": 7000,
+        "because": "it does fire on the second second of cranking; the fault is a supply statement"
+      }
+    },
+    {
+      "supply_voltage": {
+        "operator": ">",
+        "value": 13,
+        "atMs": 7000,
+        "because": "with the alternator carrying the load the cause is gone"
+      }
+    }
+  ],
+  "determinism": {
+    "clock": "model-time",
+    "seed": 4242
+  },
+  "uses": ["simulator", "tests", "replay", "ai", "demo", "regression"]
+}

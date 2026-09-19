@@ -12,7 +12,7 @@ Abhängigkeitsrichtung, die harten Verträge.
    die **eine Quelle**: `layers` (Layer-Vokabel), `packages` (je Paket
    `layer` + `mayImport` + `why`), `rules` (Node-Builtins, UI, Layer-
    Regeln, Portabilität), `topics` (AI-Kontexte).
-3. [`../docs/adr/README.md`](../docs/adr/README.md) — die 43 ADRs; die
+3. [`../docs/adr/README.md`](../docs/adr/README.md) — die 47 ADRs; die
    wichtigsten für das Systemverständnis: 0001 (Schichtung), 0014
    (domain/application/runtime), 0031/0042/0043 (eine Regel, eine Quelle),
    0034/0037 (Diagnostic IR), 0038 (Evidence/AI), 0032 (WritePort).

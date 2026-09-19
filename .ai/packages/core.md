@@ -13,7 +13,8 @@
    [`diagnostic-write`](../../docs/flows/diagnostic-write.md),
    [`dtc-analysis`](../../docs/flows/dtc-analysis.md).
 4. ADRs: 0004 (Raw vs. Decoded), 0032 (WritePort), 0033 (Evidenz),
-   0037 (IR für DTC/Session), 0038 (Evidence Engine).
+   0037 (IR für DTC/Session), 0038 (Evidence Engine), 0047 (Integrity-Port —
+   der Kern definiert, *was* gehasht wird; das Hashen kommt durch den Port).
 
 ## Die Regeln, die du nicht brechen darfst
 
