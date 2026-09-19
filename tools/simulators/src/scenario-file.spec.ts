@@ -264,3 +264,186 @@ describe("scenario file parsing", () => {
     assert.notEqual(JSON.stringify(other.timeline), "null");
   });
 });
+
+describe("the grammar the catalog needs (ADR 0048)", () => {
+  test("a driver step names the person behind the pedals, not a set flag", () => {
+    const parsed = parseScenarioFile(
+      file({ steps: [{ ignition: "on" }, { driver: { speedKph: 60, gear: 4, brake: false } }] }),
+    );
+    assert.ok(parsed.ok, JSON.stringify("errors" in parsed ? parsed.errors : []));
+    assert.deepEqual(parsed.file.scenario.steps[1]?.cause, {
+      kind: "driver",
+      demandSpeedKph: 60,
+      gear: 4,
+      brakePressed: false,
+    });
+  });
+
+  test("a driver step without any demand is rejected — a driver who does nothing is not a cause", () => {
+    const parsed = parseScenarioFile(file({ steps: [{ ignition: "on" }, { driver: {} }] }));
+    assert.ok(!parsed.ok);
+    assert.ok(
+      parsed.errors.some((error) => /at least one of speedKph/.test(error)),
+      JSON.stringify(parsed.errors),
+    );
+  });
+
+  test("an intermittent contact carries flapMs and pattern — period, not a comment", () => {
+    const parsed = parseScenarioFile(
+      file({
+        steps: [
+          { ecu: { name: "abs", mode: "connector-loose", flapMs: 1200, pattern: "alternate" } },
+        ],
+      }),
+    );
+    assert.ok(parsed.ok, JSON.stringify("errors" in parsed ? parsed.errors : []));
+    assert.deepEqual(parsed.file.scenario.steps[0]?.cause, {
+      kind: "wiring",
+      ecu: "abs",
+      mode: "connector-loose",
+      flapMs: 1200,
+      pattern: "alternate",
+    });
+    // Without a mode the period is meaningless — refuse instead of guessing.
+    const orphan = parseScenarioFile(file({ steps: [{ ecu: { name: "abs", flapMs: 100 } }] }));
+    assert.ok(!orphan.ok);
+    assert.ok(
+      orphan.errors.some((error) => /need a mode/.test(error)),
+      orphan.errors.join("\n"),
+    );
+  });
+
+  test("boolean conditions read { equals } — an engine that must not run", () => {
+    const parsed = parseScenarioFile(
+      file({
+        expect: [{ engine_running: { equals: false, atMs: 1500, because: "still cranking" } }],
+      }),
+    );
+    assert.ok(parsed.ok, JSON.stringify("errors" in parsed ? parsed.errors : []));
+    assert.deepEqual(parsed.file.scenario.conditions?.[0], {
+      field: "engineRunning",
+      equals: false,
+      atMs: 1500,
+      because: "still cranking",
+    });
+  });
+
+  test("enumerated conditions read the ignition states", () => {
+    const parsed = parseScenarioFile(
+      file({ expect: [{ ignition: { equals: "start", atMs: 1000 } }] }),
+    );
+    assert.ok(parsed.ok, JSON.stringify("errors" in parsed ? parsed.errors : []));
+    assert.equal(parsed.file.scenario.conditions?.[0]?.equals, "start");
+    const wrong = parseScenarioFile(file({ expect: [{ ignition: { equals: "fly" } }] }));
+    assert.ok(!wrong.ok);
+  });
+
+  test("a number compared as a string is the old shape; an equals on a number is refused", () => {
+    const stringForm = parseScenarioFile(file({ expect: [{ speed_kph: "> 40" }] }));
+    assert.ok(stringForm.ok, JSON.stringify("errors" in stringForm ? stringForm.errors : []));
+    assert.deepEqual(stringForm.file.scenario.conditions?.[0], {
+      field: "speedKph",
+      above: 40,
+      because: "speed_kph > 40 kph after the script",
+    });
+    const unitForm = parseScenarioFile(
+      file({ expect: [{ long_term_trim_pct: { operator: ">", value: 12, unit: "%" } }] }),
+    );
+    assert.ok(unitForm.ok, JSON.stringify("errors" in unitForm ? unitForm.errors : []));
+    assert.equal(unitForm.file.scenario.conditions?.[0]?.above, 12);
+    const wrongUnit = parseScenarioFile(
+      file({ expect: [{ long_term_trim_pct: { operator: ">", value: 12, unit: "V" } }] }),
+    );
+    assert.ok(!wrongUnit.ok);
+    const equalsOnNumber = parseScenarioFile(
+      file({ expect: [{ battery_voltage: { equals: 12 } }] }),
+    );
+    assert.ok(!equalsOnNumber.ok);
+  });
+
+  test("an unknown field is named with every field that exists", () => {
+    const parsed = parseScenarioFile(file({ expect: [{ throttle_body_angle: "> 5" }] }));
+    assert.ok(!parsed.ok);
+    assert.match(parsed.errors.join("\n"), /known: dtc, battery_voltage/);
+  });
+});
+
+describe("the grammar refuses what it cannot mean (the new fields, branch by branch)", () => {
+  const refuses = (label: string, over: Record<string, unknown>, pattern: RegExp): void => {
+    test(label, () => {
+      const parsed = parseScenarioFile(file(over));
+      assert.ok(!parsed.ok, "expected a refusal");
+      assert.ok(
+        parsed.errors.some((error) => pattern.test(error)),
+        `expected a refusal naming the problem, got: ${parsed.errors.join(" | ")}`,
+      );
+    });
+  };
+
+  refuses(
+    "a driver speed that is not a number in range",
+    { steps: [{ driver: { speedKph: 500 } }] },
+    /driver\.speedKph/,
+  );
+  refuses(
+    "a throttle above 100 %",
+    { steps: [{ driver: { throttlePct: 140 } }] },
+    /driver\.throttlePct/,
+  );
+  refuses("a gear outside 0..9", { steps: [{ driver: { gear: 12 } }] }, /driver\.gear/);
+  refuses(
+    "a brake value that is not a boolean",
+    { steps: [{ driver: { brake: "yes" } }] },
+    /driver\.brake/,
+  );
+  refuses(
+    "an extra key on the driver step",
+    { steps: [{ driver: { speedKph: 50, radio: "on" } }] },
+    /unknown key "radio"/,
+  );
+  refuses(
+    "a flap period below one millisecond",
+    { steps: [{ ecu: { name: "abs", mode: "connector-loose", flapMs: 0 } }] },
+    /flapMs/,
+  );
+  refuses(
+    "a pattern the model has no word for",
+    { steps: [{ ecu: { name: "abs", mode: "connector-loose", pattern: "chaotic" } }] },
+    /pattern/,
+  );
+  refuses(
+    "a condition judged at a time that is not a model time",
+    { expect: [{ battery_voltage: { operator: "<", value: 12, atMs: -5 } }] },
+    /atMs/,
+  );
+  refuses(
+    "a condition whose because is not a sentence",
+    { expect: [{ battery_voltage: { operator: "<", value: 12, because: "" } }] },
+    /because/,
+  );
+  refuses(
+    "a boolean condition without equals",
+    { expect: [{ engine_running: { atMs: 100 } }] },
+    /equals.*true or false/,
+  );
+  refuses(
+    "a boolean condition with a non-boolean equals",
+    { expect: [{ engine_running: { equals: "no" } }] },
+    /equals.*true or false/,
+  );
+  refuses(
+    "an ignition condition outside the states the model has",
+    { expect: [{ ignition: { equals: "accessory" } }] },
+    /ignition.*expected one of/,
+  );
+  refuses(
+    "a numeric field compared with a string operator that is no operator",
+    { expect: [{ battery_voltage: "<< 12" }] },
+    /expected a comparison/,
+  );
+  test("a string comparison on a boolean field names the shape it wanted", () => {
+    const parsed = parseScenarioFile(file({ expect: [{ engine_running: "< 1" }] }));
+    assert.ok(!parsed.ok);
+    assert.match(parsed.errors.join("\n"), /not a number/);
+  });
+});

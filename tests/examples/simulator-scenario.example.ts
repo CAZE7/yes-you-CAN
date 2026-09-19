@@ -19,12 +19,15 @@ import assert from "node:assert/strict";
 import { DiagnosticEngine } from "@vdp/core";
 import { type DefinitionPackage, highFidelityPackage } from "@vdp/definitions";
 import { type Logger, createLogger } from "@vdp/shared";
-import { HighFidelityVehicle, createRandom, scenarioById, withoutCauses } from "@vdp/simulators";
+import { HighFidelityVehicle, createRandom, withoutCauses } from "@vdp/simulators";
 import { afterAll, beforeAll, test } from "vitest";
+import { scenarioFileById } from "../helpers/scenario-files.js";
 
 const logger: Logger = createLogger("example:scenario", { level: "ERROR" });
-const scenario = scenarioById("under-voltage-at-start");
-assert.ok(scenario, "the scenario ships in the catalog");
+// The scenario *file* is the catalog (ADR 0048): the example reads it the way the
+// workbench does, and runs it with the seed the file declares.
+const file = scenarioFileById("under-voltage-at-start");
+const scenario = file.scenario;
 
 function ecuKey(ecu: { definitionEcuId?: string; name: string }): string {
   return ecu.definitionEcuId ?? ecu.name;
@@ -54,7 +57,7 @@ afterAll(async () => {
 });
 
 test("1. das Szenario läuft: Ursachen anwenden, Erwartungen treffen (Modellzeit)", async () => {
-  const run = await vehicle.runScenario(scenario!);
+  const run = await vehicle.runScenario(scenario, { seed: file.determinism.seed });
   assert.equal(run.scenarioId, "under-voltage-at-start");
   // Das Urteil ist Daten — der Test entscheidet, nicht runScenario:
   const failed = run.checks.filter((check) => !check.passed);
@@ -73,7 +76,9 @@ test("1. das Szenario läuft: Ursachen anwenden, Erwartungen treffen (Modellzeit
 });
 
 test("2. negative Kontrolle: dasselbe Szenario OHNE Ursachen darf nicht bestehen", async () => {
-  const control = await vehicle.runScenario(withoutCauses(scenario!));
+  const control = await vehicle.runScenario(withoutCauses(scenario), {
+    seed: file.determinism.seed,
+  });
   assert.equal(control.passed, false, "a scenario that passes without its causes measures nothing");
   const failed = control.checks.filter((check) => !check.passed);
   assert.ok(failed.length > 0, "the missing cause must show up as a failed check");
@@ -102,7 +107,8 @@ async function wireScanAtActiveExpectation(): Promise<
   Awaited<ReturnType<DiagnosticEngine["scanDtcs"]>> | undefined
 > {
   let captured: Awaited<ReturnType<DiagnosticEngine["scanDtcs"]>> | undefined;
-  await vehicle.runScenario(scenario!, {
+  await vehicle.runScenario(scenario, {
+    seed: file.determinism.seed,
     onMoment: async (moment) => {
       if (captured !== undefined) return;
       const due = moment.due.find(

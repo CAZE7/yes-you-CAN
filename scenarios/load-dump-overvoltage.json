@@ -1,0 +1,59 @@
+{
+  "$schema": "../tools/simulators/scenario.schema.json",
+  "scenario": "load-dump-overvoltage",
+  "title": "Load dump — die Lichtmaschine regelt nicht mehr ab",
+  "summary": "A stuck regulator puts 24 V on the supply. The BCM's window monitor fails at the upper end, the decoded battery voltage leaves its declared range, and the code heals when the system is brought back to 13.9 V.",
+  "vehicle": "high-fidelity-simulator",
+  "steps": [
+    {
+      "ignition": "on"
+    },
+    {
+      "wait": 500
+    },
+    {
+      "battery": 24
+    },
+    {
+      "wait": 3500
+    },
+    {
+      "battery": 13.9
+    },
+    {
+      "wait": 1000
+    }
+  ],
+  "expect": [
+    {
+      "dtc": {
+        "code": "B1001",
+        "ecu": "bcm",
+        "state": "active",
+        "atMs": 2000,
+        "because": "overvoltage is the same statement about the supply as undervoltage"
+      }
+    },
+    {
+      "dtc": {
+        "code": "B1001",
+        "ecu": "bcm",
+        "state": "stored",
+        "because": "at 13.9 V the monitor has run and passed, so testFailed leaves the record"
+      }
+    },
+    {
+      "supply_voltage": {
+        "operator": ">",
+        "value": 20,
+        "atMs": 2000,
+        "because": "the pin voltage itself is what a reader has to be able to verify"
+      }
+    }
+  ],
+  "determinism": {
+    "clock": "model-time",
+    "seed": 4242
+  },
+  "uses": ["simulator", "tests", "replay", "ai", "demo", "regression"]
+}

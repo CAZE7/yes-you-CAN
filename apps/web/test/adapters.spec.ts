@@ -343,7 +343,13 @@ test("the 5-ECU vehicle serves the scenario catalog and runs one", async () => {
     const unknown = await backend.runScenario("not-a-scenario");
     assert.equal(unknown.ok, false);
     if (!unknown.ok) {
-      assert.match(unknown.error, /known: under-voltage-at-start/, "and names what does exist");
+      // The known-ids line is the file catalog (ADR 0048) — every file is named,
+      // in the order the directory lists them.
+      assert.match(
+        unknown.error,
+        /known: abs-intermittently-offline, alternator_failure, can-bus-dropouts/,
+        "and names what does exist",
+      );
     }
 
     const result = await backend.runScenario("  under-voltage-at-start  ");

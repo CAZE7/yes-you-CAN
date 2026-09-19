@@ -142,6 +142,7 @@ const CAUSE_KEYS = [
   "sensor",
   "ecu",
   "bus",
+  "driver",
 ] as const;
 
 function parseStepFileEntry(raw: unknown, index: number, errors: Errors): FileStep | null {
@@ -243,13 +244,44 @@ function parseStepFileEntry(raw: unknown, index: number, errors: Errors): FileSt
         errors.add(`${path}.ecu`, 'expected { name, mode } or { name, state: "offline" }');
         return null;
       }
-      rejectExtras(value, ["name", "mode", "state", "ohm", "duty"], `${path}.ecu`, errors);
+      rejectExtras(
+        value,
+        ["name", "mode", "state", "ohm", "duty", "flapMs", "pattern"],
+        `${path}.ecu`,
+        errors,
+      );
       const name = asString(value.name, `${path}.ecu.name`, errors);
       if (name === undefined) return null;
       if (value.mode !== undefined) {
         const mode = oneOf(value.mode, `${path}.ecu.mode`, errors, WIRING_MODES);
         if (mode === undefined) return null;
-        return withHold({ kind: "wiring", ecu: name, mode });
+        // An intermittent contact is a *periodic* cause, so its period and its pattern
+        // belong to the file: `alternate` is reproducible with any rng, `random` is
+        // reproducible with the file's seed (ADR 0048).
+        const flapMs =
+          value.flapMs === undefined
+            ? undefined
+            : asNumber(value.flapMs, `${path}.ecu.flapMs`, errors, 1, 10 * 60 * 1000);
+        if (value.flapMs !== undefined && flapMs === undefined) return null;
+        const pattern =
+          value.pattern === undefined
+            ? undefined
+            : oneOf(value.pattern, `${path}.ecu.pattern`, errors, ["random", "alternate"] as const);
+        if (value.pattern !== undefined && pattern === undefined) return null;
+        return withHold({
+          kind: "wiring",
+          ecu: name,
+          mode,
+          ...(flapMs !== undefined ? { flapMs } : {}),
+          ...(pattern !== undefined ? { pattern } : {}),
+        });
+      }
+      if (value.flapMs !== undefined || value.pattern !== undefined) {
+        errors.add(
+          `${path}.ecu`,
+          "flapMs and pattern describe an intermittent contact — they need a mode",
+        );
+        return null;
       }
       if (value.state === "offline") {
         // “offline” is a consequence with a cause: on a real bench the module
@@ -264,6 +296,52 @@ function parseStepFileEntry(raw: unknown, index: number, errors: Errors): FileSt
         'only "offline" ends a module conversation; recovery is expressed by the offline step’s holdMs',
       );
       return null;
+    }
+    case "driver": {
+      if (!isRecord(value)) {
+        errors.add(`${path}.driver`, "expected { speedKph?, throttlePct?, gear?, brake? }");
+        return null;
+      }
+      rejectExtras(value, ["speedKph", "throttlePct", "gear", "brake"], `${path}.driver`, errors);
+      const speedKph =
+        value.speedKph === undefined
+          ? undefined
+          : asNumber(value.speedKph, `${path}.driver.speedKph`, errors, 0, 400);
+      if (value.speedKph !== undefined && speedKph === undefined) return null;
+      const throttlePct =
+        value.throttlePct === undefined
+          ? undefined
+          : asNumber(value.throttlePct, `${path}.driver.throttlePct`, errors, 0, 100);
+      if (value.throttlePct !== undefined && throttlePct === undefined) return null;
+      const gear =
+        value.gear === undefined
+          ? undefined
+          : asNumber(value.gear, `${path}.driver.gear`, errors, 0, 9);
+      if (value.gear !== undefined && gear === undefined) return null;
+      if (value.brake !== undefined && typeof value.brake !== "boolean") {
+        errors.add(`${path}.driver.brake`, "expected true or false");
+        return null;
+      }
+      if (
+        speedKph === undefined &&
+        throttlePct === undefined &&
+        gear === undefined &&
+        value.brake === undefined
+      ) {
+        errors.add(
+          `${path}.driver`,
+          "expected at least one of speedKph, throttlePct, gear, brake — a driver who does " +
+            "nothing is not a cause",
+        );
+        return null;
+      }
+      return withHold({
+        kind: "driver",
+        ...(speedKph !== undefined ? { demandSpeedKph: speedKph } : {}),
+        ...(throttlePct !== undefined ? { throttlePct } : {}),
+        ...(gear !== undefined ? { gear } : {}),
+        ...(typeof value.brake === "boolean" ? { brakePressed: value.brake } : {}),
+      });
     }
     case "bus": {
       if (!isRecord(value)) {
@@ -293,42 +371,111 @@ function parseStepFileEntry(raw: unknown, index: number, errors: Errors): FileSt
   }
 }
 
-interface ComparisonMeta {
-  field: ScenarioCondition["field"];
-  unit: string;
-}
+/**
+ * The model fields a file may ask about, and what a comparison against them means.
+ *
+ * One table, three shapes: a number is compared (`< 12.0`, `{ operator, value, unit }`),
+ * a boolean and an enumerated state are matched (`{ equals: false }`, `{ equals: "on" }`).
+ * A field that is not here cannot be asked about — the alternative would be a condition
+ * the runner silently cannot evaluate, which is the one failure mode a reproducibility
+ * artifact must not have (ADR 0046).
+ */
+type FieldMeta =
+  | { readonly field: ScenarioCondition["field"]; readonly kind: "number"; readonly unit: string }
+  | { readonly field: ScenarioCondition["field"]; readonly kind: "boolean" }
+  | {
+      readonly field: ScenarioCondition["field"];
+      readonly kind: "enum";
+      readonly values: readonly string[];
+    };
 
-const COMPARISONS: Readonly<Record<string, ComparisonMeta>> = {
-  battery_voltage: { field: "batteryVoltage", unit: "V" },
-  supply_voltage: { field: "supplyVoltage", unit: "V" },
-  coolant_temperature: { field: "coolantC", unit: "degC" },
-  engine_rpm: { field: "rpm", unit: "rpm" },
+const FIELDS: Readonly<Record<string, FieldMeta>> = {
+  battery_voltage: { field: "batteryVoltage", kind: "number", unit: "V" },
+  supply_voltage: { field: "supplyVoltage", kind: "number", unit: "V" },
+  coolant_temperature: { field: "coolantC", kind: "number", unit: "degC" },
+  engine_rpm: { field: "rpm", kind: "number", unit: "rpm" },
+  speed_kph: { field: "speedKph", kind: "number", unit: "kph" },
+  long_term_trim_pct: { field: "longTermTrimPct", kind: "number", unit: "%" },
+  maf_airflow: { field: "mafGramsPerS", kind: "number", unit: "g/s" },
+  electrical_load: { field: "electricalLoadA", kind: "number", unit: "A" },
+  time_ms: { field: "timeMs", kind: "number", unit: "ms" },
+  engine_running: { field: "engineRunning", kind: "boolean" },
+  alternator_charging: { field: "alternatorCharging", kind: "boolean" },
+  starter_cranking: { field: "starterCranking", kind: "boolean" },
+  ignition: { field: "ignition", kind: "enum", values: IGNITION_STATES },
 };
 
-/** `"< 12.0"` (the prompt’s shape) or `{ operator, value, unit? }`. */
-function parseComparison(
+/** The names a file may use in `expect`, for the message that names them. */
+export const SCENARIO_FILE_FIELDS: readonly string[] = Object.keys(FIELDS);
+
+const COMPARISON_OPERATORS = ["<", "<=", ">", ">="] as const;
+
+/** The optional tail of every condition: when it is judged, and why it matters. */
+function parseConditionTail(
+  value: Json,
+  path: string,
+  errors: Errors,
+): { atMs?: number; because?: string } | null {
+  const atMs =
+    value.atMs === undefined
+      ? undefined
+      : asNumber(value.atMs, `${path}.atMs`, errors, 0, 60 * 60 * 1000);
+  if (value.atMs !== undefined && atMs === undefined) return null;
+  const because =
+    value.because === undefined ? undefined : asString(value.because, `${path}.because`, errors);
+  if (value.because !== undefined && because === undefined) return null;
+  return { ...(atMs === undefined ? {} : { atMs }), ...(because === undefined ? {} : { because }) };
+}
+
+/**
+ * One physical condition: `"< 12.0"` (the prompt's shape), `{ operator, value, unit? }`
+ * for a number, `{ equals }` for a boolean or an enumerated state — each optionally with
+ * the model time it is judged at and the sentence that says why.
+ */
+function parseCondition(
   value: unknown,
   path: string,
   errors: Errors,
-  meta: ComparisonMeta,
-): { operator: string; value: number } | null {
+  meta: FieldMeta,
+): ScenarioCondition | null {
+  const describe = (comparison: string): string =>
+    `${path.split(".").pop()} ${comparison} after the script`;
   if (typeof value === "string") {
+    if (meta.kind !== "number") {
+      errors.add(
+        path,
+        `expected { equals: ${meta.kind === "boolean" ? "true | false" : meta.values.join(" | ")} }` +
+          " — this field is not a number, so there is nothing to compare",
+      );
+      return null;
+    }
     const match = /^\s*(<=?|>=?)\s*(-?\d+(?:\.\d+)?)\s*$/.exec(value);
     if (match === null) {
       errors.add(path, 'expected a comparison like "< 12.0" or { operator, value }');
       return null;
     }
-    return { operator: match[1] as string, value: Number(match[2]) };
+    const operator = match[1] as string;
+    const number = Number(match[2]);
+    return {
+      field: meta.field,
+      ...(operator === "<" || operator === "<=" ? { below: number } : { above: number }),
+      because: describe(`${operator} ${number} ${meta.unit}`),
+    };
   }
-  if (isRecord(value)) {
-    rejectExtras(value, ["operator", "value", "unit"], path, errors);
-    const operator = oneOf(value.operator, `${path}.operator`, errors, [
-      "<",
-      "<=",
-      ">",
-      ">=",
-    ] as const);
-    const number = asNumber(value.value, `${path}.value`, errors, -273, 20000);
+  if (!isRecord(value)) {
+    errors.add(path, "expected a comparison string or an object");
+    return null;
+  }
+  const allowed =
+    meta.kind === "number"
+      ? ["operator", "value", "unit", "atMs", "because"]
+      : ["equals", "atMs", "because"];
+  rejectExtras(value, allowed, path, errors);
+  const tail = parseConditionTail(value, path, errors);
+  if (tail === null) return null;
+  if (meta.kind === "number") {
+    const operator = oneOf(value.operator, `${path}.operator`, errors, COMPARISON_OPERATORS);
+    const number = asNumber(value.value, `${path}.value`, errors, -273, 200000);
     const unit =
       value.unit === undefined ? undefined : asString(value.unit, `${path}.unit`, errors);
     if (operator === undefined || number === undefined) return null;
@@ -339,10 +486,42 @@ function parseComparison(
       );
       return null;
     }
-    return { operator, value: number };
+    return {
+      field: meta.field,
+      ...(operator === "<" || operator === "<=" ? { below: number } : { above: number }),
+      ...(tail.atMs === undefined ? {} : { atMs: tail.atMs }),
+      because: tail.because ?? describe(`${operator} ${number} ${meta.unit}`),
+    };
   }
-  errors.add(path, "expected a comparison string or { operator, value, unit? }");
-  return null;
+  if (value.equals === undefined) {
+    errors.add(
+      `${path}.equals`,
+      meta.kind === "boolean"
+        ? "expected true or false"
+        : `expected one of ${meta.values.map((a) => JSON.stringify(a)).join(", ")}`,
+    );
+    return null;
+  }
+  if (meta.kind === "boolean") {
+    if (typeof value.equals !== "boolean") {
+      errors.add(`${path}.equals`, "expected true or false");
+      return null;
+    }
+    return {
+      field: meta.field,
+      equals: value.equals,
+      ...(tail.atMs === undefined ? {} : { atMs: tail.atMs }),
+      because: tail.because ?? describe(`= ${String(value.equals)}`),
+    };
+  }
+  const wanted = oneOf(value.equals, `${path}.equals`, errors, meta.values);
+  if (wanted === undefined) return null;
+  return {
+    field: meta.field,
+    equals: wanted,
+    ...(tail.atMs === undefined ? {} : { atMs: tail.atMs }),
+    because: tail.because ?? describe(`= ${wanted}`),
+  };
 }
 
 function parseExpectationFileEntry(
@@ -408,23 +587,16 @@ function parseExpectationFileEntry(
       },
     };
   }
-  const meta = COMPARISONS[key];
+  const meta = FIELDS[key];
   if (meta === undefined) {
     errors.add(
       path,
-      `unknown expectation "${key}" (known: dtc, ${Object.keys(COMPARISONS).join(", ")})`,
+      `unknown expectation "${key}" (known: dtc, ${SCENARIO_FILE_FIELDS.join(", ")})`,
     );
     return null;
   }
-  const comparison = parseComparison(raw[key], `${path}.${key}`, errors, meta);
-  if (comparison === null) return null;
-  const condition: ScenarioCondition = {
-    field: meta.field,
-    ...(comparison.operator === "<" || comparison.operator === "<="
-      ? { below: comparison.value }
-      : { above: comparison.value }),
-    because: `${key} ${comparison.operator} ${comparison.value} ${meta.unit} after the script`,
-  };
+  const condition = parseCondition(raw[key], `${path}.${key}`, errors, meta);
+  if (condition === null) return null;
   return { condition };
 }
 

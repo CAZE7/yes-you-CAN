@@ -219,8 +219,11 @@ feed cfg res pstate now frame = case frame of
               let p =
                     Partial
                       { pExpected = ffDl
-                      , pChunks = [body]
-                      , pGot = length body
+                      , -- body[0] is the FF_DL low byte — PCI, not payload (the
+                        -- escape form reads two header bytes exactly like the
+                        -- transport's `handleFrame`).
+                        pChunks = [drop 1 body]
+                      , pGot = length body - 1
                       , pNextSn = 1
                       , pBlock = 0
                       , pLastAt = now
@@ -422,7 +425,10 @@ awaitFc cfg payload s = case dueFrames isFlowControlFrame (sSent s1) (sPeer s1) 
                 }
     | otherwise -> (sRes s1) {trTimeouts = trTimeouts (sRes s1) + 1, trError = Just "timeout-nBs"}
   where
-    s1 = captureResponse s {sWaits = 0}
+    -- No wait-budget reset here: the budget spans the whole transmission and the
+    -- retry branch below installs its own fresh `sWaits = 0`. Resetting on every
+    -- recursion made `wftMax` unreachable — the counter never climbed past 1.
+    s1 = captureResponse s
 
 sendCf :: Cfg -> [Int] -> S -> TranscriptResult
 sendCf cfg payload s

@@ -1,0 +1,98 @@
+{
+  "$schema": "../tools/simulators/scenario.schema.json",
+  "scenario": "sensor-out-of-plausible-range",
+  "title": "Sensorwerte außerhalb plausibler Grenzen — ein Kanal, eine Leseabweichung",
+  "summary": "Front left wheel speed reads zero at 60 km/h (C0035 from the rationality test), the MAF reports 45 % of the air the engine breathes (P0171 from the trim, then P0420 from the catalyst monitor, then P0700 on the gear ECU).",
+  "vehicle": "high-fidelity-simulator",
+  "steps": [
+    {
+      "ignition": "on"
+    },
+    {
+      "wait": 200
+    },
+    {
+      "driver": {
+        "speedKph": 60,
+        "gear": 4
+      }
+    },
+    {
+      "wait": 300
+    },
+    {
+      "sensor": {
+        "signal": "abs.wheel_speed_front_left",
+        "mode": "open-circuit"
+      }
+    },
+    {
+      "wait": 500
+    },
+    {
+      "sensor": {
+        "signal": "engine.maf_airflow",
+        "mode": "drift-low"
+      }
+    },
+    {
+      "wait": 28000
+    }
+  ],
+  "expect": [
+    {
+      "dtc": {
+        "code": "C0035",
+        "ecu": "abs",
+        "state": "active",
+        "atMs": 2000,
+        "because": "front left at 0 km/h while the other three read 60 km/h is implausible"
+      }
+    },
+    {
+      "dtc": {
+        "code": "P0171",
+        "ecu": "engine",
+        "state": "active",
+        "because": "a meter that under-reads by 45 % leaves the engine lean and the trim above the window"
+      }
+    },
+    {
+      "dtc": {
+        "code": "P0420",
+        "ecu": "engine",
+        "state": "active",
+        "because": "the catalyst monitor is enabled after warm-up and the mixture never converges, so the efficiency test fails as a consequence of the same meter"
+      }
+    },
+    {
+      "dtc": {
+        "code": "P0700",
+        "ecu": "transmission",
+        "state": "active",
+        "because": "the engine's latched code is what asks for the lamp — propagated, not copied"
+      }
+    },
+    {
+      "speed_kph": {
+        "operator": ">",
+        "value": 40,
+        "atMs": 4000,
+        "because": "a wheel-speed rationality test only runs when the car is moving"
+      }
+    },
+    {
+      "long_term_trim_pct": {
+        "operator": ">",
+        "value": 12,
+        "atMs": 30000,
+        "because": "the learned correction is the measurement the lean monitor reads"
+      }
+    }
+  ],
+  "determinism": {
+    "clock": "model-time",
+    "seed": 4242
+  },
+  "uses": ["simulator", "tests", "replay", "ai", "demo", "regression"]
+}

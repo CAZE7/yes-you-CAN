@@ -7,11 +7,16 @@
  */
 
 import assert from "node:assert/strict";
-import { toHex } from "@vdp/shared";
+import { SessionError, toHex } from "@vdp/shared";
 import { createFrame } from "@vdp/transport-can";
 import fc from "fast-check";
 import { describe, test } from "vitest";
 import type { MeasurementSample } from "../measurements/recorder.js";
+import {
+  type IntegrityPort,
+  RAW_TRACE_HASH_ALGORITHM,
+  verifyRawTraceManifest,
+} from "./integrity.js";
 import { SessionLogger } from "./session-logger.js";
 
 function frameAt(id: number, payload: number[], timestamp: number, direction: "tx" | "rx" = "rx") {
@@ -645,3 +650,103 @@ function traceStub() {
     fd: false,
   };
 }
+
+/** A deterministic double — the core must be testable without any platform crypto. */
+function testIntegrityPort(): IntegrityPort {
+  return {
+    algorithm: RAW_TRACE_HASH_ALGORITHM,
+    createDigest() {
+      let chunks = 0;
+      return {
+        update(): void {
+          chunks += 1;
+        },
+        hex(): string {
+          return `double:${chunks}`;
+        },
+      };
+    },
+  };
+}
+
+describe("the raw-trace witness (ADR 0047: the digest comes through a port)", () => {
+  const doublePort = testIntegrityPort;
+
+  test("a logger without a port refuses the manifest, with the reason and the code", () => {
+    const session = new SessionLogger({ clock: () => 0 });
+    session.recordFrame(frameAt(0x7e8, [0x62, 0xf1, 0x90], 0));
+    assert.throws(
+      () => session.rawTraceManifest(),
+      (error: unknown) =>
+        error instanceof SessionError &&
+        error.code === "E_SESSION" &&
+        /no IntegrityPort was injected/.test(error.message) &&
+        error.details.traceEntries === 1,
+    );
+  });
+
+  test("with a port the manifest covers exactly the recorded trace", () => {
+    const port = doublePort();
+    let now = 0;
+    const session = new SessionLogger({ clock: () => now, integrity: port });
+    session.recordFrame(frameAt(0x7e0, [0x22, 0xf1, 0x90], (now += 10), "tx"));
+    session.recordFrame(frameAt(0x7e8, [0x62, 0xf1, 0x90], (now += 10), "rx"));
+    const manifest = session.rawTraceManifest();
+    assert.equal(manifest.entries, 2);
+    assert.equal(manifest.algorithm, "sha256");
+    assert.equal(manifest.sha256, "double:2", "one canonical chunk per recorded frame");
+    assert.equal(verifyRawTraceManifest(session.snapshot().trace, manifest, port), true);
+    // The witness is a statement about what was recorded: a third frame invalidates it.
+    session.recordFrame(frameAt(0x7e8, [0x62, 0xf1, 0x91], (now += 10), "rx"));
+    assert.equal(verifyRawTraceManifest(session.snapshot().trace, manifest, port), false);
+  });
+
+  test("an empty session still has a witness — the digest of nothing", () => {
+    const session = new SessionLogger({ clock: () => 0, integrity: doublePort() });
+    const manifest = session.rawTraceManifest();
+    assert.equal(manifest.entries, 0);
+    assert.equal(manifest.sha256, "double:0");
+  });
+});
+
+describe("the JSON export and its witness (ADR 0047)", () => {
+  const payload = {
+    meta: { sessionId: "s1" },
+    samples: [],
+    markers: [],
+    dtcs: [],
+    trace: [],
+    log: [],
+  };
+
+  test("an export without a manifest has no manifest key — nothing is invented", () => {
+    const parsed = JSON.parse(SessionLogger.toJson(payload)) as Record<string, unknown>;
+    assert.equal("rawTraceManifest" in parsed, false);
+    assert.equal(parsed.format, "vdp.session");
+  });
+
+  test("a manifest travels beside the trace, and the trace itself is unchanged", () => {
+    let now = 0;
+    const session = new SessionLogger({ clock: () => now, integrity: testIntegrityPort() });
+    session.recordFrame(frameAt(0x7e8, [0x62, 0xf1, 0x90], (now += 10), "rx"));
+    const trace = session.snapshot().trace;
+    const export_ = SessionLogger.toJson({
+      ...payload,
+      trace,
+      rawTraceManifest: session.rawTraceManifest(),
+    });
+    const parsed = JSON.parse(export_) as {
+      trace: Array<Record<string, unknown>>;
+      rawTraceManifest: { entries: number; algorithm: string; sha256: string };
+    };
+    assert.equal(parsed.trace.length, 1);
+    assert.equal(parsed.trace[0]?.payload, "62F190", "the raw form stays the raw form");
+    assert.deepEqual(parsed.rawTraceManifest, {
+      format: "vdp.raw-trace-manifest",
+      version: 1,
+      algorithm: "sha256",
+      entries: 1,
+      sha256: "double:1",
+    });
+  });
+});

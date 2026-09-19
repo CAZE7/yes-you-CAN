@@ -15,14 +15,15 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
+import { scenarioFiles } from "../../../tests/helpers/scenario-files.js";
 import { HEARTBEAT_IDS, HighFidelityVehicle } from "./high-fidelity-vehicle.js";
-import { SCENARIO_CATALOG, withoutCauses } from "./scenario-catalog.js";
 import {
   type ScenarioCheck,
   type VehicleScenario,
   describeCause,
   modelTarget,
   runScenario,
+  withoutCauses,
 } from "./scenarios.js";
 import { VehicleBehaviourModel } from "./vehicle-model.js";
 import { createVirtualCanNetwork } from "./virtual-can.js";
@@ -178,18 +179,23 @@ describe("scenario engine", () => {
 
 describe("scenario catalog", () => {
   test("the catalog covers the six failure classes it exists for", () => {
+    // The catalog *is* the scenarios/ directory now (ADR 0048): these are the parsed
+    // files, not a second list in code.
     assert.deepEqual(
-      SCENARIO_CATALOG.map((scenario) => scenario.id),
+      scenarioFiles().map((file) => file.id),
       [
-        "under-voltage-at-start",
         "abs-intermittently-offline",
+        "alternator_failure",
         "can-bus-dropouts",
-        "sensor-out-of-plausible-range",
-        "load-dump-overvoltage",
         "charging-system-failure",
+        "load-dump-overvoltage",
+        "sensor-out-of-plausible-range",
+        "under-voltage-at-start",
       ],
     );
-    for (const scenario of SCENARIO_CATALOG) {
+    for (const file of scenarioFiles()) {
+      const scenario = file.scenario;
+      assert.ok(file.determinism.seed >= 0, `${scenario.id} carries the seed it runs with`);
       assert.ok(scenario.title.trim().length > 0, `${scenario.id} needs a title`);
       assert.ok(scenario.summary.trim().length > 0, `${scenario.id} needs a summary`);
       assert.ok(scenario.steps.length > 0, `${scenario.id} must state at least one cause`);
@@ -211,12 +217,14 @@ describe("scenario catalog", () => {
     }
   });
 
-  for (const scenario of SCENARIO_CATALOG) {
+  for (const file of scenarioFiles()) {
+    const scenario = file.scenario;
     test(`${scenario.id}: the vehicle reaches the verdict the scenario predicts`, async () => {
       const vehicle = scenarioVehicle();
       await vehicle.start();
       try {
-        const run = await vehicle.runScenario(scenario);
+        // The file's seed drives the run, exactly as the workbench server drives it.
+        const run = await vehicle.runScenario(scenario, { seed: file.determinism.seed });
         assert.equal(run.passed, true, failures(run));
       } finally {
         await vehicle.stop();
@@ -224,13 +232,14 @@ describe("scenario catalog", () => {
     });
   }
 
-  for (const scenario of SCENARIO_CATALOG) {
+  for (const file of scenarioFiles()) {
+    const scenario = file.scenario;
     test(`${scenario.id}: without its causes, its own expectations do not hold`, async () => {
       const vehicle = scenarioVehicle();
       await vehicle.start();
       try {
         const stripped = withoutCauses(scenario);
-        const run = await vehicle.runScenario(stripped);
+        const run = await vehicle.runScenario(stripped, { seed: file.determinism.seed });
         const caused = run.checks.filter(
           (check) => check.kind === "dtc" && check.expected !== "absent",
         );
@@ -253,13 +262,14 @@ describe("scenario catalog", () => {
   }
 
   test("two runs of one scenario reach the same verdict (reproducible, not flaky)", async () => {
-    const scenario = SCENARIO_CATALOG[3];
-    assert.ok(scenario, "the catalog must not be empty");
+    const file = scenarioFiles().find((entry) => entry.id === "sensor-out-of-plausible-range");
+    assert.ok(file, "the catalog must not be empty");
+    const scenario = file.scenario;
     const first = await (async () => {
       const vehicle = scenarioVehicle();
       await vehicle.start();
       try {
-        return await vehicle.runScenario(scenario);
+        return await vehicle.runScenario(scenario, { seed: file.determinism.seed });
       } finally {
         await vehicle.stop();
       }
@@ -268,7 +278,7 @@ describe("scenario catalog", () => {
       const vehicle = scenarioVehicle();
       await vehicle.start();
       try {
-        return await vehicle.runScenario(scenario);
+        return await vehicle.runScenario(scenario, { seed: file.determinism.seed });
       } finally {
         await vehicle.stop();
       }
