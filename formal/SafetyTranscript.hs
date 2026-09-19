@@ -168,7 +168,11 @@ data Script = Script
 runFlow :: Double -> Ctx -> Veh -> Script -> SafetyOutcome
 runFlow minV cx vh sc
   | not (scPrepareOk sc) = Flow False "aborted" False False False 1 0
-  | not granted = Flow False "aborted" False False False (length fails) unprovenCount
+  -- ADR 0033: the port's run() result hands over the failed reasons only —
+  -- the unproven distinction lives in the precheck path. The flow therefore
+  -- never reports an unproven count, even when the denied permit's reason was
+  -- an unproven (not violated) rule.
+  | not granted = Flow False "aborted" False False False (length fails) 0
   | scPermitExpired sc = deniedAtExecute
   | not (scExecuteOk sc) = deniedAtExecute
   | otherwise = case scVerify sc of
@@ -176,7 +180,7 @@ runFlow minV cx vh sc
       "mismatch" -> Flow False "executed" True False False 1 0
       _ -> Flow True "executed" True False False 0 0
   where
-    (granted, _, unprovenCount) = counted fails
+    (granted, _, _) = counted fails
     fails = checkSafety minV cx vh
     deniedAtExecute = case scRollback sc of
       "ok" -> Flow False "rolled-back" (scWriteBeforeFail sc) False True 1 0
