@@ -285,7 +285,7 @@ contextOf defaultSession vector = case lookupKey "context" vector of
       definitionVersion <- case find "definitionVersion" of
         Nothing -> Left "context.definitionVersion must be named (null for “absent”)"
         Just JNull -> Right Nothing
-        Just j -> note "context.definitionVersion must be a string or null" (asString j)
+        Just j -> fmap Just (note "context.definitionVersion must be a string" (asString j))
       let network = case find "network" of
             Nothing -> Nothing
             Just net -> case asObject net of
@@ -333,15 +333,15 @@ vehicleOf vector = case lookupKey "vehicle" vector of
       ignition <- case find "ignitionOn" of
         Nothing -> Left "vehicle.ignitionOn must be named"
         Just JNull -> Right Nothing
-        Just j -> note "vehicle.ignitionOn must be a bool or null" (asBool j)
+        Just j -> fmap Just (note "vehicle.ignitionOn must be a bool" (asBool j))
       voltage <- case find "batteryVoltage" of
         Nothing -> Left "vehicle.batteryVoltage must be named"
         Just JNull -> Right Nothing
-        Just j -> note "vehicle.batteryVoltage must be a number or null" (asNumber j)
+        Just j -> fmap Just (note "vehicle.batteryVoltage must be a number" (asNumber j))
       brake <- case find "parkingBrake" of
         Nothing -> Left "vehicle.parkingBrake must be named"
         Just JNull -> Right Nothing
-        Just j -> note "vehicle.parkingBrake must be a bool or null" (asBool j)
+        Just j -> fmap Just (note "vehicle.parkingBrake must be a bool" (asBool j))
       pure (Veh stationary ignition voltage brake)
   where
     asObjectOf (JObj entries) = Just entries
