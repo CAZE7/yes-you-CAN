@@ -412,18 +412,24 @@ awaitFc cfg payload s = case dueFrames isFlowControlFrame (sSent s1) (sPeer s1) 
             ffData = take 6 payload
             ffFrame = (0x10 + (total `div` 256)) : (total `mod` 256) : ffData
          in awaitFc cfg payload $
-              (push ffFrame s1)
-                { sRes =
-                    (sRes s1)
-                      { trTimeouts = trTimeouts (sRes s1) + 1
-                      }
-                , sLeft = drop 6 payload
-                , sSn = 1
-                , sBlockLeft = -1
-                , sBlock = 0
-                , sWaits = 0
-                , sRetries = sRetries s1 + 1
-                }
+              let retried = push ffFrame s1
+               in retried
+                    { -- The counters build on the pushed state: updating from
+                      -- `sRes s1` here would erase the retry's First Frame from
+                      -- the transcript again — the run looked like it never
+                      -- retried while the schedule had moved on.
+                      sRes =
+                        (sRes retried)
+                          { trTimeouts = trTimeouts (sRes retried) + 1
+                          , trRetries = trRetries (sRes retried) + 1
+                          }
+                    , sLeft = drop 6 payload
+                    , sSn = 1
+                    , sBlockLeft = -1
+                    , sBlock = 0
+                    , sWaits = 0
+                    , sRetries = sRetries s1 + 1
+                    }
     | otherwise -> (sRes s1) {trTimeouts = trTimeouts (sRes s1) + 1, trError = Just "timeout-nBs"}
   where
     -- No wait-budget reset here: the budget spans the whole transmission and the
