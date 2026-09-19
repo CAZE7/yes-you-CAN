@@ -31,11 +31,11 @@ import { type Logger, createLogger, fromHex } from "@vdp/shared";
 import {
   HEARTBEAT_IDS,
   HighFidelityVehicle,
-  SCENARIO_CATALOG,
   type ScenarioExpectation,
   createRandom,
 } from "@vdp/simulators";
 import { test } from "vitest";
+import { scenarioFileById, scenarioFiles } from "../helpers/scenario-files.js";
 import { waitFor } from "../helpers/wait.js";
 
 const logger: Logger = createLogger("scenario-chain", { level: "ERROR" });
@@ -129,16 +129,19 @@ async function verdictOf(
   }
 }
 
-/** Every scenario, measured through the wire instead of through a setter. */
-for (const scenario of SCENARIO_CATALOG) {
+/** Every scenario file, measured through the wire instead of through a setter. */
+for (const file of scenarioFiles()) {
+  const scenario = file.scenario;
   test(`${scenario.id}: a UDS scan reports what the scenario predicted`, async () => {
     const { vehicle, engine, teardown } = await connected();
     try {
       // Every expectation with its own `atMs` is checked *at that moment*, by a scan
       // over the wire — that is the difference between "the model wrote it" and "a
-      // tester can read it while the cause is on the car".
+      // tester can read it while the cause is on the car". The seed is the file's own,
+      // so the wire sees exactly the run the file declares.
       const wireFailures: string[] = [];
       const run = await vehicle.runScenario(scenario, {
+        seed: file.determinism.seed,
         onMoment: async (moment) => {
           if (moment.due.length === 0) return;
           const scan = await engine.scanDtcs(0xff);
@@ -406,10 +409,10 @@ test("a scenario is runnable without a test runner at all (the same data drives 
   const vehicle = newVehicle();
   await vehicle.start();
   try {
-    const scenario = SCENARIO_CATALOG.find((entry) => entry.id === "under-voltage-at-start");
-    assert.ok(scenario, "the catalog must carry its first scenario");
+    const file = scenarioFileById("under-voltage-at-start");
+    const scenario = file.scenario;
     const before = vehicle.model.monitorStates();
-    const run = await vehicle.runScenario(scenario);
+    const run = await vehicle.runScenario(scenario, { seed: file.determinism.seed });
     assert.equal(run.passed, true);
     assert.notDeepEqual(
       vehicle.model.monitorStates(),

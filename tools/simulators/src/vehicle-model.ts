@@ -108,7 +108,7 @@ export class VehicleBehaviourModel implements MonitorContext {
   readonly stepMs: number;
 
   private readonly log: Logger;
-  private readonly random: () => number;
+  private random: () => number;
   private readonly data: VehicleModelState;
   private readonly ecus = new Map<string, ModelEcuAttachment>();
   private readonly sensors = new Map<string, SensorFault>();
@@ -749,6 +749,19 @@ export class VehicleBehaviourModel implements MonitorContext {
         });
       }
     }
+  }
+
+  /**
+   * Replace the random source, deterministically derived from a seed.
+   *
+   * A scenario *file* declares the seed its run has to use; the vehicle, however, is
+   * built before anyone names a scenario. Reseeding is the one act that reconciles the
+   * two, and it lives here because this class is the single place where randomness is
+   * drawn (AGENTS 31): the wiring's context reads `this.random` on every step, so the
+   * next step draws from the new stream and nothing else ever saw the old one.
+   */
+  reseed(seed: number): void {
+    this.random = createRandom(seed);
   }
 
   /**

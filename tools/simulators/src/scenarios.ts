@@ -513,3 +513,8 @@ function unpredictedCodes(model: VehicleBehaviourModel, scenario: VehicleScenari
     .filter((monitor) => monitor.raised > 0 && !named.has(`${monitor.ecu}:${monitor.code}`))
     .map((monitor) => `${monitor.ecu}:${monitor.code} from ${monitor.id}`);
 }
+
+/** A scenario with its steps removed — the negative control every run is measured against. */
+export function withoutCauses(scenario: VehicleScenario): VehicleScenario {
+  return { ...scenario, steps: [] };
+}

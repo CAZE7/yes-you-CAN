@@ -71,9 +71,7 @@ import {
   ChaosLab,
   DEFAULT_VIN,
   HighFidelityVehicle,
-  SCENARIO_CATALOG,
   VirtualVehicle,
-  scenarioById,
 } from "@vdp/simulators";
 import {
   FileSystemSessionRepository,
@@ -81,6 +79,7 @@ import {
   type SessionRepository,
   type StoredSessionSummary,
   type VehicleSessionData,
+  nodeIntegrityPort,
 } from "@vdp/storage";
 import {
   type CanBus,
@@ -140,6 +139,7 @@ export type {
 import { buildAnalysisInput } from "./analysis-input.js";
 import { toDtcView } from "./dtc-view.js";
 import { toEcuView, toFreezeFrameView } from "./ecu-view.js";
+import { loadScenarioCatalog } from "./scenario-source.js";
 import {
   type ScenarioCatalogView,
   type ScenarioPanelView,
@@ -216,7 +216,12 @@ export class DemoBackend {
   private selection: AdapterSelection;
   private mode: BackendMode;
   private probe: AdapterProbe | undefined;
-  private readonly sessionLogger = new SessionLogger();
+  /**
+   * The raw trace and its witness (ADR 0047): the workbench runs on Node, so it
+   * injects the persistence layer's `node:crypto` port — the core itself stays free of
+   * platform crypto and refuses a manifest it cannot compute.
+   */
+  private readonly sessionLogger = new SessionLogger({ integrity: nodeIntegrityPort });
   private readonly listeners = new Set<(event: BackendEvent) => void>();
   private unsubscribeBus: (() => void) | undefined;
   private unsubscribeSamples: (() => void) | undefined;
@@ -1080,14 +1085,13 @@ export class DemoBackend {
   }
 
   /**
-   * The scenario catalog of the virtual vehicle (AGENTS 32).
-   *
-   * Data, not a copy: the list is the simulator's own catalog projected for a picker, so
-   * a new scenario is in the workbench the moment it is in the catalog — no second list
-   * here that a commit could forget (AGENTS 34.24).
+   * The scenario catalog of the workbench — the `scenarios/` files, projected for a
+   * picker (ADR 0048). Data, not a copy: a new scenario is in the panel the moment its
+   * file is in the directory, and a file that does not parse stopped the server with
+   * the file named instead of quietly vanishing from this list.
    */
   scenarios(): ScenarioCatalogView {
-    return toScenarioCatalogView(SCENARIO_CATALOG);
+    return toScenarioCatalogView(this.scenarioFiles.map((entry) => entry.scenario));
   }
 
   /**
@@ -1103,7 +1107,14 @@ export class DemoBackend {
    * lives here because this object is the only one that knows a scenario ever
    * ran — the analysis layer must not guess it from the fault codes alone.
    */
-  private lastScenario: { id: string; title?: string } | undefined;
+  private lastScenario: { id: string; title?: string; seed?: number } | undefined;
+
+  /**
+   * The scenario files, loaded once per process (ADR 0048): the one catalog there is.
+   * A file that does not parse fails here — loudly, at startup, with its name — because
+   * a picker that silently offers fewer scenarios is a bench that lies about the car.
+   */
+  private readonly scenarioFiles = loadScenarioCatalog();
 
   async runScenario(
     id: string,
@@ -1118,16 +1129,21 @@ export class DemoBackend {
           'no scenario support on this connection — select the "High-fidelity virtual vehicle" adapter',
       };
     }
-    const scenario = scenarioById(id.trim());
-    if (scenario === undefined) {
-      const known = SCENARIO_CATALOG.map((entry) => entry.id).join(", ");
+    const entry = this.scenarioFiles.find((file) => file.id === id.trim());
+    if (entry === undefined) {
+      const known = this.scenarioFiles.map((file) => file.id).join(", ");
       return { ok: false, error: `unknown scenario "${id}" — known: ${known}` };
     }
-    const run = await vehicle.runScenario(scenario);
-    // The analysis input names the scenario this session was driven by (§14);
-    // recording it here, at the one place a scenario ever runs, keeps the
-    // claim “this answer was made about that script” checkable.
-    this.lastScenario = { id: scenario.id, title: scenario.title };
+    // The file's seed drives the run (ADR 0046/0048): the same file is the same run,
+    // on the demo vehicle and in a regression suite.
+    const run = await vehicle.runScenario(entry.scenario, { seed: entry.determinism.seed });
+    // The analysis input names the scenario this session was driven by (§14) — with the
+    // seed, so the run it reasoned about is reproducible from the answer alone.
+    this.lastScenario = {
+      id: entry.id,
+      title: entry.scenario.title,
+      seed: entry.determinism.seed,
+    };
     const memory = vehicle.modules().flatMap((module) =>
       vehicle.model.dtcMemoryOf(module.ecuId).map((dtc) => ({
         ecu: module.ecuId,
@@ -1299,6 +1315,9 @@ export class DemoBackend {
       dtcs: this.allDtcRecords(),
       trace: snapshot.trace,
       log: snapshot.log,
+      // The export carries the digest of exactly the trace it carries, so a session
+      // that was edited after the fact can be told from one that was not.
+      rawTraceManifest: this.sessionLogger.rawTraceManifest(),
     });
   }
 

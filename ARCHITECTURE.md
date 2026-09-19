@@ -269,7 +269,8 @@ Die zulässigen Kanten pro Paket stehen dort unter `packages.*.mayImport` —
   ein Tool ist keine Schicht — kein `packages/*` darf `@vdp/simulators` o. Ä.
   als Runtime-Dependency deklrieren (CI-Gate über die Import-Graph-Prüfung).
 - **Main entry points:** `tools/simulators/src/index.ts`
-  (`VirtualVehicle`, `HighFidelityVehicle`, `SCENARIO_CATALOG`, `runScenario`),
+  (`VirtualVehicle`, `HighFidelityVehicle`, `loadScenarioLibrary` — der Katalog
+  sind die Dateien unter `scenarios/`, `runScenario`),
   `tools/golden-sessions/src/cli.ts`, `tools/formal-conformance/src/cli.ts`
   (`npm run formal:conform`), `tools/trace-analyzer/src/index.ts`.
 - **Important contracts:** Der Simulator antwortet wie ein echtes

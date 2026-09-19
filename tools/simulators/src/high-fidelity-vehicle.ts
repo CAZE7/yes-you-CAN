@@ -405,10 +405,15 @@ export class HighFidelityVehicle extends VirtualVehicle implements ScenarioTarge
    */
   async runScenario(
     scenario: VehicleScenario,
-    options: RunScenarioOptions = {},
+    options: RunScenarioOptions & { seed?: number } = {},
   ): Promise<ScenarioRun> {
     const resume = this.stopModelLoop();
     try {
+      // A scenario file fixes the seed its run has to use (ADR 0046/0048); a caller
+      // that names one hands it here, and the model's next draw comes from that
+      // stream. Without a seed the model keeps its own — an API-level scenario is
+      // reproducible through its caller instead.
+      if (options.seed !== undefined) this.model.reseed(options.seed);
       return await runScenario(this, scenario, options);
     } finally {
       if (resume) this.startModelLoop();

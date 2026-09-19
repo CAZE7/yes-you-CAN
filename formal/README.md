@@ -56,6 +56,12 @@ ist, wo kein `ghc` existiert.
 
 ## Regeln
 
+- **Release-Regel:** Ein Release geht nicht durch, wenn TypeScript und die Vektoren
+  auseinanderlaufen — das ist das Gate in `npm test` (Projekt `protocol`, alle 28 + 44
+  Vektoren gegen die Produktion, in jedem CI-Lauf). Der TypeScript ⇄ Haskell-Vergleich
+  ist die zweite Hälfte: vor einem Release ist `npm run formal:conform -- --compare`
+  auf einer Maschine mit GHC zu fahren; wo keine Toolchain ist, meldet der Runner
+  wörtlich `haskell NOT RUN` — ein nicht geführter Vergleich ist nie ein grüner.
 - Base only. Kein Cabal, kein Stack, keine externen Pakete in diesem Ordner.
 - Ein Vektor, den das Modell nicht interpretieren kann, wird zur Fehlerzeile
   mit Vektor-Index — nie zu einer fehlenden Zeile.

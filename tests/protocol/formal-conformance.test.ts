@@ -75,6 +75,15 @@ describe("ISO-15765-2 vectors against the production transport", () => {
     const tx = vectors.filter((v) => v.side === "tx").length;
     assert.ok(rx >= 14, `rx vectors dropped below 14 (found ${rx})`);
     assert.ok(tx >= 10, `tx vectors dropped below 10 (found ${tx})`);
+    // The corners a release depends on are pinned by *name*, not only by count:
+    // a vector whose name stops matching is a deleted behaviour, and deleting one
+    // of these is a model change that needs an ADR, not a quieter suite.
+    for (const area of ["sequence-error", "timeout", "overflow", "escape", "wrap", "refused"]) {
+      assert.ok(
+        vectors.some((v) => v.name.includes(area)),
+        `no vector left for the "${area}" corner — the ISO-TP gate has a hole`,
+      );
+    }
   });
 
   for (const vector of vectors) {
@@ -98,6 +107,26 @@ describe("write-safety vectors against the production safety chain", () => {
     assert.ok(count("precheck") >= 20, `precheck vectors dropped below 20 (${count("precheck")})`);
     assert.ok(count("flow") >= 10, `flow vectors dropped below 10 (${count("flow")})`);
     assert.ok(count("stages") >= 6, `stages vectors dropped below 6 (${count("stages")})`);
+    // The release-critical behaviours, pinned by name: an expired permit must be
+    // rechecked, every stage-order violation must keep its vector, and the write
+    // permission rules (session, definition, ECU identity, transport security)
+    // must each keep at least one graded example.
+    assert.ok(
+      entries.some((e) => e.name.includes("expired")),
+      "no vector left for permit expiry — the gate has a hole",
+    );
+    for (const area of ["refused", "skipping", "before", "without"]) {
+      assert.ok(
+        entries.some((e) => e.name.includes(area)),
+        `no stage vector left matching "${area}" — the order gate has a hole`,
+      );
+    }
+    for (const area of ["session", "definition", "ecu", "tls"]) {
+      assert.ok(
+        entries.some((e) => e.name.includes(area)),
+        `no precheck vector left for the "${area}" permission — the gate has a hole`,
+      );
+    }
   });
 
   for (const vector of entries) {

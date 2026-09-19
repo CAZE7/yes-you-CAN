@@ -1,0 +1,58 @@
+{
+  "$schema": "../tools/simulators/scenario.schema.json",
+  "scenario": "abs-intermittently-offline",
+  "title": "ABS intermittierend offline — ein wackelnder Stecker, nicht ein Flag",
+  "summary": "A loose connector at the ABS holds for 35 % of the steps. The module drops in and out of supply, the gateway's bus timeout latches U0121 while it is silent and heals it afterwards; the code survives as a stored fault.",
+  "vehicle": "high-fidelity-simulator",
+  "steps": [
+    {
+      "ignition": "on"
+    },
+    {
+      "wait": 500
+    },
+    {
+      "ecu": {
+        "name": "abs",
+        "mode": "connector-loose",
+        "flapMs": 1200,
+        "pattern": "alternate"
+      },
+      "holdMs": 8000
+    },
+    {
+      "wait": 8500
+    }
+  ],
+  "expect": [
+    {
+      "dtc": {
+        "code": "U0121",
+        "ecu": "gateway",
+        "state": "intermittent",
+        "minRaises": 2,
+        "because": "the contact makes and breaks, so the gateway latches U0121, heals it and latches it again — the history is the diagnosis here, not the status byte of one instant"
+      }
+    },
+    {
+      "dtc": {
+        "code": "U0140",
+        "ecu": "gateway",
+        "state": "absent",
+        "because": "the BCM keeps answering — the fault is one node, not the whole bus"
+      }
+    },
+    {
+      "ignition": {
+        "equals": "on",
+        "atMs": 10000,
+        "because": "the key stays on — nobody switched anything off in this scenario"
+      }
+    }
+  ],
+  "determinism": {
+    "clock": "model-time",
+    "seed": 4242
+  },
+  "uses": ["simulator", "tests", "replay", "ai", "demo", "regression"]
+}

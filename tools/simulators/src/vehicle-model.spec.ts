@@ -525,6 +525,51 @@ describe("fault memory lifecycle", () => {
 });
 
 describe("running the model", () => {
+  test("reseed replaces the random stream, derived from the seed alone", () => {
+    // Reseeding is how a scenario file's seed reaches an already-built vehicle
+    // (ADR 0048): the stream it installs must be exactly the one constructing with
+    // the same seed would have produced — otherwise "same seed" would not mean the
+    // same run.
+    // Randomness is drawn where the engine stumbles (an unstable supply makes the rpm
+    // wobble), so the test runs *that* path: identical streams must give identical
+    // states, or "same seed" would not mean the same run. Every model is fresh — the
+    // comparison is between runs, and a run consumes its model's time.
+    const run = (model: VehicleBehaviourModel): Readonly<unknown> => {
+      // A dying alternator and 9.2 V: below the misfire window (9.6) so the rpm
+      // wobbles on every step, above the brownout window (8 + 1) so the engine keeps
+      // running and keeps drawing. (With a working alternator the supply recovers to
+      // 14.1 V and no randomness is ever drawn — the seed would be decoration.)
+      model.setAlternatorEfficiency(0);
+      model.setBatteryVoltage(9.2);
+      model.advance(2_000);
+      return { state: model.state, monitors: model.monitorStates() };
+    };
+    const reseeded = run(
+      (() => {
+        const model = new VehicleBehaviourModel();
+        model.reseed(99);
+        return model;
+      })(),
+    );
+    assert.deepEqual(
+      run(new VehicleBehaviourModel({ random: createRandom(99) })),
+      reseeded,
+      "reseed installs exactly the stream the same seed would have constructed",
+    );
+    const twin = (() => {
+      const model = new VehicleBehaviourModel();
+      model.reseed(99);
+      return model;
+    })();
+    assert.deepEqual(run(twin), reseeded, "and two models on one seed are one run");
+    // A different seed is allowed to wobble differently — that is the point of one.
+    assert.notDeepEqual(
+      run(new VehicleBehaviourModel({ random: createRandom(100) })),
+      reseeded,
+      "the seed is load-bearing, not decoration",
+    );
+  });
+
   test("slicing the advance changes nothing", () => {
     const options = {
       initial: { ignition: "on" as const, batteryVoltage: 11.6 },

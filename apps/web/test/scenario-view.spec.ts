@@ -18,9 +18,9 @@
  */
 
 import assert from "node:assert/strict";
-import { SCENARIO_CATALOG } from "@vdp/simulators";
 import { describe, test } from "vitest";
 import { type FixturePatch, patched } from "../../../tests/helpers/fixture.js";
+import { scenarioFiles } from "../../../tests/helpers/scenario-files.js";
 import {
   type ScenarioCheckView,
   type ScenarioMemoryView,
@@ -288,20 +288,21 @@ describe("the end state rows", () => {
 });
 
 describe("the catalog view", () => {
-  test("serves every catalog entry as an option — a dropped scenario is the silent bug", () => {
-    const view = toScenarioCatalogView(SCENARIO_CATALOG);
-    assert.equal(view.options.length, SCENARIO_CATALOG.length);
+  test("serves every scenario file as an option — a dropped scenario is the silent bug", () => {
+    const catalog = scenarioFiles();
+    const view = toScenarioCatalogView(catalog.map((file) => file.scenario));
+    assert.equal(view.options.length, catalog.length);
     assert.ok(view.options.length >= 4, "the shipped catalog has scenarios to pick");
     assert.deepEqual(
       view.options.map((option) => option.value),
-      SCENARIO_CATALOG.map((scenario) => scenario.id),
+      catalog.map((file) => file.id),
       "and in the catalog's order, because the catalog is the documentation",
     );
-    assert.match(view.note, new RegExp(`^${SCENARIO_CATALOG.length} Szenarien`));
+    assert.match(view.note, new RegExp(`^${catalog.length} Szenarien`));
   });
 
   test("every option says what a run costs", () => {
-    const view = toScenarioCatalogView(SCENARIO_CATALOG);
+    const view = toScenarioCatalogView(scenarioFiles().map((file) => file.scenario));
     for (const option of view.options) {
       assert.match(option.hint, /\d+ Schritte · ~\d+(\.\d)? s Modellzeit · \d+ Erwartungen/);
       assert.notEqual(option.label, option.value, "a picker reads titles, not ids");

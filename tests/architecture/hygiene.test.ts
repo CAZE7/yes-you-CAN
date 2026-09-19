@@ -459,13 +459,15 @@ test("modules stay reviewable: no production file above the size budget", () => 
     {
       file: "apps/web/src/backend.ts",
       reason:
-        "1471 lines — split tracked as AGENTS 0.E E15; the wire contract moved to views.ts in " +
+        "1490 lines — split tracked as AGENTS 0.E E15; the wire contract moved to views.ts in " +
         "E19 (1326 → 1117), `get canBus()` (which nothing had used since the replay suites " +
         "moved to injected buses) is gone (1427 → 1419), and E24's chaos-in-the-path added the " +
         "wrapper in `start()`, the burst target and the refusal before a connection: 1419 → " +
         "1458; the analysis input's scenario recording (ADR 0046: `lastScenario` plus its " +
-        "pass-through in `analyze()`) added 13: 1458 → 1471. The budget only keeps the *rest* " +
-        "from growing unnoticed",
+        "pass-through in `analyze()`) added 13: 1458 → 1471; the raw-trace witness in " +
+        "`exportJson` and the injected `IntegrityPort` (ADR 0047) added 9: 1471 → 1480, and the " +
+        "scenario catalog moving to the `scenarios/` files (ADR 0048) added 10: 1480 → 1490. The " +
+        "budget only keeps the *rest* from growing unnoticed",
     },
     {
       file: "apps/web/public/app.js",

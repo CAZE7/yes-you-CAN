@@ -1,0 +1,77 @@
+{
+  "$schema": "../tools/simulators/scenario.schema.json",
+  "scenario": "can-bus-dropouts",
+  "title": "CAN-Bus-Aussetzer — ein offener Draht zählt, ein rauer Bus nicht",
+  "summary": "The transmission's traffic is fully swallowed for 1.2 s (the gateway latches U0101), then only 40 % is lost (it must not latch again). One code, two bus conditions, two verdicts.",
+  "vehicle": "high-fidelity-simulator",
+  "steps": [
+    {
+      "ignition": "on"
+    },
+    {
+      "wait": 1000
+    },
+    {
+      "bus": {
+        "mode": "open",
+        "ecu": "transmission"
+      },
+      "holdMs": 1200
+    },
+    {
+      "wait": 3000
+    },
+    {
+      "bus": {
+        "mode": "stutter",
+        "ecu": "transmission",
+        "dropRate": 0.4
+      },
+      "holdMs": 1500
+    },
+    {
+      "wait": 3000
+    }
+  ],
+  "expect": [
+    {
+      "dtc": {
+        "code": "U0101",
+        "ecu": "gateway",
+        "state": "active",
+        "atMs": 2100,
+        "because": "1.2 s of silence on a wire with a 400 ms timeout is a lost node"
+      }
+    },
+    {
+      "dtc": {
+        "code": "U0101",
+        "ecu": "gateway",
+        "state": "stored",
+        "atMs": 4000,
+        "because": "the wire carries again, so the monitor heals the code without clearing it"
+      }
+    },
+    {
+      "dtc": {
+        "code": "U0101",
+        "ecu": "gateway",
+        "state": "stored",
+        "because": "a 40 % frame loss never keeps the gateway silent for a whole timeout window, so a rough bus must not be re-reported as a dead module"
+      }
+    },
+    {
+      "time_ms": {
+        "operator": ">",
+        "value": 7000,
+        "atMs": 8000,
+        "because": "the run is long enough for the heal window to have passed twice"
+      }
+    }
+  ],
+  "determinism": {
+    "clock": "model-time",
+    "seed": 4242
+  },
+  "uses": ["simulator", "tests", "replay", "ai", "demo", "regression"]
+}

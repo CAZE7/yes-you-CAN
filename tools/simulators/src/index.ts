@@ -7,7 +7,7 @@ export * from "./vehicle-wiring.js";
 export * from "./vehicle-model.js";
 export * from "./vehicle-monitors.js";
 export * from "./scenarios.js";
-export * from "./scenario-catalog.js";
+export * from "./scenario-library.js";
 export * from "./scenario-file.js";
 export * from "./high-fidelity-vehicle.js";
 export * from "./chaos-lab.js";

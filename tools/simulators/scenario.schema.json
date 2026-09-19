@@ -5,44 +5,98 @@
   "type": "object",
   "required": ["scenario", "steps", "expect", "determinism"],
   "properties": {
-    "$schema": { "type": "string" },
-    "scenario": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$" },
-    "title": { "type": "string" },
-    "summary": { "type": "string" },
-    "vehicle": { "const": "high-fidelity-simulator" },
+    "$schema": {
+      "type": "string"
+    },
+    "scenario": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]*$"
+    },
+    "title": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "vehicle": {
+      "const": "high-fidelity-simulator"
+    },
     "steps": {
       "type": "array",
       "minItems": 1,
       "items": {
         "type": "object",
-        "description": "Exactly one cause key (ignition, battery, alternator, load, wait, sensor, ecu, bus) plus optional holdMs.",
+        "description": "Exactly one cause key (ignition, battery, alternator, load, wait, sensor, ecu, bus, driver) plus optional holdMs.",
         "properties": {
-          "holdMs": { "type": "integer", "minimum": 0 },
-          "wait": { "type": "integer", "minimum": 1 },
-          "ignition": { "enum": ["lock", "off", "acc", "on", "start"] },
+          "holdMs": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "wait": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "ignition": {
+            "enum": ["lock", "off", "acc", "on", "start"]
+          },
           "battery": {
             "oneOf": [
-              { "type": "number", "minimum": 0, "maximum": 30 },
+              {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 30
+              },
               {
                 "type": "object",
                 "required": ["volts"],
-                "properties": { "volts": { "type": "number", "minimum": 0, "maximum": 30 } }
+                "properties": {
+                  "volts": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 30
+                  }
+                }
               }
             ]
           },
           "alternator": {
-            "oneOf": [{ "const": "fail" }, { "type": "number", "minimum": 0, "maximum": 1 }]
+            "oneOf": [
+              {
+                "const": "fail"
+              },
+              {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            ]
           },
           "load": {
             "oneOf": [
-              { "const": "low" },
-              { "const": "medium" },
-              { "const": "high" },
-              { "type": "number", "minimum": 0, "maximum": 300 },
+              {
+                "const": "low"
+              },
+              {
+                "const": "medium"
+              },
+              {
+                "const": "high"
+              },
+              {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 300
+              },
               {
                 "type": "object",
                 "required": ["amps"],
-                "properties": { "amps": { "type": "number", "minimum": 0, "maximum": 300 } }
+                "properties": {
+                  "amps": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 300
+                  }
+                }
               }
             ]
           },
@@ -50,7 +104,9 @@
             "type": "object",
             "required": ["signal", "mode"],
             "properties": {
-              "signal": { "type": "string" },
+              "signal": {
+                "type": "string"
+              },
               "mode": {
                 "enum": [
                   "open-circuit",
@@ -61,26 +117,90 @@
                   "drift-low"
                 ]
               },
-              "value": { "type": "number" }
+              "value": {
+                "type": "number"
+              }
             }
           },
           "ecu": {
             "type": "object",
             "required": ["name"],
             "properties": {
-              "name": { "type": "string" },
-              "mode": { "enum": ["power-cut", "supply-resistance", "connector-loose", "bus-open"] },
-              "state": { "const": "offline" }
+              "name": {
+                "type": "string"
+              },
+              "mode": {
+                "enum": ["power-cut", "supply-resistance", "connector-loose", "bus-open"]
+              },
+              "state": {
+                "const": "offline"
+              },
+              "flapMs": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "How often an intermittent contact is redrawn (model ms). Needs `mode`."
+              },
+              "pattern": {
+                "enum": ["random", "alternate"],
+                "description": "`alternate` is reproducible with any rng; `random` with the file's seed. Needs `mode`."
+              }
             }
           },
           "bus": {
             "type": "object",
             "required": ["mode"],
             "properties": {
-              "mode": { "enum": ["open", "stutter"] },
-              "ecu": { "type": "string" },
-              "dropRate": { "type": "number", "minimum": 0, "maximum": 1 }
+              "mode": {
+                "enum": ["open", "stutter"]
+              },
+              "ecu": {
+                "type": "string"
+              },
+              "dropRate": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
             }
+          },
+          "driver": {
+            "type": "object",
+            "description": "Where the driver wants the car. At least one field is required; the model relaxes towards it (there is no engine setter — causes only).",
+            "anyOf": [
+              {
+                "required": ["speedKph"]
+              },
+              {
+                "required": ["throttlePct"]
+              },
+              {
+                "required": ["gear"]
+              },
+              {
+                "required": ["brake"]
+              }
+            ],
+            "properties": {
+              "speedKph": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 400
+              },
+              "throttlePct": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "gear": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 9
+              },
+              "brake": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
           }
         }
       }
@@ -90,7 +210,7 @@
       "minItems": 1,
       "items": {
         "type": "object",
-        "description": "One expectation: a dtc (nested or flat) or a comparison like { battery_voltage: \"< 12.0\" } or { battery_voltage: { operator, value, unit? } }.",
+        "description": "One expectation: a dtc (nested or flat); a number compared like { battery_voltage: \"< 12.0\" } or { supply_voltage: { operator, value, unit?, atMs?, because? } }; a boolean or state matched like { engine_running: { equals: false, atMs?, because? } } or { ignition: { equals: \"on\", atMs?, because? } }. Known fields: battery_voltage, supply_voltage, coolant_temperature, engine_rpm, speed_kph, long_term_trim_pct, maf_airflow, electrical_load, time_ms, engine_running, alternator_charging, starter_cranking, ignition.",
         "minProperties": 1
       }
     },
@@ -98,13 +218,26 @@
       "type": "object",
       "required": ["clock", "seed"],
       "properties": {
-        "clock": { "const": "model-time" },
-        "seed": { "type": "integer", "minimum": 0 }
+        "clock": {
+          "const": "model-time"
+        },
+        "seed": {
+          "type": "integer",
+          "minimum": 0
+        }
       },
       "additionalProperties": false
     },
-    "closedWorld": { "type": "boolean", "default": true },
-    "uses": { "type": "array", "items": { "type": "string" } }
+    "closedWorld": {
+      "type": "boolean",
+      "default": true
+    },
+    "uses": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
   },
   "additionalProperties": false
 }

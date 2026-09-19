@@ -15,7 +15,13 @@
 import assert from "node:assert/strict";
 import { AdapterCatalog, type AdapterEntry } from "@vdp/adapter-host";
 import { TransportClosedError, createLogger } from "@vdp/shared";
-import { MemorySessionRepository } from "@vdp/storage";
+import {
+  MemorySessionRepository,
+  type RawTraceEntry,
+  type RawTraceManifest,
+  nodeIntegrityPort,
+  verifyRawTraceManifest,
+} from "@vdp/storage";
 import { test } from "vitest";
 import { tick, waitFor } from "../../../tests/helpers/wait.js";
 import { DemoBackend } from "../src/backend.js";
@@ -376,6 +382,62 @@ test("a corrupted response takes codes off the readout, and the aim says which",
       "corruption aimed at the request id leaves a single-frame readout untouched",
     );
     backend.resetChaos();
+  } finally {
+    backend.stopLive();
+    await backend.stop();
+  }
+});
+
+/**
+ * The witness on the way out (ADR 0047).
+ *
+ * The workbench is the place where a session leaves the platform as a file, so it is the
+ * place where the raw trace has to carry its digest: `@vdp/core` computes the canonical
+ * stream and refuses to hash without an injected port, `@vdp/storage` supplies the Node
+ * one, and the export below is the measurement that the two meet — plus the measurement
+ * that a manipulated trace stops being confirmed by it.
+ */
+test("the JSON export carries a witness that verifies against the trace it exports", async () => {
+  const backend = new DemoBackend({ logger, liveIntervalMs: 60, seedDtcs: false });
+  try {
+    await backend.start();
+    await backend.startLive(["engine.rpm"]);
+    await waitFor(
+      () => backend.state().trace.length,
+      (count) => count > 0,
+      { timeoutMs: 5000 },
+    );
+    const exported = JSON.parse(backend.exportJson()) as {
+      trace: Array<Omit<RawTraceEntry, "payload"> & { payload: string }>;
+      rawTraceManifest: RawTraceManifest;
+    };
+    assert.ok(exported.trace.length > 0, "a live session records frames");
+    assert.equal(exported.rawTraceManifest.format, "vdp.raw-trace-manifest");
+    assert.equal(exported.rawTraceManifest.algorithm, "sha256");
+    assert.equal(
+      exported.rawTraceManifest.entries,
+      exported.trace.length,
+      "the witness covers exactly the exported trace",
+    );
+    assert.match(exported.rawTraceManifest.sha256, /^[0-9a-f]{64}$/);
+
+    const entries: RawTraceEntry[] = exported.trace.map((entry) => ({
+      ...entry,
+      payload: new Uint8Array(entry.dlc),
+    }));
+    assert.equal(
+      verifyRawTraceManifest(entries, exported.rawTraceManifest, nodeIntegrityPort),
+      true,
+      "the digest is the one the exported bytes produce",
+    );
+    const tampered = entries.map((entry, index) =>
+      index === 0 ? { ...entry, payloadHex: "ff" } : entry,
+    );
+    assert.equal(
+      verifyRawTraceManifest(tampered, exported.rawTraceManifest, nodeIntegrityPort),
+      false,
+      "one changed payload byte and the export is no longer the recording it claims to be",
+    );
   } finally {
     backend.stopLive();
     await backend.stop();

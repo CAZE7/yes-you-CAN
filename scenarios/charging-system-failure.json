@@ -1,0 +1,76 @@
+{
+  "$schema": "../tools/simulators/scenario.schema.json",
+  "scenario": "charging-system-failure",
+  "title": "Lichtmaschine ausgefallen — eine Ursache, eine Kaskade",
+  "summary": "Alternator at 0 % with 45 A of consumers. The battery is spent in tens of seconds of model time: B1001 first, then P0300 as combustion stops having a working coil, then the engine stalls, and the supply finally leaves the modules' own window.",
+  "vehicle": "high-fidelity-simulator",
+  "steps": [
+    {
+      "ignition": "on"
+    },
+    {
+      "wait": 300
+    },
+    {
+      "load": 45
+    },
+    {
+      "wait": 200
+    },
+    {
+      "alternator": "fail"
+    },
+    {
+      "wait": 18500
+    }
+  ],
+  "expect": [
+    {
+      "dtc": {
+        "code": "B1001",
+        "ecu": "bcm",
+        "state": "active",
+        "atMs": 8000,
+        "because": "the drain crosses 11.5 V well before anything else in the car notices"
+      }
+    },
+    {
+      "dtc": {
+        "code": "P0300",
+        "ecu": "engine",
+        "state": "active",
+        "atMs": 20000,
+        "because": "below 9.6 V the coils cannot fire the engine, which is what the misfire monitor measures"
+      }
+    },
+    {
+      "dtc": {
+        "code": "P0700",
+        "ecu": "transmission",
+        "state": "active",
+        "atMs": 20000,
+        "because": "the engine asked for the lamp, so the gear ECU records that it did"
+      }
+    },
+    {
+      "supply_voltage": {
+        "operator": "<",
+        "value": 9.6,
+        "atMs": 20000,
+        "because": "the cascade is a voltage curve, and the curve is the evidence"
+      }
+    },
+    {
+      "engine_running": {
+        "equals": false,
+        "atMs": 20000,
+        "because": "an engine without a working supply stops — the model does not pretend otherwise"
+      }
+    }
+  ],
+  "determinism": {
+    "clock": "model-time",
+    "seed": 4242
+  },
+  "uses": ["simulator", "tests", "replay", "ai", "demo", "regression"]
+}
