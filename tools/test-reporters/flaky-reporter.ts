@@ -16,6 +16,8 @@
  * `TestModule` helpers, which keeps it stable across Vitest internals.
  */
 
+import { appendFileSync } from "node:fs";
+
 /** Minimal shape of a Vitest task in the reported tree. */
 export interface TaskLike {
   type: string;
@@ -150,6 +152,29 @@ export default class FlakyReporter {
     if (this.failures.length > 0 && process.env.GITHUB_ACTIONS) {
       const summary = `${this.failures.length} failing test${this.failures.length === 1 ? "" : "s"}`;
       process.stdout.write(`::error title=Test failures::${escapeAnnotation(summary)}\n`);
+      // Annotations truncate at ~1024 characters — the step summary does not, and
+      // the check-runs API reads it back whole (`output.summary`). A red run must
+      // carry its full evidence somewhere reachable, or the log blob is the only
+      // witness and it is the one channel this repository cannot read.
+      const summaryPath = process.env.GITHUB_STEP_SUMMARY;
+      if (summaryPath !== undefined) {
+        const body = this.failures
+          .map(
+            (record) =>
+              `### FAILING TEST: \`${record.test}\`\n\n` +
+              `file: \`${record.file}\` — ${record.attempts} attempt(s)\n\n` +
+              "```\n" +
+              `${record.message}\n` +
+              "```\n",
+          )
+          .join("\n");
+        try {
+          appendFileSync(summaryPath, `# Test failures\n\n${body}\n`);
+        } catch {
+          // A summary that cannot be written leaves the annotations — never a crash
+          // inside the reporter while the suite is already red.
+        }
+      }
     }
 
     if (this.flaky.length === 0) return;
