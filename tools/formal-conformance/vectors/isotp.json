@@ -1781,46 +1781,6 @@
           "retries": 0
         }
       }
-    },
-    {
-      "name": "zz-probe-config",
-      "side": "rx",
-      "config": {
-        "blockSize": 2
-      },
-      "input": [
-        {
-          "in": [
-            16,
-            2,
-            200,
-            201,
-            202,
-            203,
-            204,
-            205
-          ]
-        },
-        {
-          "in": [
-            33,
-            206,
-            207
-          ]
-        }
-      ],
-      "expect": {
-        "delivered": [
-          1
-        ],
-        "error": null,
-        "sentFrames": [],
-        "counters": {
-          "sequenceErrors": 0,
-          "timeouts": 0,
-          "retries": 0
-        }
-      }
     }
   ]
 }

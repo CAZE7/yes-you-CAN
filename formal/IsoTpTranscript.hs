@@ -112,8 +112,9 @@ decodeSent (pci : body) = case pci `div` 16 of
       else Right (JObj [("pci", JStr "consecutive"), ("sn", jint (pci `mod` 16)), ("payload", jbytes body)])
   3 ->
     let status = pci `mod` 16
-        bs = case body of { (_ : x : _) -> x; _ -> 0 }
-        st = case body of { (_ : _ : x : _) -> x; _ -> 0 }
+        -- Flow-control body after the PCI is exactly [blockSize, stMin].
+        bs = case body of { (x : _ : _) -> x; _ -> 0 }
+        st = case body of { (_ : x : _) -> x; _ -> 0 }
      in if status > 2
           then Left ("sent flow control with unknown status: " ++ show status)
           else Right (JObj [("pci", JStr "flow-control"), ("status", jint status), ("blockSize", jint bs), ("stMin", jint st)])
