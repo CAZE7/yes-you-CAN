@@ -54,7 +54,13 @@ import type {
   VehiclePhysics,
   VehicleThresholds,
 } from "./vehicle-state.js";
-import { VEHICLE_PHYSICS, VEHICLE_THRESHOLDS, approach, round } from "./vehicle-state.js";
+import {
+  VEHICLE_PHYSICS,
+  VEHICLE_THRESHOLDS,
+  approach,
+  bornVehicleState,
+  round,
+} from "./vehicle-state.js";
 import { ModuleWiring } from "./vehicle-wiring.js";
 import { createRandom } from "./virtual-vehicle.js";
 
@@ -119,6 +125,9 @@ export class VehicleBehaviourModel implements MonitorContext {
   private readonly supervised = new Map<string, string[]>();
   private readonly monitors: MonitorRuntime[];
   private readonly onStep: ((state: Readonly<VehicleModelState>) => void) | undefined;
+  /** How this model was parameterized at birth — what {@link restart} rebuilds from. */
+  private readonly bornInitial: NonNullable<VehicleModelOptions["initial"]>;
+  private readonly bornIdleAdapt: number;
 
   constructor(options: VehicleModelOptions = {}) {
     this.thresholds = { ...VEHICLE_THRESHOLDS, ...(options.thresholds ?? {}) };
@@ -136,53 +145,7 @@ export class VehicleBehaviourModel implements MonitorContext {
       random: () => this.random(),
     }));
     const initial = options.initial ?? {};
-    const ambient = initial.ambientC ?? 22;
-    const battery = initial.batteryVoltage ?? 12.6;
-    // A car whose key is on is a car whose engine runs, unless the caller says
-    // otherwise. Starting "ignition on, engine stopped, battery draining" would make
-    // every idle vehicle latch a supply code, and a model that cries wolf teaches
-    // nothing about debouncing.
-    const running =
-      initial.engineRunning ?? ((initial.rpm ?? 0) > 0 || (initial.ignition ?? "on") === "on");
-    this.data = {
-      timeMs: 0,
-      ignition: initial.ignition ?? "on",
-      batteryVoltage: battery,
-      alternatorEfficiency: 1,
-      electricalLoadA: 0,
-      supplyVoltage: battery,
-      alternatorCharging: false,
-      starterCranking: false,
-      engineRunning: running,
-      rpm: initial.rpm ?? (running ? this.idleAdapt : 0),
-      runtimeS: 0,
-      coolantC: ambient,
-      oilC: ambient,
-      intakeAirC: ambient,
-      throttlePct: 0,
-      loadPct: 18,
-      speedKph: initial.speedKph ?? 0,
-      demandSpeedKph: initial.speedKph ?? 0,
-      brakePressed: false,
-      gear: 3,
-      shortTermTrimPct: 0,
-      longTermTrimPct: 0,
-      mafGramsPerS: 4,
-      mapKpa: 32,
-      timingAdvanceDeg: 10,
-      fuelRailKpa: 300,
-      wheelSpeedKph: {
-        frontLeft: initial.speedKph ?? 0,
-        frontRight: initial.speedKph ?? 0,
-        rearLeft: initial.speedKph ?? 0,
-        rearRight: initial.speedKph ?? 0,
-      },
-      operationCycles: 1,
-      faultThisCycle: false,
-    };
-    if (running && (initial.ignition ?? "on") === "on") {
-      this.data.alternatorCharging = this.data.alternatorEfficiency > 0;
-    }
+    this.data = bornVehicleState(initial, this.idleAdapt);
     this.monitors = standardMonitors().map((monitor) => ({
       monitor,
       heldMs: 0,
@@ -197,6 +160,11 @@ export class VehicleBehaviourModel implements MonitorContext {
     // have produced (that is how "charging, but 12.6 V on the wire" got into a test).
     this.updateElectrical(0);
     this.updatePowertrain(0);
+    // What a restart hands back: the parameterization and the idle adaptation this
+    // model was born with. The initial object is copied — the caller keeps their
+    // reference, and the baseline must not move under them.
+    this.bornInitial = { ...initial };
+    this.bornIdleAdapt = this.idleAdapt;
   }
 
   /** Idle-speed adaptation the engine ECU has learned (DID 0x2100 is writable). */
@@ -436,6 +404,28 @@ export class VehicleBehaviourModel implements MonitorContext {
     // vehicle is in, so a reset cannot inherit a peer's presence from the run before.
     this.lastHeard.clear();
     this.log.debug("model reset", { timeMs: this.data.timeMs });
+  }
+
+  /**
+   * Back to the moment of birth: the state the constructor produced, the clock at 0,
+   * every cause lifted, every monitor un-latched. This is the baseline a scenario run
+   * assumes — the suites run the same file against a model that was just built, and
+   * "same file, same run" (ADR 0048) may not depend on where a long-lived vehicle
+   * happens to be when the run starts. Attachments stay, and the fault memory of the
+   * attached modules stays too: forgetting a diagnosis is service 0x14, not a
+   * constructor (AGENTS 20), and `restart` is not a constructor. The random stream is
+   * also left alone — `reseed()` is the explicit verb for that.
+   */
+  restart(): void {
+    this.reset();
+    this.idleAdapt = this.bornIdleAdapt;
+    Object.assign(this.data, bornVehicleState(this.bornInitial, this.bornIdleAdapt));
+    // The constructor's last step, for the same reason: the reinstated numbers go
+    // through the physics once, so a read before the next step cannot show a supply
+    // the physics would never have produced.
+    this.updateElectrical(0);
+    this.updatePowertrain(0);
+    this.log.debug("model restarted at its born state", { timeMs: this.data.timeMs });
   }
 
   // --- the physics ------------------------------------------------------------

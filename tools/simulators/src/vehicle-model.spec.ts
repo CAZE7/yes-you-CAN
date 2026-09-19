@@ -634,3 +634,60 @@ describe("running the model", () => {
     );
   });
 });
+
+describe("restart, the baseline a scenario run assumes", () => {
+  test("a driven model comes back to the exact state it was born with", () => {
+    const { model } = modelWithBcm({ initial: { ignition: "on", batteryVoltage: 12.6 } });
+    const born = { ...model.state, wheelSpeedKph: { ...model.state.wheelSpeedKph } };
+    model.setAlternatorEfficiency(0);
+    model.setBatteryVoltage(9.2);
+    model.setSensorFault({ signal: "engine.maf_airflow", mode: "drift-low" });
+    model.advance(5_000);
+    const drained = model.state.supplyVoltage;
+    model.restart();
+    assert.equal(model.state.timeMs, 0, "the clock is back at the moment of birth");
+    assert.deepEqual(
+      model.state,
+      born,
+      "every field the constructor produced is reinstated — nothing of the driven car survives",
+    );
+    assert.notEqual(model.state.supplyVoltage, drained, "the drain is gone, not frozen");
+    // A second restart is the same state again: the baseline itself never drifts.
+    model.setBatteryVoltage(6);
+    model.advance(2_000);
+    model.restart();
+    assert.deepEqual(model.state, born, "restart is a fixed point, not a partial recovery");
+  });
+
+  test("restart forgets causes and latches, but not the modules or their memory", () => {
+    const { model, server } = modelWithBcm({ initial: { ignition: "on" } });
+    model.setAlternatorEfficiency(0);
+    model.setBatteryVoltage(9.4);
+    model.advance(2_000);
+    assert.ok(statusOf(server, "B1001") !== undefined, "the precondition: a code latched");
+    const latched = statusOf(server, "B1001");
+    model.restart();
+    assert.equal(monitorOf(model, "bcm-supply-voltage").raised, 0, "the latch bookkeeping is new");
+    assert.equal(
+      statusOf(server, "B1001"),
+      latched,
+      "the module's fault memory stays what it was — " +
+        "a scenario run must not silently clear what an ECU holds (AGENTS 20)",
+    );
+    // And the attachment still works: a new cause is obeyed again.
+    model.setSensorFault({ signal: "engine.maf_airflow", mode: "drift-high" });
+    model.advance(100);
+    assert.ok(
+      model.sensorFault("engine.maf_airflow") !== undefined,
+      "the module is still attached after the restart",
+    );
+  });
+
+  test("a restart on an untouched model changes nothing", () => {
+    const { model } = modelWithBcm({ initial: { ignition: "on" } });
+    model.advance(0);
+    const before = { ...model.state, wheelSpeedKph: { ...model.state.wheelSpeedKph } };
+    model.restart();
+    assert.deepEqual(model.state, before, "the baseline is where it already was");
+  });
+});

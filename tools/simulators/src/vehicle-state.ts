@@ -269,6 +269,67 @@ export interface VehicleModelOptions {
   onStep?: (state: Readonly<VehicleModelState>) => void;
 }
 
+/**
+ * The state a model is born with — the one shape both the model's constructor and
+ * `VehicleBehaviourModel.restart()` hand out, so the two can never drift apart
+ * (ADR 0031: a second copy of a shape is a defect with a delay). The numbers come
+ * out rough here; the model runs one physics pass over them right after, so a read
+ * before the first step still shows values the physics would have produced.
+ */
+export function bornVehicleState(
+  initial: NonNullable<VehicleModelOptions["initial"]>,
+  idleAdaptRpm: number,
+): VehicleModelState {
+  const battery = initial.batteryVoltage ?? 12.6;
+  const ambient = initial.ambientC ?? 22;
+  // A car whose key is on is a car whose engine runs, unless the caller says
+  // otherwise. Starting "ignition on, engine stopped, battery draining" would make
+  // every idle vehicle latch a supply code, and a model that cries wolf teaches
+  // nothing about debouncing.
+  const running =
+    initial.engineRunning ?? ((initial.rpm ?? 0) > 0 || (initial.ignition ?? "on") === "on");
+  const state: VehicleModelState = {
+    timeMs: 0,
+    ignition: initial.ignition ?? "on",
+    batteryVoltage: battery,
+    alternatorEfficiency: 1,
+    electricalLoadA: 0,
+    supplyVoltage: battery,
+    alternatorCharging: false,
+    starterCranking: false,
+    engineRunning: running,
+    rpm: initial.rpm ?? (running ? idleAdaptRpm : 0),
+    runtimeS: 0,
+    coolantC: ambient,
+    oilC: ambient,
+    intakeAirC: ambient,
+    throttlePct: 0,
+    loadPct: 18,
+    speedKph: initial.speedKph ?? 0,
+    demandSpeedKph: initial.speedKph ?? 0,
+    brakePressed: false,
+    gear: 3,
+    shortTermTrimPct: 0,
+    longTermTrimPct: 0,
+    mafGramsPerS: 4,
+    mapKpa: 32,
+    timingAdvanceDeg: 10,
+    fuelRailKpa: 300,
+    wheelSpeedKph: {
+      frontLeft: initial.speedKph ?? 0,
+      frontRight: initial.speedKph ?? 0,
+      rearLeft: initial.speedKph ?? 0,
+      rearRight: initial.speedKph ?? 0,
+    },
+    operationCycles: 1,
+    faultThisCycle: false,
+  };
+  if (running && (initial.ignition ?? "on") === "on") {
+    state.alternatorCharging = state.alternatorEfficiency > 0;
+  }
+  return state;
+}
+
 /** The narrow view a monitor is given; the model satisfies it. */
 export interface MonitorContext {
   readonly state: Readonly<VehicleModelState>;

@@ -128,6 +128,8 @@ export class HighFidelityVehicle extends VirtualVehicle implements ScenarioTarge
   private readonly powered = new Map<string, boolean>();
   private readonly heartbeatFrames = new Map<string, number>();
   private readonly wireFaults = new Map<string, () => void>();
+  /** ecuId:code -> the status the module's memory carried when it was attached. */
+  private readonly bornDtcStatuses = new Map<string, number>();
   private readonly removeGatewayListening: Array<() => void> = [];
   private modelTimer: ReturnType<typeof setInterval> | undefined;
   private started = false;
@@ -409,15 +411,39 @@ export class HighFidelityVehicle extends VirtualVehicle implements ScenarioTarge
   ): Promise<ScenarioRun> {
     const resume = this.stopModelLoop();
     try {
-      // A scenario file fixes the seed its run has to use (ADR 0046/0048); a caller
-      // that names one hands it here, and the model's next draw comes from that
-      // stream. Without a seed the model keeps its own — an API-level scenario is
-      // reproducible through its caller instead.
+      // A scenario run is an experiment with a fixed starting line (ADR 0046/0048):
+      // the vehicle as it was born — clock at 0, fresh supply, memories as attach left
+      // them — exactly the world the regression suites run the same file in. Without
+      // this, a run inherited whatever the wall clock and the run before it had left
+      // on the car (measured on the workbench: alternator_failure read 8.2 V where the
+      // file's suite run reads 10.8 V, with P0300/P0700 latched from earlier drift) —
+      // same seed, different bench, AGENTS 31 broken. The *aftermath* of a run stays
+      // on the car until the next run or a reconnect: a bench that hid what its
+      // scenario did would be lying in exactly the moment someone looks under it.
+      this.prepareScenarioRun();
       if (options.seed !== undefined) this.model.reseed(options.seed);
       return await runScenario(this, scenario, options);
     } finally {
       if (resume) this.startModelLoop();
     }
+  }
+
+  /**
+   * The starting line of every scenario run: the model at birth, every module's
+   * memory at its attached baseline, no bus impairment of a previous run still on
+   * the wire, and the power states in step with the fresh model.
+   */
+  private prepareScenarioRun(): void {
+    this.model.restart();
+    for (const ecu of this.ecus) {
+      for (const dtc of ecu.definition.dtcs ?? []) {
+        const born = this.bornDtcStatuses.get(`${ecu.definition.id}:${dtc.code}`);
+        if (born !== undefined) ecu.server.setDtcStatus(dtc.code, born);
+      }
+    }
+    for (const remove of this.wireFaults.values()) remove();
+    this.wireFaults.clear();
+    this.syncPowerStates();
   }
 
   // --- wiring ------------------------------------------------------------------
@@ -435,6 +461,11 @@ export class HighFidelityVehicle extends VirtualVehicle implements ScenarioTarge
       });
       this.heartbeatFrames.set(definition.id, HEARTBEAT_IDS[definition.id] ?? 0);
       if (codes.size > 0 && !startWithStoredFaults) this.clearFaultMemory(ecu);
+      // The baseline a scenario run restores: the memory exactly as attach left it —
+      // empty unless the caller deliberately started from stored faults.
+      for (const dtc of ecu.server.dtcMemory) {
+        this.bornDtcStatuses.set(`${definition.id}:${dtc.code}`, dtc.status);
+      }
     }
     this.model.supervise("gateway", SUPERVISED_PEERS);
     this.registerVehicleDids();

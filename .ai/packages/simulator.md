@@ -29,7 +29,11 @@ Fault-Injection, Golden Sessions.
 5. **Determinismus als Kette:** der Seed der Szenariodatei läuft bis in den
    Lauf (`runScenario(…, { seed })`, `lastScenario` → `AnalysisInput`);
    Modellzeit statt Wanduhr; Warten auf Bedingungen
-   (`tests/helpers/wait.ts`), nie fixen Sleeps.
+   (`tests/helpers/wait.ts`), nie fixen Sleeps. Auf dem Fahrzeug stellt
+   `HighFidelityVehicle.runScenario` die Basislinie vor jedem Lauf selbst
+   her (`prepareScenarioRun` → `VehicleBehaviourModel.restart()`): der
+   geborene Zustand, Uhr bei 0 — derselbe Lauf wie in der Suite, nicht
+   der Zustand, den Wanduhr und Vorlauf hinterlassen haben.
 6. **Golden Sessions sind Daten** (ADR 0036): Aufzeichnung + Erwartung +
    Lauf; der Vergleich läuft im IR-Vokabular über den echten Core.
 

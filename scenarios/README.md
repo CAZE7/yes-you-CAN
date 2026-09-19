@@ -28,6 +28,14 @@ use the file's `determinism` (`clock: "model-time"`, integer `seed`) so replay
 and regression runs receive the same input and output — the field is therefore
 required, not a hint.
 
+On the workbench this is enforced by the vehicle, not by discipline:
+`HighFidelityVehicle.runScenario` puts the car back to its born state before
+every run (clock at 0, fresh supply, module memories as they were attached, no
+bus impairment left on the wire) and then applies the file's seed — so the run a
+visitor triggers over HTTP is the same run the regression suites execute. The
+aftermath of a run stays visible on the vehicle until the next run or a
+reconnect; the run after it starts clean again.
+
 Where to look:
 
 - run on the bare model (fast, no wire): `runScenario(modelTarget(model), file.scenario)`
