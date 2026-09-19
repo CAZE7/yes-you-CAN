@@ -35,7 +35,7 @@ module SafetyTranscript
   ) where
 
 import Data.Maybe (fromMaybe)
-import Json (JValue (..), asArray, asBool, asInt, asNumber, asString, lookupKey)
+import Json (JValue (..), asArray, asBool, asInt, asNumber, asObject, asString, lookupKey)
 
 data SafetyOutcome
   = Precheck Bool Int Int -- granted, failed, unproven
@@ -270,7 +270,7 @@ note msg = maybe (Left msg) Right
 contextOf :: Maybe Int -> JValue -> Either String Ctx
 contextOf defaultSession vector = case lookupKey "context" vector of
   Nothing -> Left "context missing"
-  Just ctxJson -> case asObjectOf ctxJson of
+  Just ctxJson -> case asObject ctxJson of
     Nothing -> Left "context must be an object"
     Just raw -> do
       let find k = lookup k raw
