@@ -56,7 +56,7 @@ export function escapeAnnotation(value: string): string {
 }
 
 /** Enough of the error to know which assertion broke, in one annotation line. */
-export function failureMessageOf(task: TaskLike, maxChars = 3500): string {
+export function failureMessageOf(task: TaskLike, maxChars = 8000): string {
   const first = task.result?.errors?.[0];
   const lines = (first?.message ?? first?.stack ?? "no error message recorded")
     .split("\n")
@@ -141,9 +141,16 @@ export default class FlakyReporter {
         `FAILING TEST: "${record.test}" (${record.file}), ${record.attempts} ` +
         `attempt${record.attempts === 1 ? "" : "s"} — ${record.message}`;
       if (process.env.GITHUB_ACTIONS) {
-        process.stdout.write(
-          `::error file=${record.file} title=Test failure::${prefix}${escapeAnnotation(message)}\n`,
-        );
+        // One annotation carries ~1024 characters — a GHC error does not fit in one,
+        // and the raw log blob is unreachable with the credentials this repository is
+        // worked with. So the message travels in labeled slices.
+        const escaped = escapeAnnotation(message);
+        for (let slice = 0; slice * 900 < escaped.length; slice++) {
+          const part = escaped.slice(slice * 900, (slice + 1) * 900);
+          process.stdout.write(
+            `::error file=${record.file} title=Test failure (${slice + 1})::${part}\n`,
+          );
+        }
       } else {
         process.stderr.write(`[fail] ${prefix}${message}\n`);
       }
