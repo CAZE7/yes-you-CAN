@@ -119,7 +119,9 @@ checkSafety minV cx vh = concat [vehicleRules, identityRules, writeRules, networ
                  Just True -> []
                else []
            )
-    identityRules = rulePair cxExpectedType cxActualType ++ rulePair cxExpectedVariant cxActualVariant
+    identityRules =
+      rulePair (cxExpectedType cx) (cxActualType cx)
+        ++ rulePair (cxExpectedVariant cx) (cxActualVariant cx)
     rulePair Nothing _ = []
     rulePair (Just _) Nothing = [Unproven]
     rulePair (Just e) (Just a) = [Violated | e /= a]
