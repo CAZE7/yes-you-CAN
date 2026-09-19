@@ -174,7 +174,14 @@ describe("TypeScript ⇄ Haskell differential", () => {
           assert.deepEqual(
             diffs,
             [],
-            `${set}: ${diffs.length} deviation(s) between TS and Haskell`,
+            `${set}: ${diffs.length} deviation(s) between TS and Haskell\n` +
+              diffs
+                .map(
+                  (deviation) =>
+                    `${deviation.name}: ${deviation.difference.join(", ")}\n` +
+                    `${deviation.input.slice(0, 1200)}`,
+                )
+                .join("\n"),
           );
         } else {
           const parsed = parseSafetyVectorFile(readFileSync(file, "utf8"));
@@ -191,7 +198,14 @@ describe("TypeScript ⇄ Haskell differential", () => {
           assert.deepEqual(
             diffs,
             [],
-            `${set}: ${diffs.length} deviation(s) between TS and Haskell`,
+            `${set}: ${diffs.length} deviation(s) between TS and Haskell\n` +
+              diffs
+                .map(
+                  (deviation) =>
+                    `${deviation.name}: ${deviation.difference.join(", ")}\n` +
+                    `${deviation.input.slice(0, 1200)}`,
+                )
+                .join("\n"),
           );
         }
       }
