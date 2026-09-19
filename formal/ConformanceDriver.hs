@@ -22,6 +22,7 @@ formal models in "IsoTpTranscript" and "SafetyTranscript".
 module Main (main) where
 
 import Control.Exception (SomeException, try)
+import IsoTpTranscript (finalizeResult, runReceiverVector, runSenderVector)
 import Json
   ( JValue (..),
     asArray,
@@ -30,6 +31,7 @@ import Json
     parseJson,
     renderJson,
   )
+import SafetyTranscript (fileDefaultMinVoltage, runSafetyVector)
 import System.Environment (getArgs)
 import System.Exit (exitWith, ExitCode (..))
 import System.IO (hPutStrLn, stderr)
