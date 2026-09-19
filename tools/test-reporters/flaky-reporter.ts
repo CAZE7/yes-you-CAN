@@ -54,13 +54,13 @@ export function escapeAnnotation(value: string): string {
 }
 
 /** Enough of the error to know which assertion broke, in one annotation line. */
-export function failureMessageOf(task: TaskLike, maxChars = 600): string {
+export function failureMessageOf(task: TaskLike, maxChars = 1500): string {
   const first = task.result?.errors?.[0];
   const lines = (first?.message ?? first?.stack ?? "no error message recorded")
     .split("\n")
     .map((line) => line.trimEnd())
     .filter((line) => line.trim() !== "")
-    .slice(0, 4);
+    .slice(0, 12);
   let message = lines.join(" | ");
   if (message.length > maxChars) message = `${message.slice(0, maxChars)}…`;
   return message;
