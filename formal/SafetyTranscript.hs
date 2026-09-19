@@ -288,7 +288,7 @@ contextOf defaultSession vector = case lookupKey "context" vector of
         Just j -> note "context.definitionVersion must be a string or null" (asString j)
       let network = case find "network" of
             Nothing -> Nothing
-            Just net -> case asObjectOf net of
+            Just net -> case asObject net of
               Nothing -> Nothing
               Just entries ->
                 Just
