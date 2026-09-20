@@ -1,9 +1,9 @@
-//! yes-you-CAN High-Performance Core Library.
+//! Experimental Rust reference for yes-you-CAN — **not in CI, not called from TypeScript**.
 //!
 //! Exposes:
-//! - `isotp`: Zero-copy ISO 15765-2 framing & flow control
-//! - `signal`: Fast Fourier Transform, Hann windowing, skewness, kurtosis, SNR, and Hampel filtering
-//! - `safety`: Compile-time typestate pattern for automotive write operations
+//! - `isotp`: Classic-CAN ISO 15765-2 SF/FF/CF/FC framing (`[u8; 8]`, no CAN-FD)
+//! - `signal`: descriptive statistics and a radix-2 FFT (allocates; no Hampel filter)
+//! - `safety`: typestate sketch for write transactions (permit expiry is caller-supplied)
 
 pub mod isotp;
 pub mod safety;

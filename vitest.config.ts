@@ -318,6 +318,8 @@ export default defineConfig({
         // moving code around and it fails the moment coverage slips — the web layer
         // used to be invisible to this file entirely, which is how its two thin files
         // stayed thin.
+        // FROZEN FLOOR (ADR 0017): 76/72 only moves up. A split that drops a new
+        // file below the floor is a missing test, not a reason to lower the number.
         'apps/web/src/**': { lines: 76, branches: 72, perFile: true },
         // `tools/**` is measured now (definition-importer 97,9/95,3 lines, simulators
         // 94,9/82,0, trace-analyzer 97,8/75,3) but deliberately has NO per-file gate:

@@ -1,11 +1,13 @@
-//! High-Performance Automotive Signal Processing & Anomaly Engine.
+//! Signal statistics and a radix-2 FFT (experimental reference).
 //!
-//! Provides zero-allocation, vectorized statistical computations:
-//! - Skewness (Fisher-Pearson coefficient of asymmetry)
-//! - Kurtosis (Fisher's definition with excess kurtosis)
-//! - Radix-2 Cooley-Tukey FFT with Hann Windowing and SNR estimation
-//! - Real-time Hampel filter for anomaly detection
-//! - Cross-signal Pearson correlation coefficient
+//! Not in CI. Not zero-allocation: `compute_statistics` copies into a `Vec` to
+//! sort, `compute_fft` allocates real/imag buffers at the next power of two.
+//! What exists:
+//! - Skewness and excess kurtosis
+//! - Radix-2 Cooley-Tukey FFT with Hann window and a peak/SNR estimate
+//! - Pearson correlation
+//!
+//! There is no Hampel filter in this file. There are no tests.
 
 use std::f64::consts::PI;
 

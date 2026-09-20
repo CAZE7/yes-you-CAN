@@ -1,10 +1,16 @@
-//! ISO 15765-2 (ISO-TP) Zero-Copy Network Layer Implementation.
+//! ISO 15765-2 (ISO-TP) Classic-CAN framing (experimental reference).
 //!
-//! Provides high-throughput framing and defragmentation for CAN and CAN-FD networks:
-//! - Single Frame (SF) handling up to 7 bytes (Classic CAN) or 62 bytes (CAN-FD).
-//! - First Frame (FF) & Consecutive Frame (CF) segmentation up to 4095 bytes (or 4 GB with 32-bit DL).
-//! - Flow Control (FC) pacing: CTS, WAIT, and OVERFLOW status codes with STmin delay pacing.
-//! - Bounded memory guarantees with zero dynamic reallocation in hot paths.
+//! This module is **not** wired into the TypeScript production stack and is not
+//! part of CI (see `crates/README.md`). What it actually implements:
+//! - Single Frame (SF): payload length in the low nibble, **at most 7 bytes**.
+//! - First Frame (FF): 12-bit `FF_DL` in `total_length: u16` — Classic-CAN, **not**
+//!   the 32-bit escape (`FF_DL = 0`) and **not** CAN-FD (no 62-byte SF).
+//! - Consecutive Frame (CF) and Flow Control (FC: CTS / WAIT / OVERFLOW).
+//! - Encode helpers write a fixed `[u8; 8]` Classic-CAN frame.
+//!
+//! `parse_frame` returns borrowed slices of the input; encode copies into the
+//! caller-supplied 8-byte buffer. There is no CAN-FD path and no allocation
+//! benchmark — do not cite this crate as zero-copy or high-throughput.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FlowStatus {

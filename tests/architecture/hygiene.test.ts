@@ -459,24 +459,16 @@ test("modules stay reviewable: no production file above the size budget", () => 
     {
       file: "apps/web/src/backend.ts",
       reason:
-        "1490 lines — split tracked as AGENTS 0.E E15; the wire contract moved to views.ts in " +
-        "E19 (1326 → 1117), `get canBus()` (which nothing had used since the replay suites " +
-        "moved to injected buses) is gone (1427 → 1419), and E24's chaos-in-the-path added the " +
-        "wrapper in `start()`, the burst target and the refusal before a connection: 1419 → " +
-        "1458; the analysis input's scenario recording (ADR 0046: `lastScenario` plus its " +
-        "pass-through in `analyze()`) added 13: 1458 → 1471; the raw-trace witness in " +
-        "`exportJson` and the injected `IntegrityPort` (ADR 0047) added 9: 1471 → 1480, and the " +
-        "scenario catalog moving to the `scenarios/` files (ADR 0048) added 10: 1480 → 1490. The " +
-        "budget only keeps the *rest* from growing unnoticed",
+        "1336 lines — split tracked as AGENTS 0.E E15; 1.43 extracted ChaosSession " +
+        "(chaos-session.ts) and the write binding (write-ops.ts), 1490 → 1336. The budget " +
+        "only keeps the *rest* from growing unnoticed",
     },
     {
       file: "apps/web/public/app.js",
       reason:
-        "1676 lines — browser front end without a bundler; served as one module, and typed " +
-        "against views.ts since E19 (JSDoc costs lines instead of hiding them); E24's burst " +
-        "target field and the aim line in the status card are 28 of the growth (1648 → 1676), " +
-        "and the two silent fallbacks it replaced cost nothing: a missing field now refuses in " +
-        "the panel instead of sending a guessed address",
+        "1382 lines — browser front end without a bundler; served as one module, and typed " +
+        "against views.ts since E19 (JSDoc costs lines instead of hiding them); 1.43 extracted " +
+        "the chaos panel (chaos.js) and the write panel (writes.js), 1676 → 1382",
     },
   ];
   const allowed = new Set(oversize.map((entry) => entry.file));

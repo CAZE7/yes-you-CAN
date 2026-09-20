@@ -1,9 +1,11 @@
-//! Compile-Time Safety Typestate Architecture for Automotive Diagnostic Writes.
+//! Typestate sketch for diagnostic writes (experimental reference).
 //!
-//! Enforces zero-regression formal invariants at compile time:
-//! - State transitions: `Prepared` -> `Confirmed` -> `Permitted` -> `Executing` -> `Verifying` -> `Verified`
-//! - It is syntactically impossible to transition into `Executing` without both a confirmed token and an active permit.
-//! - Readback verification is required before achieving the `Verified` state.
+//! States: `Prepared` → `Confirmed` → `Permitted` → `Executing` → `Verifying` → `Verified`.
+//! The type system stops `execute` on a `Prepared` value. It does **not** bind
+//! the permit: `WriteTransaction<Permitted>::execute` takes `permit_expiry_ms`
+//! from the caller instead of `WritePermit::expires_at_epoch_ms`, so a caller
+//! can extend the window. No tests. Not in CI. Production safety is
+//! `packages/core/src/safety` (TypeScript).
 
 use std::marker::PhantomData;
 

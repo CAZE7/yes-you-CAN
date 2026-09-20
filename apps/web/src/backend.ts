@@ -52,27 +52,15 @@ import {
 } from "@vdp/definitions";
 import type { DtcClearPrecheckInfo, VehicleResolutionRef } from "@vdp/domain";
 import type { DtcRecord } from "@vdp/protocols-uds";
-import {
-  type DiagnosticRuntime,
-  PLATFORM_VERSION,
-  type WriteBinding,
-  createDiagnosticRuntime,
-} from "@vdp/runtime";
+import { type DiagnosticRuntime, PLATFORM_VERSION, createDiagnosticRuntime } from "@vdp/runtime";
 import {
   AdapterUnsupportedError,
   type Logger,
-  TransportClosedError,
   TransportError,
   createLogger,
   messageOf,
 } from "@vdp/shared";
-import {
-  CanChaosBus,
-  ChaosLab,
-  DEFAULT_VIN,
-  HighFidelityVehicle,
-  VirtualVehicle,
-} from "@vdp/simulators";
+import { DEFAULT_VIN, HighFidelityVehicle, VirtualVehicle } from "@vdp/simulators";
 import {
   FileSystemSessionRepository,
   SessionLogger,
@@ -137,6 +125,8 @@ export type {
 } from "./views.js";
 
 import { buildAnalysisInput } from "./analysis-input.js";
+import { ChaosSession } from "./chaos-session.js";
+import { loadOptionalDefinitionPackages } from "./definition-source.js";
 import { toDtcView } from "./dtc-view.js";
 import { toEcuView, toFreezeFrameView } from "./ecu-view.js";
 import { loadScenarioCatalog } from "./scenario-source.js";
@@ -150,6 +140,12 @@ import {
 } from "./scenario-view.js";
 import { formatCanId, toMarkerView, toSampleView, toTraceView } from "./trace-view.js";
 import { toVehicleResolutionView } from "./vehicle-view.js";
+import {
+  adaptationResultViewOf,
+  codingResultViewOf,
+  ecuNameOf,
+  writeBindingOf,
+} from "./write-ops.js";
 
 export interface BackendOptions {
   logger?: Logger;
@@ -205,7 +201,7 @@ export class DemoBackend {
   readonly adapters: AdapterCatalog;
   private vehicle: VirtualVehicle | undefined;
   private hfVehicle: HighFidelityVehicle | undefined;
-  private chaosBus: CanChaosBus | undefined;
+  private readonly chaos = new ChaosSession();
   private bus: CanBus | undefined;
   /**
    * The headless diagnostic runtime (ADR 0014): the backend owns transport and
@@ -235,10 +231,6 @@ export class DemoBackend {
   private resolution: VehicleResolutionView | undefined;
   private readonly repository?: SessionRepository;
   private guidedDiagnosisSteps = 0;
-  private chaosDropRate = 0;
-  private chaosDropBurst = 0;
-  /** The id the last armed burst was aimed at; `undefined` is the bus-wide form. */
-  private chaosDropBurstCanId: number | undefined;
   /**
    * Turns raw protocol codes into described fault entries. Descriptions come
    * from definition packages only — a code nobody documented stays undescribed
@@ -420,8 +412,7 @@ export class DemoBackend {
       // runtime and the raw-trace recorder see, so a switch thrown after `start` changes
       // what the session experiences instead of counting what a bystander watched. With no
       // rule armed it is a pass-through — one call per frame, no behaviour of its own.
-      this.chaosBus = new CanChaosBus(inner);
-      const bus = this.chaosBus;
+      const bus = this.chaos.wrap(inner, this.selection.id);
       this.bus = bus;
 
       // Raw trace: every frame on the bus is recorded verbatim (AGENTS 18).
@@ -615,15 +606,13 @@ export class DemoBackend {
       this.log.warn("high-fidelity simulator stop failed", { error: messageOf(error) });
     });
     this.hfVehicle = undefined;
-    this.chaosBus = undefined;
+    this.chaos.dispose();
     this.bus = undefined;
     this.connected = false;
     this.ecus = [];
     this.dtcs = [];
     this.resolution = undefined;
     this.guidedDiagnosisSteps = 0;
-    this.chaosDropRate = 0;
-    this.chaosDropBurst = 0;
   }
 
   /** Read identification DIDs from every discovered ECU (read-only, AGENTS 34.11). */
@@ -817,21 +806,7 @@ export class DemoBackend {
     vehicleState: VehicleStateView,
   ): Promise<{ ok: boolean; failed: string[]; unproven: string[]; warnings: string[] }> {
     const runtime = this.requireRuntime();
-    const binding: WriteBinding = {
-      ecuId: this.ecuRef(rxId),
-      ecuName:
-        this.ecus.find((e) => e.rxId === formatCanId(rxId))?.name ?? `ECU_${formatCanId(rxId)}`,
-      vehicleState: {
-        stationary: vehicleState.stationary,
-        ignitionOn: vehicleState.ignitionOn,
-        ...(vehicleState.parkingBrake !== undefined
-          ? { parkingBrake: vehicleState.parkingBrake }
-          : {}),
-        ...(vehicleState.batteryVoltage !== undefined
-          ? { batteryVoltage: vehicleState.batteryVoltage }
-          : {}),
-      },
-    };
+    const binding = writeBindingOf(rxId, ecuNameOf(this.ecus, rxId), vehicleState);
     const precheck = await runtime.writes.precheck("coding", { did, data }, binding, {
       userConfirmed: false,
     });
@@ -854,51 +829,13 @@ export class DemoBackend {
     vehicleState: VehicleStateView,
   ): Promise<CodingResultView> {
     const runtime = this.requireRuntime();
-    const ecuName =
-      this.ecus.find((e) => e.rxId === formatCanId(rxId))?.name ?? `ECU_${formatCanId(rxId)}`;
-    const binding: WriteBinding = {
-      ecuId: this.ecuRef(rxId),
-      ecuName,
-      vehicleState: {
-        stationary: vehicleState.stationary,
-        ignitionOn: vehicleState.ignitionOn,
-        ...(vehicleState.parkingBrake !== undefined
-          ? { parkingBrake: vehicleState.parkingBrake }
-          : {}),
-        ...(vehicleState.batteryVoltage !== undefined
-          ? { batteryVoltage: vehicleState.batteryVoltage }
-          : {}),
-      },
-    };
+    const binding = writeBindingOf(rxId, ecuNameOf(this.ecus, rxId), vehicleState);
     const result = await runtime.writes.run<unknown, unknown, unknown>(
       "coding",
       { did, data, userConfirmed: confirmed },
       binding,
     );
-    const originalHex =
-      result.value && typeof result.value === "object" && "originalHex" in result.value
-        ? String(result.value.originalHex)
-        : undefined;
-    const writtenHex =
-      result.value && typeof result.value === "object" && "writtenHex" in result.value
-        ? String(result.value.writtenHex)
-        : undefined;
-    return {
-      ok: result.ok,
-      verified: Boolean(
-        result.value &&
-          typeof result.value === "object" &&
-          "verified" in result.value &&
-          result.value.verified,
-      ),
-      ecuId: binding.ecuId,
-      did,
-      ...(originalHex !== undefined ? { originalHex } : {}),
-      ...(writtenHex !== undefined ? { writtenHex } : {}),
-      reasons: [...result.reasons],
-      warnings: [...result.warnings],
-      transactionId: result.transaction.id,
-    };
+    return codingResultViewOf(result, binding, did);
   }
 
   /**
@@ -911,21 +848,7 @@ export class DemoBackend {
     vehicleState: VehicleStateView,
   ): Promise<{ ok: boolean; failed: string[]; unproven: string[]; warnings: string[] }> {
     const runtime = this.requireRuntime();
-    const binding: WriteBinding = {
-      ecuId: this.ecuRef(rxId),
-      ecuName:
-        this.ecus.find((e) => e.rxId === formatCanId(rxId))?.name ?? `ECU_${formatCanId(rxId)}`,
-      vehicleState: {
-        stationary: vehicleState.stationary,
-        ignitionOn: vehicleState.ignitionOn,
-        ...(vehicleState.parkingBrake !== undefined
-          ? { parkingBrake: vehicleState.parkingBrake }
-          : {}),
-        ...(vehicleState.batteryVoltage !== undefined
-          ? { batteryVoltage: vehicleState.batteryVoltage }
-          : {}),
-      },
-    };
+    const binding = writeBindingOf(rxId, ecuNameOf(this.ecus, rxId), vehicleState);
     const precheck = await runtime.writes.precheck("adaptation", { did, value }, binding, {
       userConfirmed: false,
     });
@@ -948,56 +871,13 @@ export class DemoBackend {
     vehicleState: VehicleStateView,
   ): Promise<AdaptationResultView> {
     const runtime = this.requireRuntime();
-    const ecuName =
-      this.ecus.find((e) => e.rxId === formatCanId(rxId))?.name ?? `ECU_${formatCanId(rxId)}`;
-    const binding: WriteBinding = {
-      ecuId: this.ecuRef(rxId),
-      ecuName,
-      vehicleState: {
-        stationary: vehicleState.stationary,
-        ignitionOn: vehicleState.ignitionOn,
-        ...(vehicleState.parkingBrake !== undefined
-          ? { parkingBrake: vehicleState.parkingBrake }
-          : {}),
-        ...(vehicleState.batteryVoltage !== undefined
-          ? { batteryVoltage: vehicleState.batteryVoltage }
-          : {}),
-      },
-    };
+    const binding = writeBindingOf(rxId, ecuNameOf(this.ecus, rxId), vehicleState);
     const result = await runtime.writes.run<unknown, unknown, unknown>(
       "adaptation",
       { did, value, userConfirmed: confirmed },
       binding,
     );
-    const originalValue =
-      result.value && typeof result.value === "object" && "originalValue" in result.value
-        ? Number(result.value.originalValue)
-        : undefined;
-    const writtenValue =
-      result.value && typeof result.value === "object" && "writtenValue" in result.value
-        ? Number(result.value.writtenValue)
-        : undefined;
-    const unit =
-      result.value && typeof result.value === "object" && "unit" in result.value
-        ? String(result.value.unit)
-        : undefined;
-    return {
-      ok: result.ok,
-      verified: Boolean(
-        result.value &&
-          typeof result.value === "object" &&
-          "verified" in result.value &&
-          result.value.verified,
-      ),
-      ecuId: binding.ecuId,
-      did,
-      ...(originalValue !== undefined ? { originalValue } : {}),
-      ...(writtenValue !== undefined ? { writtenValue } : {}),
-      ...(unit !== undefined ? { unit } : {}),
-      reasons: [...result.reasons],
-      warnings: [...result.warnings],
-      transactionId: result.transaction.id,
-    };
+    return adaptationResultViewOf(result, binding, did);
   }
 
   /**
@@ -1063,25 +943,7 @@ export class DemoBackend {
     dropRate?: number;
     corruptSequenceCanId?: number;
   }): void {
-    const chaosBus = this.chaosBus;
-    if (!chaosBus) {
-      throw new TransportClosedError(
-        "chaos needs an open connection — start the vehicle first, the switches act on the live bus",
-        { adapter: this.selection.id },
-      );
-    }
-    if (options.dropBurst !== undefined) {
-      this.chaosDropBurst = options.dropBurst;
-      this.chaosDropBurstCanId = options.dropBurstCanId;
-      ChaosLab.injectBurstFrameDrop(chaosBus, options.dropBurstCanId, options.dropBurst);
-    }
-    if (options.dropRate !== undefined) {
-      this.chaosDropRate = options.dropRate;
-      ChaosLab.injectDropRate(chaosBus, options.dropRate);
-    }
-    if (options.corruptSequenceCanId !== undefined) {
-      ChaosLab.injectIsoTpSequenceCorruption(chaosBus, options.corruptSequenceCanId);
-    }
+    this.chaos.inject(options);
   }
 
   /**
@@ -1164,32 +1026,11 @@ export class DemoBackend {
    * make the panel's numbers untrustworthy in exactly the moment someone checks them.
    */
   resetChaos(): void {
-    this.chaosBus?.clearRules();
-    this.chaosDropRate = 0;
-    this.chaosDropBurst = 0;
-    this.chaosDropBurstCanId = undefined;
+    this.chaos.reset();
   }
 
   chaosStatus(): ChaosStatusView {
-    const burstRemaining = this.chaosBus?.remainingBurstDrops ?? 0;
-    const isActuallyActive =
-      this.chaosBus !== undefined && (this.chaosDropRate > 0 || burstRemaining > 0);
-    return {
-      active: isActuallyActive,
-      dropRate: this.chaosDropRate,
-      dropBurstRemaining: burstRemaining,
-      dropBurstTarget:
-        this.chaosDropBurstCanId === undefined ? null : formatCanId(this.chaosDropBurstCanId),
-      dropBurstScope:
-        this.chaosDropBurst <= 0
-          ? "none"
-          : this.chaosDropBurstCanId === undefined
-            ? "bus-wide"
-            : "targeted",
-      droppedFrames: this.chaosBus?.dropped.length ?? 0,
-      corruptedFrames: this.chaosBus?.corruptedCount ?? 0,
-      delayedFrames: this.chaosBus?.delayedCount ?? 0,
-    };
+    return this.chaos.status();
   }
 
   /**
@@ -1465,9 +1306,14 @@ function defaultDefinitionsFor(
   mode: BackendMode,
   adapterId?: string,
 ): readonly DefinitionPackage[] {
-  if (mode === "hardware") return [genericPackage];
-  if (adapterId === SIMULATOR_5ECU_ADAPTER_ID) return [highFidelityPackage];
-  return [simulatorPackage];
+  const extras = loadOptionalDefinitionPackages();
+  const base =
+    mode === "hardware"
+      ? [genericPackage]
+      : adapterId === SIMULATOR_5ECU_ADAPTER_ID
+        ? [highFidelityPackage]
+        : [simulatorPackage];
+  return extras.length === 0 ? base : [...base, ...extras];
 }
 
 function modeForSelection(selection: AdapterSelection, catalog: AdapterCatalog): BackendMode {

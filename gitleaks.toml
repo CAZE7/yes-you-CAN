@@ -1,0 +1,16 @@
+# Secret scan config. The binary is not a workspace dependency — this file
+# exists so a host that runs gitleaks has a documented allowlist instead of
+# inventing one. `npm run ci` does not invoke gitleaks (0.E E10: workflow
+# files are not pushable with the current GitHub App). `npm run audit` is the
+# lockfile gate that *does* run.
+
+title = "yes-you-CAN"
+
+[allowlist]
+description = "simulator VIN-shaped constants and generated artefacts are not secrets"
+paths = [
+  '''(^|/)coverage/''',
+  '''(^|/)sessions-local/''',
+  '''(^|/)node_modules/''',
+  '''(^|/)dist/''',
+]

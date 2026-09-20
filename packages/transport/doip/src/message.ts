@@ -9,6 +9,7 @@ import { ProtocolError, concatBytes, u16be, u32be, writeU16be, writeU32be } from
 
 export const DOIP_PROTOCOL_VERSION = 0x02;
 export const DOIP_UDP_PORT = 13400;
+/** ISO 13400-2 TLS port. Announced, not implemented — see `DoipTransport`. */
 export const DOIP_TLS_PORT = 3496;
 
 export const PAYLOAD_TYPE = {

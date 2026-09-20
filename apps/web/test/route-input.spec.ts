@@ -9,7 +9,15 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
-import { HttpError, parseBurstCount, parseCanId, parseDropRate } from "../src/route-input.js";
+import {
+  HttpError,
+  WRITE_TOKEN_HEADER,
+  assertWriteAllowed,
+  configuredWriteToken,
+  parseBurstCount,
+  parseCanId,
+  parseDropRate,
+} from "../src/route-input.js";
 
 describe("parseCanId", () => {
   test("both spellings of an address mean the same number", () => {
@@ -74,5 +82,24 @@ describe("the chaos fields", () => {
         `"${String(notAFraction)}" does not say what the field claims`,
       );
     }
+  });
+});
+
+describe("the write token", () => {
+  test("no token configured means writes stay open", () => {
+    assert.equal(configuredWriteToken({}), undefined);
+    assert.equal(configuredWriteToken({ VDP_WRITE_TOKEN: "  " }), undefined);
+    assert.doesNotThrow(() => assertWriteAllowed({}, {}));
+  });
+
+  test("a configured token is required on every write, including loopback", () => {
+    const env = { VDP_WRITE_TOKEN: "secret" };
+    assert.equal(configuredWriteToken(env), "secret");
+    assert.throws(
+      () => assertWriteAllowed({}, env),
+      (error: unknown) => error instanceof HttpError && error.statusCode === 403,
+    );
+    assert.throws(() => assertWriteAllowed({ [WRITE_TOKEN_HEADER]: "wrong" }, env), HttpError);
+    assert.doesNotThrow(() => assertWriteAllowed({ [WRITE_TOKEN_HEADER]: "secret" }, env));
   });
 });

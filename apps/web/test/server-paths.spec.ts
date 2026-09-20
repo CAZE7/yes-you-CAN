@@ -330,3 +330,24 @@ test("a burst says how many frames and which address, and both are checked on th
     assert.equal(calm.active, false);
   });
 });
+
+test("a write without the configured token is 403, with it is not", async () => {
+  await withServer(async (base) => {
+    const previous = process.env.VDP_WRITE_TOKEN;
+    process.env.VDP_WRITE_TOKEN = "bench-secret";
+    try {
+      const refused = await post(base, "/api/dtc/clear", { rxId: "0x7E8", confirmed: true });
+      assert.equal(refused.status, 403);
+      assert.match((refused.body as { error: string }).error, /X-VDP-Write-Token/);
+      const allowed = await json(base, "/api/dtc/clear", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-vdp-write-token": "bench-secret" },
+        body: JSON.stringify({ rxId: "0x7E8", confirmed: true }),
+      });
+      assert.notEqual(allowed.status, 403, "the matching token is not a 403");
+    } finally {
+      if (previous === undefined) delete process.env.VDP_WRITE_TOKEN;
+      else process.env.VDP_WRITE_TOKEN = previous;
+    }
+  });
+});

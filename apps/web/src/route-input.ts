@@ -63,3 +63,51 @@ export function parseDropRate(value: unknown): number {
   }
   return value;
 }
+
+/**
+ * Optional shared secret for write POSTs (`VDP_WRITE_TOKEN` / `X-VDP-Write-Token`).
+ *
+ * Loopback default is tokenless so a local demo and the existing HTTP specs keep
+ * working. The moment the process is started with a token, every write needs the
+ * matching header — including 127.0.0.1. A missing env var is not a guessed
+ * secret (ADR 0009: no invented authentication).
+ */
+export const WRITE_TOKEN_HEADER = "x-vdp-write-token";
+
+/** The configured token, or `undefined` when writes stay open. */
+export function configuredWriteToken(
+  env: NodeJS.Dict<string | undefined> = process.env,
+): string | undefined {
+  const value = env.VDP_WRITE_TOKEN;
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length === 0 ? undefined : trimmed;
+}
+
+function headerValue(
+  headers: NodeJS.Dict<string | string[] | undefined>,
+  name: string,
+): string | undefined {
+  const raw = headers[name] ?? headers[name.toLowerCase()];
+  if (Array.isArray(raw)) return raw[0];
+  return raw;
+}
+
+/**
+ * Refuse a write that arrived without the token this process was started with.
+ * No token configured → no check (the localhost demo).
+ */
+export function assertWriteAllowed(
+  headers: NodeJS.Dict<string | string[] | undefined>,
+  env: NodeJS.Dict<string | undefined> = process.env,
+): void {
+  const expected = configuredWriteToken(env);
+  if (expected === undefined) return;
+  const got = headerValue(headers, WRITE_TOKEN_HEADER)?.trim();
+  if (got !== expected) {
+    throw new HttpError(
+      403,
+      "this write needs the X-VDP-Write-Token this process was started with",
+    );
+  }
+}

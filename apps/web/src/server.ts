@@ -39,7 +39,13 @@ import { SIMULATOR_ADAPTER_ID, createWebAdapterCatalog } from "./adapters.js";
 import { DemoBackend } from "./backend.js";
 import type { VehicleStateView } from "./backend.js";
 import { resolveContained } from "./paths.js";
-import { HttpError, parseBurstCount, parseCanId, parseDropRate } from "./route-input.js";
+import {
+  HttpError,
+  assertWriteAllowed,
+  parseBurstCount,
+  parseCanId,
+  parseDropRate,
+} from "./route-input.js";
 
 export interface ServerOptions {
   port?: number;
@@ -294,6 +300,7 @@ export class WebServer {
       });
     }
     if (path === "/api/dtc/clear" && method === "POST") {
+      assertWriteAllowed(request.headers);
       const body = await this.readBody<{
         rxId?: string;
         confirmed?: boolean;
@@ -342,6 +349,7 @@ export class WebServer {
       return this.sendJson(response, 200, { precheck });
     }
     if (path === "/api/coding/write" && method === "POST") {
+      assertWriteAllowed(request.headers);
       const body = await this.readBody<{
         rxId?: string;
         did?: number;
@@ -380,6 +388,7 @@ export class WebServer {
       return this.sendJson(response, 200, { precheck });
     }
     if (path === "/api/adaptation/write" && method === "POST") {
+      assertWriteAllowed(request.headers);
       const body = await this.readBody<{
         rxId?: string;
         did?: number;

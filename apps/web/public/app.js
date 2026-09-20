@@ -7,10 +7,12 @@
  */
 
 import * as api from "/api.js";
+import { mountChaosPanel } from "/chaos.js";
 import { $, button, child, el, input, kv, messageOf, must, row, select } from "/dom.js";
 import { GraphBoard } from "/graphs.js";
 import { mountScenarioPanel, refreshScenarioCatalog } from "/scenario.js";
 import { renderVehicleResolution } from "/vehicle.js";
+import { mountWritesPanel } from "/writes.js";
 
 /** @typedef {import("../src/views.js").AppState} AppState */
 /** @typedef {import("../src/views.js").DtcClearPrecheck} DtcClearPrecheck */
@@ -22,10 +24,7 @@ import { renderVehicleResolution } from "/vehicle.js";
 /** @typedef {import("../src/views.js").SignalStatisticsView} SignalStatisticsView */
 /** @typedef {import("../src/views.js").TraceView} TraceView */
 /** @typedef {import("../src/views.js").GuidedDiagnosisView} GuidedDiagnosisView */
-/** @typedef {import("../src/views.js").CodingResultView} CodingResultView */
-/** @typedef {import("../src/views.js").AdaptationResultView} AdaptationResultView */
 /** @typedef {import("../src/views.js").AdvancedSignalAnalysisView} AdvancedSignalAnalysisView */
-/** @typedef {import("../src/views.js").ChaosStatusView} ChaosStatusView */
 
 /**
  * The little bit of state the front end keeps on its own.
@@ -1291,301 +1290,6 @@ button("#btn-guided-step").addEventListener("click", async () => {
   }
 });
 
-/* --------------------------------- Codierung & Anpassung (Task 7 & 8) */
-
-function currentCaVehicleState() {
-  const voltage = Number.parseFloat(input("#ca-voltage").value);
-  return {
-    stationary: input("#ca-stationary").checked,
-    ignitionOn: input("#ca-ignition").checked,
-    parkingBrake: input("#ca-parking").checked,
-    ...(Number.isFinite(voltage) ? { batteryVoltage: voltage } : {}),
-  };
-}
-
-// Codierung
-button("#btn-coding-precheck").addEventListener("click", async () => {
-  const rxId = select("#ca-ecu").value;
-  const did = Number.parseInt(input("#coding-did").value, 16);
-  const data = input("#coding-data").value.trim();
-  const status = must("#coding-precheck-status");
-  status.replaceChildren();
-
-  try {
-    const { precheck } = await api.precheckCoding({
-      rxId,
-      did: Number.isFinite(did) ? did : 0x0100,
-      data,
-      vehicleState: currentCaVehicleState(),
-    });
-
-    if (precheck.ok) {
-      status.append(
-        el("li", {
-          class: "info",
-          text: "Vorprüfung erfolgreich: Alle Sicherheitsbedingungen für Codierung erfüllt.",
-        }),
-      );
-      input("#coding-confirm").disabled = false;
-    } else {
-      for (const f of precheck.failed) {
-        status.append(el("li", { class: "warn", text: `Fehlgeschlagen: ${f}` }));
-      }
-      for (const u of precheck.unproven) {
-        status.append(el("li", { class: "warn", text: `Nicht nachgewiesen: ${u}` }));
-      }
-      input("#coding-confirm").checked = false;
-      input("#coding-confirm").disabled = true;
-    }
-    button("#btn-coding-execute").disabled = !input("#coding-confirm").checked || !precheck.ok;
-  } catch (error) {
-    logError(error);
-  }
-});
-
-input("#coding-confirm").addEventListener("change", () => {
-  button("#btn-coding-execute").disabled = !input("#coding-confirm").checked;
-});
-
-button("#btn-coding-execute").addEventListener("click", async () => {
-  const rxId = select("#ca-ecu").value;
-  const did = Number.parseInt(input("#coding-did").value, 16);
-  const data = input("#coding-data").value.trim();
-  const box = must("#coding-result-box");
-  box.replaceChildren(
-    el("p", { class: "muted", text: "Codierung wird ausgeführt und verifiziert …" }),
-  );
-
-  try {
-    const { result } = await api.writeCoding({
-      rxId,
-      did: Number.isFinite(did) ? did : 0x0100,
-      data,
-      confirmed: input("#coding-confirm").checked,
-      vehicleState: currentCaVehicleState(),
-    });
-
-    box.replaceChildren(
-      el("div", {
-        class: result.verified ? "pill pill-online" : "pill pill-offline",
-        text: result.verified ? "VERIFIZIERT" : "FEHLGESCHLAGEN",
-      }),
-      el("p", {}, [
-        el("strong", {
-          text: `ECU: ${result.ecuId} | DID: 0x${result.did.toString(16).toUpperCase()}`,
-        }),
-      ]),
-      el("p", {
-        class: "mono small",
-        text: `Vorher: ${result.originalHex ?? "—"} → Geschrieben: ${result.writtenHex ?? "—"}`,
-      }),
-      el("p", { class: "muted small mono", text: `Transaktions-ID: ${result.transactionId}` }),
-    );
-    if (result.warnings && result.warnings.length > 0) {
-      box.append(el("p", { class: "warn small", text: result.warnings.join(" · ") }));
-    }
-  } catch (error) {
-    logError(error);
-    box.replaceChildren(el("p", { class: "warn", text: messageOf(error) }));
-  }
-});
-
-// Anpassung (Adaptation)
-button("#btn-adapt-precheck").addEventListener("click", async () => {
-  const rxId = select("#ca-ecu").value;
-  const did = Number.parseInt(input("#adapt-did").value, 16);
-  const value = Number.parseFloat(input("#adapt-value").value);
-  const status = must("#adapt-precheck-status");
-  status.replaceChildren();
-
-  try {
-    const { precheck } = await api.precheckAdaptation({
-      rxId,
-      did: Number.isFinite(did) ? did : 0x2100,
-      value: Number.isFinite(value) ? value : 0,
-      vehicleState: currentCaVehicleState(),
-    });
-
-    if (precheck.ok) {
-      status.append(
-        el("li", {
-          class: "info",
-          text: "Vorprüfung erfolgreich: Alle Sicherheitsbedingungen für Anpassung erfüllt.",
-        }),
-      );
-      input("#adapt-confirm").disabled = false;
-    } else {
-      for (const f of precheck.failed) {
-        status.append(el("li", { class: "warn", text: `Fehlgeschlagen: ${f}` }));
-      }
-      for (const u of precheck.unproven) {
-        status.append(el("li", { class: "warn", text: `Nicht nachgewiesen: ${u}` }));
-      }
-      input("#adapt-confirm").checked = false;
-      input("#adapt-confirm").disabled = true;
-    }
-    button("#btn-adapt-execute").disabled = !input("#adapt-confirm").checked || !precheck.ok;
-  } catch (error) {
-    logError(error);
-  }
-});
-
-input("#adapt-confirm").addEventListener("change", () => {
-  button("#btn-adapt-execute").disabled = !input("#adapt-confirm").checked;
-});
-
-button("#btn-adapt-execute").addEventListener("click", async () => {
-  const rxId = select("#ca-ecu").value;
-  const did = Number.parseInt(input("#adapt-did").value, 16);
-  const value = Number.parseFloat(input("#adapt-value").value);
-  const box = must("#adapt-result-box");
-  box.replaceChildren(
-    el("p", { class: "muted", text: "Parameteranpassung wird ausgeführt und verifiziert …" }),
-  );
-
-  try {
-    const { result } = await api.writeAdaptation({
-      rxId,
-      did: Number.isFinite(did) ? did : 0x2100,
-      value: Number.isFinite(value) ? value : 0,
-      confirmed: input("#adapt-confirm").checked,
-      vehicleState: currentCaVehicleState(),
-    });
-
-    box.replaceChildren(
-      el("div", {
-        class: result.verified ? "pill pill-online" : "pill pill-offline",
-        text: result.verified ? "VERIFIZIERT" : "FEHLGESCHLAGEN",
-      }),
-      el("p", {}, [
-        el("strong", {
-          text: `ECU: ${result.ecuId} | DID: 0x${result.did.toString(16).toUpperCase()}`,
-        }),
-      ]),
-      el("p", {
-        class: "mono small",
-        text: `Vorher: ${result.originalValue ?? "—"} → Geschrieben: ${result.writtenValue ?? "—"} ${result.unit ?? ""}`,
-      }),
-      el("p", { class: "muted small mono", text: `Transaktions-ID: ${result.transactionId}` }),
-    );
-    if (result.warnings && result.warnings.length > 0) {
-      box.append(el("p", { class: "warn small", text: result.warnings.join(" · ") }));
-    }
-  } catch (error) {
-    logError(error);
-    box.replaceChildren(el("p", { class: "warn", text: messageOf(error) }));
-  }
-});
-
-/* ------------------------------------------- Chaos Lab (Task 4) */
-
-/** @param {ChaosStatusView} status */
-function renderChaosStatus(status) {
-  const activeLabel = must("#chaos-active-label");
-  activeLabel.replaceChildren(
-    el("span", {
-      class: status.active ? "pill pill-offline" : "pill pill-online",
-      text: status.active ? "aktiv" : "inaktiv",
-    }),
-  );
-  must("#chaos-drop-rate-label").textContent = `${Math.round(status.dropRate * 100)} %`;
-  must("#chaos-burst-remaining-label").textContent = `${status.dropBurstRemaining} Frames`;
-  // Was der Burst adressiert, kommt als Satzteil der Projektion — nicht als Rat des
-  // Browsers: ein Burst auf einer Id, über die niemand spricht, nimmt nichts weg, und
-  // das muss hier zu lesen sein (AGENTS 0.E E24).
-  must("#chaos-burst-target-label").textContent =
-    status.dropBurstScope === "none"
-      ? "nichts"
-      : status.dropBurstScope === "bus-wide"
-        ? "alle Rahmen"
-        : (status.dropBurstTarget ?? "unbekannt");
-  must("#chaos-dropped-count").textContent = String(status.droppedFrames);
-  must("#chaos-corrupted-count").textContent = String(status.corruptedFrames);
-  must("#chaos-delayed-count").textContent = String(status.delayedFrames);
-}
-
-/** @param {string} text */
-function logChaosEvent(text) {
-  const logList = must("#chaos-feedback-log");
-  const time = new Date().toLocaleTimeString();
-  logList.prepend(el("li", { text: `[${time}] ${text}` }));
-}
-
-async function refreshChaos() {
-  try {
-    const { status } = await api.fetchChaosStatus();
-    renderChaosStatus(status);
-  } catch (error) {
-    logError(error);
-  }
-}
-
-button("#btn-chaos-burst-inject").addEventListener("click", async () => {
-  const count = Number.parseInt(input("#chaos-burst-input").value, 10);
-  if (!Number.isFinite(count) || count < 1) {
-    logChaosEvent("Burst-Anzahl fehlt — eine Zahl ab 1 nötig, es wurde nichts injiziert.");
-    return;
-  }
-  const target = input("#chaos-burst-can-id").value.trim();
-  try {
-    const { status } = await api.injectChaos({
-      dropBurst: count,
-      // Leeres Feld ist die bus-weite Form; die Id selbst prüft der Server, damit
-      // „7e8xyz“ hier nicht zu einem anderen Steuergerät wird.
-      ...(target.length > 0 ? { dropBurstCanId: target } : {}),
-    });
-    renderChaosStatus(status);
-    logChaosEvent(
-      `Drop-Burst von ${count} Frames injiziert — ` +
-        (status.dropBurstScope === "targeted"
-          ? `auf ${status.dropBurstTarget}.`
-          : "auf jeden Rahmen dieser Verbindung."),
-    );
-  } catch (error) {
-    logError(error);
-  }
-});
-
-button("#btn-chaos-rate-inject").addEventListener("click", async () => {
-  const rate = Number.parseFloat(input("#chaos-rate-input").value);
-  try {
-    const { status } = await api.injectChaos({ dropRate: Number.isFinite(rate) ? rate : 0.2 });
-    renderChaosStatus(status);
-    logChaosEvent(`Dauerhafte Drop-Rate auf ${Math.round(rate * 100)} % gesetzt.`);
-  } catch (error) {
-    logError(error);
-  }
-});
-
-button("#btn-chaos-corrupt-inject").addEventListener("click", async () => {
-  const canId = input("#chaos-corrupt-can-id").value.trim();
-  if (canId.length === 0) {
-    logChaosEvent("Keine CAN-ID eingetragen — es wurde nichts korrumpiert.");
-    return;
-  }
-  try {
-    // Die Id geht als Text, der Server prüft die Grammatik; ein stiller Default wie das
-    // vorige `?? 0x7e8` adressiert im Tippfall ein Steuergerät, das niemand gemeint hat.
-    const { status } = await api.injectChaos({ corruptSequenceCanId: canId });
-    renderChaosStatus(status);
-    logChaosEvent(`Sequenzfehler auf CAN-ID ${canId} injiziert.`);
-  } catch (error) {
-    logError(error);
-  }
-});
-
-button("#btn-chaos-reset-all").addEventListener("click", async () => {
-  try {
-    const { status } = await api.resetChaos();
-    renderChaosStatus(status);
-    logChaosEvent("Alle Chaos-Regeln zurückgesetzt. Bus läuft störungsfrei.");
-  } catch (error) {
-    logError(error);
-  }
-});
-
-button("#btn-chaos-refresh").addEventListener("click", refreshChaos);
-
 /* --------------------------------- Erweiterte Signalanalyse (Task 5) */
 
 button("#btn-signal-analyze").addEventListener("click", async () => {
@@ -1674,3 +1378,5 @@ button("#btn-signal-analyze").addEventListener("click", async () => {
 connectStream();
 void loadAdapters();
 mountScenarioPanel();
+mountWritesPanel();
+mountChaosPanel();
