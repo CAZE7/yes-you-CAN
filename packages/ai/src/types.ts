@@ -12,7 +12,12 @@
  * `@vdp/diagnostic-ir` and nothing else, which the dependency rule enforces.
  */
 
-import type { DiscriminatingTest, EvidenceSet, Hypothesis } from "@vdp/diagnostic-ir";
+import type {
+  DiscriminatingTest,
+  EvidenceSet,
+  GuidedDiagnosisState,
+  Hypothesis,
+} from "@vdp/diagnostic-ir";
 
 /**
  * The scenario a session was recorded against, if any (master prompt §14).
@@ -172,6 +177,13 @@ export interface AnalysisInput {
   /** Documented patterns, judged against the recording (P0 #40). */
   hypotheses?: readonly Hypothesis[];
   /**
+   * The loop state the session was evaluated in (ADR 0050): which hypothesis
+   * leads, which test reduces the uncertainty the most, how many steps ran.
+   * Assembled once by the runtime — a provider cites it, it does not re-derive
+   * it, and an answer without one says so by not carrying the field.
+   */
+  diagnosis?: GuidedDiagnosisState;
+  /**
    * Which session/recording these observations came from (master prompt §14).
    * An answer that cannot say which recording it read cannot be re-asked; the
    * field is the pointer, the provenance repeats it where a reader looks.
@@ -221,6 +233,15 @@ export interface AnalysisResult {
    * to a missing item.
    */
   nextTest?: DiscriminatingTest;
+  /**
+   * The loop state the answer was judged in (ADR 0050), machine-readable:
+   * the leading hypothesis with its for/against evidence, the test that
+   * reduces the uncertainty the most (with the number) and how many steps ran.
+   * It travels with the answer the way `nextTest` does — derived from the
+   * input, never from the wording of the answer, and dropped whole when an
+   * outside answer references what the input did not offer.
+   */
+  diagnosis?: GuidedDiagnosisState;
 }
 
 export interface AnalysisProvider {

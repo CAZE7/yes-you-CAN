@@ -98,8 +98,14 @@ test("the golden manifest: a digest any implementation of the port has to reprod
     entries: 3,
     sha256: "8600983efbd90138bc603449abf03aa606f571272451cd2c9df8dd38af748172",
   };
-  assert.deepEqual(createRawTraceManifest(GOLDEN_TRACE, nodeIntegrityPort), golden);
+  // ADR 0051: what is created now is v2 — but the digest is the digest of the
+  // *trace*, not of the manifest, so the number does not move with the version.
+  // What was stored as v1 keeps verifying; what is created now carries the same
+  // witness under the version this build writes.
+  const created = createRawTraceManifest(GOLDEN_TRACE, nodeIntegrityPort);
+  assert.deepEqual(created, { ...golden, version: 2 });
   assert.equal(verifyRawTraceManifest(GOLDEN_TRACE, golden, nodeIntegrityPort), true);
+  assert.equal(verifyRawTraceManifest(GOLDEN_TRACE, created, nodeIntegrityPort), true);
   assert.equal(
     verifyRawTraceManifest(GOLDEN_TRACE.slice(0, 2), golden, nodeIntegrityPort),
     false,

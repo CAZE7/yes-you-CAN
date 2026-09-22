@@ -6,9 +6,13 @@
  *
  * `npm run formal:conform` executes this file from `dist/` (after `npm run
  * build`); with `--compare` it additionally runs `formal/ConformanceDriver.hs`
- * through `runghc`/`runhaskell` if present, else compiles it with `ghc` into a
- * temporary binary. No toolchain: the CLI exits 2 for `--compare` and never
- * reports a not-run comparison as agreement.
+ * with the first toolchain present. Preference order (ADR 0049): `ghc` first,
+ * because one compile plus one run per vector set is measurably cheaper than
+ * interpreting the whole formal tree from source twice — on a cold runner the
+ * interpreter path is the cost the CI release gate pays per run. `runhaskell`
+ * and `runghc` remain for machines with an interpreter only. No toolchain: the
+ * CLI exits 2 for `--compare` and never reports a not-run comparison as
+ * agreement.
  */
 
 import { spawnSync } from "node:child_process";
@@ -22,7 +26,10 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 /** Repo root: dist/src → dist → package dir → tools → root. */
 const ROOT = resolve(HERE, "..", "..", "..", "..");
 
-const RUNNERS = ["runghc", "runhaskell", "ghc"] as const;
+/** ADR 0049: compile once, run twice — the CI release gate pays for `--compare`
+ * on every run, and the interpreter path re-reads the whole formal tree from
+ * source for each vector set. */
+const RUNNERS = ["ghc", "runhaskell", "runghc"] as const;
 type Runner = (typeof RUNNERS)[number];
 
 function which(runner: Runner): string | null {

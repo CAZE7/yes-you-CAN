@@ -1,4 +1,5 @@
 export * from "./integrity.js";
+export * from "./manifest-signer.js";
 export * from "./migrations.js";
 export * from "./repository.js";
 export * from "./zip.js";
@@ -9,11 +10,21 @@ export * from "./zip.js";
  * session logger and the raw session/trace contracts belong to the
  * persistence surface; the implementations move down with roadmap steps 10–13.
  */
-export { SessionLogger, verifyRawTraceManifest } from "@vdp/core";
+export {
+  SessionLogger,
+  signRawTraceManifest,
+  traceIdFromManifest,
+  verifyRawTraceManifest,
+  verifyRawTraceManifestSignature,
+} from "@vdp/core";
 export type {
   IntegrityDigest,
   IntegrityPort,
+  ManifestSigner,
+  ManifestVerifier,
   RawTraceEntry,
   RawTraceManifest,
+  RawTraceManifestIdentity,
+  RawTraceSignature,
   VehicleSessionData,
 } from "@vdp/core";

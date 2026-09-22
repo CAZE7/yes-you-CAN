@@ -55,6 +55,7 @@ import {
   VehicleService,
 } from "./services.js";
 import { SignalAnalysisService } from "./signal-analysis-service.js";
+import { PLATFORM_VERSION } from "./version.js";
 
 export interface RuntimeOptions {
   /**
@@ -88,6 +89,12 @@ export interface RuntimeOptions {
   isoTpDefaults?: DiagnosticEngineOptions["isoTpDefaults"];
   /** Manufacturer hooks, consulted only where definitions are silent. */
   oemProtocols?: DiagnosticEngineOptions["oemProtocols"];
+  /**
+   * Platform version stamped onto every session this runtime opens (ADR 0051).
+   * Defaults to {@link PLATFORM_VERSION} — the runtime knows its own version, so
+   * a session it opens can always say which platform opened it.
+   */
+  platformVersion?: string;
 }
 
 export interface DiagnosticRuntime {
@@ -133,6 +140,9 @@ export function createDiagnosticRuntime(options: RuntimeOptions): DiagnosticRunt
     ...(options.pollIntervalMs !== undefined ? { pollIntervalMs: options.pollIntervalMs } : {}),
     ...(options.isoTpDefaults !== undefined ? { isoTpDefaults: options.isoTpDefaults } : {}),
     ...(options.oemProtocols !== undefined ? { oemProtocols: options.oemProtocols } : {}),
+    // The runtime knows its own version, so every session it opens says which
+    // platform opened it (ADR 0051). A host may override for embeds/tests.
+    platformVersion: options.platformVersion ?? PLATFORM_VERSION,
   };
   const engine = new DiagnosticEngine(engineOptions);
 

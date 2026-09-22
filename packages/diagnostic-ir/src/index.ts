@@ -16,6 +16,8 @@
  */
 
 export {
+  type DiagnosisStep,
+  type DiagnosisTransition,
   type DiscriminatingTest,
   type EvidenceConflict,
   evidenceItemId,
@@ -25,6 +27,7 @@ export {
   type GuidedDiagnosisState,
   type Hypothesis,
   type HypothesisCheck,
+  type HypothesisCitation,
   type HypothesisOutcome,
   type HypothesisTest,
   itemById,

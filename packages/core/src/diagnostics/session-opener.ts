@@ -40,6 +40,8 @@ export interface SessionOpenerOptions {
   registry: EcuRegistry;
   logger: Logger;
   clock?: (() => number) | undefined;
+  /** Version of the platform opening the session; recorded on the session (ADR 0051). */
+  platformVersion?: string | undefined;
 }
 
 export class SessionOpener {
@@ -49,6 +51,7 @@ export class SessionOpener {
   private readonly registry: EcuRegistry;
   private readonly log: Logger;
   private readonly clock: (() => number) | undefined;
+  private readonly platformVersion: string | undefined;
 
   constructor(options: SessionOpenerOptions) {
     this.bus = options.bus;
@@ -57,6 +60,7 @@ export class SessionOpener {
     this.registry = options.registry;
     this.log = options.logger;
     this.clock = options.clock;
+    this.platformVersion = options.platformVersion;
   }
 
   /**
@@ -81,6 +85,7 @@ export class SessionOpener {
             definitionPackage: { oem: activePackage.oem, version: activePackage.version },
           }
         : {}),
+      ...(this.platformVersion ? { platformVersion: this.platformVersion } : {}),
       ...(this.clock ? { clock: this.clock } : {}),
     });
     const session = new VehicleSession(data);

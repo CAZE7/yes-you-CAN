@@ -838,6 +838,8 @@ function hypothesis(overrides: Partial<Hypothesis> = {}): Hypothesis {
     outcome: "confirmed",
     confidence: 0.85,
     evidence: ["dtc:P0420@engine"],
+    supporting: [],
+    against: [],
     checks: [
       {
         test: {
@@ -1212,4 +1214,169 @@ test("the instruction asks for basedOn citations and a nextTest pointer — and 
   assert.match(analysisInstruction(), /nextTest/);
   assert.match(analysisInstruction(), /hypothesisId/);
   assert.match(analysisInstruction(), /invention/);
+});
+
+/* ------------------------------------------------------------------ *
+ * §15: the diagnosis loop travels with the analysis (ADR 0050).      *
+ * The loop's state is derived from the input, never from the answer — *
+ * the same rule as nextTest and provenance.                          *
+ * ------------------------------------------------------------------ */
+
+function loopState(): import("@vdp/diagnostic-ir").GuidedDiagnosisState {
+  const vacuum = hypothesis({
+    id: "vacuum-leak",
+    code: "P0171",
+    claim: "Vacuum leak",
+    outcome: "untested",
+    confidence: 0.3,
+    nextTest: {
+      signal: "engine.maf_airflow",
+      name: "MAF at idle",
+      expect: "within 10 % of spec at 800 rpm",
+      measurable: true,
+    },
+  });
+  return {
+    sessionId: "session_a",
+    status: "in-progress",
+    hypotheses: [hypothesis(), vacuum],
+    evidenceCount: 2,
+    evidenceIds: ["dtc:P0420@engine", "gap:dtc-undocumented:U0121"],
+    stepsCompleted: 2,
+    summary: "the loop at its second step",
+    nextRecommendedTest: {
+      hypothesisId: "vacuum-leak",
+      test: vacuum.nextTest as NonNullable<Hypothesis["nextTest"]>,
+      rationale: "one measurement decides two hypotheses",
+      discriminatesAgainst: ["catalyst-aged"],
+      uncertaintyReduction: 0.41,
+    },
+  };
+}
+
+test("the loop's recommendation is what the answer recommends, and the state passes through", async () => {
+  const provider = new HeuristicAnalysisProvider();
+  const state = loopState();
+  const withLoop = await provider.analyze(
+    sampleInput({ hypotheses: state.hypotheses, diagnosis: state }),
+  );
+  assert.deepEqual(
+    withLoop.diagnosis,
+    state,
+    "the loop state travels byte for byte, as the input carried it",
+  );
+  // The loop's pick beats the leading hypothesis' own first open check.
+  assert.equal(withLoop.nextTest?.hypothesisId, "vacuum-leak");
+  assert.equal(withLoop.nextTest?.uncertaintyReduction, 0.41);
+  assert.deepEqual(withLoop.nextTest?.discriminatesAgainst, ["catalyst-aged"]);
+
+  const withoutLoop = await provider.analyze(sampleInput({ hypotheses: state.hypotheses }));
+  assert.equal(withoutLoop.diagnosis, undefined, "no loop in the input, no loop in the answer");
+});
+
+test("a gateway may report the loop's state, only over ids the input carried", async () => {
+  const state = loopState();
+  const provider = new HttpAnalysisProvider({
+    endpoint: "https://gateway.example/analyze",
+    logger,
+  });
+  const analyze = (body: unknown): Promise<AnalysisResult> => {
+    let result: AnalysisResult | undefined;
+    return withFetch(
+      async () => fakeResponse(body),
+      async () => {
+        result = await provider.analyze(
+          sampleInput({ hypotheses: state.hypotheses, evidence: evidenceSet() }),
+        );
+      },
+    ).then(() => {
+      if (result === undefined) throw new Error("the stubbed fetch was not reached");
+      return result;
+    });
+  };
+
+  const kept = await analyze({
+    summary: "gateway with loop state",
+    confidence: 0.6,
+    diagnosis: {
+      sessionId: "session_a",
+      status: "in-progress",
+      hypotheses: [{ id: "catalyst-aged" }, { id: "vacuum-leak" }],
+      leadingHypothesis: { id: "catalyst-aged" },
+      evidenceIds: ["dtc:P0420@engine", "invented:outside", "gap:dtc-undocumented:U0121"],
+      evidenceCount: 2,
+      stepsCompleted: 2,
+      summary: "catalyst ageing on 12 readings",
+      nextRecommendedTest: {
+        hypothesisId: "vacuum-leak",
+        test: { signal: "engine.maf_airflow" },
+        rationale: "gateway wording",
+        discriminatesAgainst: ["catalyst-aged"],
+        uncertaintyReduction: 0.41,
+      },
+    },
+  });
+  assert.ok(kept.diagnosis, "a valid block survives");
+  if (kept.diagnosis === undefined) return;
+  assert.deepEqual(
+    kept.diagnosis.hypotheses,
+    state.hypotheses,
+    "the hypothesis objects come from the input, the answer only lists their ids",
+  );
+  assert.equal(kept.diagnosis.leadingHypothesis?.id, "catalyst-aged");
+  assert.deepEqual(
+    kept.diagnosis.evidenceIds,
+    ["dtc:P0420@engine", "gap:dtc-undocumented:U0121"],
+    "an id the input never carried is dropped, not kept",
+  );
+  assert.equal(kept.diagnosis.stepsCompleted, 2);
+  assert.deepEqual(
+    kept.diagnosis.nextRecommendedTest?.test,
+    state.hypotheses[1]?.nextTest,
+    "the check is the one the input documents, byte for byte",
+  );
+  assert.equal(kept.diagnosis.nextRecommendedTest?.uncertaintyReduction, 0.41);
+
+  const noHypotheses = await analyze({
+    summary: "s",
+    confidence: 0.6,
+    diagnosis: {
+      status: "in-progress",
+      hypotheses: [{ id: "made-up" }],
+      evidenceIds: [],
+      stepsCompleted: 0,
+      summary: "",
+    },
+  });
+  assert.equal(
+    noHypotheses.diagnosis,
+    undefined,
+    "a block whose hypotheses the input never carried is dropped whole",
+  );
+
+  const mismatched = await analyze({
+    summary: "s",
+    confidence: 0.6,
+    diagnosis: {
+      status: "in-progress",
+      hypotheses: [{ id: "catalyst-aged" }, { id: "vacuum-leak" }],
+      evidenceIds: ["dtc:P0420@engine"],
+      evidenceCount: 1,
+      stepsCompleted: 2,
+      summary: "x",
+      nextRecommendedTest: {
+        hypothesisId: "vacuum-leak",
+        test: { signal: "engine.something_else" },
+        rationale: "gateway wording",
+      },
+    },
+  });
+  assert.ok(mismatched.diagnosis, "the state itself is still the input's");
+  if (mismatched.diagnosis !== undefined) {
+    assert.equal(
+      mismatched.diagnosis.nextRecommendedTest,
+      undefined,
+      "a check the input does not document is not a test the gateway can invent",
+    );
+  }
 });

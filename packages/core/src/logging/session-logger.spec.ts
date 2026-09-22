@@ -743,7 +743,7 @@ describe("the JSON export and its witness (ADR 0047)", () => {
     assert.equal(parsed.trace[0]?.payload, "62F190", "the raw form stays the raw form");
     assert.deepEqual(parsed.rawTraceManifest, {
       format: "vdp.raw-trace-manifest",
-      version: 1,
+      version: 2,
       algorithm: "sha256",
       entries: 1,
       sha256: "double:1",

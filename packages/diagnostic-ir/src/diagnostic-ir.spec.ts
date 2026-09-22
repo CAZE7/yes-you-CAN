@@ -788,6 +788,7 @@ describe("evidence items and windows", () => {
       status: "in-progress",
       hypotheses: [],
       evidenceCount: 4,
+      evidenceIds: ["dtc:P0420@engine", "pattern:P0420/cat-efficiency@engine"],
       stepsCompleted: 1,
       summary: "Diagnosing P0420",
       nextRecommendedTest: {
@@ -799,10 +800,16 @@ describe("evidence items and windows", () => {
         },
         rationale: "Tests catalyst efficiency",
         discriminatesAgainst: ["exhaust-leak"],
+        uncertaintyReduction: 0.6,
       },
     };
     assert.equal(state.status, "in-progress");
     assert.equal(state.nextRecommendedTest?.discriminatesAgainst?.[0], "exhaust-leak");
+    assert.equal(
+      state.evidenceIds.length,
+      2,
+      "the state carries the ids a step diff is taken over",
+    );
   });
 });
 

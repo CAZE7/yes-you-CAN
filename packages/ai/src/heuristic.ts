@@ -184,6 +184,10 @@ export class HeuristicAnalysisProvider implements AnalysisProvider {
       ],
       provenance: provenanceOf(input, { provider: this.id }),
       ...(nextTest !== undefined ? { nextTest } : {}),
+      // The loop state travels with the answer as data, not as a claim: it is
+      // the runtime's evaluation of the same input, cited like anything else
+      // (its hypothesis ids and evidence ids all come from the input).
+      ...(input.diagnosis !== undefined ? { diagnosis: input.diagnosis } : {}),
     };
   }
 }
@@ -199,6 +203,29 @@ export class HeuristicAnalysisProvider implements AnalysisProvider {
  * answer that cannot cite a check.
  */
 function nextTestOf(input: AnalysisInput): NonNullable<AnalysisResult["nextTest"]> | undefined {
+  // The loop's own recommendation wins when the input carries it: it is the
+  // uncertainty-maximising choice over all hypotheses, not merely the
+  // leading one's first open check. It is still cited, not trusted — a
+  // hypothesisId the input's hypotheses do not carry drops the whole block,
+  // and the check must be the one that hypothesis documents (the loop state
+  // is derived from the input, so a mismatch is a wiring error, not a fact).
+  const loop = input.diagnosis?.nextRecommendedTest;
+  if (loop !== undefined) {
+    const owner = (input.hypotheses ?? []).find((h) => h.id === loop.hypothesisId);
+    if (owner !== undefined && owner.nextTest?.signal === loop.test.signal) {
+      return {
+        hypothesisId: owner.id,
+        test: owner.nextTest,
+        rationale: loop.rationale,
+        ...(loop.discriminatesAgainst !== undefined
+          ? { discriminatesAgainst: loop.discriminatesAgainst }
+          : {}),
+        ...(loop.uncertaintyReduction !== undefined
+          ? { uncertaintyReduction: loop.uncertaintyReduction }
+          : {}),
+      };
+    }
+  }
   for (const hypothesis of input.hypotheses ?? []) {
     if (hypothesis.outcome === "refuted" || hypothesis.nextTest === undefined) continue;
     return {

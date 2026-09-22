@@ -79,6 +79,7 @@ export class DiagnosticContext {
       registry: this.registry,
       logger,
       clock: options.clock,
+      platformVersion: options.platformVersion,
     });
     this.dtc = new DtcAccess({
       registry: this.registry,

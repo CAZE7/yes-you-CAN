@@ -70,6 +70,28 @@ export interface SessionNote {
   author?: string;
 }
 
+/**
+ * The scenario a session ran (ADR 0048/0051): the file is the source, so the
+ * reference is its id and title plus the seed that ran with it. Written by the
+ * host that ran the scenario, never derived from the trace.
+ */
+export interface SessionScenarioReference {
+  id: string;
+  title: string;
+  seed: number;
+}
+
+/**
+ * The last AI analysis a session carried (ADR 0051): provider plus the versions
+ * the analysis was produced under. Taken from the analysis' own provenance, which
+ * is assembled from the request — never from the answer (ADR 0043).
+ */
+export interface SessionAnalysisReference {
+  provider: string;
+  promptVersion: string;
+  runtimeVersion: string;
+}
+
 export interface DiagnosticAction {
   id: string;
   timestamp: string;
@@ -142,6 +164,22 @@ export interface VehicleSessionData {
   /** Odometer reading in km, if available. */
   mileageKm?: number;
   tags: string[];
+  /**
+   * Provenance (ADR 0051) — additive and optional, so a session written by an
+   * older platform reads exactly as before: no schema bump, no migration.
+   */
+  /** Version of the platform that opened the session. */
+  platformVersion?: string;
+  /** The scenario this session ran, with the seed that ran with it. */
+  scenario?: SessionScenarioReference;
+  /** The last AI analysis carried by this session, with its versions. */
+  ai?: SessionAnalysisReference;
+  /**
+   * Content-addressed identity of the raw-trace witness: `t-` + the first 16
+   * hex of the manifest's SHA-256. The same recording carries the same id, and
+   * a session whose manifest no longer matches its id is checkably wrong.
+   */
+  traceId?: string;
 }
 
 export interface CreateSessionOptions {
@@ -151,6 +189,8 @@ export interface CreateSessionOptions {
   definitionPackage?: { oem: string; version: string };
   id?: string;
   clock?: () => number;
+  /** Version of the platform opening the session (ADR 0051). */
+  platformVersion?: string;
 }
 
 export function createSession(options: CreateSessionOptions): VehicleSessionData {
@@ -162,6 +202,7 @@ export function createSession(options: CreateSessionOptions): VehicleSessionData
     adapter: options.adapter,
     transport: options.transport,
     ...(options.definitionPackage ? { definitionPackage: options.definitionPackage } : {}),
+    ...(options.platformVersion ? { platformVersion: options.platformVersion } : {}),
     ecus: [],
     dtcSnapshots: [],
     measurements: [],

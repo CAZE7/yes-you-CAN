@@ -66,3 +66,6 @@ AI-Context-Topics) steht in [`architecture/architecture.yaml`](../../architectur
 | [0046](0046-scenario-files-impact-and-ai-input.md) | Szenariodateien, Next-Test in der Analyse und Impact aus einer Quelle | accepted |
 | [0047](0047-integrity-port.md) | Der Raw-Trace-Digest kommt durch einen Port: Core sagt, *was* gehasht wird, Storage liefert *wie* | accepted |
 | [0048](0048-scenario-files-are-the-catalog.md) | Szenario-Dateien sind der Katalog, und der Seed läuft bis zum Lauf durch | accepted |
+| [0049](0049-haskell-conformance-release-gate.md) | Haskell-Konformanz ist ein Release-Gate, kein manueller Schritt | accepted |
+| [0050](0050-the-diagnosis-loop-is-a-state-machine-with-a-machine-readable-diff.md) | Der Diagnose-Loop ist eine Zustandsmaschine mit maschinenlesbarem Diff | accepted |
+| [0051](0051-provenance-and-replay-same-recording-same-diagnosis.md) | Provenance und Replay: dieselbe Aufnahme, dieselbe Diagnose | accepted (Implementierung läuft) |

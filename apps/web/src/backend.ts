@@ -50,6 +50,7 @@ import {
   highFidelityPackage,
   simulatorPackage,
 } from "@vdp/definitions";
+import type { DiagnosisTransition, GuidedDiagnosisState } from "@vdp/diagnostic-ir";
 import type { DtcClearPrecheckInfo, VehicleResolutionRef } from "@vdp/domain";
 import type { DtcRecord } from "@vdp/protocols-uds";
 import {
@@ -761,21 +762,36 @@ export class DemoBackend {
   /**
    * Evaluates the current session through the Guided Diagnosis Engine (Task 6).
    * Ranks hypotheses and recommends the next discriminating test.
+   *
+   * With a step measurement this is one loop step (ADR 0050): the measurement
+   * is recorded, the evidence and hypotheses are re-judged, and the view
+   * carries the named diff (`changes`) — which outcome moved where, which
+   * evidence appeared. The panel can then say "this measurement did X"
+   * instead of "something changed".
    */
   async guidedDiagnosis(stepMeasurement?: {
     signalId: string;
     value: number;
   }): Promise<GuidedDiagnosisView> {
     const runtime = this.requireRuntime();
+    let changes: readonly DiagnosisTransition[] | undefined;
+    let state: GuidedDiagnosisState;
     if (stepMeasurement) {
       this.guidedDiagnosisSteps += 1;
-      runtime.evidence.recordStepMeasurement(stepMeasurement.signalId, stepMeasurement.value);
+      const step = runtime.evidence.advanceDiagnosis(
+        stepMeasurement.signalId,
+        stepMeasurement.value,
+        this.guidedDiagnosisSteps - 1,
+      );
+      state = step.after;
+      changes = step.changes;
       const marker = await runtime.commands.dispatch(
         addMarker(`Prüfschritt: ${stepMeasurement.signalId}=${stepMeasurement.value}`, "action"),
       );
       this.emit("marker", toMarkerView(marker));
+    } else {
+      state = runtime.evidence.guidedDiagnosis(this.guidedDiagnosisSteps);
     }
-    const state = runtime.evidence.guidedDiagnosis(this.guidedDiagnosisSteps);
     return {
       status: state.status,
       summary: state.summary,
@@ -790,8 +806,14 @@ export class DemoBackend {
           expect: c.test.expect,
           outcome: c.outcome,
         })),
+        supporting: h.supporting.map((citation) => ({
+          itemId: citation.itemId,
+          why: citation.why,
+        })),
+        against: h.against.map((citation) => ({ itemId: citation.itemId, why: citation.why })),
         ...(h.nextTest ? { nextTest: h.nextTest } : {}),
       })),
+      ...(changes !== undefined && changes.length > 0 ? { changes: [...changes] } : {}),
       ...(state.nextRecommendedTest
         ? {
             nextRecommendedTest: {
@@ -800,6 +822,9 @@ export class DemoBackend {
               test: state.nextRecommendedTest.test,
               ...(state.nextRecommendedTest.discriminatesAgainst
                 ? { discriminatesAgainst: [...state.nextRecommendedTest.discriminatesAgainst] }
+                : {}),
+              ...(state.nextRecommendedTest.uncertaintyReduction !== undefined
+                ? { uncertaintyReduction: state.nextRecommendedTest.uncertaintyReduction }
                 : {}),
             },
           }
@@ -1267,6 +1292,10 @@ export class DemoBackend {
       statistics: runtime.measurements.statistics(),
       anomalies: runtime.measurements.anomalies(),
       evidence: runtime.evidence.snapshot(),
+      // The loop state at this moment (ADR 0050): the answer can say which
+      // evidence speaks for and against the leading hypothesis and which test
+      // reduces the uncertainty the most — machine-readable, cited, not prose.
+      diagnosis: runtime.evidence.guidedDiagnosis(this.guidedDiagnosisSteps),
       ...(this.lastScenario !== undefined ? { scenario: this.lastScenario } : {}),
       versions: {
         promptVersion: ANALYSIS_PROMPT_VERSION,
