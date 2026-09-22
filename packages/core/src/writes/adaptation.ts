@@ -23,7 +23,7 @@
  * 10. Audit: Record permit, channel, before/after values, and verified status.
  */
 
-import { type Logger, createLogger, messageOf } from "@vdp/shared";
+import { createLogger, type Logger, messageOf } from "@vdp/shared";
 import type { RiskLevel, WritePermit, WriteRequestContext } from "../safety/safety-manager.js";
 import type { WriteBinding, WriteOperation, WriteOperationResult, WritePort } from "./port.js";
 

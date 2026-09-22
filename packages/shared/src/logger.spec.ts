@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 import {
   ConsoleSink,
+  createLogger,
   LOG_LEVEL_ORDER,
   type LogLevel,
   type LogRecord,
   MemorySink,
-  createLogger,
   safeStringify,
 } from "./logger.js";
 

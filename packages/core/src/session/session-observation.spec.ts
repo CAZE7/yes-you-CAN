@@ -14,17 +14,17 @@ import type { DtcRecord } from "@vdp/protocols-uds";
 import type { AdapterInfo, TransportInfo } from "@vdp/transport-can";
 import { describe, test } from "vitest";
 import {
-  type SessionGap,
   dtcObservationsOf,
   ecuObservationOf,
+  type SessionGap,
   sessionGapsOf,
   sessionObservationOf,
 } from "./observation.js";
 import {
-  VehicleSession,
-  type VehicleSessionData,
   createEcuSession,
   createSession,
+  VehicleSession,
+  type VehicleSessionData,
 } from "./session.js";
 
 const adapter: AdapterInfo = {

@@ -24,7 +24,7 @@
  * rather than by every caller separately.
  */
 
-import { type Logger, createId, messageOf, nowIso } from "@vdp/shared";
+import { createId, type Logger, messageOf, nowIso } from "@vdp/shared";
 import type { RiskLevel, WritePermit } from "../safety/safety-manager.js";
 
 /** The stages a write can pass through, in the order they are allowed. */

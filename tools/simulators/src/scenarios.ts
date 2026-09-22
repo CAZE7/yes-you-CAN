@@ -22,6 +22,7 @@
  * means — a unit test fails, a recording logs, the workbench shows a panel.
  */
 
+import { formatMeasuredValue } from "@vdp/shared";
 import type { VehicleBehaviourModel } from "./vehicle-model.js";
 import type {
   IgnitionState,
@@ -498,7 +499,10 @@ function checkCondition(
     kind: "condition",
     subject: String(condition.field),
     expected: bounds.join(" and ") || "no comparison given",
-    actual: String(value),
+    // Not `String(value)`: the model computed 10.770000000000001 V, and the sentence
+    // an operator reads has to say 10.77. `passed` was decided numerically above, so
+    // nothing about the verdict moves.
+    actual: typeof value === "number" ? formatMeasuredValue(value) : String(value),
     passed,
     because: condition.because,
     atMs,

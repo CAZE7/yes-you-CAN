@@ -8,17 +8,18 @@ export type {
   FrequencySpectrum,
   SignalCorrelationResult,
 } from "@vdp/core";
+
 import {
   type AdvancedSignalStatistics,
-  type DetectedSignalAnomaly,
-  type DiagnosticEngine,
-  type FrequencySpectrum,
-  type MeasurementSample,
-  type SignalCorrelationResult,
   computeAdvancedStatistics,
   computeCrossCorrelation,
   computeFft,
+  type DetectedSignalAnomaly,
+  type DiagnosticEngine,
   detectSignalAnomalies,
+  type FrequencySpectrum,
+  type MeasurementSample,
+  type SignalCorrelationResult,
 } from "@vdp/core";
 
 export class SignalAnalysisService {

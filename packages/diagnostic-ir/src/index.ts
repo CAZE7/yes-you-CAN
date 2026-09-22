@@ -15,15 +15,27 @@
  * (#41) into findings.
  */
 
+export type {
+  DtcComparison,
+  DtcEnrichment,
+  DtcEnrichmentInput,
+  DtcObservation,
+  DtcObservationInput,
+  DtcSeverity,
+  DtcState,
+  DtcStatusBits,
+  RelatedSignal,
+} from "./dtc.js";
+export { compareDtcObservations, dtcEnrichment, dtcKey, dtcObservation } from "./dtc.js";
 export {
   type DiagnosisStep,
   type DiagnosisTransition,
   type DiscriminatingTest,
   type EvidenceConflict,
-  evidenceItemId,
   type EvidenceItem,
   type EvidenceKind,
   type EvidenceSet,
+  evidenceItemId,
   type GuidedDiagnosisState,
   type Hypothesis,
   type HypothesisCheck,
@@ -42,30 +54,6 @@ export type {
   Unproven,
 } from "./provenance.js";
 export { describeEvidence, isProven, proven, unproven } from "./provenance.js";
-
-export type {
-  ObservationValue,
-  SignalGap,
-  SignalGapInput,
-  SignalObservation,
-  SignalReading,
-  SignalReadingInput,
-} from "./signal.js";
-export { gaps, readings, signalGap, signalReading } from "./signal.js";
-
-export type {
-  DtcComparison,
-  DtcEnrichment,
-  DtcEnrichmentInput,
-  DtcObservation,
-  DtcObservationInput,
-  DtcSeverity,
-  DtcState,
-  DtcStatusBits,
-  RelatedSignal,
-} from "./dtc.js";
-export { compareDtcObservations, dtcEnrichment, dtcKey, dtcObservation } from "./dtc.js";
-
 export type {
   AdapterObservation,
   EcuObservation,
@@ -77,6 +65,15 @@ export type {
   TransportObservation,
 } from "./session.js";
 export { ecuObservation, reachableEcus, sessionObservation, unreachableEcus } from "./session.js";
+export type {
+  ObservationValue,
+  SignalGap,
+  SignalGapInput,
+  SignalObservation,
+  SignalReading,
+  SignalReadingInput,
+} from "./signal.js";
+export { gaps, readings, signalGap, signalReading } from "./signal.js";
 
 export type { MeasurementWindow, WindowOptions, WindowPoint } from "./window.js";
 export { measurementWindow, summariseWindow } from "./window.js";

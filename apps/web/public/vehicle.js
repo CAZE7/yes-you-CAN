@@ -46,7 +46,9 @@ export function renderVehicleResolution(view) {
   }
 
   summary.textContent = `${candidates.length} Kandidat${candidates.length === 1 ? "" : "en"} · beste Übereinstimmung zuerst`;
-  candidates.forEach((candidate, index) => host.append(renderCandidate(candidate, index === 0)));
+  candidates.forEach((candidate, index) => {
+    host.append(renderCandidate(candidate, index === 0));
+  });
   for (const note of view?.notes ?? []) host.append(el("p", { class: "muted small", text: note }));
   for (const observation of view?.unexplained ?? [])
     host.append(

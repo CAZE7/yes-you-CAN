@@ -100,6 +100,23 @@ export interface DtcInfo {
 }
 
 /**
+ * One ECU whose fault memory the last full scan could not read (ADR 0049).
+ *
+ * This is a *result*, not an error: an empty {@link DtcInfo} list means "no fault
+ * is stored" only over the modules that answered, and a reader that cannot see
+ * which modules stayed silent reports a car with no faults. The reason is the
+ * message the bus gave (timeout, NRC), so the row is evidence and not a shrug
+ * (ADR 0033: missing evidence is a failure, not a warning).
+ */
+export interface UnreadEcuInfo {
+  ecuId: string;
+  ecuName: string;
+  /** Response id the module was asked on, as the protocol knows it. */
+  rxId: number;
+  reason: string;
+}
+
+/**
  * One measurement a documented failure pattern predicts
  * (§23 "Measurement Relationships").
  *

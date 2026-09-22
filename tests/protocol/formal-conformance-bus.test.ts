@@ -24,8 +24,8 @@ import {
   type CanBus,
   type CanFilter,
   type CanFrame,
-  type FrameListener,
   createFrame,
+  type FrameListener,
 } from "@vdp/transport-can";
 import { test } from "vitest";
 

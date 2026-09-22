@@ -23,13 +23,13 @@
 
 import { ActionRegistry, CommandBus, createStandardActions } from "@vdp/application";
 import {
+  createWritePort,
   DiagnosticEngine,
   type DiagnosticEngineOptions,
   type EcuLinkFactory,
   type SafetyManager,
   type VehicleSessionData,
   type WritePort,
-  createWritePort,
 } from "@vdp/core";
 import type { DefinitionPackage } from "@vdp/definitions";
 import {
@@ -40,14 +40,14 @@ import {
   InMemoryEventBus,
   type SessionStore,
 } from "@vdp/domain";
-import { type Logger, createLogger } from "@vdp/shared";
+import { createLogger, type Logger } from "@vdp/shared";
 import type { CanBus } from "@vdp/transport-can";
 import { PackageDefinitionProvider } from "./definition-service.js";
+import { DtcService } from "./dtc-service.js";
 import { EventAuditRecorder } from "./event-recorder.js";
 import { EvidenceService } from "./evidence-service.js";
 import { registerRuntimeHandlers } from "./handlers.js";
 import {
-  DtcService,
   EcuService,
   MeasurementService,
   SafetyService,
@@ -90,7 +90,7 @@ export interface RuntimeOptions {
   /** Manufacturer hooks, consulted only where definitions are silent. */
   oemProtocols?: DiagnosticEngineOptions["oemProtocols"];
   /**
-   * Platform version stamped onto every session this runtime opens (ADR 0051).
+   * Platform version stamped onto every session this runtime opens (ADR 0057).
    * Defaults to {@link PLATFORM_VERSION} — the runtime knows its own version, so
    * a session it opens can always say which platform opened it.
    */
@@ -141,7 +141,7 @@ export function createDiagnosticRuntime(options: RuntimeOptions): DiagnosticRunt
     ...(options.isoTpDefaults !== undefined ? { isoTpDefaults: options.isoTpDefaults } : {}),
     ...(options.oemProtocols !== undefined ? { oemProtocols: options.oemProtocols } : {}),
     // The runtime knows its own version, so every session it opens says which
-    // platform opened it (ADR 0051). A host may override for embeds/tests.
+    // platform opened it (ADR 0057). A host may override for embeds/tests.
     platformVersion: options.platformVersion ?? PLATFORM_VERSION,
   };
   const engine = new DiagnosticEngine(engineOptions);

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   type ClearDtcResult,
+  createSession,
   type DecodedSignal,
   type DtcVariantKnowledge,
   type EcuSession,
@@ -10,7 +11,6 @@ import {
   type VehicleIdentity,
   type VehicleMatch,
   VehicleSession,
-  createSession,
 } from "@vdp/core";
 import type { AdapterInfo, TransportInfo } from "@vdp/transport-can";
 import { describe, test } from "vitest";

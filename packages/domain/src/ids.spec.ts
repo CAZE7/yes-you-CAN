@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
-import { type EcuId, ID_PREFIXES, type SessionId, asId, asIdOfKind, hasIdPrefix } from "./index.js";
+import { asId, asIdOfKind, type EcuId, hasIdPrefix, ID_PREFIXES, type SessionId } from "./index.js";
 
 describe("typed identifiers", () => {
   test("asId adopts a string as a branded id without changing it", () => {

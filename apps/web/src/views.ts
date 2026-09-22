@@ -21,7 +21,7 @@
 
 import type { AdapterDescription, AdapterProbe, AdapterSelection } from "@vdp/adapter-host";
 import type { AnalysisResult } from "@vdp/ai";
-import type { DtcView } from "./dtc-view.js";
+import type { DtcView, UnreadEcuView } from "./dtc-view.js";
 import type { EcuView } from "./ecu-view.js";
 import type { MarkerView, SampleView, TraceView } from "./trace-view.js";
 import type { VehicleResolutionView } from "./vehicle-view.js";
@@ -42,7 +42,7 @@ export type { DtcCheckView, DtcKnowledgeView, DtcPatternView } from "./dtc-knowl
  * imports the whole contract from one module so that `tsconfig.frontend.json` has
  * exactly one mapping to point at (ADR 0030 §2).
  */
-export type { DtcView } from "./dtc-view.js";
+export type { DtcView, UnreadEcuView } from "./dtc-view.js";
 export type { EcuView, FreezeFrameView } from "./ecu-view.js";
 export type {
   ScenarioCatalogView,
@@ -187,6 +187,11 @@ export interface AppState {
   transport: { kind: string; channel: string; mtu: number };
   ecus: EcuView[];
   dtcs: DtcView[];
+  /**
+   * Modules the last full scan could not read (ADR 0049). Empty when every module
+   * answered; the fault table is only a statement about the ones that did.
+   */
+  unreadEcus: UnreadEcuView[];
   samples: SampleView[];
   statistics: SignalStatisticsView[];
   trace: TraceView[];
@@ -239,7 +244,7 @@ export interface AdaptersView {
   adapters: AdapterDescription[];
 }
 
-/** Guided Diagnosis wire contract (Task 6; loop step since ADR 0050). */
+/** Guided Diagnosis wire contract (Task 6; loop step since ADR 0056). */
 export interface GuidedDiagnosisView {
   status: "in-progress" | "resolved" | "inconclusive";
   summary: string;

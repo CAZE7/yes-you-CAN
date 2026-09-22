@@ -11,7 +11,7 @@
  */
 
 import type { Logger } from "@vdp/shared";
-import { TransportError, createLogger, toHex } from "@vdp/shared";
+import { createLogger, TransportError, toHex } from "@vdp/shared";
 import type { FrameListener } from "./bus.js";
 import { type CanFilter, type CanFrame, frameMatchesFilters } from "./frame.js";
 import type { AdapterCapabilities, AdapterInfo } from "./transport.js";
@@ -120,7 +120,7 @@ export class ReplayTransport {
 
   constructor(
     private readonly recording: ReplayRecording,
-    private readonly options: ReplayTransportOptions = {},
+    options: ReplayTransportOptions = {},
   ) {
     this.channel = options.channel ?? recording.channel ?? "replay0";
     this.immediate = options.immediate ?? false;

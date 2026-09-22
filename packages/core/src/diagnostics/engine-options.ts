@@ -41,7 +41,7 @@ export interface DiagnosticEngineOptions {
   pollIntervalMs?: number;
   clock?: () => number;
   /**
-   * Version of the platform that opens the session (ADR 0051). Recorded on every
+   * Version of the platform that opens the session (ADR 0057). Recorded on every
    * session the engine opens, so a stored session says which platform built it.
    */
   platformVersion?: string;

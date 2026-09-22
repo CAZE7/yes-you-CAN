@@ -35,6 +35,7 @@ import {
   proven,
   unproven,
 } from "@vdp/diagnostic-ir";
+import { formatMeasuredValue } from "@vdp/shared";
 import type { DtcVariantKnowledge, EnrichedDtc } from "../dtc/scanner.js";
 import type { SignalStatistics } from "../measurements/types.js";
 import { sessionGapsOf, storedBytes } from "../session/observation.js";
@@ -248,7 +249,7 @@ function signalItem(stat: SignalStatistics, at: string): EvidenceItem {
   const spread =
     stat.min === null || stat.max === null
       ? "no numeric value recorded"
-      : `min ${round(stat.min)} / max ${round(stat.max)} / avg ${round(stat.average ?? 0)}${
+      : `min ${formatMeasuredValue(stat.min)} / max ${formatMeasuredValue(stat.max)} / avg ${formatMeasuredValue(stat.average ?? 0)}${
           stat.unit ? ` ${stat.unit}` : ""
         }`;
   return {
@@ -269,7 +270,7 @@ function anomalyItem(anomaly: EvidenceAnomaly, at: string): EvidenceItem {
     kind: "anomaly",
     subject: anomaly.signal,
     statement: `${anomaly.signal}: ${anomaly.reason}${
-      anomaly.value === undefined ? "" : ` (value ${round(anomaly.value)})`
+      anomaly.value === undefined ? "" : ` (value ${formatMeasuredValue(anomaly.value)})`
     }`,
     at,
     evidence: proven({ origin: "derived", at }),
@@ -365,8 +366,4 @@ function conflictsOf(items: readonly EvidenceItem[]): EvidenceConflict[] {
 
 function hex(value: number): string {
   return value.toString(16).padStart(2, "0");
-}
-
-function round(value: number): string {
-  return Number.isInteger(value) ? String(value) : value.toFixed(2);
 }

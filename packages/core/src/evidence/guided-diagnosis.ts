@@ -20,15 +20,15 @@ import {
   type DiscriminatingTest,
   type EvidenceItem,
   type EvidenceSet,
+  evidenceItemId,
   type GuidedDiagnosisState,
   type Hypothesis,
   type HypothesisCheck,
-  evidenceItemId,
   proven,
 } from "@vdp/diagnostic-ir";
 import { nowIso } from "@vdp/shared";
 import type { EvidenceDtc } from "./collect.js";
-import { type SamplePoint, rankHypotheses } from "./hypotheses.js";
+import { rankHypotheses, type SamplePoint } from "./hypotheses.js";
 
 export interface GuidedDiagnosisInput {
   evidence: EvidenceSet;

@@ -5,13 +5,13 @@
  * The transport itself is injected so this stays testable without a network.
  */
 
-import { type Logger, createLogger, messageOf } from "@vdp/shared";
+import { createLogger, type Logger, messageOf } from "@vdp/shared";
 import {
-  PAYLOAD_TYPE,
-  type VehicleIdentificationResponse,
   decodeVehicleIdentificationResponse,
   encodeMessage,
   encodeVehicleIdentificationRequest,
+  PAYLOAD_TYPE,
+  type VehicleIdentificationResponse,
 } from "./message.js";
 
 export interface DoipDatagramSocket {

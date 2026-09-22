@@ -16,6 +16,10 @@
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
 import {
+  canonicalManifestBinding,
+  canonicalRawTraceChunks,
+  createRawTraceManifest,
+  hashRawTrace,
   type IntegrityPort,
   type ManifestSigner,
   type ManifestVerifier,
@@ -24,10 +28,6 @@ import {
   type RawTraceManifest,
   type RawTraceManifestIdentity,
   type RawTraceSignature,
-  canonicalManifestBinding,
-  canonicalRawTraceChunks,
-  createRawTraceManifest,
-  hashRawTrace,
   signRawTraceManifest,
   traceIdFromManifest,
   verifyRawTraceManifest,
@@ -210,7 +210,7 @@ describe("raw trace integrity", () => {
   });
 });
 
-describe("manifest v2 signatures (ADR 0051)", () => {
+describe("manifest v2 signatures (ADR 0057)", () => {
   // Signer/verifier doubles — the core computes no cryptography itself (same
   // doctrine as the digest port above), so the tests here pin the contract:
   // what is signed, what is checked, what falsifies. The real ed25519 is
@@ -256,7 +256,7 @@ describe("manifest v2 signatures (ADR 0051)", () => {
   });
 
   test("a v1 witness keeps verifying — the golden digest is the anchor", () => {
-    // ADR 0051 upgrades the manifest to v2 without breaking what v1 stored:
+    // ADR 0057 upgrades the manifest to v2 without breaking what v1 stored:
     // the same digest and entry count under `version: 1` must still confirm.
     const trace = [entry("1010")];
     const port = testPort();
@@ -344,7 +344,7 @@ describe("manifest v2 signatures (ADR 0051)", () => {
     const port = testPort();
     const manifest = createRawTraceManifest([entry("1010")], port);
     assert.equal(traceIdFromManifest(manifest), `t-${manifest.sha256.slice(0, 16)}`);
-    // The form over a real digest: `t-` + the first 16 hex (ADR 0051).
+    // The form over a real digest: `t-` + the first 16 hex (ADR 0057).
     assert.equal(
       traceIdFromManifest({
         sha256: "8600983efbd90138bc603449abf03aa606f571272451cd2c9df8dd38af748172",

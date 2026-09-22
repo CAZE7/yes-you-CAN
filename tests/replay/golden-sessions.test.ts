@@ -17,10 +17,10 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { genericPackage } from "@vdp/definitions/generic";
 import {
-  STANDARD_RECIPES,
   findVinLikeTokens,
   parseGoldenSession,
   runGoldenSession,
+  STANDARD_RECIPES,
   summariseChecks,
 } from "@vdp/golden-sessions";
 import { createLogger } from "@vdp/shared";

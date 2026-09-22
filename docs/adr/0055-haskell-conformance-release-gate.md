@@ -1,4 +1,4 @@
-# ADR 49 — Haskell-Konformanz ist ein Release-Gate, kein manueller Schritt
+# ADR 55 — Haskell-Konformanz ist ein Release-Gate, kein manueller Schritt
 
 - Status: akzeptiert (2026-09-22)
 - Kontext: ADR 0045 (gemeinsame Vektoren, zwei Leser), ADR 0029 §1 („ein Tor, das

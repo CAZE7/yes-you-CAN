@@ -177,7 +177,7 @@ export interface AnalysisInput {
   /** Documented patterns, judged against the recording (P0 #40). */
   hypotheses?: readonly Hypothesis[];
   /**
-   * The loop state the session was evaluated in (ADR 0050): which hypothesis
+   * The loop state the session was evaluated in (ADR 0056): which hypothesis
    * leads, which test reduces the uncertainty the most, how many steps ran.
    * Assembled once by the runtime — a provider cites it, it does not re-derive
    * it, and an answer without one says so by not carrying the field.
@@ -234,7 +234,7 @@ export interface AnalysisResult {
    */
   nextTest?: DiscriminatingTest;
   /**
-   * The loop state the answer was judged in (ADR 0050), machine-readable:
+   * The loop state the answer was judged in (ADR 0056), machine-readable:
    * the leading hypothesis with its for/against evidence, the test that
    * reduces the uncertainty the most (with the number) and how many steps ran.
    * It travels with the answer the way `nextTest` does — derived from the

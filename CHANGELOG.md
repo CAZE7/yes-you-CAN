@@ -11,11 +11,11 @@ Erstes Release der Vehicle Diagnostics Platform. Inhalt: die Grundlage aus ADR
 0047/0048 (Integrity-Port, Szenario-Dateien als der eine Katalog, Seed bis in den
 Lauf) und die vier Meilensteine dieses Stands — Haskell-Konformanz als Release-Gate,
 zentraler Szenario-Katalog, produktionsreifer Diagnose-Loop sowie Provenance + Replay
-(Entscheidung ADR 0051, Migration 1–4 von 6 umgesetzt; siehe unten).
+(Entscheidung ADR 0057, Migration 1–4 von 6 umgesetzt; siehe unten).
 
 ### Added
 
-- **Haskell-Konformanz ist ein Release-Gate (ADR 0049).**
+- **Haskell-Konformanz ist ein Release-Gate (ADR 0055).**
   `tests/architecture/haskell-conformance-gate.test.ts` prüft in jedem CI-Lauf das
   TypeScript ⇄ Haskell-Differential über 28 ISO-15765-2- und 44 Write-Safety-Vektoren
   (`npm run formal:conform -- --compare`). Grün nur, wenn beide Sätze die Zeile
@@ -24,7 +24,7 @@ zentraler Szenario-Katalog, produktionsreifer Diagnose-Loop sowie Provenance + R
   harter Fehlschlag — „a release without the differential is not a release".
   Lokal ohne Haskell-Toolchain: sichtbarer Skip, nie ein unsichtbares Grün.
 - **Der Diagnose-Loop ist eine Zustandsmaschine mit maschinenlesbarem Diff
-  (ADR 0050).** Jede Hypothese trägt ihre Evidenz mit Seite
+  (ADR 0056).** Jede Hypothese trägt ihre Evidenz mit Seite
   (`Hypothesis.supporting`/`against`, zitiert und existenzgeprüft); der empfohlene
   Test maximiert die Unsicherheitsreduktion über alle ungetesteten Checks
   (`DiscriminatingTest.uncertaintyReduction`); `DiagnosisStep {before, after, changes}`
@@ -32,7 +32,7 @@ zentraler Szenario-Katalog, produktionsreifer Diagnose-Loop sowie Provenance + R
   `resetGuidedDiagnosis` tragen den Loop in der Runtime, `diagnosis` reist in AI-Eingabe
   und -Antwort (nur gegen die Aufnahme prüfbare Zustände), `GuidedDiagnosisView`
   beantwortet je Hypothese: welche Evidenz spricht dafür, was spricht dagegen.
-- **Provenance + Replay (ADR 0051, Migration 1–4 von 6).** Vier additive optionale
+- **Provenance + Replay (ADR 0057, Migration 1–4 von 6).** Vier additive optionale
   Session-Felder, kein Schema-Bump: `platformVersion` (von `PLATFORM_VERSION` über
   Runtime → Engine → Session-Opener), `scenario {id, title, seed}`, `ai {provider,
   promptVersion, runtimeVersion}` und eine **content-adressierte** `traceId`
@@ -44,6 +44,13 @@ zentraler Szenario-Katalog, produktionsreifer Diagnose-Loop sowie Provenance + R
   in `@vdp/storage`: `createNodeManifestSigner` (ein Prozess-Signer mit ephemeren
   ed25519-Schlüsselpaar, `keyId = ed25519:` + 16 hex Fingerabdruck) und
   `createNodeManifestVerifier`.
+- **Ein Scan nennt auch die Steuergeräte, die er nicht lesen konnte (ADR 0049).**
+  DTC-Scans liefern `DtcScanReport {scanned, unread}` statt ein leeres Ergebnis mit
+  verschwundenen Timeouts; Query, Domain-Event, Workbench-Zustand und Server-Log
+  tragen dieselbe Lücke.
+- **Standards-Konformanz ist ein Register mit Belegen (ADR 0050/0053/0054).**
+  Die ISO-21434-/ISO-26262-Dokumentation, Traceability, HARA-Vorlage und CSMS-Gerüst
+  nennen erfüllt, teilweise und offen getrennt statt „Industriestandard" als Pauschale.
 - `CHANGELOG.md` (diese Datei) und annotierte Versions-Tags.
 
 ### Changed
@@ -56,6 +63,8 @@ zentraler Szenario-Katalog, produktionsreifer Diagnose-Loop sowie Provenance + R
   Unsicherheitsreduktion über alle offenen Checks statt aus „erster offener Check
   der führenden Hypothese" — eine Messung, die drei Hypothesen entscheidet, schlägt
   eine, die eine entscheidet.
+- Die Uhr des Signalmodells ist ein injizierbarer Parameter (ADR 0052), nicht die
+  Geschwindigkeit der Maschine; Simulator- und Dateiläufe bleiben damit deterministisch.
 
 ### Fixed
 
@@ -76,10 +85,22 @@ zentraler Szenario-Katalog, produktionsreifer Diagnose-Loop sowie Provenance + R
   (Längenpräfix je Eintrag). Der goldene Vektor `8600983e…` ist der cross-language
   Anker und bleibt gepinnt; **V1-Manifeste verifizieren weiter**
   (`SUPPORTED_VERSIONS = [1, 2]`).
+- Die Workbench-API kennt ihren Aufrufer (ADR 0051): Bearer-Token-Tor mit konstantem
+  Vergleich, localhost als Default, Security-Header/HSTS; TLS-Konfiguration,
+  Rate-Limit und CSMS-Gerüst schließen weitere ISO-21434-Lücken (ADR 0054).
+
+### Verification
+
+- `npm run ci`: **EXIT 0** — 2364 Tests bestanden, 3 sichtbare lokale Skips,
+  163 Testdateien bestanden; `biome check` 489 Dateien; Dependency- und
+  Manifest-Gates ohne Verletzung.
+- `npm run test:coverage`: **EXIT 0** — global
+  **94,10 / 86,40 / 95,94 / 95,48** (Statements / Branches / Functions / Lines),
+  alle Böden unverändert.
 
 ### Known gaps (ehrlich, in diesem Release sichtbar)
 
-- ADR-0051-Migration 5 (Backend-Verdrahtung `saveSession`/`exportJson`/`runScenario`/
+- ADR-0057-Migration 5 (Backend-Verdrahtung `saveSession`/`exportJson`/`runScenario`/
   `analyze` + Report-Provenance-Sektion) und Migration 6
   (`tests/replay/scenario-replay.test.ts`) sind noch offen — die Kette
   „gleicher Input → gleicher Output" wird in einem der nächsten Releases mit dem

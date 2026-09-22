@@ -24,11 +24,11 @@ import {
   type CanBus,
   type CanFilter,
   type CanFrame,
-  type FrameListener,
   createFrame,
+  type FrameListener,
 } from "@vdp/transport-can";
 import { IsoTpConnection } from "@vdp/transport-iso-tp";
-import { type IsoTpErrorClass, type IsoTpResult, decodeCapturedFrames } from "./canonical.js";
+import { decodeCapturedFrames, type IsoTpErrorClass, type IsoTpResult } from "./canonical.js";
 import type { IsoTpTxPeerEntry, IsoTpVector } from "./vectors.js";
 
 const INFO: AdapterInfo = {

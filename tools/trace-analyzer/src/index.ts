@@ -11,9 +11,9 @@
 import {
   type DefinitionPackage,
   type EcuDefinition,
+  indexPackage,
   type SignalDefinition,
   type SignalIndex,
-  indexPackage,
 } from "@vdp/definitions";
 import { NEGATIVE_RESPONSE_SID, POSITIVE_RESPONSE_OFFSET, serviceName } from "@vdp/protocols-uds";
 import { toHex } from "@vdp/shared";

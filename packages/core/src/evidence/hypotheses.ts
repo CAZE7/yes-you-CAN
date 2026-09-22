@@ -28,12 +28,12 @@
 import type { DtcKnowledgeCheck, DtcKnowledgePattern } from "@vdp/definitions";
 import {
   type EvidenceSet,
+  evidenceItemId,
   type Hypothesis,
   type HypothesisCheck,
   type HypothesisCitation,
   type HypothesisOutcome,
   type HypothesisTest,
-  evidenceItemId,
   itemById,
   summariseWindow,
 } from "@vdp/diagnostic-ir";

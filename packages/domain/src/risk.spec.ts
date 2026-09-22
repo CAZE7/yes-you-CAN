@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
 import {
-  WRITE_OPERATION_KINDS,
-  WRITE_OPERATION_POLICIES,
   isWriteOperationKind,
   policyForWriteOperation,
+  WRITE_OPERATION_KINDS,
+  WRITE_OPERATION_POLICIES,
 } from "./index.js";
 
 describe("write operation risk policy", () => {

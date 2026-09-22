@@ -16,7 +16,7 @@
 
 import type { SignalDefinition } from "@vdp/definitions";
 import { type SignalGap, type SignalObservation, signalGap } from "@vdp/diagnostic-ir";
-import { type Logger, asError, createLogger, messageOf, toHex } from "@vdp/shared";
+import { asError, createLogger, type Logger, messageOf, toHex } from "@vdp/shared";
 import type { DecodedSignal } from "./decoder.js";
 import { toDecodedSignal } from "./decoder.js";
 import type { MeasurementRecorder, MeasurementSample } from "./recorder.js";

@@ -12,26 +12,26 @@ import {
   type DefinitionPackage,
   type DtcDefinition,
   type EcuDefinition,
+  indexPackage,
   type SignalDefinition,
   type SignalIndex,
-  indexPackage,
 } from "@vdp/definitions";
 import { genericPackage } from "@vdp/definitions/generic";
 import {
   type ServerDid,
   type ServerDtc,
+  simulatorSessions,
   UdsServer,
   type UdsServerLink,
   type UdsServerOptions,
-  simulatorSessions,
   xorSeedKeyAlgorithm,
 } from "@vdp/protocols-uds";
-import { type Logger, createLogger, messageOf, toHex } from "@vdp/shared";
+import { createLogger, type Logger, messageOf, toHex } from "@vdp/shared";
 import { IsoTpConnection } from "@vdp/transport-iso-tp";
 import {
+  createVirtualCanNetwork,
   type VirtualCanBus,
   type VirtualCanOptions,
-  createVirtualCanNetwork,
 } from "./virtual-can.js";
 
 export interface VirtualVehicleOptions {
@@ -48,6 +48,19 @@ export interface VirtualVehicleOptions {
   pendingResponseServices?: number[];
   /** Initial DTCs per ECU id. */
   dtcs?: Record<string, ServerDtc[]>;
+  /**
+   * Time source of the dynamic signal model (default `Date.now`).
+   *
+   * Injectable because the wall clock is the one thing that made two recordings of
+   * the same recipe differ: `signalValue` derives every evolving signal from elapsed
+   * seconds, so a recording taken a second later is another car. The pseudo random
+   * generator was already seeded „so recordings are reproducible" — the clock was the
+   * remaining leak (AGENTS 31: Determinismus schlägt Laufzeit).
+   *
+   * A test or a recorder passes a clock it advances itself; the demo keeps the wall
+   * clock, because a car that does not move while you watch it is not a demo.
+   */
+  clock?: () => number;
 }
 
 export interface VirtualEcu {
@@ -91,6 +104,7 @@ export class VirtualVehicle {
   private readonly dynamic: boolean;
   private readonly random: () => number;
   private readonly startedAt: number;
+  private readonly clock: () => number;
   private readonly vin: string;
   private readonly initialDtcs: Record<string, ServerDtc[]>;
   private readonly pendingResponseServices: number[];
@@ -101,7 +115,8 @@ export class VirtualVehicle {
     this.index = indexPackage(this.definitions);
     this.dynamic = options.dynamic ?? true;
     this.random = createRandom(options.seed ?? 1234);
-    this.startedAt = Date.now();
+    this.clock = options.clock ?? Date.now;
+    this.startedAt = this.clock();
     this.vin = options.vin ?? DEFAULT_VIN;
     this.initialDtcs = options.dtcs ?? {};
     this.pendingResponseServices = options.pendingResponseServices ?? [];
@@ -327,7 +342,7 @@ export class VirtualVehicle {
     if (signal.encoding === "ascii") return this.asciiValue(ecuId, signal);
     if (signal.encoding === "bool") return true;
 
-    const elapsedS = (Date.now() - this.startedAt) / 1000;
+    const elapsedS = (this.clock() - this.startedAt) / 1000;
     const base = baselineFor(ecuId, signal);
     if (!this.dynamic) return base;
 

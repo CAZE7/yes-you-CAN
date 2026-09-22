@@ -21,7 +21,7 @@ import type {
   AnalysisInput,
   AnalysisVersions,
 } from "@vdp/ai";
-import { type EvidenceItem, describeEvidence, itemsOf } from "@vdp/diagnostic-ir";
+import { describeEvidence, type EvidenceItem, itemsOf } from "@vdp/diagnostic-ir";
 import type { AnomalyInfo, SignalStatisticsInfo, VehicleSummary } from "@vdp/domain";
 import type { EvidenceSnapshot } from "@vdp/runtime";
 import type { VehicleSessionData } from "@vdp/storage";
@@ -156,7 +156,7 @@ export interface AnalysisSources {
    */
   scenario?: AnalysisInput["scenario"];
   /**
-   * The loop state the session was evaluated in (ADR 0050): the leading
+   * The loop state the session was evaluated in (ADR 0056): the leading
    * hypothesis with its for/against evidence and the test that reduces the
    * uncertainty the most. Assembled once by the runtime — the provider cites
    * it, it does not re-derive it.

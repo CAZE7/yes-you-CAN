@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
 import {
-  type IgnitionState,
-  VEHICLE_PHYSICS,
-  VEHICLE_THRESHOLDS,
   approach,
+  type IgnitionState,
   ignitionCode,
   round,
+  VEHICLE_PHYSICS,
+  VEHICLE_THRESHOLDS,
 } from "./vehicle-state.js";
 
 /**

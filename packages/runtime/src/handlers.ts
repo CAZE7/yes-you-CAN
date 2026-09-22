@@ -31,13 +31,8 @@ import {
   type SnapshotSignalsCommand,
   type StartMeasurementsCommand,
 } from "@vdp/application";
-import type {
-  DtcService,
-  EcuService,
-  MeasurementService,
-  SessionService,
-  VehicleService,
-} from "./services.js";
+import type { DtcService } from "./dtc-service.js";
+import type { EcuService, MeasurementService, SessionService, VehicleService } from "./services.js";
 
 export interface RuntimeServices {
   vehicle: VehicleService;
@@ -112,6 +107,8 @@ export function registerRuntimeHandlers(bus: CommandBus, services: RuntimeServic
     const all = dtc.lastScanResult;
     return ecuId === undefined ? all : all.filter((dtcInfo) => dtcInfo.ecuId === ecuId);
   });
+  // The other half of the same scan (ADR 0049): which modules did not answer.
+  bus.registerQuery(QueryKinds.GetDtcScanGaps, () => dtc.lastScanGaps);
   bus.registerQuery(QueryKinds.GetDtcClearPrecheck, (query) => {
     const cmd = query as GetDtcClearPrecheckQuery;
     return dtc.precheckClear(cmd.ecuId, cmd.vehicleState);

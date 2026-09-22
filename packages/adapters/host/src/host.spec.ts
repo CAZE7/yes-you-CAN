@@ -4,20 +4,20 @@ import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FakeSocketCanBinding, type SocketCanBinding } from "@vdp/adapter-socketcan";
-import { AdapterUnsupportedError, MemorySink, TransportError, createLogger } from "@vdp/shared";
+import { AdapterUnsupportedError, createLogger, MemorySink, TransportError } from "@vdp/shared";
 import { test } from "vitest";
 import {
   AdapterCatalog,
   type AdapterEntry,
-  ELM327_DEFAULT_BAUD,
-  SLCAN_DEFAULT_BAUD,
   assertAdapterUsable,
   createHostAdapterCatalog,
   describeAdapterConfig,
+  ELM327_DEFAULT_BAUD,
   formatAdapterHelp,
   missingRequiredSettings,
   openSerialStream,
   parseAdapterArgv,
+  SLCAN_DEFAULT_BAUD,
   selectionFromPayload,
   supportedBitrates,
   validateSelection,

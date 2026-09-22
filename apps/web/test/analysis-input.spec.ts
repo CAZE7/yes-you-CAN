@@ -15,8 +15,12 @@ import type { EvidenceSnapshot } from "@vdp/runtime";
 import type { VehicleSessionData } from "@vdp/storage";
 import { describe, test } from "vitest";
 import { type FixturePatch, patched } from "../../../tests/helpers/fixture.js";
-import { buildAnalysisInput } from "../src/analysis-input.js";
-import { type AnalysisDtcSource, analysisDtcOf, analysisVehicleOf } from "../src/analysis-input.js";
+import {
+  type AnalysisDtcSource,
+  analysisDtcOf,
+  analysisVehicleOf,
+  buildAnalysisInput,
+} from "../src/analysis-input.js";
 
 type Determination = VehicleSessionData["determination"];
 

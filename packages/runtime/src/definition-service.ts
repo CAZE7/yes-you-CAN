@@ -11,10 +11,10 @@
 import {
   type DefinitionPackage,
   type EcuDefinition,
+  indexPackage,
   type VehicleCandidate,
   type VehicleResolution,
   VehicleResolver,
-  indexPackage,
 } from "@vdp/definitions";
 import type {
   DefinitionProvider,

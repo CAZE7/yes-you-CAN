@@ -15,13 +15,13 @@
  */
 
 import {
-  type DiagnosticEngine,
-  type GuidedDiagnosisInput,
-  type SamplePoint,
   advanceGuidedDiagnosis,
   collectEvidence,
+  type DiagnosticEngine,
   evaluateGuidedDiagnosis,
+  type GuidedDiagnosisInput,
   rankHypotheses,
+  type SamplePoint,
 } from "@vdp/core";
 import type {
   DiagnosisStep,
@@ -111,7 +111,7 @@ export class EvidenceService {
 
   /**
    * One step of the interactive loop: measurement in, evidence and hypotheses
-   * re-judged, the change named (ADR 0050).
+   * re-judged, the change named (ADR 0056).
    *
    * The step is the machine-readable answer to "what did that measurement
    * change": `before` is the state this service last evaluated, the recording

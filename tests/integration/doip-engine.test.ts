@@ -15,11 +15,11 @@ import { createLogger, fromHex } from "@vdp/shared";
 import {
   DOIP_HEADER_LENGTH,
   type DoipSocket,
-  PAYLOAD_TYPE,
   decodeDiagnosticMessage,
   decodeHeader,
   encodeDiagnosticMessage,
   encodeMessage,
+  PAYLOAD_TYPE,
 } from "@vdp/transport-doip";
 import { test } from "vitest";
 import { settle } from "../helpers/wait.js";

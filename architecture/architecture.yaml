@@ -311,8 +311,8 @@
         "@vdp/definitions",
         "@vdp/runtime"
       ],
-      "adrs": ["0023", "0024", "0025", "0026", "0037"],
-      "docs": ["docs/api/diagnostic-ir.md"],
+      "adrs": ["0023", "0024", "0025", "0026", "0037", "0049"],
+      "docs": ["docs/api/diagnostic-ir.md", "docs/api/runtime.md"],
       "flows": ["docs/flows/dtc-analysis.md"],
       "examples": ["tests/examples/dtc-analysis.example.ts"]
     },
@@ -346,7 +346,7 @@
       "title": "Formal reference and conformance vectors",
       "summary": "Changing the ISO-TP transport or the write-safety chain, the Haskell reference models in formal/, or the shared test vectors both are graded against.",
       "packages": ["@vdp/transport-iso-tp", "@vdp/core", "@vdp/formal-conformance"],
-      "adrs": ["0045"],
+      "adrs": ["0045", "0050", "0051", "0052", "0053"],
       "docs": ["docs/api/transport.md", "docs/api/runtime.md"],
       "flows": ["docs/flows/diagnostic-write.md"],
       "examples": []

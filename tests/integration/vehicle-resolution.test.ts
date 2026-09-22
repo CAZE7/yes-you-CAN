@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { connectVehicle, getEcuList, readDtcs, resolveVehicle } from "@vdp/application";
 import { SIMULATOR_VIN, simulatorPackage } from "@vdp/definitions";
 import { createDiagnosticRuntime } from "@vdp/runtime";
-import { MemorySink, createLogger } from "@vdp/shared";
+import { createLogger, MemorySink } from "@vdp/shared";
 import { VirtualVehicle } from "@vdp/simulators";
 import { afterAll, beforeAll, test } from "vitest";
 

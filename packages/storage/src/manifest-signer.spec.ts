@@ -1,5 +1,5 @@
 /**
- * The Node `ManifestSigner` (ADR 0051).
+ * The Node `ManifestSigner` (ADR 0057).
  *
  * The only place in the tree where a raw-trace signature is really produced, so
  * the tests here pin the things a double cannot: that the primitive is standard
@@ -18,9 +18,9 @@ import {
   verify as cryptoVerify,
 } from "node:crypto";
 import {
-  type RawTraceManifest,
   canonicalManifestBinding,
   createRawTraceManifest,
+  type RawTraceManifest,
   signRawTraceManifest,
   verifyRawTraceManifestSignature,
 } from "@vdp/core";
@@ -117,7 +117,7 @@ test("a signed manifest confirms against the public key that travels beside it",
   const verifier = createNodeManifestVerifier(signed.publicKey ?? "");
   assert.equal(verifier.keyId, signer.keyId, "the fingerprint is recomputed from the key bytes");
   assert.equal(verifyRawTraceManifestSignature(signed, verifier), true);
-  // The signer can vouch for its own export at once (ADR 0051: the signature is
+  // The signer can vouch for its own export at once (ADR 0057: the signature is
   // verified where it was produced).
   assert.equal(verifyRawTraceManifestSignature(signed, signer), true);
 });

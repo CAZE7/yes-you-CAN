@@ -24,10 +24,10 @@ import {
   type DefinitionPackage,
   type DtcKnowledgeDefinition,
   type FailurePatternDefinition,
+  indexVehicles,
   type MeasurementCheckDefinition,
   type Provenance,
   type VehicleDefinition,
-  indexVehicles,
 } from "./schema.js";
 
 /** Where the winning statement about a fault code came from. */

@@ -15,10 +15,10 @@ import {
   type AnalysisInput,
   type AnalysisResult,
   AnalysisService,
+  analysisInstruction,
   HeuristicAnalysisProvider,
   HttpAnalysisProvider,
   type HttpClient,
-  analysisInstruction,
   redactVin,
 } from "./index.js";
 
@@ -1217,7 +1217,7 @@ test("the instruction asks for basedOn citations and a nextTest pointer — and 
 });
 
 /* ------------------------------------------------------------------ *
- * §15: the diagnosis loop travels with the analysis (ADR 0050).      *
+ * §15: the diagnosis loop travels with the analysis (ADR 0056).      *
  * The loop's state is derived from the input, never from the answer — *
  * the same rule as nextTest and provenance.                          *
  * ------------------------------------------------------------------ */

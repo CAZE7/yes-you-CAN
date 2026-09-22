@@ -11,14 +11,14 @@
  * texts and hands them to the portable loader, which does the grammar.
  */
 
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   type LoadedScenarioFile,
+  loadScenarioLibrary,
   type ScenarioFileInput,
   type ScenarioLibrary,
-  loadScenarioLibrary,
 } from "@vdp/simulators";
 
 const HERE = dirname(fileURLToPath(import.meta.url));

@@ -9,14 +9,14 @@
 
 import { ISO_TP_ERROR_CLASSES, type IsoTpResult } from "./canonical.js";
 import {
-  type Json,
-  type Report,
   array,
   bool,
   bytes,
   fail,
   integer,
+  type Json,
   oneOf,
+  type Report,
   record,
   rejectExtras,
   str,

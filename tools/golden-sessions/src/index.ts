@@ -6,11 +6,10 @@
  * "this is what the vehicle did, and it must still do it".
  */
 
+export { type EcuIdentityLike, resolveStableEcuId, stableEcuId } from "./ecu-identity.js";
 export {
   GOLDEN_FORMAT,
   GOLDEN_FORMAT_VERSION,
-  VIN_PATTERN,
-  VIN_PLACEHOLDER,
   type GoldenCheck,
   type GoldenDefinitionRef,
   type GoldenDtcExpectation,
@@ -24,24 +23,34 @@ export {
   type GoldenSignalExpectation,
   type GoldenSource,
   type GoldenTraceEntry,
+  VIN_PATTERN,
+  VIN_PLACEHOLDER,
 } from "./format.js";
+export {
+  applyReplacements,
+  type ByteHit,
+  bytesToHex,
+  containsInMessages,
+  findBytesInMessages,
+  frameBytes,
+  type ReassembledMessage,
+  reassemble,
+} from "./isobytes.js";
 export {
   GoldenSessionFormatError,
   goldenSessionToJson,
   parseGoldenSession,
   summariseChecks,
 } from "./parse.js";
-export { resolveStableEcuId, stableEcuId, type EcuIdentityLike } from "./ecu-identity.js";
+export { GENERIC_PACKAGE_NAME, STANDARD_RECIPES } from "./recipes.js";
 export {
-  applyReplacements,
-  bytesToHex,
-  containsInMessages,
-  findBytesInMessages,
-  frameBytes,
-  reassemble,
-  type ByteHit,
-  type ReassembledMessage,
-} from "./isobytes.js";
+  GOLDEN_CONNECT_OPTIONS,
+  type GoldenRecipe,
+  type RecordedGolden,
+  type RecordGoldenOptions,
+  recordGoldenSession,
+  signalExpectations,
+} from "./record.js";
 export {
   assertGoldenRedacted,
   assertNoVinLikeTokens,
@@ -54,13 +63,4 @@ export {
   redactText,
   vinHexForms,
 } from "./redact.js";
-export {
-  GOLDEN_CONNECT_OPTIONS,
-  type GoldenRecipe,
-  type RecordGoldenOptions,
-  type RecordedGolden,
-  recordGoldenSession,
-  signalExpectations,
-} from "./record.js";
 export { type RunGoldenOptions, runGoldenSession } from "./run.js";
-export { GENERIC_PACKAGE_NAME, STANDARD_RECIPES } from "./recipes.js";

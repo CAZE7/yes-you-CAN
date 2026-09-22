@@ -1,5 +1,5 @@
 /**
- * The TypeScript ⇄ Haskell differential has a CI carrier (ADR 0049).
+ * The TypeScript ⇄ Haskell differential has a CI carrier (ADR 0055).
  *
  * The situation this closes: the shared vectors run against the production
  * TypeScript on every `npm test` (project `protocol`), and the cross-language

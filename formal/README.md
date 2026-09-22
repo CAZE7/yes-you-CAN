@@ -41,7 +41,7 @@ außerhalb des Gebiets sind nicht „frei“, sondern schlicht nicht verglichen.
 npm run formal:conform
 
 # TS-Seite + Haskell-Differential (will eine Haskell-Toolchain auf dem PATH;
-# ghc bevorzugt — ein Compile, ein Lauf je Vektorsatz; ADR 0049):
+# ghc bevorzugt — ein Compile, ein Lauf je Vektorsatz; ADR 0055):
 npm run formal:conform -- --compare
 
 # direkt:
@@ -60,7 +60,7 @@ ist, wo kein `ghc` existiert.
 - **Release-Regel (ADR 0045/0049):** Ein Release geht nicht durch, wenn TypeScript
   und die Vektoren auseinanderlaufen — das ist das Gate in `npm test` (Projekt
   `protocol`, alle 28 + 44 Vektoren gegen die Produktion, in jedem CI-Lauf). Der
-  TypeScript ⇄ Haskell-Vergleich ist die zweite Hälfte und seit ADR 0049 **kein
+  TypeScript ⇄ Haskell-Vergleich ist die zweite Hälfte und seit ADR 0055 **kein
   manueller Schritt mehr**: `tests/architecture/haskell-conformance-gate.test.ts`
   trägt ihn in jedem CI-Lauf (`npm run formal:conform -- --compare` als Kind, die
   GitHub-Runner liefern GHC vorinstalliert) und fällt dort, wenn eine Seite

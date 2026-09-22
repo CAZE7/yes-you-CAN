@@ -31,10 +31,10 @@ import {
 } from "@vdp/adapter-socketcan";
 import {
   AdapterUnsupportedError,
-  type Logger,
-  TransportError,
   createLogger,
+  type Logger,
   messageOf,
+  TransportError,
 } from "@vdp/shared";
 import type {
   AdapterCapabilities,
@@ -43,7 +43,7 @@ import type {
   CanFrame,
   FrameListener,
 } from "@vdp/transport-can";
-import { type SerialByteStream, configureSerialPort, openSerialStream } from "./serial.js";
+import { configureSerialPort, openSerialStream, type SerialByteStream } from "./serial.js";
 
 /**
  * Where an adapter sits physically. The UI groups by this: serial devices need a

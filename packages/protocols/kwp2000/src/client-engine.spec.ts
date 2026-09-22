@@ -7,7 +7,7 @@
 
 import assert from "node:assert/strict";
 import type { UdsLink } from "@vdp/protocols-uds";
-import { UdsNegativeResponseError, createLogger, fromHex } from "@vdp/shared";
+import { createLogger, fromHex, UdsNegativeResponseError } from "@vdp/shared";
 import { describe, test, vi } from "vitest";
 import { KWP_LOCAL_ID, KWP_SID, Kwp2000Client } from "./index.js";
 

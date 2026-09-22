@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
 import {
-  CommandKinds,
-  QueryKinds,
   addMarker,
+  CommandKinds,
   clearDtcs,
   connectVehicle,
   disconnectVehicle,
@@ -11,6 +10,7 @@ import {
   getAvailableActions,
   getDtcClearPrecheck,
   getDtcList,
+  getDtcScanGaps,
   getEcu,
   getEcuCapabilities,
   getEcuList,
@@ -23,6 +23,7 @@ import {
   getStatistics,
   getVehicle,
   identifyEcus,
+  QueryKinds,
   readDid,
   readDtcFreezeFrame,
   readDtcs,
@@ -137,6 +138,7 @@ describe("query factories", () => {
     assert.deepEqual(getEcuCapabilities("ecu_1"), { kind: "ecu.capabilities", ecuId: "ecu_1" });
     assert.deepEqual(getDtcList(), { kind: "dtc.list" });
     assert.deepEqual(getDtcList("ecu_1"), { kind: "dtc.list", ecuId: "ecu_1" });
+    assert.deepEqual(getDtcScanGaps(), { kind: "dtc.scan-gaps" });
     assert.deepEqual(getMeasurements(), { kind: "measurement.list" });
     assert.deepEqual(getMeasurements("engine.rpm"), {
       kind: "measurement.list",
@@ -163,6 +165,7 @@ describe("query factories", () => {
       "actions.available",
       "dtc.clear-precheck",
       "dtc.list",
+      "dtc.scan-gaps",
       "ecu.capabilities",
       "ecu.get",
       "ecu.list",

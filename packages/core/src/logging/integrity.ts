@@ -23,12 +23,12 @@ import type { RawTraceEntry } from "./session-logger.js";
 export const RAW_TRACE_HASH_ALGORITHM = "sha256" as const;
 export type RawTraceHashAlgorithm = typeof RAW_TRACE_HASH_ALGORITHM;
 /**
- * The version this build creates (ADR 0051): v2 adds the optional signature.
+ * The version this build creates (ADR 0057): v2 adds the optional signature.
  * v1 witnesses keep verifying — the golden digest over a pinned trace is the
  * cross-language anchor and it does not move with the version.
  */
 export const RAW_TRACE_MANIFEST_VERSION = 2 as const;
-/** Versions the verifier accepts (ADR 0051): new builds create v2, v1 stays valid. */
+/** Versions the verifier accepts (ADR 0057): new builds create v2, v1 stays valid. */
 export const SUPPORTED_RAW_TRACE_MANIFEST_VERSIONS = [1, 2] as const;
 export type SupportedRawTraceManifestVersion =
   (typeof SUPPORTED_RAW_TRACE_MANIFEST_VERSIONS)[number];
@@ -57,7 +57,7 @@ export interface IntegrityPort {
 }
 
 /**
- * The signature of a v2 manifest (ADR 0051): an ed25519 signature over the
+ * The signature of a v2 manifest (ADR 0057): an ed25519 signature over the
  * canonical binding of the manifest's identity fields. The `keyId` is the
  * fingerprint of the public key (`ed25519:` + the first 16 hex of its SHA-256),
  * so a verifier can say which key attested the recording without trusting a name.
@@ -78,10 +78,10 @@ export interface RawTraceManifest {
   entries: number;
   /** Digest of the canonical raw trace, lowercase hexadecimal. */
   sha256: string;
-  /** v2 only (ADR 0051): absent means "no attestation beyond the digest". */
+  /** v2 only (ADR 0057): absent means "no attestation beyond the digest". */
   signature?: RawTraceSignature;
   /**
-   * SPKI base64 of the signing key, beside the signature (ADR 0051: the keypair
+   * SPKI base64 of the signing key, beside the signature (ADR 0057: the keypair
    * never leaves the process, but the public half goes into the manifest). A
    * verifier recomputes the `keyId` from these bytes — a name cannot lie about a
    * fingerprint — and then confirms the signature.
@@ -96,7 +96,7 @@ export type RawTraceManifestIdentity = Pick<
 >;
 
 /**
- * The signing seam (ADR 0051, the same port pattern as {@link IntegrityPort}):
+ * The signing seam (ADR 0057, the same port pattern as {@link IntegrityPort}):
  * core names *what* is signed — {@link canonicalManifestBinding} is the byte-exact
  * contract — and asks a signer for the signature itself. The Node implementation
  * (ed25519 over `node:crypto`) lives in `@vdp/storage` (`nodeManifestSigner`);
@@ -159,7 +159,7 @@ export function hashRawTrace(entries: readonly RawTraceEntry[], port: IntegrityP
 
 /**
  * The canonical binding of a manifest: exactly the fields a signature attests to
- * (ADR 0051) — `format|version|algorithm|entries|sha256`, in that fixed order.
+ * (ADR 0057) — `format|version|algorithm|entries|sha256`, in that fixed order.
  * The signature itself is excluded — signing a signature is circular — and the
  * format comes first, so bytes signed here cannot collide with any other signed
  * artifact this platform produces. This is the cross-language contract a
@@ -177,7 +177,7 @@ export function canonicalManifestBinding(manifest: RawTraceManifestIdentity): st
 }
 
 /**
- * Content-addressed trace identity (ADR 0051): `t-` + the first 16 hex of the
+ * Content-addressed trace identity (ADR 0057): `t-` + the first 16 hex of the
  * manifest's digest. The same recording carries the same id in every build —
  * and the full digest stays in the manifest for a complete check.
  */
@@ -200,7 +200,7 @@ export function createRawTraceManifest(
 }
 
 /**
- * Sign an unsigned manifest (v1 or v2) into an attested v2 one (ADR 0051):
+ * Sign an unsigned manifest (v1 or v2) into an attested v2 one (ADR 0057):
  * the signature covers {@link canonicalManifestBinding} of the identity fields,
  * and the public key travels beside it. Changing one byte of the digest, the
  * entry count or the algorithm afterwards makes the signature stop confirming.
@@ -223,7 +223,7 @@ export function signRawTraceManifest(
 /**
  * Does the manifest carry a signature the verifier confirms? Digest verification
  * is separate — {@link verifyRawTraceManifest} — because "unchanged" and
- * "attested by a key I know" are different claims (ADR 0051). The caller builds
+ * "attested by a key I know" are different claims (ADR 0057). The caller builds
  * the verifier from the manifest's own `publicKey` (`createNodeManifestVerifier`
  * in `@vdp/storage`); the keyId equality check is what binds that key to the
  * fingerprint the signature claims.

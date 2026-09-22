@@ -14,12 +14,12 @@
  */
 
 import {
+  createLogger,
   type Logger,
+  messageOf,
   ProtocolError,
   TransportClosedError,
   TransportError,
-  createLogger,
-  messageOf,
 } from "@vdp/shared";
 import type { ConnectionStatus, VehicleTransport } from "@vdp/transport-can";
 import {
@@ -27,8 +27,6 @@ import {
   DOIP_TLS_PORT,
   DOIP_UDP_PORT,
   type DoipHeader,
-  PAYLOAD_TYPE,
-  ROUTING_ACTIVATION_TYPE,
   decodeDiagnosticAck,
   decodeDiagnosticMessage,
   decodeHeader,
@@ -37,6 +35,8 @@ import {
   encodeHeader,
   encodeMessage,
   encodeRoutingActivationRequest,
+  PAYLOAD_TYPE,
+  ROUTING_ACTIVATION_TYPE,
 } from "./message.js";
 
 /** Minimal duplex socket contract so Node, browser and test doubles all fit. */
@@ -348,4 +348,4 @@ function concat(a: Uint8Array, b: Uint8Array): Uint8Array {
   return out;
 }
 
-export { DOIP_UDP_PORT, DOIP_TLS_PORT, encodeHeader, ProtocolError };
+export { DOIP_TLS_PORT, DOIP_UDP_PORT, encodeHeader, ProtocolError };

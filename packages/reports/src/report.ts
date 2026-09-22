@@ -9,14 +9,14 @@
 
 import {
   type DtcVariantKnowledge,
-  type SessionGap,
-  type SignalStatistics,
-  type VehicleDetermination,
-  type VehicleSessionData,
   describeVehicle,
   maskVin,
+  type SessionGap,
+  type SignalStatistics,
   sessionGapsOf,
   sessionObservationOf,
+  type VehicleDetermination,
+  type VehicleSessionData,
 } from "@vdp/core";
 import { unreachableEcus } from "@vdp/diagnostic-ir";
 import { PdfDocument } from "./pdf.js";

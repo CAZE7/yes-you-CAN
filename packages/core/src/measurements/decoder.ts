@@ -20,10 +20,10 @@ import {
   signalReading,
 } from "@vdp/diagnostic-ir";
 import {
-  DecodeError,
-  type Logger,
   ascii,
   createLogger,
+  DecodeError,
+  type Logger,
   readBitsBE,
   readFloat32BE,
   readIntBE,

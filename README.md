@@ -3,7 +3,7 @@
 [![CI](https://github.com/CAZE7/yes-you-CAN/actions/workflows/ci.yml/badge.svg)](https://github.com/CAZE7/yes-you-CAN/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](./package.json)
-[![Tests](https://img.shields.io/badge/tests-2037%20passed-brightgreen)](#tests)
+[![Tests](https://img.shields.io/badge/tests-2310%20passed-brightgreen)](#tests)
 [![TypeScript](https://img.shields.io/badge/TypeScript-7%20%2F%20tsgo-blue)](./tsconfig.base.json)
 
 Fahrzeugdiagnose-Plattform: CAN und DoIP lesen, Steuergeräte identifizieren, das
@@ -168,6 +168,26 @@ Mit echtem Adapter:
 node apps/web/dist/src/server.js --port=8080 --sessions=./sessions-local
 ```
 
+### Zugriff schützen (ADR 0051)
+
+Ohne Token ist jede der 37 `/api/`-Routen offen — am Prüfstand ohne Netz ist das
+der Normalfall, im Netz nicht. Mit `--token=` (oder `VDP_API_TOKEN`) braucht jeder
+API-Aufruf `Authorization: Bearer <token>` oder den Cookie aus einem einmaligen
+Tausch:
+
+```bash
+node apps/web/dist/src/server.js --host=0.0.0.0 --token=bench-s3cret
+# Browser einmalig: http://<host>:8080/?token=bench-s3cret  → 302 + httpOnly-Cookie
+curl -H 'authorization: Bearer bench-s3cret' http://<host>:8080/api/state
+```
+
+Ohne Token antwortet jede Route mit `401` und einem Satz, der sagt, wie man sich
+anmeldet — nicht mit Daten. Die Startwarnung nennt den Zustand: `authenticated:
+true` oder, ohne Token, `listening on all interfaces with NO API token`. Der
+Vergleich läuft in konstanter Zeit, der Cookie ist `HttpOnly; SameSite=Strict` und
+endet mit dem Browser. Offen bleiben TLS und ein Rate-Limit
+(`docs/standards/iso-21434-cybersecurity.md`, CY-04/CY-05).
+
 ## Entwicklung
 
 ```bash
@@ -228,8 +248,9 @@ Zeitraum aus, Doppelklick zeigt die gesamte Aufnahme.
 
 ## Tests
 
-2227 bestandene Tests / 154 geprüfte Dateien (`npm test` in 68 s; `npm run
-test:coverage` in 75 s — gemessen 2026-09-18), Vitest 5 mit Projektkonfiguration
+2310 bestandene Tests (2 dokumentierte Skips) / 159 geprüfte Dateien (`npm test`
+in 79 s; `npm run test:coverage` in 92 s — gemessen 2026-09-22), Vitest 5 mit
+Projektkonfiguration
 (ADR 0010, Schritt 1 — ersetzt ADR 0008). Seit ADR 0043 gehören dazu 17
 ausführbare Doku-Beispiele in `tests/examples/*.example.ts` (Projekt
 `integration`) — sie zeigen die API so, wie sie benutzt wird. Der
@@ -241,8 +262,8 @@ aufrufen kann (0.E E20) — einschließlich
 tatsächlichen Importen passt (ADR 0042). Unit-Specs liegen co-lokatiert neben dem
 Code (`src/*.spec.ts`); Property-Tests laufen mit fast-check, Coverage-Gates mit
 `npm run test:coverage` (global 90 % lines / 80 % branches als
-Projekt-Durchschnitt, Ist 94,19 Statements / 86,28 Zweige / 96,07 Funktionen /
-95,59 Zeilen — gemessen am Stand vom 2026-09-18, und die letzten Stellen wandern mit
+Projekt-Durchschnitt, Ist 94,12 Statements / 86,37 Zweige / 95,93 Funktionen /
+95,51 Zeilen — gemessen am Stand vom 2026-09-22, und die letzten Stellen wandern mit
 Last und Node-Version (86,59 bis 86,71 Zweige auf demselben Baum,
 ADR 0029 §6) — seit ADR 0027 wird die ganze
 Fläche gemessen: `packages/**/src`, `apps/web/src/**` und `tools/**`, weil die
@@ -291,7 +312,7 @@ nicht — der laufende Test schon.
 | `GET /api/simulator/scenarios` | Katalog der Fahrzeugszenarien (Ursachen, Erwartungen, Begründungen) |
 | `POST /api/simulator/scenario` | ein Szenario auf dem 5-ECU-Fahrzeug laufen lassen (ADR 0040) |
 | `POST /api/vehicle/resolve` | Fahrzeug bestimmen: Kandidaten mit Belegen und Widersprüchen (read-only) |
-| `POST /api/dtc/scan` | Fehlerspeicher lesen |
+| `POST /api/dtc/scan` | Fehlerspeicher lesen — antwortet in zwei Hälften: `dtcs` (die Codes) und `unread` (die Module, die nicht geantwortet haben, mit `ecuName`, `rxId` und Grund). Ein Bus, an dem niemand antwortet, liefert eine leere Code-Liste **und** die Liste der stummen Module; das Panel zählt sie in der Zusammenfassung als ` · N× nicht gelesen` (ADR 0049) |
 | `POST /api/dtc/snapshot` | Freeze Frame zu einem Code lesen: `rxId` als `0x7E8`, `7e8` oder Zahl, `code` Pflicht, Recordnummer optional (Default `0xff`); eine Adresse, die niemand auf dem Bus hat, ist `409` mit Satz, nicht `500` (AGENTS 0.E E23) |
 | `POST /api/chaos/inject` \| `/api/chaos/status` \| `/api/chaos/reset` | Rahmen verwerfen und Sequenzen korrumpieren **auf dem Bus der Sitzung** (seit 1.38; vorher zählte die Schicht nebenan, 0.E E24): `dropBurst` mit oder ohne `dropBurstCanId` (ohne = die nächsten N Rahmen dieser Verbindung), `dropRate` als Bruchteil 0…1, Korruptur je Antwort-Id; `status` meldet Ziel und Reichweite des Bursts (`dropBurstTarget`, `dropBurstScope`), ohne offene Verbindung antwortet der Aufruf `409` mit Satz statt stumm zu tun |
 | `POST /api/live/start` \| `/stop` | Live-Messung |

@@ -1,5 +1,5 @@
 /**
- * The Node implementation of the core's `ManifestSigner` (ADR 0051).
+ * The Node implementation of the core's `ManifestSigner` (ADR 0057).
  *
  * The core owns *what* is signed — {@link canonicalManifestBinding} is the
  * byte-exact contract — and refuses to own *how*, exactly as with the digest
@@ -17,19 +17,19 @@
  */
 
 import {
-  type KeyObject,
   createHash,
   createPublicKey,
   sign as cryptoSign,
   verify as cryptoVerify,
   generateKeyPairSync,
+  type KeyObject,
 } from "node:crypto";
 import {
+  canonicalManifestBinding,
   type ManifestSigner,
   type ManifestVerifier,
   type RawTraceManifestIdentity,
   type RawTraceSignature,
-  canonicalManifestBinding,
 } from "@vdp/core";
 import type { Logger } from "@vdp/shared";
 
@@ -78,13 +78,13 @@ function verifyWith(publicKey: KeyObject, binding: string, signatureBase64: stri
 /**
  * A process signer with a fresh ed25519 keypair. One per platform instance is
  * enough and is all there is: the constructor generates, `sign` attests,
- * `verify` confirms what this key attested (ADR 0051).
+ * `verify` confirms what this key attested (ADR 0057).
  */
 export function createNodeManifestSigner(options: { logger?: Logger } = {}): NodeManifestSigner {
   const { publicKey, privateKey } = generateKeyPairSync("ed25519");
   const keyId = manifestKeyId(rawPublicKey(publicKey));
   const spki = exportPublicKey(publicKey);
-  // The one record tying this ephemeral key to its fingerprint (ADR 0051): an
+  // The one record tying this ephemeral key to its fingerprint (ADR 0057): an
   // operator who wants long-term verification keys the public half down here.
   options.logger?.info("manifest signer ready", { keyId, publicKey: spki });
   return {

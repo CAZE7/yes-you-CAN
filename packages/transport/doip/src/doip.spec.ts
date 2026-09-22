@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { UdsClient, createRequestResponseLink } from "@vdp/protocols-uds";
-import { ProtocolError, fromHex, toHex } from "@vdp/shared";
+import { createRequestResponseLink, UdsClient } from "@vdp/protocols-uds";
+import { fromHex, ProtocolError, toHex } from "@vdp/shared";
 import { test } from "vitest";
 import { settle, waitFor } from "../../../../tests/helpers/wait.js";
 import {
@@ -9,7 +9,6 @@ import {
   DoipDiscovery,
   type DoipSocket,
   DoipTransport,
-  PAYLOAD_TYPE,
   decodeDiagnosticMessage,
   decodeHeader,
   decodeRoutingActivationResponse,
@@ -19,6 +18,7 @@ import {
   encodeRoutingActivationRequest,
   encodeRoutingActivationResponse,
   encodeVehicleIdentificationResponse,
+  PAYLOAD_TYPE,
 } from "./index.js";
 
 /** Fake TCP endpoint that speaks enough DoIP to activate routing and echo UDS. */

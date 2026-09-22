@@ -1,4 +1,4 @@
-# ADR 050 — Der Diagnose-Loop ist eine Zustandsmaschine mit maschinenlesbarem Diff
+# ADR 56 — Der Diagnose-Loop ist eine Zustandsmaschine mit maschinenlesbarem Diff
 
 - Status: akzeptiert (2026-09-22)
 - Kontext: ADR 0043 (AI-Kontextschicht), ADR 0046 (Szenariodateien, Next-Test in der

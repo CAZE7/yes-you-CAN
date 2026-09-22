@@ -16,10 +16,10 @@
  */
 
 import assert from "node:assert/strict";
-import { DiagnosticEngine } from "@vdp/core";
+import { DiagnosticEngine, type ScannedEcu } from "@vdp/core";
 import { type DefinitionPackage, highFidelityPackage } from "@vdp/definitions";
-import { type Logger, createLogger } from "@vdp/shared";
-import { HighFidelityVehicle, createRandom, withoutCauses } from "@vdp/simulators";
+import { createLogger, type Logger } from "@vdp/shared";
+import { createRandom, HighFidelityVehicle, withoutCauses } from "@vdp/simulators";
 import { afterAll, beforeAll, test } from "vitest";
 import { scenarioFileById } from "../helpers/scenario-files.js";
 
@@ -103,10 +103,8 @@ test("3. der Draht: ein UDS-Scan liest den Code, WÄHREND die Ursache am Fahrzeu
  * Führt das Szenario und hält, am Moment der `active`-Erwartung für B1001,
  * einen UDS-Scan fest — der zweite, unabhängige Beobachter (ADR 0040).
  */
-async function wireScanAtActiveExpectation(): Promise<
-  Awaited<ReturnType<DiagnosticEngine["scanDtcs"]>> | undefined
-> {
-  let captured: Awaited<ReturnType<DiagnosticEngine["scanDtcs"]>> | undefined;
+async function wireScanAtActiveExpectation(): Promise<readonly ScannedEcu[] | undefined> {
+  let captured: readonly ScannedEcu[] | undefined;
   await vehicle.runScenario(scenario, {
     seed: file.determinism.seed,
     onMoment: async (moment) => {
@@ -115,7 +113,7 @@ async function wireScanAtActiveExpectation(): Promise<
         (expectation) => expectation.code === "B1001" && expectation.state === "active",
       );
       if (due === undefined) return;
-      captured = await engine.scanDtcs(0xff);
+      captured = (await engine.scanDtcs(0xff)).scanned;
     },
   });
   return captured;

@@ -21,6 +21,7 @@ import { renderVehicleResolution } from "/vehicle.js";
 /** @typedef {import("../src/views.js").SampleView} SampleView */
 /** @typedef {import("../src/views.js").SignalStatisticsView} SignalStatisticsView */
 /** @typedef {import("../src/views.js").TraceView} TraceView */
+/** @typedef {import("../src/views.js").UnreadEcuView} UnreadEcuView */
 /** @typedef {import("../src/views.js").GuidedDiagnosisView} GuidedDiagnosisView */
 /** @typedef {import("../src/views.js").CodingResultView} CodingResultView */
 /** @typedef {import("../src/views.js").AdaptationResultView} AdaptationResultView */
@@ -78,13 +79,13 @@ function logError(error) {
 for (const rawTab of document.querySelectorAll(".tab")) {
   const tab = /** @type {HTMLElement} */ (rawTab);
   tab.addEventListener("click", () => {
-    document
-      .querySelectorAll(".tab")
-      .forEach((other) => other.classList.toggle("active", other === tab));
+    document.querySelectorAll(".tab").forEach((other) => {
+      other.classList.toggle("active", other === tab);
+    });
     const view = tab.dataset.view;
-    document
-      .querySelectorAll(".view")
-      .forEach((section) => section.classList.toggle("active", section.id === `view-${view}`));
+    document.querySelectorAll(".view").forEach((section) => {
+      section.classList.toggle("active", section.id === `view-${view}`);
+    });
     // A canvas has no layout size while its tab is hidden, so the charts have to
     // be measured and repainted the moment the tab becomes visible.
     if (view === "graphs") {
@@ -197,11 +198,17 @@ function renderEcus(ecus) {
   }
 }
 
-/** @param {DtcView[]} dtcs */
-function renderDtcs(dtcs) {
+/**
+ * The fault list, plus the modules the scan could not read (ADR 0049).
+ *
+ * @param {DtcView[]} dtcs
+ * @param {UnreadEcuView[]} [unread]
+ */
+function renderDtcs(dtcs, unread = []) {
   const body = must("#dtc-rows");
   body.replaceChildren();
   state.dtcs = dtcs;
+  renderUnreadEcus(unread);
   for (const dtc of dtcs) {
     body.append(
       row(
@@ -246,12 +253,31 @@ function renderDtcs(dtcs) {
   /** @type {Record<string, number>} */
   const counts = {};
   for (const dtc of dtcs) counts[dtc.severity] = (counts[dtc.severity] ?? 0) + 1;
+  // An empty table over a bus where modules stayed silent is not "no faults": the
+  // summary says which part of the car this list actually covers (ADR 0049).
+  const coverage = unread.length === 0 ? "" : ` · ${unread.length}× nicht gelesen`;
   must("#dtc-summary").textContent =
     dtcs.length === 0
-      ? "keine Einträge"
-      : `${dtcs.length} Einträge · ${Object.entries(counts)
+      ? `keine Einträge${coverage}`
+      : `${dtcs.length} Einträge${coverage} · ${Object.entries(counts)
           .map(([severity, count]) => `${severity}: ${count}`)
           .join(", ")}`;
+}
+
+/**
+ * The other half of the scan: which modules did not answer, and what the bus said
+ * instead (ADR 0049). Hidden while every module answered — a warning that is always
+ * on the page teaches nobody anything.
+ *
+ * @param {UnreadEcuView[]} unread
+ */
+function renderUnreadEcus(unread) {
+  const host = must("#dtc-unread");
+  host.replaceChildren();
+  host.hidden = unread.length === 0;
+  for (const entry of unread) {
+    host.append(el("li", { class: "warn", text: `${entry.ecu} (${entry.rxId}): ${entry.reason}` }));
+  }
 }
 
 /** @param {AppState["signals"]} signals */
@@ -388,7 +414,7 @@ function applyState(data) {
   renderConnection(data);
   if (data.vehicleResolution) renderVehicleResolution(data.vehicleResolution);
   renderEcus(data.ecus);
-  renderDtcs(data.dtcs);
+  renderDtcs(data.dtcs, data.unreadEcus);
   renderStatistics(data.statistics, data.anomalies);
   renderActions(data.actions);
   if (data.signals.length > 0 && must("#signal-picker").children.length === 0)
@@ -868,7 +894,7 @@ function connectStream() {
   source.addEventListener("dtc", async () => {
     try {
       const data = await api.fetchState();
-      renderDtcs(data.dtcs);
+      renderDtcs(data.dtcs, data.unreadEcus);
     } catch (error) {
       logError(error);
     }
@@ -1112,8 +1138,8 @@ button("#btn-identify").addEventListener("click", async () => {
 /** @returns {Promise<void>} */
 async function scan() {
   try {
-    const { dtcs } = await api.scanDtcs();
-    renderDtcs(dtcs);
+    const { dtcs, unread } = await api.scanDtcs();
+    renderDtcs(dtcs, unread);
   } catch (error) {
     logError(error);
   }

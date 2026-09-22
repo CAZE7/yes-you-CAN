@@ -82,7 +82,7 @@ export interface SessionScenarioReference {
 }
 
 /**
- * The last AI analysis a session carried (ADR 0051): provider plus the versions
+ * The last AI analysis a session carried (ADR 0057): provider plus the versions
  * the analysis was produced under. Taken from the analysis' own provenance, which
  * is assembled from the request — never from the answer (ADR 0043).
  */
@@ -165,7 +165,7 @@ export interface VehicleSessionData {
   mileageKm?: number;
   tags: string[];
   /**
-   * Provenance (ADR 0051) — additive and optional, so a session written by an
+   * Provenance (ADR 0057) — additive and optional, so a session written by an
    * older platform reads exactly as before: no schema bump, no migration.
    */
   /** Version of the platform that opened the session. */
@@ -189,7 +189,7 @@ export interface CreateSessionOptions {
   definitionPackage?: { oem: string; version: string };
   id?: string;
   clock?: () => number;
-  /** Version of the platform opening the session (ADR 0051). */
+  /** Version of the platform opening the session (ADR 0057). */
   platformVersion?: string;
 }
 

@@ -7,7 +7,7 @@
  * which keeps the UDS layer completely transport agnostic (AGENTS 5, 36).
  */
 
-import { type Logger, TransportClosedError, createLogger } from "@vdp/shared";
+import { type Logger, TransportClosedError } from "@vdp/shared";
 import type { UdsLink } from "./link.js";
 
 /** Structural subset of VehicleTransport — deliberately not importing it. */
@@ -31,7 +31,6 @@ export interface RequestResponseStats {
 export class RequestResponseLink implements UdsLink {
   readonly stats: RequestResponseStats = { requests: 0, responses: 0, timeouts: 0 };
   private readonly defaultTimeoutMs: number;
-  private readonly log: Logger;
   /** Requests are serialised: UDS allows no parallel requests per session. */
   private lock: Promise<unknown> = Promise.resolve();
 
@@ -40,7 +39,6 @@ export class RequestResponseLink implements UdsLink {
     options: RequestResponseLinkOptions = {},
   ) {
     this.defaultTimeoutMs = options.defaultTimeoutMs ?? 5000;
-    this.log = (options.logger ?? createLogger("uds", { level: "WARN" })).child("uds");
   }
 
   async request(payload: Uint8Array, timeoutMs?: number): Promise<Uint8Array> {

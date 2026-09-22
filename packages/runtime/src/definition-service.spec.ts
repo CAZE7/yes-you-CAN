@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { SIMULATOR_VIN, genericPackage, simulatorPackage } from "@vdp/definitions";
+import { genericPackage, SIMULATOR_VIN, simulatorPackage } from "@vdp/definitions";
 import { describe, test } from "vitest";
 import { PackageDefinitionProvider } from "./index.js";
 

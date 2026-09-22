@@ -32,21 +32,21 @@
 import {
   type DefinitionPackage,
   type DtcDefinition,
-  type SignalDefinition,
   highFidelityPackage,
+  type SignalDefinition,
 } from "@vdp/definitions";
 import { NRC } from "@vdp/protocols-uds";
-import { type Logger, createLogger, messageOf } from "@vdp/shared";
+import { createLogger, type Logger, messageOf } from "@vdp/shared";
 import type { CanFrame } from "@vdp/transport-can";
 import {
+  applyCause,
   type RunScenarioOptions,
+  runScenario,
   type ScenarioCause,
   type ScenarioRun,
   type ScenarioTarget,
-  type VehicleScenario,
-  applyCause,
-  runScenario,
   undoCause,
+  type VehicleScenario,
 } from "./scenarios.js";
 import { VehicleBehaviourModel } from "./vehicle-model.js";
 import type {
@@ -57,9 +57,8 @@ import type {
   VehiclePhysics,
   VehicleThresholds,
 } from "./vehicle-state.js";
-import { buildFreezeFrame } from "./virtual-vehicle.js";
 import type { VirtualEcu, VirtualVehicleOptions } from "./virtual-vehicle.js";
-import { VirtualVehicle } from "./virtual-vehicle.js";
+import { buildFreezeFrame, VirtualVehicle } from "./virtual-vehicle.js";
 
 export type { IgnitionState } from "./vehicle-state.js";
 

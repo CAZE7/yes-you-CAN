@@ -18,11 +18,11 @@ import { describe, test } from "vitest";
 import { scenarioFiles } from "../../../tests/helpers/scenario-files.js";
 import { HEARTBEAT_IDS, HighFidelityVehicle } from "./high-fidelity-vehicle.js";
 import {
-  type ScenarioCheck,
-  type VehicleScenario,
   describeCause,
   modelTarget,
   runScenario,
+  type ScenarioCheck,
+  type VehicleScenario,
   withoutCauses,
 } from "./scenarios.js";
 import { VehicleBehaviourModel } from "./vehicle-model.js";

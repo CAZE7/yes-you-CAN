@@ -11,12 +11,12 @@ import { TransportClosedError } from "@vdp/shared";
 import type { CanBus } from "@vdp/transport-can";
 import { IsoTpConnection } from "@vdp/transport-iso-tp";
 import { describe, test } from "vitest";
+import { isUdsLink } from "./link.js";
 import {
-  RequestResponseLink,
   createRequestResponseLink,
   isMessageTransport,
+  RequestResponseLink,
 } from "./link-adapter.js";
-import { isUdsLink } from "./link.js";
 
 describe("isUdsLink / isMessageTransport", () => {
   test("structural checks accept complete objects only", () => {

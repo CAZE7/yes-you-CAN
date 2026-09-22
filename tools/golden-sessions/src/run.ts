@@ -18,12 +18,12 @@
 import { type ConnectDiscoveryOptions, type DecodedSignal, DiagnosticEngine } from "@vdp/core";
 import type { DefinitionPackage } from "@vdp/definitions";
 import {
-  type DtcObservation,
-  type EcuObservation,
-  type SessionObservation,
   compareDtcObservations,
+  type DtcObservation,
   dtcObservation,
+  type EcuObservation,
   ecuObservation,
+  type SessionObservation,
   sessionObservation,
 } from "@vdp/diagnostic-ir";
 import type { Logger } from "@vdp/shared";
@@ -235,7 +235,7 @@ export async function runGoldenSession(
     await engine.connect(options.connect ?? GOLDEN_CONNECT_OPTIONS);
     const identity = await engine.detectVehicleIdentity();
     const signals = await engine.snapshotSignals();
-    const scanned = await engine.scanDtcs();
+    const { scanned } = await engine.scanDtcs();
 
     const at = session.provenance.recordedAt;
     const version = session.provenance.definitions.version;

@@ -6,9 +6,15 @@
  * through the SafetyManager like any other write (AGENTS 26).
  */
 
-import { NRC, type UdsLink, nrcName } from "@vdp/protocols-uds";
-import { type Logger, ProtocolError, createLogger, messageOf, toHex } from "@vdp/shared";
-import { UdsNegativeResponseError } from "@vdp/shared";
+import { NRC, nrcName, type UdsLink } from "@vdp/protocols-uds";
+import {
+  createLogger,
+  type Logger,
+  messageOf,
+  ProtocolError,
+  toHex,
+  UdsNegativeResponseError,
+} from "@vdp/shared";
 import { KWP_LOCAL_ID, KWP_SID, kwpServiceName } from "./services.js";
 
 export interface KwpFaultRecord {

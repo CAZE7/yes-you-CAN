@@ -12,7 +12,7 @@
 
 import type { EcuLinkFactory, OpenedEcuLink } from "@vdp/core";
 import { createRequestResponseLink } from "@vdp/protocols-uds";
-import { type Logger, createLogger, messageOf } from "@vdp/shared";
+import { createLogger, type Logger, messageOf } from "@vdp/shared";
 import { type DoipSocket, DoipTransport } from "@vdp/transport-doip";
 
 export interface DoipEcuLinkFactoryOptions {

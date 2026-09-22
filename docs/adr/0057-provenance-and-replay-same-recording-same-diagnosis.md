@@ -1,4 +1,4 @@
-# ADR 051 — Provenance und Replay: dieselbe Aufnahme, dieselbe Diagnose
+# ADR 57 — Provenance und Replay: dieselbe Aufnahme, dieselbe Diagnose
 
 - Status: akzeptiert (2026-09-22) — Entscheidung getroffen, Implementierung läuft
   (siehe Migration)
@@ -127,7 +127,7 @@ Daten nicht stützten.
   bestehende Manifeste, V2 lässt sie gelten.
 - **Den Replay als eigenes Feature neben dem Live-Lauf:** abgelehnt — dann ist er
   eine zweite Definition desselben Laufs (derselbe Fehler wie der zweite
-  Haskell-Treiber, ADR 0049); als Test über dem Live-Lauf ist er die
+  Haskell-Treiber, ADR 0055); als Test über dem Live-Lauf ist er die
   zweite Hälfte derselben Messung.
 
 ## Affected packages

@@ -7,14 +7,12 @@
  */
 
 import assert from "node:assert/strict";
-import { ProtocolError, fromHex, toHex } from "@vdp/shared";
+import { fromHex, ProtocolError, toHex } from "@vdp/shared";
 import fc from "fast-check";
 import { describe, test } from "vitest";
 import {
   DOIP_HEADER_LENGTH,
   DOIP_PROTOCOL_VERSION,
-  PAYLOAD_TYPE,
-  ROUTING_ACTIVATION_TYPE,
   decodeDiagnosticAck,
   decodeDiagnosticMessage,
   decodeHeader,
@@ -27,6 +25,8 @@ import {
   encodeRoutingActivationResponse,
   encodeVehicleIdentificationRequest,
   encodeVehicleIdentificationResponse,
+  PAYLOAD_TYPE,
+  ROUTING_ACTIVATION_TYPE,
 } from "./message.js";
 
 /** ISO 3779 VIN alphabet (no I, O, Q). */

@@ -146,7 +146,7 @@ describe("Guided Diagnosis Engine", () => {
     );
     // The loop states what it saw and what it recommends in numbers: the state
     // carries the evidence ids a step diff is taken over, and the test carries
-    // the uncertainty it removes (ADR 0050).
+    // the uncertainty it removes (ADR 0056).
     assert.deepEqual(state.evidenceIds, ["dtc:P0420@engine"]);
     assert.equal(
       typeof state.nextRecommendedTest?.uncertaintyReduction,
@@ -332,7 +332,7 @@ describe("Guided Diagnosis Engine", () => {
     // Leader: common prior, a check no one else shares (value = 0.45 + 0).
     // Runner-up plus two followers on the same signal: each 0.3 + 0.1 per
     // competitor = 0.5 — one measurement that speaks to three hypotheses beats
-    // one that speaks to one, and that is the whole point of the rule (ADR 0050).
+    // one that speaks to one, and that is the whole point of the rule (ADR 0056).
     const solo = (id: string, signal: string, likelihood: DtcKnowledgePattern["likelihood"]) => ({
       id,
       name: `Pattern ${id}`,

@@ -13,11 +13,11 @@
 import type { IsoTpResult } from "./canonical.js";
 import { type RunnerTime, runIsoTpVector } from "./isotp-runner.js";
 import {
-  type VectorRecord,
   compareAgainstExpectations,
   compareRecordSets,
   formatDiff,
   parseDriverJsonl,
+  type VectorRecord,
 } from "./report.js";
 import { runSafetyVector } from "./safety-runner.js";
 import { type IsoTpVector, parseIsoTpVectorFile, parseSafetyVectorFile } from "./vectors.js";

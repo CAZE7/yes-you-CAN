@@ -13,7 +13,7 @@
 
 import assert from "node:assert/strict";
 import { NRC, SID, UdsClient, UdsServer, type UdsTiming } from "@vdp/protocols-uds";
-import { IsoTpError, ProtocolError, UdsNegativeResponseError, createLogger } from "@vdp/shared";
+import { createLogger, IsoTpError, ProtocolError, UdsNegativeResponseError } from "@vdp/shared";
 import { type FaultStep, FaultyLink } from "@vdp/simulators";
 import { afterAll, test } from "vitest";
 import { waitFor } from "../helpers/wait.js";

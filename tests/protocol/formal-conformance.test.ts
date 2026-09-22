@@ -148,72 +148,69 @@ describe("write-safety vectors against the production safety chain", () => {
 describe("TypeScript ⇄ Haskell differential", () => {
   const runner = findHaskellInterpreter();
 
-  test(
-    "the Haskell reference reproduces the same results for every vector",
-    // Two `runghc` legs — each interprets the whole formal tree from source — do
-    // not fit the global 20 s window (measured on the runner: cold >20 s); the
-    // coverage gate carries the same bound for the same reason.
-    { skip: runner === null, timeout: 10 * 60_000 },
-    async () => {
-      assert.ok(runner !== null);
-      for (const [set, file] of [
-        ["isotp", isoPath],
-        ["safety", safetyPath],
-      ] as const) {
-        const hsText = runHaskellDriver(runner, set, file);
-        const hs = parseDriverJsonl(hsText);
-        if (set === "isotp") {
-          const parsed = parseIsoTpVectorFile(readFileSync(file, "utf8"));
-          assert.ok(parsed.ok);
-          const ts = [];
-          for (const vector of parsed.vectors) {
-            ts.push({ name: vector.name, result: await runIsoTpVector(vector, time) });
-          }
-          const diffs = compareRecordSets(
-            ts,
-            hs,
-            parsed.vectors.map((v) => ({ name: v.name })),
-          );
-          assert.deepEqual(
-            diffs,
-            [],
-            `${set}: ${diffs.length} deviation(s) between TS and Haskell\n` +
-              diffs
-                .map(
-                  (deviation) =>
-                    `${deviation.name}: ${deviation.difference.join(", ")}\n` +
-                    `${deviation.input.slice(0, 1200)}`,
-                )
-                .join("\n"),
-          );
-        } else {
-          const parsed = parseSafetyVectorFile(readFileSync(file, "utf8"));
-          assert.ok(parsed.ok);
-          const ts = [];
-          for (const vector of parsed.vectors) {
-            ts.push({ name: vector.name, result: await runSafetyVector(vector) });
-          }
-          const diffs = compareRecordSets(
-            ts,
-            hs,
-            parsed.vectors.map((v) => ({ name: v.name })),
-          );
-          assert.deepEqual(
-            diffs,
-            [],
-            `${set}: ${diffs.length} deviation(s) between TS and Haskell\n` +
-              diffs
-                .map(
-                  (deviation) =>
-                    `${deviation.name}: ${deviation.difference.join(", ")}\n` +
-                    `${deviation.input.slice(0, 1200)}`,
-                )
-                .join("\n"),
-          );
+  test("the Haskell reference reproduces the same results for every vector", {
+    // coverage gate carries the same bound for the same reason. // not fit the global 20 s window (measured on the runner: cold >20 s); the // Two `runghc` legs — each interprets the whole formal tree from source — do
+    skip: runner === null,
+    timeout: 10 * 60_000,
+  }, async () => {
+    assert.ok(runner !== null);
+    for (const [set, file] of [
+      ["isotp", isoPath],
+      ["safety", safetyPath],
+    ] as const) {
+      const hsText = runHaskellDriver(runner, set, file);
+      const hs = parseDriverJsonl(hsText);
+      if (set === "isotp") {
+        const parsed = parseIsoTpVectorFile(readFileSync(file, "utf8"));
+        assert.ok(parsed.ok);
+        const ts = [];
+        for (const vector of parsed.vectors) {
+          ts.push({ name: vector.name, result: await runIsoTpVector(vector, time) });
         }
+        const diffs = compareRecordSets(
+          ts,
+          hs,
+          parsed.vectors.map((v) => ({ name: v.name })),
+        );
+        assert.deepEqual(
+          diffs,
+          [],
+          `${set}: ${diffs.length} deviation(s) between TS and Haskell\n` +
+            diffs
+              .map(
+                (deviation) =>
+                  `${deviation.name}: ${deviation.difference.join(", ")}\n` +
+                  `${deviation.input.slice(0, 1200)}`,
+              )
+              .join("\n"),
+        );
+      } else {
+        const parsed = parseSafetyVectorFile(readFileSync(file, "utf8"));
+        assert.ok(parsed.ok);
+        const ts = [];
+        for (const vector of parsed.vectors) {
+          ts.push({ name: vector.name, result: await runSafetyVector(vector) });
+        }
+        const diffs = compareRecordSets(
+          ts,
+          hs,
+          parsed.vectors.map((v) => ({ name: v.name })),
+        );
+        assert.deepEqual(
+          diffs,
+          [],
+          `${set}: ${diffs.length} deviation(s) between TS and Haskell\n` +
+            diffs
+              .map(
+                (deviation) =>
+                  `${deviation.name}: ${deviation.difference.join(", ")}\n` +
+                  `${deviation.input.slice(0, 1200)}`,
+              )
+              .join("\n"),
+        );
       }
-    },
-  );
+    }
+  });
 
   // The flip side of the skip above: exactly when no toolchain exists, this
   // test grades the comparison machinery itself — a deviating driver result

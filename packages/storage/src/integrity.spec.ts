@@ -12,12 +12,12 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import {
-  RAW_TRACE_HASH_ALGORITHM,
-  type RawTraceEntry,
-  type RawTraceManifest,
   canonicalRawTraceChunks,
   createRawTraceManifest,
   hashRawTrace,
+  RAW_TRACE_HASH_ALGORITHM,
+  type RawTraceEntry,
+  type RawTraceManifest,
   verifyRawTraceManifest,
 } from "@vdp/core";
 import { test } from "vitest";
@@ -98,7 +98,7 @@ test("the golden manifest: a digest any implementation of the port has to reprod
     entries: 3,
     sha256: "8600983efbd90138bc603449abf03aa606f571272451cd2c9df8dd38af748172",
   };
-  // ADR 0051: what is created now is v2 — but the digest is the digest of the
+  // ADR 0057: what is created now is v2 — but the digest is the digest of the
   // *trace*, not of the manifest, so the number does not move with the version.
   // What was stored as v1 keeps verifying; what is created now carries the same
   // witness under the version this build writes.

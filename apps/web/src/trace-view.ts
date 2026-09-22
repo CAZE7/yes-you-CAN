@@ -11,6 +11,7 @@
  */
 
 import type { MarkerInfo, MeasurementReading } from "@vdp/domain";
+import { formatMeasuredValue } from "@vdp/shared";
 import type { RawTraceEntry } from "@vdp/storage";
 
 export interface SampleView {
@@ -99,7 +100,13 @@ export function formatCanId(id: number): string {
   return `0x${id.toString(16).toUpperCase()}`;
 }
 
+/**
+ * A reading as the graph labels it.
+ *
+ * The numeric branch is the shared rule (`formatMeasuredValue`) — this function only
+ * adds the two kinds a signal can carry that are not numbers.
+ */
 export function formatValue(value: number | string | boolean): string {
-  if (typeof value === "number") return Number.isInteger(value) ? String(value) : value.toFixed(2);
+  if (typeof value === "number") return formatMeasuredValue(value);
   return String(value);
 }
