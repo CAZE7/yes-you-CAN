@@ -332,17 +332,31 @@ describe("GuidedDiagnosis and Chaos views", () => {
           confidence: 0.85,
           outcome: "confirmed",
           checks: [{ signal: "engine.misfire_cyl1", expect: "> 5", outcome: "match" }],
+          supporting: [{ itemId: "dtc:P0301@engine", why: "the fault code is documented and set" }],
+          against: [],
         },
+      ],
+      changes: [
+        { kind: "outcome", hypothesisId: "hyp_1", from: "untested", to: "confirmed" },
+        { kind: "confidence", hypothesisId: "hyp_1", from: 0.45, to: 0.85 },
       ],
       nextRecommendedTest: {
         hypothesisId: "hyp_1",
         rationale: "Verify spark plug gap",
         test: { signal: "engine.spark_dwell", expect: "in-range", min: 2.0, max: 4.0 },
+        uncertaintyReduction: 0.35,
       },
     };
     assert.equal(gd.status, "in-progress");
     assert.equal(gd.hypotheses.length, 1);
     assert.equal(gd.hypotheses[0]?.outcome, "confirmed");
+    // The screen answers the three loop questions in fields, not in prose:
+    // what speaks for it, what against it, and how much the next test reduces.
+    assert.deepEqual(gd.hypotheses[0]?.supporting, [
+      { itemId: "dtc:P0301@engine", why: "the fault code is documented and set" },
+    ]);
+    assert.deepEqual(gd.hypotheses[0]?.against, []);
+    assert.equal(gd.nextRecommendedTest?.uncertaintyReduction, 0.35);
   });
 
   test("ChaosStatusView structure conforms to contract", () => {

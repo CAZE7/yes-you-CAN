@@ -15,13 +15,20 @@
  */
 
 import {
+  advanceGuidedDiagnosis,
   collectEvidence,
   type DiagnosticEngine,
   evaluateGuidedDiagnosis,
+  type GuidedDiagnosisInput,
   rankHypotheses,
   type SamplePoint,
 } from "@vdp/core";
-import type { EvidenceSet, GuidedDiagnosisState, Hypothesis } from "@vdp/diagnostic-ir";
+import type {
+  DiagnosisStep,
+  EvidenceSet,
+  GuidedDiagnosisState,
+  Hypothesis,
+} from "@vdp/diagnostic-ir";
 
 export interface EvidenceSnapshot {
   evidence: EvidenceSet;
@@ -52,6 +59,28 @@ export class EvidenceService {
     return this.snapshot().hypotheses;
   }
 
+  /** The last state this service evaluated — the diff base of the next step. */
+  private heldState: GuidedDiagnosisState | null = null;
+
+  /** The running session's loop input, at one moment. Read-only by construction. */
+  private input(): Omit<GuidedDiagnosisInput, "stepsCompleted"> {
+    const session = this.engine.vehicleSession;
+    if (session === null) throw new Error("no session — call vehicle.connect() first");
+    const recorder = this.engine.recorder;
+    const samplesOf = (signalId: string): readonly SamplePoint[] =>
+      recorder
+        .samplesFor(signalId)
+        .filter((sample) => typeof sample.value === "number")
+        .map((sample) => ({ at: sample.timestamp, value: sample.value as number }));
+    const evidence = collectEvidence({
+      session: session.data,
+      statistics: recorder.statisticsForAll(),
+      anomalies: recorder.anomalies(),
+    });
+    const dtcs = session.data.dtcSnapshots.at(-1)?.records ?? [];
+    return { evidence, dtcs, samplesOf };
+  }
+
   /**
    * Ingests a manual or interactive test measurement for guided diagnosis.
    */
@@ -75,26 +104,37 @@ export class EvidenceService {
    * and recommends the next discriminating test.
    */
   guidedDiagnosis(stepsCompleted = 0): GuidedDiagnosisState {
-    const session = this.engine.vehicleSession;
-    if (session === null) throw new Error("no session — call vehicle.connect() first");
-    const recorder = this.engine.recorder;
-    const samplesOf = (signalId: string): readonly SamplePoint[] =>
-      recorder
-        .samplesFor(signalId)
-        .filter((sample) => typeof sample.value === "number")
-        .map((sample) => ({ at: sample.timestamp, value: sample.value as number }));
-    const evidence = collectEvidence({
-      session: session.data,
-      statistics: recorder.statisticsForAll(),
-      anomalies: recorder.anomalies(),
+    const state = evaluateGuidedDiagnosis({ ...this.input(), stepsCompleted });
+    this.heldState = state;
+    return state;
+  }
+
+  /**
+   * One step of the interactive loop: measurement in, evidence and hypotheses
+   * re-judged, the change named (ADR 0056).
+   *
+   * The step is the machine-readable answer to "what did that measurement
+   * change": `before` is the state this service last evaluated, the recording
+   * takes the new value, `after` is the re-judged state, and `changes` lists
+   * every outcome transition, confidence move and evidence item that appeared
+   * or consolidated. Calling it twice in a row without a measurement in
+   * between returns an empty diff — a loop that reports progress it did not
+   * make is a loop a workshop cannot trust.
+   */
+  advanceDiagnosis(signalId: string, value: number, stepsCompleted = 0): DiagnosisStep {
+    const previous = this.heldState ?? evaluateGuidedDiagnosis({ ...this.input(), stepsCompleted });
+    this.recordStepMeasurement(signalId, value);
+    const step = advanceGuidedDiagnosis(previous, {
+      ...this.input(),
+      stepsCompleted: stepsCompleted + 1,
     });
-    const dtcs = session.data.dtcSnapshots.at(-1)?.records ?? [];
-    return evaluateGuidedDiagnosis({
-      evidence,
-      dtcs,
-      samplesOf,
-      stepsCompleted,
-    });
+    this.heldState = step.after;
+    return step;
+  }
+
+  /** Drop the diff base — a new connection starts a new loop. */
+  resetGuidedDiagnosis(): void {
+    this.heldState = null;
   }
 
   /**

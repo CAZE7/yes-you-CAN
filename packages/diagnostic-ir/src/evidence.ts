@@ -80,6 +80,22 @@ export interface EvidenceSet {
 /** How a documented pattern fared against the measurements. */
 export type HypothesisOutcome = "confirmed" | "refuted" | "untested";
 
+/**
+ * One citation with the *side* it speaks on.
+ *
+ * The union list {@link Hypothesis.evidence} says which items a hypothesis
+ * touches; this says which ones speak **for** it and which speak **against**
+ * it — the split a reader (or an outside model) weighs instead of guessing
+ * from one undifferentiated list. `why` is one machine-checkable line: the
+ * item's id is the pointer, the sentence is the side.
+ */
+export interface HypothesisCitation {
+  /** Item id of the set the hypothesis was judged on. */
+  itemId: string;
+  /** One line, in the same words the report uses. */
+  why: string;
+}
+
 /** One documented check, judged. `window` is absent when nothing decided it. */
 export interface HypothesisCheck {
   test: HypothesisTest;
@@ -104,7 +120,20 @@ export interface DiscriminatingTest {
   hypothesisId: string;
   test: HypothesisTest;
   rationale: string;
+  /**
+   * The other hypotheses one measurement of this test would also move.
+   * Present (possibly empty) when the recommendation came from the
+   * uncertainty rule — its length is part of what makes the test the
+   * recommendation.
+   */
   discriminatesAgainst?: readonly string[];
+  /**
+   * How much uncertainty this test reduces, on the loop's published rule
+   * (the owner's confidence plus one-tenth per competing hypothesis on the
+   * same signal — see `@vdp/core/src/evidence/guided-diagnosis.ts`). The
+   * number is the machine-readable answer to "which test moves the most".
+   */
+  uncertaintyReduction?: number;
 }
 
 /** The state of an ongoing guided diagnostic session. */
@@ -115,8 +144,44 @@ export interface GuidedDiagnosisState {
   nextRecommendedTest?: DiscriminatingTest;
   hypotheses: readonly Hypothesis[];
   evidenceCount: number;
+  /**
+   * Item ids of the evidence set this state was evaluated on. Carried here —
+   * not only as a count — so a loop step can diff what was observed between
+   * two evaluations without re-collecting the set it no longer holds.
+   */
+  evidenceIds: readonly string[];
   stepsCompleted: number;
   summary: string;
+}
+
+/**
+ * One change between two evaluations of the loop — the machine-readable
+ * diff of "what did this measurement change".
+ *
+ * A step that cannot say which hypothesis moved from which verdict to which
+ * is a loop that reports progress instead of explaining it; these shapes are
+ * the explanation. `absent` covers a hypothesis (or item) that was not in the
+ * state the step left behind, so first appearance and disappearance are
+ * transitions too, not silence.
+ */
+export type DiagnosisTransition =
+  | {
+      kind: "outcome";
+      hypothesisId: string;
+      from: HypothesisOutcome | "absent";
+      to: HypothesisOutcome | "absent";
+    }
+  | { kind: "confidence"; hypothesisId: string; from: number; to: number }
+  | { kind: "evidence"; itemId: string; change: "added" | "removed" };
+
+/**
+ * One completed step of the diagnostic loop: measurement in, evidence and
+ * hypotheses re-judged, the diff named.
+ */
+export interface DiagnosisStep {
+  before: GuidedDiagnosisState;
+  after: GuidedDiagnosisState;
+  changes: readonly DiagnosisTransition[];
 }
 
 /**
@@ -142,6 +207,18 @@ export interface Hypothesis {
   confidence: number;
   /** Item ids this hypothesis rests on. Empty means: nothing supports it yet. */
   evidence: string[];
+  /**
+   * The items that speak **for** this hypothesis, with the side spelled out.
+   * A recorded code, a documented pattern, a measured value inside its window.
+   */
+  supporting: readonly HypothesisCitation[];
+  /**
+   * The items that speak **against** it: an undocumented code, a measured value
+   * outside its window. A hypothesis whose `against` is non-empty while its
+   * outcome is still open is exactly what a workshop must see — the split is
+   * the answer to "was spricht dagegen?", machine-readable.
+   */
+  against: readonly HypothesisCitation[];
   /**
    * Every documented check with its own verdict, in the package's order. The
    * hypothesis' `outcome` is derived from this list (refuted beats confirmed beats

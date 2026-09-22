@@ -244,7 +244,7 @@ export interface AdaptersView {
   adapters: AdapterDescription[];
 }
 
-/** Guided Diagnosis wire contract (Task 6). */
+/** Guided Diagnosis wire contract (Task 6; loop step since ADR 0056). */
 export interface GuidedDiagnosisView {
   status: "in-progress" | "resolved" | "inconclusive";
   summary: string;
@@ -255,13 +255,30 @@ export interface GuidedDiagnosisView {
     confidence: number;
     outcome: "confirmed" | "refuted" | "untested";
     checks: Array<{ signal: string; expect: string; outcome: string }>;
+    /** The evidence that speaks for this hypothesis (item id + the side). */
+    supporting: Array<{ itemId: string; why: string }>;
+    /** The evidence that speaks against it — never netted into the confidence. */
+    against: Array<{ itemId: string; why: string }>;
     nextTest?: { signal: string; expect: string; min?: number; max?: number; windowMs?: number };
   }>;
+  /** What the last step measurement changed — the loop's machine-readable diff. */
+  changes?: Array<
+    | {
+        kind: "outcome";
+        hypothesisId: string;
+        from: "confirmed" | "refuted" | "untested" | "absent";
+        to: "confirmed" | "refuted" | "untested" | "absent";
+      }
+    | { kind: "confidence"; hypothesisId: string; from: number; to: number }
+    | { kind: "evidence"; itemId: string; change: "added" | "removed" }
+  >;
   nextRecommendedTest?: {
     hypothesisId: string;
     rationale: string;
     test: { signal: string; expect: string; min?: number; max?: number; windowMs?: number };
     discriminatesAgainst?: string[];
+    /** How much uncertainty this test removes, on the loop's published rule. */
+    uncertaintyReduction?: number;
   };
 }
 

@@ -41,6 +41,11 @@ export interface DiagnosticEngineOptions {
   pollIntervalMs?: number;
   clock?: () => number;
   /**
+   * Version of the platform that opens the session (ADR 0057). Recorded on every
+   * session the engine opens, so a stored session says which platform built it.
+   */
+  platformVersion?: string;
+  /**
    * Manufacturer specific hooks (AGENTS 3, 34.6). They are consulted only where
    * definitions are silent, so OEM knowledge never overrides documented data.
    */

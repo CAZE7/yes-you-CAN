@@ -31,6 +31,7 @@ import {
   evidenceItemId,
   type Hypothesis,
   type HypothesisCheck,
+  type HypothesisCitation,
   type HypothesisOutcome,
   type HypothesisTest,
   itemById,
@@ -63,6 +64,9 @@ export interface HypothesisInput {
 /** Likelihoods as prior weights — the package's word, turned into a number once. */
 const LIKELIHOOD_PRIOR: Record<string, number> = {
   common: 0.6,
+  // The definition domain spells the middle tier "possible" — "plausible" is kept
+  // as an alias so hand-written packages keep the intended 0.45 prior.
+  possible: 0.45,
   plausible: 0.45,
   rare: 0.25,
 };
@@ -162,6 +166,7 @@ function hypothesisOf(parts: HypothesisParts): Hypothesis {
     pattern.likelihood === undefined
       ? UNKNOWN_PRIOR
       : (LIKELIHOOD_PRIOR[pattern.likelihood] ?? UNKNOWN_PRIOR);
+  const citations = citationsOf(parts.dtc, pattern, checks, evidence);
   const hypothesis: Hypothesis = {
     id: pattern.id,
     code: dtc.code,
@@ -171,7 +176,15 @@ function hypothesisOf(parts: HypothesisParts): Hypothesis {
     ...(pattern.likelihood !== undefined ? { likelihood: pattern.likelihood } : {}),
     outcome,
     confidence: confidenceOf({ prior, outcome, conclusive, codeDocumented }),
-    evidence: citedIds(parts.dtc, pattern, checks, evidence),
+    // The union stays what it was — the two sides plus the neutral window
+    // citations — so a consumer that reads the flat list loses nothing.
+    evidence: [
+      ...citations.supporting.map((citation) => citation.itemId),
+      ...citations.against.map((citation) => citation.itemId),
+      ...citations.neutral,
+    ],
+    supporting: citations.supporting,
+    against: citations.against,
     checks,
     reason: reasonOf(outcome, checks, conclusive),
   };
@@ -255,22 +268,88 @@ function reasonOf(
   return `${outcome} on ${window.samples} reading(s) between ${window.from} and ${window.to}: ${spread}`;
 }
 
-/** Which items support this hypothesis — cited, never restated. */
-function citedIds(
+/**
+ * Which items speak for or against this hypothesis — cited, never restated.
+ *
+ * The sides follow what the item *is*, not what the pattern hopes for:
+ *
+ *  - a `dtc` item that is proven (the code is recorded) supports; the same
+ *    item that is unproven (no package documents the code) argues against —
+ *    it is the set's own verdict on the pattern's ground, re-used, not
+ *    re-derived;
+ *  - the `pattern` item, when present, supports: the package says this cause
+ *    exists for this code;
+ *  - a checked signal's item takes the side of the check's verdict: a value
+ *    inside the documented window supports, outside it argues against. A
+ *    window that exists but holds no deciding value is *neutral* — absence
+ *    of evidence is neither support nor objection (ADR 0033).
+ *
+ * A cited id that is not in the set is a bug in the citation, not a fact
+ * about the session — so unknown ids are dropped rather than printed as
+ * dangling references, on every side.
+ */
+function citationsOf(
   dtc: EvidenceDtc,
   pattern: DtcKnowledgePattern,
   checks: readonly HypothesisCheck[],
   evidence: EvidenceSet,
-): string[] {
-  const ids = [
-    evidenceItemId("dtc", dtc.code, dtc.ecuId),
+): { supporting: HypothesisCitation[]; against: HypothesisCitation[]; neutral: string[] } {
+  const supporting: HypothesisCitation[] = [];
+  const against: HypothesisCitation[] = [];
+  const neutral: string[] = [];
+  const cite = (
+    side: "supporting" | "against",
+    kind: Parameters<typeof evidenceItemId>[0],
+    subject: string,
+    why: string,
+  ): void => {
+    const id = evidenceItemId(kind, subject, dtc.ecuId);
+    if (itemById(evidence, id) === undefined) return;
+    (side === "supporting" ? supporting : against).push({ itemId: id, why });
+  };
+
+  const dtcItem = itemById(evidence, evidenceItemId("dtc", dtc.code, dtc.ecuId));
+  if (dtcItem !== undefined) {
+    if (dtcItem.evidence.kind === "proven") {
+      cite("supporting", "dtc", dtc.code, "the fault code is recorded in the fault memory");
+    } else {
+      cite(
+        "against",
+        "dtc",
+        dtc.code,
+        "no loaded definition documents this code — the pattern has no ground",
+      );
+    }
+  }
+  const patternItem = itemById(
+    evidence,
     evidenceItemId("pattern", `${dtc.code}/${pattern.id}`, dtc.ecuId),
-  ];
+  );
+  if (patternItem !== undefined && patternItem.evidence.kind === "proven") {
+    cite(
+      "supporting",
+      "pattern",
+      `${dtc.code}/${pattern.id}`,
+      "the definition package documents this pattern for the code",
+    );
+  }
   for (const check of checks) {
     if (check.window === undefined) continue;
-    ids.push(evidenceItemId("signal", check.test.signal));
+    const id = evidenceItemId("signal", check.test.signal);
+    if (itemById(evidence, id) === undefined) continue;
+    if (check.outcome === "confirmed") {
+      supporting.push({
+        itemId: id,
+        why: `measured value inside the documented window for ${check.test.signal}`,
+      });
+    } else if (check.outcome === "refuted") {
+      against.push({
+        itemId: id,
+        why: `measured value outside the documented window for ${check.test.signal}`,
+      });
+    } else {
+      neutral.push(id);
+    }
   }
-  // A cited id that is not in the set is a bug in the citation, not a fact about the
-  // session — so unknown ids are dropped rather than printed as dangling references.
-  return ids.filter((id) => itemById(evidence, id) !== undefined);
+  return { supporting, against, neutral };
 }

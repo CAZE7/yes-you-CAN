@@ -15,12 +15,15 @@
  */
 
 import {
+  type DiagnosisStep,
+  type DiagnosisTransition,
   type DiscriminatingTest,
   type EvidenceItem,
   type EvidenceSet,
   evidenceItemId,
   type GuidedDiagnosisState,
   type Hypothesis,
+  type HypothesisCheck,
   proven,
 } from "@vdp/diagnostic-ir";
 import { nowIso } from "@vdp/shared";
@@ -32,6 +35,11 @@ export interface GuidedDiagnosisInput {
   dtcs: readonly EvidenceDtc[];
   samplesOf?: (signalId: string) => readonly SamplePoint[];
   stepsCompleted?: number;
+}
+
+/** The ids of the set, in set order — what a step diff is taken over. */
+function idsOf(evidence: EvidenceSet): string[] {
+  return evidence.items.map((item) => item.id);
 }
 
 /**
@@ -52,6 +60,7 @@ export function evaluateGuidedDiagnosis(input: GuidedDiagnosisInput): GuidedDiag
       status: "inconclusive",
       hypotheses: [],
       evidenceCount: evidence.items.length,
+      evidenceIds: idsOf(evidence),
       stepsCompleted,
       summary: "No diagnostic hypotheses documented for the active DTCs",
     };
@@ -75,6 +84,7 @@ export function evaluateGuidedDiagnosis(input: GuidedDiagnosisInput): GuidedDiag
       leadingHypothesis: leading,
       hypotheses,
       evidenceCount: evidence.items.length,
+      evidenceIds: idsOf(evidence),
       stepsCompleted,
       summary: `Diagnosis resolved: root cause identified as "${leading.claim}" (${leading.code}) with confidence ${leading.confidence}`,
     };
@@ -93,6 +103,7 @@ export function evaluateGuidedDiagnosis(input: GuidedDiagnosisInput): GuidedDiag
         leadingHypothesis: topConfirmed,
         hypotheses,
         evidenceCount: evidence.items.length,
+        evidenceIds: idsOf(evidence),
         stepsCompleted,
         summary: `Diagnosis complete: leading cause "${topConfirmed.claim}" (${topConfirmed.code}) confirmed without further tests`,
       };
@@ -104,6 +115,7 @@ export function evaluateGuidedDiagnosis(input: GuidedDiagnosisInput): GuidedDiag
       ...(leading !== undefined ? { leadingHypothesis: leading } : {}),
       hypotheses,
       evidenceCount: evidence.items.length,
+      evidenceIds: idsOf(evidence),
       stepsCompleted,
       summary: allUntested
         ? "Diagnosis inconclusive: no signal measurements available for documented checks"
@@ -118,65 +130,185 @@ export function evaluateGuidedDiagnosis(input: GuidedDiagnosisInput): GuidedDiag
     nextRecommendedTest: nextTest,
     hypotheses,
     evidenceCount: evidence.items.length,
+    evidenceIds: idsOf(evidence),
     stepsCompleted,
     summary: `In progress: recommended next test is ${nextTest.test.signal} to evaluate "${nextTest.rationale}"`,
   };
 }
 
 /**
- * Selects the most discriminating test among hypotheses.
- * Prioritizes tests that confirm or refute the top-ranked hypothesis or
- * distinguish between competing top hypotheses.
+ * The uncertainty a candidate test removes, on the loop's published rule.
+ *
+ * A test is worth what its answer decides. Two honest components only — no
+ * prior pretending to be a posterior:
+ *
+ *  1. the **owner's confidence** — a check that can move a leading hypothesis
+ *     is worth more than one that can only move a trailing one, because it is
+ *     the ranking a workshop would act on that is at stake;
+ *  2. **+0.1 per competing hypothesis that carries a check on the same
+ *     signal** — one measurement then speaks to several hypotheses at once,
+ *     and that is precisely what makes a test *discriminating* instead of
+ *     merely informative.
+ *
+ * Ties are broken in the order a technician experiences them: the cheaper
+ * window first (a 5 s read before a 30 s drive cycle), then the higher-ranked
+ * owner, then the package's check order. The order is stable, so a rerun with
+ * unchanged evidence recommends the same test.
+ */
+function uncertaintyValue(
+  owner: Hypothesis,
+  check: HypothesisCheck,
+  hypotheses: readonly Hypothesis[],
+): { value: number; shared: string[] } {
+  const shared = hypotheses
+    .filter((h) => h.id !== owner.id && h.checks.some((c) => c.test.signal === check.test.signal))
+    .map((h) => h.id);
+  return { value: owner.confidence + 0.1 * shared.length, shared };
+}
+
+/**
+ * Selects the test that reduces uncertainty the most.
+ *
+ * Every *undecided* documented check of every hypothesis is a candidate — not
+ * just the leading hypothesis' first one (the old rule): a runner-up's check
+ * on a signal several hypotheses share can out-score the leader's, because
+ * that is where one measurement moves the most. The value and the rationale
+ * travel with the recommendation, machine-readable, so an answer can say
+ * *why* this test and not another instead of only *which*.
  */
 function selectDiscriminatingTest(
   hypotheses: readonly Hypothesis[],
 ): DiscriminatingTest | undefined {
-  // Examine the top two hypotheses to find a discriminating test
-  const top = hypotheses[0];
-  const runnerUp = hypotheses[1];
+  let best:
+    | {
+        owner: Hypothesis;
+        check: HypothesisCheck;
+        value: number;
+        shared: string[];
+        rank: number;
+        order: number;
+      }
+    | undefined;
 
-  if (top?.nextTest) {
-    const competitorsWithSameSignal = hypotheses
-      .filter(
-        (h) => h.id !== top.id && h.checks.some((c) => c.test.signal === top.nextTest?.signal),
-      )
-      .map((h) => h.id);
+  hypotheses.forEach((owner, rank) => {
+    owner.checks.forEach((check, order) => {
+      if (check.outcome !== "untested") return;
+      const { value, shared } = uncertaintyValue(owner, check, hypotheses);
+      const windowMs = check.test.windowMs ?? Number.MAX_SAFE_INTEGER;
+      const better =
+        best === undefined ||
+        value > best.value ||
+        (value === best.value &&
+          (windowMs < (best.check.test.windowMs ?? Number.MAX_SAFE_INTEGER) ||
+            (windowMs === (best.check.test.windowMs ?? Number.MAX_SAFE_INTEGER) &&
+              (rank < best.rank || (rank === best.rank && order < best.order)))));
+      if (better) best = { owner, check, value, shared, rank, order };
+    });
+  });
 
-    const rationale =
-      competitorsWithSameSignal.length > 0
-        ? `Measuring ${top.nextTest.signal} directly tests "${top.claim}" and differentiates from competing hypotheses (${competitorsWithSameSignal.join(", ")})`
-        : `Measuring ${top.nextTest.signal} verifies expected condition "${top.nextTest.expect}" for ${top.claim}`;
+  const chosen = best;
+  if (chosen === undefined) return undefined;
+  const { owner, check, value, shared } = chosen;
+  const rationale =
+    `measuring ${check.test.signal} can decide "${owner.claim}" ` +
+    `(confidence ${owner.confidence})` +
+    (shared.length > 0
+      ? ` and ${shared.length} competing hypothesis(es) on the same signal (${shared.join(", ")})`
+      : "") +
+    ` — uncertainty reduction ${value.toFixed(3)}`;
+  return {
+    hypothesisId: owner.id,
+    test: check.test,
+    rationale,
+    discriminatesAgainst: shared,
+    uncertaintyReduction: Number(value.toFixed(3)),
+  };
+}
 
-    return {
-      hypothesisId: top.id,
-      test: top.nextTest,
-      rationale,
-      ...(competitorsWithSameSignal.length > 0
-        ? { discriminatesAgainst: competitorsWithSameSignal }
-        : {}),
-    };
+/**
+ * One loop step, made explicit: the state before, the state after the new
+ * evidence, and the named diff between them.
+ *
+ * This is what turns "run another measurement" into a loop a machine can
+ * audit — the caller records a measurement, feeds the re-collected evidence,
+ * and receives *which* hypothesis moved from which verdict to which, and
+ * which evidence items appeared or consolidated. A step that changed nothing
+ * says so with an empty `changes` list instead of pretending to progress.
+ *
+ * `previous` is the state the caller holds (usually the last
+ * {@link GuidedDiagnosisState}); `input` is what to evaluate now. `after` is
+ * computed from `input` — the function does not re-read the world, it
+ * explains the step between the two states.
+ */
+export function advanceGuidedDiagnosis(
+  previous: GuidedDiagnosisState,
+  input: GuidedDiagnosisInput,
+): DiagnosisStep {
+  const after = evaluateGuidedDiagnosis(input);
+  const changes: DiagnosisTransition[] = [];
+
+  const beforeById = new Map(previous.hypotheses.map((h) => [h.id, h]));
+  for (const hypothesis of after.hypotheses) {
+    const before = beforeById.get(hypothesis.id);
+    if (before === undefined) {
+      changes.push({
+        kind: "outcome",
+        hypothesisId: hypothesis.id,
+        from: "absent",
+        to: hypothesis.outcome,
+      });
+      continue;
+    }
+    if (before.outcome !== hypothesis.outcome) {
+      changes.push({
+        kind: "outcome",
+        hypothesisId: hypothesis.id,
+        from: before.outcome,
+        to: hypothesis.outcome,
+      });
+    }
+    // Confidences are rounded to three decimals at the rule's edge; compare
+    // with the same tolerance the rounding promises instead of floating dust.
+    if (Math.abs(before.confidence - hypothesis.confidence) > 1e-9) {
+      changes.push({
+        kind: "confidence",
+        hypothesisId: hypothesis.id,
+        from: before.confidence,
+        to: hypothesis.confidence,
+      });
+    }
   }
-
-  if (runnerUp?.nextTest) {
-    return {
-      hypothesisId: runnerUp.id,
-      test: runnerUp.nextTest,
-      rationale: `Measuring ${runnerUp.nextTest.signal} evaluates runner-up hypothesis "${runnerUp.claim}"`,
-    };
-  }
-
-  // Fallback to any hypothesis with a pending nextTest
-  for (const h of hypotheses) {
-    if (h.nextTest) {
-      return {
-        hypothesisId: h.id,
-        test: h.nextTest,
-        rationale: `Testing ${h.nextTest.signal} for "${h.claim}"`,
-      };
+  for (const hypothesis of previous.hypotheses) {
+    if (!after.hypotheses.some((h) => h.id === hypothesis.id)) {
+      changes.push({
+        kind: "outcome",
+        hypothesisId: hypothesis.id,
+        from: hypothesis.outcome,
+        to: "absent",
+      });
     }
   }
 
-  return undefined;
+  const afterIds = new Set(after.evidenceIds);
+  const beforeIds = new Set(previous.evidenceIds);
+  for (const id of previous.evidenceIds) {
+    if (!afterIds.has(id)) changes.push({ kind: "evidence", itemId: id, change: "removed" });
+  }
+  for (const id of after.evidenceIds) {
+    if (!beforeIds.has(id)) changes.push({ kind: "evidence", itemId: id, change: "added" });
+  }
+
+  return { before: previous, after, changes };
+}
+
+/**
+ * Keep for call sites that only need the selection itself (tests, the
+ * runtime's loop step) — the same rule the evaluation uses, named.
+ */
+export function nextDiscriminatingTest(
+  hypotheses: readonly Hypothesis[],
+): DiscriminatingTest | undefined {
+  return selectDiscriminatingTest(hypotheses);
 }
 
 /**

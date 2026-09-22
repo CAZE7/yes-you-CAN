@@ -49,7 +49,8 @@ export const USAGE = [
   "",
   "  runs the shared test vectors against the production TypeScript implementations",
   "  (IsoTpConnection; SafetyManager, WritePort, DiagnosticTransaction).",
-  "  --compare additionally runs formal/ConformanceDriver.hs (runghc or ghc on PATH)",
+  "  --compare additionally runs formal/ConformanceDriver.hs (ghc preferred — one",
+  "  compile, one run per set; runhaskell/runghc for interpreter-only machines)",
   "  and reports every deviation as: vector, input, TS result, Haskell result, difference.",
 ].join("\n");
 

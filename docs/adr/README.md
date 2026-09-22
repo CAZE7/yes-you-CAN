@@ -71,3 +71,7 @@ AI-Context-Topics) steht in [`architecture/architecture.yaml`](../../architectur
 | [0051](0051-workbench-api-knows-its-caller.md) | Die Workbench-API kennt ihren Aufrufer | accepted |
 | [0052](0052-the-signal-model-clock-is-a-parameter.md) | Die Uhr des Signalmodells ist ein Parameter, nicht die Geschwindigkeit der Maschine | accepted |
 | [0053](0053-deps-hardware-and-tooling-boundary.md) | Abhängigkeiten, Hardware-Grenze und Werkzeug-Ausnahme als Teil von Industriestandard | accepted |
+| [0054](0054-tls-rate-limit-and-csms.md) | TLS, Rate-Limit und CSMS-Gerüst schließen die ISO-21434-Lücken | accepted |
+| [0055](0055-haskell-conformance-release-gate.md) | Haskell-Konformanz ist ein Release-Gate, kein manueller Schritt | accepted |
+| [0056](0056-the-diagnosis-loop-is-a-state-machine-with-a-machine-readable-diff.md) | Der Diagnose-Loop ist eine Zustandsmaschine mit maschinenlesbarem Diff | accepted |
+| [0057](0057-provenance-and-replay-same-recording-same-diagnosis.md) | Provenance und Replay: dieselbe Aufnahme, dieselbe Diagnose | accepted (Implementierung läuft) |

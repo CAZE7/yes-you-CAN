@@ -16,14 +16,22 @@
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
 import {
+  canonicalManifestBinding,
   canonicalRawTraceChunks,
   createRawTraceManifest,
   hashRawTrace,
   type IntegrityPort,
+  type ManifestSigner,
+  type ManifestVerifier,
   RAW_TRACE_HASH_ALGORITHM,
   RAW_TRACE_MANIFEST_VERSION,
   type RawTraceManifest,
+  type RawTraceManifestIdentity,
+  type RawTraceSignature,
+  signRawTraceManifest,
+  traceIdFromManifest,
   verifyRawTraceManifest,
+  verifyRawTraceManifestSignature,
   withRawTraceManifest,
 } from "./integrity.js";
 import type { RawTraceEntry } from "./session-logger.js";
@@ -198,6 +206,159 @@ describe("raw trace integrity", () => {
     assert.equal(
       verifyRawTraceManifest(withManifest.trace, withManifest.rawTraceManifest, port),
       true,
+    );
+  });
+});
+
+describe("manifest v2 signatures (ADR 0057)", () => {
+  // Signer/verifier doubles — the core computes no cryptography itself (same
+  // doctrine as the digest port above), so the tests here pin the contract:
+  // what is signed, what is checked, what falsifies. The real ed25519 is
+  // measured where it lives (`packages/storage/src/manifest-signer.spec.ts`).
+  function testSigner(tag = "key"): ManifestSigner {
+    return {
+      keyId: `ed25519:${tag}`,
+      publicKey: `spki-${tag}`,
+      sign(identity: RawTraceManifestIdentity): RawTraceSignature {
+        return {
+          keyId: `ed25519:${tag}`,
+          algorithm: "ed25519",
+          value: `${tag}→${canonicalManifestBinding(identity)}`,
+        };
+      },
+    };
+  }
+
+  function testVerifier(tag = "key"): ManifestVerifier {
+    return {
+      keyId: `ed25519:${tag}`,
+      verify(binding: string, signatureBase64: string): boolean {
+        return signatureBase64 === `${tag}→${binding}`;
+      },
+    };
+  }
+
+  test("the canonical binding is exactly the fixed order the ADR pins", () => {
+    // Cross-language contract: a verifier in any other implementation has to
+    // produce this exact string before its signature check means anything.
+    const identity: RawTraceManifestIdentity = {
+      format: "vdp.raw-trace-manifest",
+      version: 2,
+      algorithm: "sha256",
+      entries: 3,
+      sha256: "8600983efbd90138bc603449abf03aa606f571272451cd2c9df8dd38af748172",
+    };
+    assert.equal(
+      canonicalManifestBinding(identity),
+      "vdp.raw-trace-manifest|2|sha256|3|" +
+        "8600983efbd90138bc603449abf03aa606f571272451cd2c9df8dd38af748172",
+    );
+  });
+
+  test("a v1 witness keeps verifying — the golden digest is the anchor", () => {
+    // ADR 0057 upgrades the manifest to v2 without breaking what v1 stored:
+    // the same digest and entry count under `version: 1` must still confirm.
+    const trace = [entry("1010")];
+    const port = testPort();
+    const v1: RawTraceManifest = { ...createRawTraceManifest(trace, port), version: 1 };
+    assert.equal(verifyRawTraceManifest(trace, v1, port), true);
+    assert.equal(verifyRawTraceManifest(trace, { ...v1, version: 3 as never }, port), false);
+  });
+
+  test("signing attests the identity fields and carries the public key beside it", () => {
+    const trace = [entry("1010")];
+    const port = testPort();
+    const unsigned = createRawTraceManifest(trace, port);
+    const signed = signRawTraceManifest(unsigned, testSigner());
+    assert.equal(signed.version, RAW_TRACE_MANIFEST_VERSION);
+    assert.deepEqual(signed.signature, {
+      keyId: "ed25519:key",
+      algorithm: "ed25519",
+      value: `key→${canonicalManifestBinding(unsigned)}`,
+    });
+    assert.equal(signed.publicKey, "spki-key", "the public key travels beside the signature");
+    // A signature is an attestation, not a rewrite: the identity survives it.
+    assert.equal(signed.sha256, unsigned.sha256);
+    assert.equal(signed.entries, unsigned.entries);
+    assert.equal(verifyRawTraceManifestSignature(signed, testVerifier()), true);
+  });
+
+  test("signing upgrades a v1 witness to v2 — v1 bytes stay what the signature attests", () => {
+    const trace = [entry("1010")];
+    const v1 = { ...createRawTraceManifest(trace, testPort()), version: 1 as const };
+    const signed = signRawTraceManifest(v1, testSigner());
+    assert.equal(signed.version, RAW_TRACE_MANIFEST_VERSION);
+    // The signature covers the v1 identity as it was — a re-hash under another
+    // version would attest something that never existed.
+    assert.equal(signed.signature?.value, `key→${canonicalManifestBinding(v1)}`);
+  });
+
+  test("changing one attested field falsifies the signature", () => {
+    const signed = signRawTraceManifest(
+      createRawTraceManifest([entry("1010")], testPort()),
+      testSigner(),
+    );
+    // Manifests are read back from JSON exports, so every field is untrusted.
+    const tampered = (patch: Record<string, unknown>): RawTraceManifest =>
+      JSON.parse(JSON.stringify({ ...signed, ...patch })) as RawTraceManifest;
+    assert.equal(verifyRawTraceManifestSignature(signed, testVerifier()), true);
+    for (const patch of [
+      { format: "other" },
+      { version: 1 },
+      { algorithm: "md5" },
+      { entries: 99 },
+      { sha256: "0".repeat(64) },
+      { signature: { ...signed.signature, value: "forged" } },
+    ]) {
+      assert.equal(
+        verifyRawTraceManifestSignature(tampered(patch), testVerifier()),
+        false,
+        `tampering with ${Object.keys(patch).join(",")} must falsify the attestation`,
+      );
+    }
+  });
+
+  test("an unsigned manifest is not an attested one", () => {
+    const unsigned = createRawTraceManifest([entry("1010")], testPort());
+    assert.equal(unsigned.signature, undefined);
+    assert.equal(verifyRawTraceManifestSignature(unsigned, testVerifier()), false);
+  });
+
+  test("the keyId binds the signature to one key, not to a name", () => {
+    const signed = signRawTraceManifest(
+      createRawTraceManifest([entry("1010")], testPort()),
+      testSigner(),
+    );
+    // A verifier for any other key — even one whose check would confirm the
+    // bytes — is refused: the signature claims a specific fingerprint.
+    assert.equal(verifyRawTraceManifestSignature(signed, testVerifier("forged")), false);
+    // And the manifest's public key has to travel with it: without it there is
+    // nothing to verify against.
+    const keyless = JSON.parse(
+      JSON.stringify({ ...signed, publicKey: undefined }),
+    ) as RawTraceManifest;
+    assert.equal(verifyRawTraceManifestSignature(keyless, testVerifier()), false);
+  });
+
+  test("traceId is content-addressed from the manifest digest", () => {
+    const port = testPort();
+    const manifest = createRawTraceManifest([entry("1010")], port);
+    assert.equal(traceIdFromManifest(manifest), `t-${manifest.sha256.slice(0, 16)}`);
+    // The form over a real digest: `t-` + the first 16 hex (ADR 0057).
+    assert.equal(
+      traceIdFromManifest({
+        sha256: "8600983efbd90138bc603449abf03aa606f571272451cd2c9df8dd38af748172",
+      }),
+      "t-8600983efbd90138",
+    );
+    // Same recording → same id; a different trace → a different id.
+    assert.equal(
+      traceIdFromManifest(createRawTraceManifest([entry("1010")], port)),
+      traceIdFromManifest(manifest),
+    );
+    assert.notEqual(
+      traceIdFromManifest(createRawTraceManifest([entry("1011")], port)),
+      traceIdFromManifest(manifest),
     );
   });
 });

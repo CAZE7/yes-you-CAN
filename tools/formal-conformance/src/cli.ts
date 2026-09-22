@@ -6,13 +6,17 @@
  *
  * `npm run formal:conform` executes this file from `dist/` (after `npm run
  * build`); with `--compare` it additionally runs `formal/ConformanceDriver.hs`
- * through `runghc`/`runhaskell` if present, else compiles it with `ghc` into a
- * temporary binary. No toolchain: the CLI exits 2 for `--compare` and never
- * reports a not-run comparison as agreement.
+ * with the first toolchain present. Preference order (ADR 0055): `ghc` first,
+ * because one compile plus one run per vector set is measurably cheaper than
+ * interpreting the whole formal tree from source twice — on a cold runner the
+ * interpreter path is the cost the CI release gate pays per run. `runhaskell`
+ * and `runghc` remain for machines with an interpreter only. No toolchain: the
+ * CLI exits 2 for `--compare` and never reports a not-run comparison as
+ * agreement.
  */
 
 import { spawnSync } from "node:child_process";
-import { readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -22,7 +26,10 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 /** Repo root: dist/src → dist → package dir → tools → root. */
 const ROOT = resolve(HERE, "..", "..", "..", "..");
 
-const RUNNERS = ["runghc", "runhaskell", "ghc"] as const;
+/** ADR 0055: compile once, run twice — the CI release gate pays for `--compare`
+ * on every run, and the interpreter path re-reads the whole formal tree from
+ * source for each vector set. */
+const RUNNERS = ["ghc", "runhaskell", "runghc"] as const;
 type Runner = (typeof RUNNERS)[number];
 
 function which(runner: Runner): string | null {
@@ -60,12 +67,18 @@ export function runHaskellDriver(runner: Runner, set: string, vectorsPath: strin
   const formal = join(ROOT, "formal");
   const driver = join(formal, "ConformanceDriver.hs");
   if (runner === "ghc") {
-    const binary = join(tmpdir(), `vdp-conformance-driver-${process.pid}`);
+    // Never compile into shared `/tmp`: Vitest runs the coverage carrier and
+    // this release carrier concurrently, and two GHC processes otherwise race
+    // on module objects such as `Json.o.tmp` (first measured in CI run
+    // 35769274998). The output directory is part of compiler isolation, not just
+    // where the final binary happens to live.
+    const outputDir = mkdtempSync(join(tmpdir(), "vdp-conformance-"));
+    const binary = join(outputDir, "driver");
     try {
-      runSync("ghc", ["-v0", "-i" + formal, "-outputdir", tmpdir(), "-o", binary, driver]);
+      runSync("ghc", ["-v0", "-i" + formal, "-outputdir", outputDir, "-o", binary, driver]);
       return runSync(binary, [set, vectorsPath]);
     } finally {
-      rmSync(binary, { force: true });
+      rmSync(outputDir, { recursive: true, force: true });
     }
   }
   return runSync(runner, ["-i" + formal, driver, set, vectorsPath]);

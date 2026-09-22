@@ -155,6 +155,13 @@ export interface AnalysisSources {
    * stays absent, and the answer is about field data, not a simulation.
    */
   scenario?: AnalysisInput["scenario"];
+  /**
+   * The loop state the session was evaluated in (ADR 0056): the leading
+   * hypothesis with its for/against evidence and the test that reduces the
+   * uncertainty the most. Assembled once by the runtime — the provider cites
+   * it, it does not re-derive it.
+   */
+  diagnosis?: AnalysisInput["diagnosis"];
 }
 
 export function buildAnalysisInput(sources: AnalysisSources): AnalysisInput {
@@ -180,6 +187,7 @@ export function buildAnalysisInput(sources: AnalysisSources): AnalysisInput {
     hypotheses: evidence.hypotheses,
     ...(session?.id !== undefined ? { recordingId: session.id } : {}),
     ...(sources.scenario !== undefined ? { scenario: sources.scenario } : {}),
+    ...(sources.diagnosis !== undefined ? { diagnosis: sources.diagnosis } : {}),
     versions: sources.versions,
   };
 }

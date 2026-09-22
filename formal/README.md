@@ -40,7 +40,8 @@ außerhalb des Gebiets sind nicht „frei“, sondern schlicht nicht verglichen.
 # TS-Seite (braucht keine Haskell-Toolchain):
 npm run formal:conform
 
-# TS-Seite + Haskell-Differential (will runghc oder ghc auf dem PATH):
+# TS-Seite + Haskell-Differential (will eine Haskell-Toolchain auf dem PATH;
+# ghc bevorzugt — ein Compile, ein Lauf je Vektorsatz; ADR 0055):
 npm run formal:conform -- --compare
 
 # direkt:
@@ -56,12 +57,18 @@ ist, wo kein `ghc` existiert.
 
 ## Regeln
 
-- **Release-Regel:** Ein Release geht nicht durch, wenn TypeScript und die Vektoren
-  auseinanderlaufen — das ist das Gate in `npm test` (Projekt `protocol`, alle 28 + 44
-  Vektoren gegen die Produktion, in jedem CI-Lauf). Der TypeScript ⇄ Haskell-Vergleich
-  ist die zweite Hälfte: vor einem Release ist `npm run formal:conform -- --compare`
-  auf einer Maschine mit GHC zu fahren; wo keine Toolchain ist, meldet der Runner
-  wörtlich `haskell NOT RUN` — ein nicht geführter Vergleich ist nie ein grüner.
+- **Release-Regel (ADR 0045/0049):** Ein Release geht nicht durch, wenn TypeScript
+  und die Vektoren auseinanderlaufen — das ist das Gate in `npm test` (Projekt
+  `protocol`, alle 28 + 44 Vektoren gegen die Produktion, in jedem CI-Lauf). Der
+  TypeScript ⇄ Haskell-Vergleich ist die zweite Hälfte und seit ADR 0055 **kein
+  manueller Schritt mehr**: `tests/architecture/haskell-conformance-gate.test.ts`
+  trägt ihn in jedem CI-Lauf (`npm run formal:conform -- --compare` als Kind, die
+  GitHub-Runner liefern GHC vorinstalliert) und fällt dort, wenn eine Seite
+  abweigt **oder** die Toolchain fehlt — ein Release, das ohne das Differential
+  geschnitten würde, fällt damit als Release. Lokal läuft der Vergleich, wo eine
+  Toolchain vorhanden ist, sonst ist er ein sichtbarer Skip; `npm run formal:conform`
+  ohne `--compare` meldet weiterhin wörtlich `haskell NOT RUN` — ein nicht geführter
+  Vergleich ist nie ein grüner.
 - Base only. Kein Cabal, kein Stack, keine externen Pakete in diesem Ordner.
 - Ein Vektor, den das Modell nicht interpretieren kann, wird zur Fehlerzeile
   mit Vektor-Index — nie zu einer fehlenden Zeile.

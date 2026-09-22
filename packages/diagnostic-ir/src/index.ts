@@ -28,6 +28,8 @@ export type {
 } from "./dtc.js";
 export { compareDtcObservations, dtcEnrichment, dtcKey, dtcObservation } from "./dtc.js";
 export {
+  type DiagnosisStep,
+  type DiagnosisTransition,
   type DiscriminatingTest,
   type EvidenceConflict,
   type EvidenceItem,
@@ -37,6 +39,7 @@ export {
   type GuidedDiagnosisState,
   type Hypothesis,
   type HypothesisCheck,
+  type HypothesisCitation,
   type HypothesisOutcome,
   type HypothesisTest,
   itemById,

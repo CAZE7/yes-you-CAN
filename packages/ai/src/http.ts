@@ -10,7 +10,7 @@
  * went.
  */
 
-import type { DiscriminatingTest } from "@vdp/diagnostic-ir";
+import type { DiscriminatingTest, GuidedDiagnosisState } from "@vdp/diagnostic-ir";
 import { createLogger, type Logger, messageOf } from "@vdp/shared";
 import { analysisInstruction } from "./prompt.js";
 import { citableIds, knownCitations, provenanceOf } from "./provenance.js";
@@ -181,6 +181,7 @@ function normalise(
   const model = options.model;
   const citable = citableIds(input);
   const nextTest = nextTestOfAnswer(result.nextTest, input);
+  const diagnosis = diagnosisOfAnswer(result.diagnosis, input, citable);
   return {
     provider: isText(result.provider) ? result.provider : "http",
     ...(model ? { model } : {}),
@@ -197,6 +198,7 @@ function normalise(
     // version is making a claim (see `provenance.ts`).
     provenance: provenanceOf(input, { provider: "http", ...(model ? { model } : {}) }),
     ...(nextTest !== undefined ? { nextTest } : {}),
+    ...(diagnosis !== undefined ? { diagnosis } : {}),
   };
 }
 
@@ -226,6 +228,97 @@ function nextTestOfAnswer(raw: unknown, input: AnalysisInput): DiscriminatingTes
       ? record.rationale
       : `the gateway nominated the undecided check documented for ${hypothesis.code}`,
     ...(discriminatesAgainst.length > 0 ? { discriminatesAgainst } : {}),
+  };
+}
+
+/**
+ * A gateway may echo the loop state — only as a selection into the input.
+ *
+ * The same discipline as citations, applied to a whole state: every hypothesis
+ * id it names must be one the input carried (the hypothesis objects are then
+ * taken *from the input*, not from the answer), every evidence id must be an
+ * item the input offered, and the recommended test must be the one the named
+ * hypothesis documents. Anything else — an unknown id, a test the input never
+ * saw, a status outside the loop's vocabulary — drops the block whole: a loop
+ * state a reader cannot check against the recording is not a state, it is a
+ * story.
+ */
+function diagnosisOfAnswer(
+  raw: unknown,
+  input: AnalysisInput,
+  citable: ReadonlySet<string>,
+): GuidedDiagnosisState | undefined {
+  const record = asRecord(raw);
+  const status = record.status;
+  if (status !== "in-progress" && status !== "resolved" && status !== "inconclusive") {
+    return undefined;
+  }
+  const inputHypotheses = input.hypotheses ?? [];
+  const knownIds = new Set(inputHypotheses.map((hypothesis) => hypothesis.id));
+  const rawHypotheses = asArray(record.hypotheses);
+  const hypothesisIds = rawHypotheses
+    .map((entry) => asRecord(entry).id)
+    .filter((id): id is string => isText(id) && knownIds.has(id));
+  if (hypothesisIds.length === 0) return undefined;
+  // Duplicates and out-of-input ids are already filtered; keep first-seen order.
+  const seen = new Set<string>();
+  for (const id of hypothesisIds) seen.add(id);
+  const hypotheses = inputHypotheses.filter((hypothesis) => seen.has(hypothesis.id));
+
+  const evidenceIds = asArray(record.evidenceIds).filter(
+    (id): id is string => isText(id) && citable.has(id),
+  );
+
+  const leadingRaw = asRecord(record.leadingHypothesis).id;
+  const leading =
+    isText(leadingRaw) && knownIds.has(leadingRaw)
+      ? hypotheses.find((hypothesis) => hypothesis.id === leadingRaw)
+      : hypotheses[0];
+
+  const nextRaw = asRecord(record.nextRecommendedTest);
+  const nextId = nextRaw.hypothesisId;
+  let next: DiscriminatingTest | undefined;
+  if (isText(nextId) && knownIds.has(nextId)) {
+    const owner = inputHypotheses.find((hypothesis) => hypothesis.id === nextId);
+    if (
+      owner !== undefined &&
+      owner.nextTest !== undefined &&
+      asRecord(nextRaw.test).signal === owner.nextTest.signal
+    ) {
+      next = {
+        hypothesisId: owner.id,
+        test: owner.nextTest,
+        rationale: isText(nextRaw.rationale)
+          ? nextRaw.rationale
+          : `the gateway nominated the undecided check documented for ${owner.code}`,
+      };
+      const discriminates = asArray(nextRaw.discriminatesAgainst).filter(
+        (id): id is string => isText(id) && knownIds.has(id),
+      );
+      if (discriminates.length > 0) next.discriminatesAgainst = discriminates;
+      const reduction = nextRaw.uncertaintyReduction;
+      if (typeof reduction === "number" && Number.isFinite(reduction)) {
+        next.uncertaintyReduction = reduction;
+      }
+    }
+  }
+
+  return {
+    sessionId: isText(record.sessionId) ? record.sessionId : (input.recordingId ?? ""),
+    status,
+    ...(leading !== undefined ? { leadingHypothesis: leading } : {}),
+    ...(next !== undefined ? { nextRecommendedTest: next } : {}),
+    hypotheses,
+    evidenceCount:
+      typeof record.evidenceCount === "number" && Number.isFinite(record.evidenceCount)
+        ? record.evidenceCount
+        : evidenceIds.length,
+    evidenceIds,
+    stepsCompleted:
+      typeof record.stepsCompleted === "number" && Number.isFinite(record.stepsCompleted)
+        ? record.stepsCompleted
+        : 0,
+    summary: isText(record.summary) ? record.summary : "",
   };
 }
 

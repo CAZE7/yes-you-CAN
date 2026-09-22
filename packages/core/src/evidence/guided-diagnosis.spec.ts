@@ -10,7 +10,11 @@ import type { DtcKnowledgePattern } from "@vdp/definitions";
 import { type EvidenceSet, proven } from "@vdp/diagnostic-ir";
 import { describe, test } from "vitest";
 import type { EvidenceDtc } from "./collect.js";
-import { addMeasurementEvidence, evaluateGuidedDiagnosis } from "./guided-diagnosis.js";
+import {
+  addMeasurementEvidence,
+  advanceGuidedDiagnosis,
+  evaluateGuidedDiagnosis,
+} from "./guided-diagnosis.js";
 
 function mockEvidenceSet(sessionId = "session-1"): EvidenceSet {
   return {
@@ -138,7 +142,16 @@ describe("Guided Diagnosis Engine", () => {
     assert.equal(state.nextRecommendedTest?.hypothesisId, "cat-efficiency");
     assert.match(
       state.nextRecommendedTest?.rationale ?? "",
-      /Measuring engine\.short_term_fuel_trim/,
+      /measuring engine\.short_term_fuel_trim/,
+    );
+    // The loop states what it saw and what it recommends in numbers: the state
+    // carries the evidence ids a step diff is taken over, and the test carries
+    // the uncertainty it removes (ADR 0056).
+    assert.deepEqual(state.evidenceIds, ["dtc:P0420@engine"]);
+    assert.equal(
+      typeof state.nextRecommendedTest?.uncertaintyReduction,
+      "number",
+      "the recommendation names the uncertainty it reduces, not just the signal",
     );
   });
 
@@ -313,6 +326,133 @@ describe("Guided Diagnosis Engine", () => {
     assert.equal(state.leadingHypothesis?.id, "cat-efficiency");
     assert.equal(state.leadingHypothesis?.outcome, "confirmed");
     assert.match(state.summary, /root cause identified as "Catalytic Converter Degradation"/);
+  });
+
+  test("the recommendation is the uncertainty-maximising test, not the leader's first", () => {
+    // Leader: common prior, a check no one else shares (value = 0.45 + 0).
+    // Runner-up plus two followers on the same signal: each 0.3 + 0.1 per
+    // competitor = 0.5 — one measurement that speaks to three hypotheses beats
+    // one that speaks to one, and that is the whole point of the rule (ADR 0056).
+    const solo = (id: string, signal: string, likelihood: DtcKnowledgePattern["likelihood"]) => ({
+      id,
+      name: `Pattern ${id}`,
+      explanation: `Explain ${id}`,
+      likelihood,
+      scope: "package" as const,
+      checks: [
+        {
+          signal,
+          signalName: signal,
+          expect: "decidable by a number",
+          min: 0,
+          max: 100,
+          windowMs: 4000,
+          measurable: true,
+        },
+      ],
+    });
+    const dtcs = [
+      mockDtc([
+        solo("leader-solo", "engine.alpha", "common"),
+        solo("shared-b", "engine.beta", "possible"),
+        solo("shared-c", "engine.beta", "possible"),
+        solo("shared-d", "engine.beta", "possible"),
+      ]),
+    ];
+    const state = evaluateGuidedDiagnosis({ evidence: mockEvidenceSet(), dtcs });
+
+    assert.equal(state.nextRecommendedTest?.hypothesisId, "shared-b");
+    assert.equal(state.nextRecommendedTest?.test.signal, "engine.beta");
+    assert.equal(
+      state.nextRecommendedTest?.uncertaintyReduction,
+      0.5,
+      "0.3 owner + 0.1 per each of the two competitors on the same signal",
+    );
+    assert.deepEqual(state.nextRecommendedTest?.discriminatesAgainst, ["shared-c", "shared-d"]);
+    assert.match(state.nextRecommendedTest?.rationale ?? "", /uncertainty reduction 0\.500/);
+  });
+
+  test("a step names which hypothesis moved where and which evidence changed", () => {
+    const evidence = mockEvidenceSet();
+    const dtcs = [mockDtc([patternCatalyst])];
+    const before = evaluateGuidedDiagnosis({ evidence, dtcs });
+    assert.equal(before.status, "in-progress", "nothing measured: the loop is in progress");
+
+    const now = Date.now();
+    const measured = (signalId: string) =>
+      signalId === "engine.short_term_fuel_trim"
+        ? [
+            { at: new Date(now - 3000).toISOString(), value: 1 },
+            { at: new Date(now - 1000).toISOString(), value: 2 },
+          ]
+        : [];
+    const step = advanceGuidedDiagnosis(before, {
+      evidence,
+      dtcs,
+      samplesOf: measured,
+      stepsCompleted: 1,
+    });
+
+    assert.equal(step.before, before, "the step carries the state it left behind");
+    assert.equal(step.after.status, "resolved", "the measurement confirmed the leading cause");
+    const outcomes = step.changes.filter((change) => change.kind === "outcome");
+    assert.deepEqual(outcomes, [
+      {
+        kind: "outcome",
+        hypothesisId: "cat-efficiency",
+        from: "untested",
+        to: "confirmed",
+      },
+    ]);
+    const confidences = step.changes.filter((change) => change.kind === "confidence");
+    assert.equal(confidences.length, 1);
+    if (confidences[0]?.kind === "confidence") {
+      assert.equal(confidences[0].hypothesisId, "cat-efficiency");
+      assert.equal(confidences[0].from, 0.45, "prior 0.6 minus untested penalty");
+      assert.equal(confidences[0].to, 0.9, "prior + confirmed + conclusive window");
+    }
+    // Same evidence set in and out: the diff must not claim an evidence change.
+    assert.ok(
+      step.changes.every((change) => change.kind !== "evidence"),
+      "unchanged evidence produces no evidence transitions",
+    );
+  });
+
+  test("a step with nothing new says so with an empty diff, not with invented progress", () => {
+    const evidence = mockEvidenceSet();
+    const dtcs = [mockDtc([patternCatalyst])];
+    const before = evaluateGuidedDiagnosis({ evidence, dtcs });
+    const step = advanceGuidedDiagnosis(before, { evidence, dtcs, stepsCompleted: 1 });
+    assert.deepEqual(step.changes, [], "same world in, same world out: no transition is named");
+    assert.equal(step.after.status, before.status);
+  });
+
+  test("evidence items that appear or consolidate show up as evidence transitions", () => {
+    const evidence = mockEvidenceSet();
+    const dtcs = [mockDtc([patternCatalyst])];
+    const before = evaluateGuidedDiagnosis({ evidence, dtcs });
+    const withAnomaly: EvidenceSet = {
+      ...evidence,
+      items: [
+        ...evidence.items,
+        {
+          id: "anomaly:engine.fuel_trim_long_term",
+          kind: "anomaly",
+          subject: "engine.fuel_trim_long_term",
+          statement: "spread beyond the usual for the operating point",
+          at: new Date().toISOString(),
+          evidence: proven({ origin: "ecu-response" }),
+        },
+      ],
+    };
+    const step = advanceGuidedDiagnosis(before, {
+      evidence: withAnomaly,
+      dtcs,
+      stepsCompleted: 1,
+    });
+    assert.deepEqual(step.changes, [
+      { kind: "evidence", itemId: "anomaly:engine.fuel_trim_long_term", change: "added" },
+    ]);
   });
 
   test("reports inconclusive when all checks are completed without confirmation", () => {
