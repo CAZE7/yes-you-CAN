@@ -16,7 +16,7 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -67,12 +67,18 @@ export function runHaskellDriver(runner: Runner, set: string, vectorsPath: strin
   const formal = join(ROOT, "formal");
   const driver = join(formal, "ConformanceDriver.hs");
   if (runner === "ghc") {
-    const binary = join(tmpdir(), `vdp-conformance-driver-${process.pid}`);
+    // Never compile into shared `/tmp`: Vitest runs the coverage carrier and
+    // this release carrier concurrently, and two GHC processes otherwise race
+    // on module objects such as `Json.o.tmp` (first measured in CI run
+    // 35769274998). The output directory is part of compiler isolation, not just
+    // where the final binary happens to live.
+    const outputDir = mkdtempSync(join(tmpdir(), "vdp-conformance-"));
+    const binary = join(outputDir, "driver");
     try {
-      runSync("ghc", ["-v0", "-i" + formal, "-outputdir", tmpdir(), "-o", binary, driver]);
+      runSync("ghc", ["-v0", "-i" + formal, "-outputdir", outputDir, "-o", binary, driver]);
       return runSync(binary, [set, vectorsPath]);
     } finally {
-      rmSync(binary, { force: true });
+      rmSync(outputDir, { recursive: true, force: true });
     }
   }
   return runSync(runner, ["-i" + formal, driver, set, vectorsPath]);

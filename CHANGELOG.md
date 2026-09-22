@@ -105,8 +105,11 @@ zentraler Szenario-Katalog, produktionsreifer Diagnose-Loop sowie Provenance + R
   (`tests/replay/scenario-replay.test.ts`) sind noch offen — die Kette
   „gleicher Input → gleicher Output" wird in einem der nächsten Releases mit dem
   Replay-Test geschlossen.
-- Die erste echte Messung der Haskell-Seite des Differential-Gates findet im ersten
-  CI-Lauf auf einem Runner mit GHC statt (lokal gemessen: `haskell NOT RUN`, ehrlich
-  statt grün behauptet).
+- Lokal ist keine Haskell-Toolchain verfügbar (`haskell NOT RUN`, ehrlich statt grün
+  behauptet). Der erste GitHub-CI-Anlauf belegte `toolchain=present`, fand aber einen
+  Workspace-Race zweier gleichzeitiger GHC-Prozesse (`Json.o.tmp` im gemeinsamen
+  `/tmp`) statt einer Differentialabweichung. Behoben: per `mkdtemp` isoliertes
+  `-outputdir` und genau ein Haskell-Träger im äußeren CI-Lauf; der GitHub-Release
+  wird erst nach einem sauberen Wiederholungslauf veröffentlicht.
 
 [0.1.0]: https://github.com/CAZE7/yes-you-CAN/releases/tag/v0.1.0

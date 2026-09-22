@@ -21,6 +21,10 @@
  *    cut a release that claims conformance. Locally the same discipline cannot
  *    hold (many developers have no GHC), so the test runs only when a
  *    toolchain is present and is an honest skip otherwise.
+ *  - The nested coverage process carries coverage, not a second differential:
+ *    `VDP_COVERAGE_CHILD=1` is a visible skip here, while the outer CI process
+ *    runs the one release comparison. This also keeps two GHC compilers from
+ *    paying for the same proof at once.
  *  - The child is the repository's own `formal:conform` script with
  *    `--compare`, so gate and command cannot drift apart: the assertion on the
  *    script text notices if the script stops pointing at the conformance CLI.
@@ -47,6 +51,12 @@ import { test } from "vitest";
 import { repoRoot } from "./workspace.js";
 
 const isCi = process.env.CI === "true" || process.env.CI === "1";
+/**
+ * The coverage carrier starts a nested Vitest process. The outer test run owns
+ * this release gate; running it again in the coverage child would compile the
+ * same formal program twice and prove nothing twice.
+ */
+const isCoverageChild = process.env.VDP_COVERAGE_CHILD === "1";
 
 function hasToolchain(runner: string): boolean {
   return spawnSync("sh", ["-c", `command -v ${runner}`], { encoding: "utf8" }).status === 0;
@@ -73,20 +83,23 @@ const tail = (value: string, lines = 40): string =>
     .join("\n");
 
 notice(
-  isCi
-    ? `mode=armed (CI=${String(process.env.CI)}, toolchain=${hasHaskell ? "present" : "MISSING"}): ` +
+  isCoverageChild
+    ? "mode=child (VDP_COVERAGE_CHILD is set): carrier off; the outer CI run owns this gate"
+    : isCi
+      ? `mode=armed (CI=${String(process.env.CI)}, toolchain=${hasHaskell ? "present" : "MISSING"}): ` +
         "the differential below decides — a release needs both legs"
-    : hasHaskell
-      ? "mode=local (toolchain present): running the differential in the developer loop"
-      : "mode=skipped: no Haskell toolchain on this machine — the CI run carries the gate",
+      : hasHaskell
+        ? "mode=local (toolchain present): running the differential in the developer loop"
+        : "mode=skipped: no Haskell toolchain on this machine — the CI run carries the gate",
 );
 
 /**
- * CI: always runs — a missing toolchain is the failure mode this test exists
- * to make visible. Locally: runs where a toolchain exists, skips where none
- * does (a visible skip, never an invisible green).
+ * Outer CI: always runs — a missing toolchain is the failure mode this test
+ * exists to make visible. The nested coverage process skips this carrier: its
+ * parent runs the one release comparison. Locally: runs where a toolchain
+ * exists, skips where none does (a visible skip, never an invisible green).
  */
-test.skipIf(!isCi && !hasHaskell)(
+test.skipIf(isCoverageChild || (!isCi && !hasHaskell))(
   "the TypeScript ⇄ Haskell differential is clean for ISO-TP and write-safety (release gate)",
   { timeout: 10 * 60_000, retry: 0 },
   () => {

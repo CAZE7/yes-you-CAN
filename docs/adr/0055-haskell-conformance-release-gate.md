@@ -26,9 +26,11 @@ eine Gewohnheit, und eine Gewohnheit ist kein Gate (ADR 0029 §1).
 
 ## Entscheidung
 
-1. **Das Differential läuft in jedem CI-Lauf.** Neu
+1. **Das Differential läuft in jedem äußeren CI-Lauf genau einmal.** Neu
    `tests/architecture/haskell-conformance-gate.test.ts` (Projekt `architecture`,
-   derselbe Träger-Mechanismus wie `coverage-gate.test.ts`): Das Kind ist das
+   derselbe Träger-Mechanismus wie `coverage-gate.test.ts`): Das Coverage-Kind
+   (`VDP_COVERAGE_CHILD=1`) trägt nur Coverage und lässt diesen Träger aus; sein
+   Elternlauf trägt den einen Release-Vergleich. Das Kind des Release-Trägers ist das
    eigne Skript `npm run formal:conform -- --compare` — Gate und Kommando können
    nicht auseinanderlaufen, eine Abfrage auf den Skripttext bemerkt, wenn das
    Skript nicht mehr auf das CLI zeigt. Exit 0 muss für **beide** Sätze die
@@ -44,12 +46,16 @@ eine Gewohnheit, und eine Gewohnheit ist kein Gate (ADR 0029 §1).
    9.14.1"). Lokal gilt dieselbe Disziplin nur, wo sie tragbar ist: mit Toolchain
    läuft der Vergleich im Entwickler-Lauf, ohne ist er ein **sichtbarer Skip**
    (`skipIf(!isCi && !hasHaskell)`) — nie ein unsichtbares Grün.
-3. **Ein Compile statt zwei Interpretationen.** Die CLI bevorzugt jetzt `ghc`
-   (compile einmal in den tmp-Verzeichnis, je ein Lauf pro Vektorsatz);
-   `runhaskell`/`runghc` bleiben für Interpreter-only-Maschinen. Gemessener
-   Grund: der Interpreter liest den ganzen formale Baum pro Satz von Source
-   neu — auf einem kalten Runner ist das der Kostenanteil des Gates pro Lauf,
-   den ein Release-Gate nicht tragen soll.
+3. **Ein Compile statt zwei Interpretationen — und ein Ausgabeverzeichnis pro
+   Prozess.** Die CLI bevorzugt `ghc` (ein Compile in ein per `mkdtemp` isoliertes
+   tmp-Verzeichnis, je ein Lauf pro Vektorsatz); `runhaskell`/`runghc` bleiben für
+   Interpreter-only-Maschinen. Ein gemeinsames `-outputdir /tmp` ist verboten:
+   der erste echte CI-Lauf (`35769274998`) ließ Coverage- und Release-Träger
+   gleichzeitig kompilieren und GHC verlor beim atomaren Rename von `Json.o.tmp` —
+   das Gate fand einen Compiler-Workspace-Race, keine Konformanzabweichung.
+   Gemessener Grund für den Compile-Pfad: der Interpreter liest den ganzen formale
+   Baum pro Satz von Source neu — auf einem kalten Runner ist das der Kostenanteil
+   des Gates pro Lauf, den ein Release-Gate nicht tragen soll.
 4. **Die Ehrlichkeit bleibt.** Wo der Vergleich nicht lief, steht es
    wortgleich so (`haskell NOT RUN`, Exit 2). Der Träger meldet seinen Modus
    als `::notice`-Annotation (der Job-Log-Kanal, den `coverage-gate.test.ts`
@@ -106,17 +112,20 @@ eine Gewohnheit, und eine Gewohnheit ist kein Gate (ADR 0029 §1).
   `formal/ConformanceDriver.hs` und die CLI; ein zweiter Haskell-Einstieg
   (eigener `runghc`-Aufruf im Test, eigenes Script) wäre eine zweite Definition
   desselben Laufs.
-- **Kein Skip in der CI.** `skipIf` ist an `!isCi` gebunden; ein CI-Skip für
-  das Differential ist der alte Defekt mit neuem Datum.
+- **Kein Skip im äußeren CI-Lauf.** `skipIf` gilt dort nur ohne lokale Toolchain;
+  in CI überspringt ausschließlich das markierte Coverage-Kind den doppelten
+  Träger — sein Elternlauf muss das Differential ausführen. Ein anderer CI-Skip
+  ist der alte Defekt mit neuem Datum.
 
 ## Tests
 
-- `tests/architecture/haskell-conformance-gate.test.ts` (1 Test, drei Modi,
-  alle drei hier gemessen): CI+Toolchain → Kind `--compare`, Zeilen für beide
-  Sätze gematcht; CI ohne Toolchain → **Rot** mit „a release without the
-  differential is not a release" (gemessen in dieser Umgebung: `CI=true`-Lauf
-  fällt mit Exit-2-Bericht); lokal ohne Toolchain → sichtbarer Skip mit Modus-
-  Annotation. Biss des Exit-1-Zweigs durch den bestehenden
+- `tests/architecture/haskell-conformance-gate.test.ts` (1 Test, vier Modi):
+  CI+Toolchain → Kind `--compare`, Zeilen für beide Sätze gematcht; CI ohne
+  Toolchain → **Rot** mit „a release without the differential is not a release"
+  (gemessen in dieser Umgebung: `CI=true`-Lauf fällt mit Exit-2-Bericht); das
+  markierte Coverage-Kind → sichtbarer Skip, weil sein Elternlauf die Messung
+  trägt; lokal ohne Toolchain → sichtbarer Skip mit Modus-Annotation. Biss des
+  Exit-1-Zweigs durch den bestehenden
   `formal-conformance.test.ts`-Mechanismus (Stub-Treiber mit Abweichung) und
   durch das CLI-Verhalten (Vektordatei kaputt → Exit 2).
 - Vorhanden, unverändert: `tests/protocol/formal-conformance.test.ts`
