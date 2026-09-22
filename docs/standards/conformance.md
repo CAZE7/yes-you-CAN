@@ -1,6 +1,6 @@
 # Konformanz-Register — Norm → Implementierung → Beleg → Lücke
 
-> Stand: 2026-09-22 · gemessen am Commit, der diese Datei einführt.
+> Stand: 2026-09-22 · gemessen am Commit, der diese Datei einführt. Letzte Bewegung: ADR 0053.
 >
 > **Leseregel:** Jede Zeile trägt einen **Beleg** (Datei, ggf. Zeile) oder das Wort
 > **fehlt**. Eine Zeile ohne Beleg ist eine Behauptung, und Behauptungen stehen hier
@@ -57,6 +57,15 @@ der Nachweis.
 | **MISRA** | nicht anwendbar | MISRA C/C++ — dieses Repository ist TypeScript. Das Äquivalent ist maschinell getornt: kein `any`, kein `@ts-ignore`, kein leeres `catch`, kein `process.exit` außerhalb des Einstiegs, keine Datei über 800 Zeilen — `tests/architecture/hygiene.test.ts` | — | — |
 | **AUTOSAR** | nicht anwendbar | Kein AUTOSAR-Stack; die Plattform ist ein Diagnose-Werkzeug, keine Steuergeräte-Software | — | — |
 
+## Betrieb und Werkzeuge
+
+| Was | Status | Beleg | Lücke / Begründung |
+|---|---|---|---|
+| **Goldene Sitzungen** | **implementiert** (seit ADR 0052) | `tools/simulators/src/virtual-vehicle.ts` (`clock`), `tools/golden-sessions/src/record.ts` (50-ms-Phasen), `virtual-vehicle-clock.spec.ts` (3, Biss gemessen) — zwei Läufe auf demselben Baum: **0 Wertzeilen Drift** (vorher 44), 3472 Zeilen nur Zeitstempel | Zeitachse des Traces bleibt Wanduhr (1782× `timestamp`, 1690× `t`) — kein Defekt, ein Trace hält fest, *wann* etwas geschah |
+| **Abhängigkeiten** | **gepflegt** | `package.json` / `package-lock.json`, `npm audit` **0** Schwachstellen, `npm outdated` nach Update: **1** Paket (`@biomejs/biome` 1.9.4 → 2.5.14) — bewusst offen, Major-Migration eigener PR | Biome 2.x verlangt Config-Migration (`$schema`, Regel-Namen, `overrides`); in diesem PR wäre es ein Nebenschauplatz mit Hauptwirkung (AGENTS 0.C.1) |
+| **Hardware-Tests** | **Grenze dokumentiert** | `tests/hardware/vcan.test.ts`, `socketcan-conformance.test.ts` — skippen deterministisch ohne `vcan0` (ADR 0016/0017) | Kein `vcan` in dieser Umgebung — `npm run test:hardware` meldet Skip, kein Fail; Grenze, keine Lücke |
+| **Formale Werkzeuge** | **nicht verifiziert** | `command -v cargo ghc stack rustc` → keines vorhanden | `haskell NOT RUN` in `npm run formal:conform` ist ehrlich, nicht grün geredet (ADR 0045) |
+
 ## Was dieses Register *nicht* ist
 
 Kein Zertifikat, keine Selbstauskunft gegenüber einem Auditor, keine Aussage über
@@ -65,4 +74,7 @@ Agent hier vorfindet — mit der Zusage, dass jede Zeile einen Anker hat oder al
 Lücke dasteht.
 
 **Zugehörig:** [ADR 0050](../adr/0050-standards-conformance-register.md),
+[ADR 0051](../adr/0051-workbench-api-knows-its-caller.md),
+[ADR 0052](../adr/0052-the-signal-model-clock-is-a-parameter.md),
+[ADR 0053](0053-deps-hardware-and-tooling-boundary.md),
 [`README.md`](README.md) (Einstieg), AGENTS 34.21 (Messung vor Behauptung).

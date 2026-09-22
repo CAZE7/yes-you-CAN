@@ -70,3 +70,4 @@ AI-Context-Topics) steht in [`architecture/architecture.yaml`](../../architectur
 | [0050](0050-standards-conformance-register.md) | Ein Konformanz-Register mit Belegen statt einer Aussage über Industriestandard | accepted |
 | [0051](0051-workbench-api-knows-its-caller.md) | Die Workbench-API kennt ihren Aufrufer | accepted |
 | [0052](0052-the-signal-model-clock-is-a-parameter.md) | Die Uhr des Signalmodells ist ein Parameter, nicht die Geschwindigkeit der Maschine | accepted |
+| [0053](0053-deps-hardware-and-tooling-boundary.md) | Abhängigkeiten, Hardware-Grenze und Werkzeug-Ausnahme als Teil von Industriestandard | accepted |

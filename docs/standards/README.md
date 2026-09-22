@@ -6,10 +6,10 @@ Code erfüllen lassen.
 
 | Datei | Was sie ist |
 |---|---|
-| [`conformance.md`](conformance.md) | **Das Register.** Jede Norm → Status → Beleg (Datei/Zeile) → Lücke → wer → Aufwand |
+| [`conformance.md`](conformance.md) | **Das Register.** Jede Norm → Status → Beleg (Datei/Zeile) → Lücke → wer → Aufwand. Seit ADR 0052/0053 auch Betrieb: goldene Sitzungen 0 Wert-Drift, Deps gepflegt, Hardware-Grenze dokumentiert |
 | [`iso-26262-safety-concept.md`](iso-26262-safety-concept.md) | Sicherheitskonzept als Gerüst: Item-Definition, Sicherheitsziele im Entwurf, was maschinell schon gepinnt ist |
 | [`hara-template.md`](hara-template.md) | HARA-Arbeitsblatt mit fünf Gefährdungen — S/E/C/ASIL **leer**, weil sie eine benannte Person setzen muss |
-| [`iso-21434-cybersecurity.md`](iso-21434-cybersecurity.md) | TARA-Gerüst mit der gemessenen Angriffsfläche der Workbench |
+| [`iso-21434-cybersecurity.md`](iso-21434-cybersecurity.md) | TARA-Gerüst mit der gemessenen Angriffsfläche der Workbench — seit ADR 0051 mit Token-Tor, HSTS, Zustand in der Warnung |
 
 ## Die Kurzantwort
 
