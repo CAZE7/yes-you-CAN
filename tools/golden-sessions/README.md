@@ -50,6 +50,16 @@ run:    Fixture → ReplayBus → echter Core → IR → Vergleich mit Erwartung
   Fixture.
 - **Vergleich im IR-Vokabular** — nicht im Roh-Byte-Raum.
 - **`node:fs` nur im CLI** (Regel in `architecture.yaml`).
+- **Eine Aufnahme ist nicht byte-stabil — und das ist bekannt, kein Befund gegen den
+  Code** (ADR 0049, Befund 8). Nachgemessen am 2026-09-22 auf unverändertem Baum:
+  `npm run golden:record` schreibt **1804+/1804−**; rechnet man die Zeitstempel
+  heraus, bleiben **44 Wertzeilen** Drift (`abs.wheel_speed` 40,76 → 40,78,
+  `engine.rpm` 831,3 → 832, `maf` 4,23 → 4,24, Kühlmittel-Rohwert `0C FD` → `0D 00`).
+  Ursache: die lebenden Signale laufen mit der Wanduhr weiter, während der Recorder
+  seine eigene Uhr schreibt — der Vergleich im Replay läuft im IR-Vokabular und bleibt
+  grün. **Folge für die Praxis:** nach einem `golden:record` gehört `git diff
+  tests/fixtures/golden-sessions/` gelesen, nicht committet; ein Fix hieße, die
+  Aufnahme einzufrieren, und das ist ADR 0036' Thema, nicht dieses.
 
 ## Tests
 
