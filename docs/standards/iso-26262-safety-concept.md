@@ -34,7 +34,7 @@ und darf nicht von einem Entwickler allein gesetzt werden.
 | SG-1 | Eine Schreiboperation erreicht ein Steuergerät nur nach expliziter Freigabe mit gültigem Permit | offen | HARA-01 |
 | SG-2 | Der Fehlerspeicher wird nicht geleert, während die Vorbedingungen dafür nicht geprüft sind | offen | HARA-02 |
 | SG-3 | Ein Diagnoseergebnis nennt den Geltungsbereich — über welche Steuergeräte die Aussage gemacht wurde | offen | HARA-03, **seit ADR 0049 im Code umgesetzt** |
-| SG-4 | Die Workbench ist nicht ohne Authentifizierung aus einem Netz erreichbar | offen | HARA-05, ISO 21434 |
+| SG-4 | Die Workbench ist nicht ohne Authentifizierung aus einem Netz erreichbar | offen | HARA-05, ISO 21434 — **seit ADR 0051 im Code umgesetzt** (Token-Tor), Bewertung steht aus |
 
 **Beleg für SG-3:** `DtcScanReport.unread` (`packages/core/src/diagnostics/dtc-access.ts`),
 Pflichtfeld `DtcsReadPayload.unreadCount`, Anzeige `#dtc-unread`. Das ist der Teil
@@ -78,9 +78,9 @@ den Test nennen, der sie belegt. Das ist Pflege, kein Entwurf — die Substanz i
    die ASIL einstufen darf. Ohne das ist alles darunter Ratespiel.
 2. **Rückverfolgbarkeit pflegen**: Anforderungs-ID → Test → Vektor. Eine Datei,
    eine Regel im CI, dass jede ID einen Test nennt.
-3. **SG-4 umsetzen** — Authentifizierung der Workbench (siehe
-   [`iso-21434-cybersecurity.md`](iso-21434-cybersecurity.md)); das ist der einzige
-   Punkt dieser Liste, der sich in einem PR erledigen lässt.
+3. ~~**SG-4 umsetzen**~~ — **erledigt** (ADR 0051): Token-Tor vor allen
+   `/api/`-Routen, gemessen 401 ohne und 200 mit Token. Offen bleibt die Bewertung
+   in der HARA.
 4. **Annahme aus §1 erzwingen** oder streichen: entweder erkennt die Plattform
    „Fahrzeug fährt" und verweigert Schreiboperationen, oder die Annahme verschwindet
    aus dem Konzept. Eine Annahme, die niemand prüft, ist ein Haftungstext.

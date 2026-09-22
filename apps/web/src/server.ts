@@ -23,6 +23,7 @@ import {
   messageOf,
 } from "@vdp/shared";
 import { SIMULATOR_ADAPTER_ID, createWebAdapterCatalog } from "./adapters.js";
+import { AUTH_REFUSAL, type Authenticator, createAuthenticator } from "./auth.js";
 import { DemoBackend } from "./backend.js";
 import type { VehicleStateView } from "./backend.js";
 import { HttpError, parseBurstCount, parseCanId, parseDropRate } from "./route-input.js";
@@ -48,6 +49,12 @@ export interface ServerOptions {
   selection?: AdapterSelection;
   /** Process logger; omit to log to stdout at the level `VDP_LOG_LEVEL` names. */
   logger?: Logger;
+  /**
+   * API token. When set, every `/api/` route needs `Authorization: Bearer` or the
+   * cookie the `?token=` exchange sets; when absent the API stays open, as it was
+   * before (see `auth.ts`). From `--token=` or `VDP_API_TOKEN`.
+   */
+  token?: string;
 }
 
 /** The levels `VDP_LOG_LEVEL` may name, derived from the one order the logger has. */
@@ -81,6 +88,7 @@ const MAX_BODY_BYTES = 1_000_000;
 export class WebServer {
   readonly backend: DemoBackend;
   private readonly log: Logger;
+  private readonly auth: Authenticator;
   private server?: ReturnType<typeof createServer>;
   private readonly streams = new Set<ServerResponse>();
   private unsubscribe?: () => void;
@@ -91,6 +99,7 @@ export class WebServer {
     // No sink here on purpose: see {@link createServerLogger}. The process entry
     // hands its own logger in; a WebServer built by an embedder stays silent.
     const root = this.options.logger ?? createLogger("web", { level: "INFO" });
+    this.auth = createAuthenticator(this.options.token ?? process.env.VDP_API_TOKEN);
     this.log = root.child("server");
     this.backend = new DemoBackend({
       logger: root,
@@ -109,9 +118,15 @@ export class WebServer {
     // must not appear on the network by accident. VDP_HOST/--host opts out.
     const host = this.options.host ?? process.env.VDP_HOST ?? "127.0.0.1";
     if (host === "0.0.0.0" || host === "::") {
+      // The warning names the actual state instead of a fixed sentence: with a token
+      // set, "has no authentication" would be false, and a warning that lies is
+      // worse than none (ADR 0049).
       this.log.warn(
-        "listening on all interfaces — the workbench has no authentication, restrict network access",
-        { host },
+        this.auth.enabled
+          ? "listening on all interfaces — every /api request needs the API token"
+          : "listening on all interfaces with NO API token — whoever reaches this port can " +
+              "read the vehicle and trigger a write; set --token=… or VDP_API_TOKEN",
+        { host, authenticated: this.auth.enabled },
       );
     }
     this.server = createServer((request, response) => {
@@ -157,6 +172,19 @@ export class WebServer {
     const url = new URL(request.url ?? "/", "http://localhost");
     const path = url.pathname;
 
+    // The one-time exchange: the operator opens the workbench with the token in the
+    // URL and gets a cookie back. Putting the token in the served HTML instead would
+    // not be a token — whoever can reach the server could read it back.
+    const queryToken = url.searchParams.get("token");
+    if (queryToken !== null) {
+      const cookie = this.auth.cookieFor(queryToken);
+      if (cookie === undefined) throw new HttpError(401, "the token in the URL does not match");
+      response.writeHead(302, { ...SECURITY_HEADERS, "set-cookie": cookie, location: path });
+      response.end();
+      return;
+    }
+    if (this.auth.enabled && !this.auth.isAuthorized(request))
+      return sendJson(response, 401, AUTH_REFUSAL);
     if (path === "/api/stream") {
       if (request.method !== "GET") throw new HttpError(405, "the event stream is GET only");
       return this.streamEvents(request, response);
@@ -586,6 +614,7 @@ function parseArgs(argv: readonly string[]): ServerOptions {
     else if (arg.startsWith("--interval="))
       options.liveIntervalMs = Number.parseInt(arg.slice(11), 10);
     else if (arg.startsWith("--sessions=")) options.sessionDir = arg.slice(11);
+    else if (arg.startsWith("--token=")) options.token = arg.slice(8);
   }
   const parsed = parseAdapterArgv(argv, SIMULATOR_ADAPTER_ID);
   if (parsed.errors.length > 0) throw new HttpError(400, parsed.errors.join("; "));

@@ -52,6 +52,10 @@ export const SECURITY_HEADERS: Record<string, string> = {
   "x-frame-options": "DENY",
   "referrer-policy": "no-referrer",
   "cross-origin-resource-policy": "same-origin",
+  // Only bites over HTTPS — browsers ignore it on an insecure origin, which is why
+  // it can ship before TLS does: the day `--cert`/`--key` arrive, the pinning is
+  // already in place instead of being remembered afterwards (CY-05).
+  "strict-transport-security": "max-age=31536000; includeSubDomains",
 };
 
 // Compiled files live at apps/web/dist/src/, so the public directory is two levels

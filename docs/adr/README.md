@@ -68,3 +68,4 @@ AI-Context-Topics) steht in [`architecture/architecture.yaml`](../../architectur
 | [0048](0048-scenario-files-are-the-catalog.md) | Szenario-Dateien sind der Katalog, und der Seed läuft bis zum Lauf durch | accepted |
 | [0049](0049-a-scan-says-which-modules-it-could-not-read.md) | Ein Scan sagt, welche Steuergeräte er nicht lesen konnte | accepted |
 | [0050](0050-standards-conformance-register.md) | Ein Konformanz-Register mit Belegen statt einer Aussage über Industriestandard | accepted |
+| [0051](0051-workbench-api-knows-its-caller.md) | Die Workbench-API kennt ihren Aufrufer | accepted |

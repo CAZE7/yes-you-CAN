@@ -168,6 +168,26 @@ Mit echtem Adapter:
 node apps/web/dist/src/server.js --port=8080 --sessions=./sessions-local
 ```
 
+### Zugriff schützen (ADR 0051)
+
+Ohne Token ist jede der 37 `/api/`-Routen offen — am Prüfstand ohne Netz ist das
+der Normalfall, im Netz nicht. Mit `--token=` (oder `VDP_API_TOKEN`) braucht jeder
+API-Aufruf `Authorization: Bearer <token>` oder den Cookie aus einem einmaligen
+Tausch:
+
+```bash
+node apps/web/dist/src/server.js --host=0.0.0.0 --token=bench-s3cret
+# Browser einmalig: http://<host>:8080/?token=bench-s3cret  → 302 + httpOnly-Cookie
+curl -H 'authorization: Bearer bench-s3cret' http://<host>:8080/api/state
+```
+
+Ohne Token antwortet jede Route mit `401` und einem Satz, der sagt, wie man sich
+anmeldet — nicht mit Daten. Die Startwarnung nennt den Zustand: `authenticated:
+true` oder, ohne Token, `listening on all interfaces with NO API token`. Der
+Vergleich läuft in konstanter Zeit, der Cookie ist `HttpOnly; SameSite=Strict` und
+endet mit dem Browser. Offen bleiben TLS und ein Rate-Limit
+(`docs/standards/iso-21434-cybersecurity.md`, CY-04/CY-05).
+
 ## Entwicklung
 
 ```bash

@@ -11,7 +11,7 @@
 
 | Grenze | Was sie trennt | Stand |
 |---|---|---|
-| Browser ↔ Workbench-Server | Bedienperson ↔ HTTP-API | **keine Authentifizierung** — gemessen: `grep -c "authoriz\|bearer\|token" apps/web/src/server.ts` → **0** |
+| Browser ↔ Workbench-Server | Bedienperson ↔ HTTP-API | **Token-Tor seit ADR 0051**: `Authorization: Bearer` oder `httpOnly`-Cookie aus dem `?token=`-Tausch; ohne konfiguriertes Token offen (Prüfstand) und in der Startwarnung benannt |
 | Workbench ↔ Fahrzeug-Bus | Werkzeug ↔ Steuergeräte | Adapter-Seam (`linkFactory`); CAN/DoIP ohne eigene Authentifizierung (fahrzeugseitig: Security Access 0x27, `protocols/uds/src/security.ts`) |
 | Datei ↔ Sitzung | Export/Import von Sitzungen | `rawTraceManifest` mit SHA-256 über den kanonischen Trace (ADR 0047) — Manipulation fällt auf |
 
@@ -23,7 +23,8 @@
 | Body-Limit | **1 000 000 Byte**, beim Einlesen geprüft, `413` darüber | `server.ts:79`, `:520-521` |
 | Pfad-Eindämmung | Segment-Vergleich statt Präfix-Test, `..` und NUL abgewiesen | `apps/web/src/paths.ts`, `static-assets.ts` |
 | Rate-Limiting / Request-Timeout | **fehlt** — `grep -c "rate.?limit\|request.setTimeout" apps/web/src/server.ts` → **0** | — |
-| TLS | **fehlt** — kein `createSecureServer`, kein `strict-transport-security` | — |
+| TLS | **fehlt** — kein `createSecureServer`; `strict-transport-security` ist gesetzt und wirkt ab dem Tag, an dem TLS kommt | `static-assets.ts:58` |
+| Authentifizierung | **Token-Tor** vor jedem `/api/`-Pfad inkl. SSE; konstanter Vergleich über SHA-256-Digest | `apps/web/src/auth.ts`, `server.ts` `handle()` |
 | Bindung | `--host=0.0.0.0` möglich; der Server warnt beim Start | `server.ts` (`WARN listening on all interfaces`) |
 | Offene SSE-Verbindungen | werden in einem `Set` geführt und beim Stopp geschlossen | `server.ts` (`streams`) |
 
@@ -43,25 +44,24 @@
 
 | ID | Gefährdung | Angriffsvektor | Gegenmaßnahme heute | Bewertung |
 |---|---|---|---|---|
-| CY-01 | Unautorisierter Lesezugriff auf Fahrzeugdaten (VIN, DIDs, DTCs) | Netz, gleicher Broadcast-Domain | **keine** — nur Warnung beim Start | **offen** |
-| CY-02 | Unautorisierte Schreiboperation (Codierung, Adaptation, DTC löschen) | HTTP-POST an `/api/coding/write`, `/api/dtc/clear` | `WritePort` mit Permit und Stufenfolge, `SafetyManager`-Policy, 44 formale Vektoren | **offen** — schützt vor falschem Zeitpunkt, nicht vor falschem Aufrufer |
+| CY-01 | Unautorisierter Lesezugriff auf Fahrzeugdaten (VIN, DIDs, DTCs) | Netz, gleicher Broadcast-Domain | Token-Tor (ADR 0051): 401 mit Satz statt Daten; Zustand in der Startwarnung | **offen** — Umsetzung vorhanden, Bewertung ausstehend |
+| CY-02 | Unautorisierte Schreiboperation (Codierung, Adaptation, DTC löschen) | HTTP-POST an `/api/coding/write`, `/api/dtc/clear` | Token-Tor (ADR 0051, gemessen: `POST /api/dtc/clear` ohne Token → 401) **und** `WritePort` mit Permit und Stufenfolge, `SafetyManager`-Policy, 44 formale Vektoren | **offen** — beide Hälften vorhanden, Bewertung ausstehend |
 | CY-03 | Manipulation einer gespeicherten Sitzung | Datei | `rawTraceManifest` (SHA-256) macht sie sichtbar | **offen** |
 | CY-04 | Denial of Service über offene SSE-Streams oder Dauer-Polling | Netz | Streams werden geführt und geschlossen; **kein** Rate-Limit | **offen** |
-| CY-05 | Abhören der Übertragung | Netz | **keine TLS** | **offen** |
+| CY-05 | Abhören der Übertragung | Netz | **keine TLS**; `strict-transport-security` ist gesetzt (`static-assets.ts:58`) | **offen** |
 | CY-06 | Pfad-Durchgriff auf das Dateisystem | HTTP-GET `/../…` | Segment-Vergleich, NUL- und Absolut-Pfad-Abweisung, getestet in `static-assets.spec.ts` | **offen** — Umsetzung vorhanden, Bewertung ausstehend |
 
 ## 5. Maßnahmen in Reihenfolge ihres Nutzens
 
-1. **Token-Authentifizierung** für alle `/api/`-Routen (CY-01, CY-02). Ein Bearer-Token
-   aus der Umgebung, verglichen in konstanter Zeit; `401` mit Satz, nicht mit Stille.
-   Der Browser bekommt das Token über einen Cookie oder ein Start-Argument — die
-   CSP bleibt unverändert.
-2. **`strict-transport-security`** in die Header-Tabelle (`static-assets.ts`), damit
-   ein späterer TLS-Betrieb nicht nachgetragen werden muss.
+1. ~~**Token-Authentifizierung** für alle `/api/`-Routen (CY-01, CY-02)~~ —
+   **erledigt** (ADR 0051): Bearer oder `httpOnly`-Cookie aus dem `?token=`-Tausch,
+   konstanter Vergleich, `401` mit Satz. 16 Tests, `auth.ts` 100/100/100/100.
+2. ~~**`strict-transport-security`** in die Header-Tabelle~~ — **erledigt**
+   (`static-assets.ts:58`).
 3. **Rate-Limit** je Verbindung für die SSE-Registrierung und die Polling-Routen
-   (CY-04).
-4. **TLS** als Option (`--cert`/`--key`) — Betrieb, kein Code-Kern.
-5. **CSMS-Prozess** (Schwachstellenannahme, Reaktionszeit, Meldewege) — Organisation,
-   nicht Repository.
+   (CY-04) — **offen**.
+4. **TLS** als Option (`--cert`/`--key`) — **offen**; Betrieb, kein Code-Kern.
+5. **CSMS-Prozess** (Schwachstellenannahme, Reaktionszeit, Meldewege) —
+   **offen**, Organisation und nicht Repository.
 
-**Was davon in diesem Repository erledigbar ist:** 1–4. Punkt 5 nicht.
+**Was davon in diesem Repository erledigbar war:** 1–4. Punkt 5 nicht.
