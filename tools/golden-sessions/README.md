@@ -50,16 +50,24 @@ run:    Fixture → ReplayBus → echter Core → IR → Vergleich mit Erwartung
   Fixture.
 - **Vergleich im IR-Vokabular** — nicht im Roh-Byte-Raum.
 - **`node:fs` nur im CLI** (Regel in `architecture.yaml`).
-- **Eine Aufnahme ist nicht byte-stabil — und das ist bekannt, kein Befund gegen den
-  Code** (ADR 0049, Befund 8). Nachgemessen am 2026-09-22 auf unverändertem Baum:
-  `npm run golden:record` schreibt **1804+/1804−**; rechnet man die Zeitstempel
-  heraus, bleiben **44 Wertzeilen** Drift (`abs.wheel_speed` 40,76 → 40,78,
-  `engine.rpm` 831,3 → 832, `maf` 4,23 → 4,24, Kühlmittel-Rohwert `0C FD` → `0D 00`).
-  Ursache: die lebenden Signale laufen mit der Wanduhr weiter, während der Recorder
-  seine eigene Uhr schreibt — der Vergleich im Replay läuft im IR-Vokabular und bleibt
-  grün. **Folge für die Praxis:** nach einem `golden:record` gehört `git diff
-  tests/fixtures/golden-sessions/` gelesen, nicht committet; ein Fix hieße, die
-  Aufnahme einzufrieren, und das ist ADR 0036' Thema, nicht dieses.
+- **Die Werte einer Aufnahme sind reproduzierbar, die Zeitachse ist es nicht**
+  (ADR 0052). Nachgemessen am 2026-09-22: zwei `npm run golden:record`-Läufe auf
+  demselben Baum unterscheiden sich in **0 Wertzeilen** — vorher in **44**
+  (`abs.wheel_speed` 40,76 → 40,78, `engine.rpm` 831,3 → 832, `maf` 4,23 → 4,24,
+  Kühlmittel-Rohwert `0C FD` → `0D 00`). Ursache war eine Zeile: `signalValue`
+  leitete jedes sich entwickelnde Signal aus `Date.now() - startedAt` ab. Die Uhr
+  des Signalmodells ist jetzt injizierbar (`VirtualVehicleOptions.clock`), und der
+  Recorder gibt eine eigene vor, die er in 50-ms-Schritten je Phase weiterschaltet —
+  gestaffelt statt eingefroren, damit die Fixtures weiter ein fahrendes Auto zeigen
+  und ein `equal` ein `equal` bleibt.
+- **Was übrig bleibt, ist die Zeitachse des Traces** — 1782 `"timestamp"`- und 1690
+  `"t"`-Zeilen. Sie stammen aus `createFrame`'s Default
+  (`transport/can/src/frame.ts:61`) über die ISO-TP-Verbindung. Der Versuch, auch
+  dort die Uhr zu injizieren, ist **gemessen gescheitert**: die ISO-TP-Timer brauchen
+  eine echte Uhr, die Aufnahme lief 359 s und endete mit EXIT 1 statt 3,6 s und 0.
+  Ein Trace hält fest, *wann* etwas geschah — die Wanduhr ist dort kein Defekt.
+  Folge für die Praxis: nach einem `golden:record` gehört `git diff` gelesen; ein
+  Diff aus lauter Zeitstempeln ist keiner gegen den Code, ein Diff mit Werten schon.
 
 ## Tests
 
