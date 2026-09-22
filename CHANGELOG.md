@@ -97,6 +97,9 @@ zentraler Szenario-Katalog, produktionsreifer Diagnose-Loop sowie Provenance + R
 - `npm run test:coverage`: **EXIT 0** — global
   **94,10 / 86,40 / 95,94 / 95,48** (Statements / Branches / Functions / Lines),
   alle Böden unverändert.
+- GitHub CI [35769698573](https://github.com/CAZE7/yes-you-CAN/actions/runs/35769698573):
+  **grün auf Node 22 und 24**; echte TypeScript ⇄ Haskell-Differentiale
+  **ISO-TP 28/28** und **Write-Safety 44/44** sauber (16,9 s auf Node 22).
 
 ### Known gaps (ehrlich, in diesem Release sichtbar)
 
@@ -109,7 +112,8 @@ zentraler Szenario-Katalog, produktionsreifer Diagnose-Loop sowie Provenance + R
   behauptet). Der erste GitHub-CI-Anlauf belegte `toolchain=present`, fand aber einen
   Workspace-Race zweier gleichzeitiger GHC-Prozesse (`Json.o.tmp` im gemeinsamen
   `/tmp`) statt einer Differentialabweichung. Behoben: per `mkdtemp` isoliertes
-  `-outputdir` und genau ein Haskell-Träger im äußeren CI-Lauf; der GitHub-Release
-  wird erst nach einem sauberen Wiederholungslauf veröffentlicht.
+  `-outputdir` und genau ein Haskell-Träger im äußeren CI-Lauf; der saubere
+  Wiederholungslauf ist unter „Verification" belegt, erst danach wurde der
+  GitHub-Release veröffentlicht.
 
 [0.1.0]: https://github.com/CAZE7/yes-you-CAN/releases/tag/v0.1.0
