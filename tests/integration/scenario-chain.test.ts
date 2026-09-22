@@ -22,7 +22,7 @@
  */
 
 import assert from "node:assert/strict";
-import { DiagnosticEngine, DtcScanner, type EnrichedDtc } from "@vdp/core";
+import { DiagnosticEngine, DtcScanner, type EnrichedDtc, type ScannedEcu } from "@vdp/core";
 import { type DefinitionPackage, highFidelityPackage } from "@vdp/definitions";
 import { itemsOf } from "@vdp/diagnostic-ir";
 import { encodeDtcToBytes } from "@vdp/protocols-uds";
@@ -86,7 +86,7 @@ function ecuKey(ecu: { definitionEcuId?: string; name: string }): string {
   return ecu.definitionEcuId ?? ecu.name;
 }
 
-const codesOf = (scan: Awaited<ReturnType<DiagnosticEngine["scanDtcs"]>>): string[] =>
+const codesOf = (scan: readonly ScannedEcu[]): string[] =>
   scan.flatMap((entry) => entry.dtcs.map((dtc) => `${ecuKey(entry.ecu)}:${dtc.code}`));
 
 /**
@@ -96,7 +96,7 @@ const codesOf = (scan: Awaited<ReturnType<DiagnosticEngine["scanDtcs"]>>): strin
  * a scenario from outside is that the outside has nothing else to go on.
  */
 async function verdictOf(
-  scan: Awaited<ReturnType<DiagnosticEngine["scanDtcs"]>>,
+  scan: readonly ScannedEcu[],
   expectation: ScenarioExpectation,
 ): Promise<string | undefined> {
   const subject = `${expectation.ecu}:${expectation.code}`;
@@ -144,7 +144,7 @@ for (const file of scenarioFiles()) {
         seed: file.determinism.seed,
         onMoment: async (moment) => {
           if (moment.due.length === 0) return;
-          const scan = await engine.scanDtcs(0xff);
+          const scan = (await engine.scanDtcs(0xff)).scanned;
           for (const expectation of moment.due) {
             const line = await verdictOf(scan, expectation);
             if (line !== undefined) wireFailures.push(`@${moment.atMs} ${line}`);
@@ -166,7 +166,7 @@ for (const file of scenarioFiles()) {
       );
 
       // And the same statements again, read from outside at the end of the run.
-      const scan = await engine.scanDtcs(0xff);
+      const scan = (await engine.scanDtcs(0xff)).scanned;
       for (const expectation of scenario.expectations) {
         if (expectation.atMs !== undefined && expectation.atMs !== scenario.durationMs) continue;
         const line = await verdictOf(scan, expectation);
@@ -181,7 +181,7 @@ for (const file of scenarioFiles()) {
 test("the fault is on the wire *while* the cause is on the car, not only after it", async () => {
   const { vehicle, engine, teardown } = await connected();
   try {
-    const before = await engine.scanDtcs(0xff);
+    const before = (await engine.scanDtcs(0xff)).scanned;
     assert.deepEqual(codesOf(before), [], "nothing is stored before anything happened");
 
     vehicle.setIgnition("off");
@@ -189,7 +189,7 @@ test("the fault is on the wire *while* the cause is on the car, not only after i
     vehicle.setElectricalLoad(25);
     vehicle.advance(600);
 
-    const during = await engine.scanDtcs(0xff);
+    const during = (await engine.scanDtcs(0xff)).scanned;
     const bcmCodes = during
       .filter((entry) => ecuKey(entry.ecu) === "bcm")
       .flatMap((entry) => entry.dtcs);
@@ -221,7 +221,7 @@ test("the fault is on the wire *while* the cause is on the car, not only after i
     vehicle.advance(2_500);
     vehicle.setIgnition("on");
     vehicle.advance(1_500);
-    const after = await engine.scanDtcs(0xff);
+    const after = (await engine.scanDtcs(0xff)).scanned;
     const healed = after
       .filter((entry) => ecuKey(entry.ecu) === "bcm")
       .flatMap((entry) => entry.dtcs)
@@ -244,7 +244,7 @@ test("a latched fault becomes an evidence item that cites its own proof", async 
     vehicle.setBatteryVoltage(10.8);
     vehicle.advance(1_000);
 
-    const scan = await engine.scanDtcs(0xff);
+    const scan = (await engine.scanDtcs(0xff)).scanned;
     const records = scan.flatMap((entry) => entry.dtcs);
     assert.ok(records.length > 0, "the scan found the fault the cause produced");
 
@@ -315,7 +315,7 @@ test("a module that stops answering is a gap in the evidence, not a missing row"
     vehicle.cutPower("abs");
     vehicle.advance(900);
 
-    const scan = await engine.scanDtcs(0xff);
+    const scan = (await engine.scanDtcs(0xff)).scanned;
     assert.equal(
       scan.some((entry) => ecuKey(entry.ecu) === "abs"),
       false,
@@ -345,7 +345,7 @@ test("a module that stops answering is a gap in the evidence, not a missing row"
 
     vehicle.restorePower("abs");
     vehicle.advance(400);
-    const restored = await engine.scanDtcs(0xff);
+    const restored = (await engine.scanDtcs(0xff)).scanned;
     assert.ok(
       restored.some((entry) => ecuKey(entry.ecu) === "abs"),
       "and it is readable again, without anyone re-attaching it",
@@ -392,7 +392,7 @@ test("a value outside the declared range is a measurement, an anomaly and an ite
     );
 
     // The same cause, one step further: the BCM's own window monitor stores the code.
-    const scan = await engine.scanDtcs(0xff);
+    const scan = (await engine.scanDtcs(0xff)).scanned;
     assert.ok(
       scan
         .filter((entry) => ecuKey(entry.ecu) === "bcm")
@@ -431,7 +431,7 @@ test("a negative control: the same vehicle, the same time, no causes, no codes",
     // 40 s of a car sitting with the key on is long enough for every monitor in this
     // model to have run — and with no cause there is nothing for them to report.
     vehicle.advance(40_000);
-    const scan = await engine.scanDtcs(0xff);
+    const scan = (await engine.scanDtcs(0xff)).scanned;
     assert.deepEqual(
       codesOf(scan),
       [],
@@ -460,7 +460,7 @@ test("when the supply fails for the whole car, the platform says so instead of g
       `the premise has to hold: ${vehicle.model.state.supplyVoltage} V at the pins`,
     );
 
-    const scan = await engine.scanDtcs(0xff);
+    const scan = (await engine.scanDtcs(0xff)).scanned;
     assert.deepEqual(codesOf(scan), [], "nothing can be read off a car with no power");
     const evidence = new EvidenceService(engine).snapshot();
     const gaps = itemsOf(evidence.evidence, "gap");

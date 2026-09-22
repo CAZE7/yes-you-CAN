@@ -25,7 +25,7 @@
  */
 
 import type { DefinitionPackage, SignalDefinition } from "@vdp/definitions";
-import { type OemDtcInterpretation, OemProtocolRegistry } from "@vdp/protocols-oem";
+import { OemProtocolRegistry } from "@vdp/protocols-oem";
 import { type Logger, createId, createLogger, toHex } from "@vdp/shared";
 import type { FreezeFrame } from "../dtc/freeze-frame.js";
 import type { DtcScanner, DtcVehicleContext, EnrichedDtc } from "../dtc/scanner.js";
@@ -36,6 +36,7 @@ import { SafetyManager } from "../safety/safety-manager.js";
 import type { EcuSession, VehicleSession } from "../session/session.js";
 import type { VehicleIdentity } from "../vehicle/identity.js";
 import { deriveTxId } from "./discovery.js";
+import type { DtcScanReport } from "./dtc-access.js";
 import type { EcuTarget } from "./ecu-links.js";
 import type { EcuHandle } from "./ecu-registry.js";
 import { DiagnosticContext } from "./engine-context.js";
@@ -47,7 +48,7 @@ import type { ConnectDiscoveryOptions, ConnectResult } from "./session-opener.js
 export type { OpenedEcuLink, EcuLinkFactory, EcuTarget } from "./ecu-links.js";
 export type { EcuHandle } from "./ecu-registry.js";
 export type { ConnectResult, ConnectDiscoveryOptions } from "./session-opener.js";
-export type { ScannedEcu } from "./dtc-access.js";
+export type { DtcScanReport, ScannedEcu, UnreadEcu } from "./dtc-access.js";
 export type { DiagnosticEngineOptions } from "./engine-options.js";
 export type { DiscoveredEcu } from "./discovery.js";
 
@@ -149,11 +150,7 @@ export class DiagnosticEngine {
   // path nobody can hand to a viewer, a report or an AI without dread.
 
   /** Read DTCs from every reachable ECU (AGENTS 20 "Scan all ECUs"). */
-  async scanDtcs(
-    statusMask = 0xff,
-  ): Promise<
-    Array<{ ecu: EcuSession; dtcs: EnrichedDtc[]; interpretations: OemDtcInterpretation[] }>
-  > {
+  async scanDtcs(statusMask = 0xff): Promise<DtcScanReport> {
     const session = this.requireSession();
     return this.context.dtc.scanAll(session, this.activePackage?.oem, statusMask);
   }

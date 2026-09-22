@@ -43,11 +43,11 @@ import {
 import { type Logger, createLogger } from "@vdp/shared";
 import type { CanBus } from "@vdp/transport-can";
 import { PackageDefinitionProvider } from "./definition-service.js";
+import { DtcService } from "./dtc-service.js";
 import { EventAuditRecorder } from "./event-recorder.js";
 import { EvidenceService } from "./evidence-service.js";
 import { registerRuntimeHandlers } from "./handlers.js";
 import {
-  DtcService,
   EcuService,
   MeasurementService,
   SafetyService,

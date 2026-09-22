@@ -1,21 +1,5 @@
 #!/usr/bin/env node
-/**
- * Diagnostic workbench server (AGENTS 16).
- *
- * Plain Node HTTP + Server-Sent Events and a vanilla ESM front end — no build
- * step, no framework, no WebSocket server. Live values are pushed as SSE events;
- * everything else is a normal request/response pair.
- *
- * Security baseline (ADR 0009): binds localhost by default — pass --host or set
- * VDP_HOST to expose it on the network. Every response carries a strict header
- * set, request bodies are size-limited, and the event stream is GET-only.
- */
-
-import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
 import { type IncomingMessage, type ServerResponse, createServer } from "node:http";
-import { createRequire } from "node:module";
-import { dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   type AdapterSelection,
@@ -27,6 +11,9 @@ import {
 import { buildReport, renderHtml, renderPdf } from "@vdp/reports";
 import {
   AdapterUnsupportedError,
+  ConsoleSink,
+  LOG_LEVEL_ORDER,
+  type LogLevel,
   type Logger,
   SafetyViolationError,
   StorageError,
@@ -38,8 +25,16 @@ import {
 import { SIMULATOR_ADAPTER_ID, createWebAdapterCatalog } from "./adapters.js";
 import { DemoBackend } from "./backend.js";
 import type { VehicleStateView } from "./backend.js";
-import { resolveContained } from "./paths.js";
 import { HttpError, parseBurstCount, parseCanId, parseDropRate } from "./route-input.js";
+import {
+  MIME,
+  SECURITY_HEADERS,
+  sendBytes,
+  sendJson,
+  sendTextFile,
+  serveLibraryFile,
+  serveStaticFile,
+} from "./static-assets.js";
 
 export interface ServerOptions {
   port?: number;
@@ -51,72 +46,37 @@ export interface ServerOptions {
   sessionDir?: string;
   /** Adapter selected at startup; defaults to the simulator (AGENTS 29). */
   selection?: AdapterSelection;
+  /** Process logger; omit to log to stdout at the level `VDP_LOG_LEVEL` names. */
+  logger?: Logger;
 }
 
-const MIME: Record<string, string> = {
-  ".html": "text/html; charset=utf-8",
-  ".js": "text/javascript; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".json": "application/json; charset=utf-8",
-  ".svg": "image/svg+xml",
-  ".csv": "text/csv; charset=utf-8",
-  ".pdf": "application/pdf",
-  ".ico": "image/x-icon",
-};
+/** The levels `VDP_LOG_LEVEL` may name, derived from the one order the logger has. */
+const LOG_LEVELS = Object.keys(LOG_LEVEL_ORDER) as LogLevel[];
+
+/**
+ * The workbench process's logger: structured lines on stdout.
+ *
+ * `createLogger` collects records in memory and writes to the sinks it is handed —
+ * with no sink, `log.warn` is a thought nobody has. Measured before this existed: a
+ * session in which five modules stopped answering produced no output at all, while
+ * the answers kept claiming an empty fault memory (ADR 0049).
+ *
+ * Attached at the process entry and not in {@link WebServer}'s constructor, because
+ * stdout is the *process's* interface — the same argument the CLIs make. A class an
+ * embedder or a test constructs stays quiet unless it is handed a logger that says
+ * otherwise. The level comes from `VDP_LOG_LEVEL` (`TRACE`…`ERROR`); anything else,
+ * or nothing, is `INFO`.
+ */
+export function createServerLogger(
+  envLevel: string | undefined = process.env.VDP_LOG_LEVEL,
+): Logger {
+  const wanted = envLevel?.toUpperCase();
+  const level = LOG_LEVELS.find((candidate) => candidate === wanted) ?? "INFO";
+  return createLogger("web", { level }, [new ConsoleSink()]);
+}
 
 /** API payloads are small JSON documents; anything larger is a bug or an attack. */
 const MAX_BODY_BYTES = 1_000_000;
-
-/**
- * Sent with every response — static assets, JSON, SSE and downloads alike.
- * The CSP can be strict because the front end is fully static: external
- * CSS/JS only, no inline handlers, same-origin fetch and EventSource.
- */
-const SECURITY_HEADERS: Record<string, string> = {
-  "content-security-policy":
-    "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'",
-  "x-content-type-options": "nosniff",
-  "x-frame-options": "DENY",
-  "referrer-policy": "no-referrer",
-  "cross-origin-resource-policy": "same-origin",
-};
-
-// Compiled file lives at apps/web/dist/src/server.js, so the public directory is
-// two levels up. When the module runs from TypeScript sources (vitest), the
-// layout differs — resolve whichever candidate actually contains index.html.
-// Overridable for packaged installs.
-function resolvePublicDir(): string {
-  if (process.env.VDP_PUBLIC_DIR) return process.env.VDP_PUBLIC_DIR;
-  const candidates = [
-    fileURLToPath(new URL("../../public/", import.meta.url)), // apps/web/dist/src/server.js
-    fileURLToPath(new URL("../public/", import.meta.url)), // apps/web/src/server.ts
-  ];
-  return (
-    candidates.find((candidate) => existsSync(join(candidate, "index.html"))) ??
-    (candidates[0] as string)
-  );
-}
-
-const PUBLIC_DIR = resolvePublicDir();
-
-/**
- * Directory served as `/lib/` — the compiled, unit-tested chart core
- * (`@vdp/charts`). The browser imports the very module the tests run against,
- * so zoom, cursor and statistics rules cannot drift apart between backend and
- * front end (AGENTS 16, 34.8; ADR 0002 keeps it dependency-free).
- *
- * Resolved through the package name so the same code works in the workspace and
- * in an installed dependency.
- */
-function resolveChartLibDir(): string {
-  try {
-    return dirname(createRequire(import.meta.url).resolve("@vdp/charts"));
-  } catch {
-    return fileURLToPath(new URL("../../packages/charts/dist/src/", import.meta.url));
-  }
-}
-
-const LIB_DIR = process.env.VDP_LIB_DIR ? process.env.VDP_LIB_DIR : resolveChartLibDir();
 
 export class WebServer {
   readonly backend: DemoBackend;
@@ -128,8 +88,12 @@ export class WebServer {
   constructor(private readonly options: ServerOptions = {}) {
     // Built here rather than as a field initializer: parameter properties are
     // assigned after field initializers run, so `this.options` is not ready yet.
-    this.log = createLogger("web", { level: "INFO" }).child("server");
+    // No sink here on purpose: see {@link createServerLogger}. The process entry
+    // hands its own logger in; a WebServer built by an embedder stays silent.
+    const root = this.options.logger ?? createLogger("web", { level: "INFO" });
+    this.log = root.child("server");
     this.backend = new DemoBackend({
+      logger: root,
       ...(this.options.liveIntervalMs === undefined
         ? {}
         : { liveIntervalMs: this.options.liveIntervalMs }),
@@ -156,7 +120,7 @@ export class WebServer {
         if (status >= 500) {
           this.log.error("request failed", { url: request.url, error: messageOf(error) });
         }
-        if (!response.headersSent) this.sendJson(response, status, { error: messageOf(error) });
+        if (!response.headersSent) sendJson(response, status, { error: messageOf(error) });
         else response.end();
       });
     });
@@ -199,8 +163,8 @@ export class WebServer {
     }
     if (path.startsWith("/api/")) return this.api(request, response, path);
     if (request.method !== "GET") throw new HttpError(405, "method not allowed");
-    if (path.startsWith("/lib/")) return this.libraryFile(response, path.slice("/lib/".length));
-    return this.staticFile(response, path);
+    if (path.startsWith("/lib/")) return serveLibraryFile(response, path.slice("/lib/".length));
+    return serveStaticFile(response, path);
   }
 
   /** SSE endpoint: pushes decoded samples, raw trace entries and DTC updates. */
@@ -231,20 +195,20 @@ export class WebServer {
     const method = request.method ?? "GET";
 
     if (path === "/api/state" && method === "GET")
-      return this.sendJson(response, 200, this.backend.state());
+      return sendJson(response, 200, this.backend.state());
     // Complete recording for the graph view: the live stream only carries the
     // newest samples, the graphs also have to show what happened before the
     // browser was opened (AGENTS 16 "Zeitraum auswählen").
     if (path === "/api/history" && method === "GET")
-      return this.sendJson(response, 200, this.backend.history());
+      return sendJson(response, 200, this.backend.history());
 
     if (path === "/api/start" && method === "POST")
-      return this.sendJson(response, 200, await this.backend.start());
+      return sendJson(response, 200, await this.backend.start());
 
     // Adapter management (AGENTS 4, 29). Listing probes the host but never opens
     // a bus, so it is safe while a vehicle is connected.
     if (path === "/api/adapters" && method === "GET") {
-      return this.sendJson(response, 200, {
+      return sendJson(response, 200, {
         selected: this.backend.adapterSelection,
         mode: this.backend.currentMode,
         adapters: await this.backend.listAdapters(),
@@ -254,24 +218,28 @@ export class WebServer {
       const body = await this.readBody<Record<string, unknown>>(request);
       const selection = selectionFromPayload(body);
       const result = await this.backend.selectAdapter(selection);
-      return this.sendJson(response, 200, {
+      return sendJson(response, 200, {
         adapter: result.description,
         reconnectRequired: result.reconnectRequired,
         connected: this.backend.state().connected,
       });
     }
     if (path === "/api/identify" && method === "POST")
-      return this.sendJson(response, 200, { ecus: await this.backend.identify() });
+      return sendJson(response, 200, { ecus: await this.backend.identify() });
 
     // Which vehicle is connected (AGENTS 11). A query, never a write: the answer
     // is a ranked list of hypotheses with the evidence behind each of them, and
     // "nothing matches the installed definitions" is a valid answer.
     if (path === "/api/vehicle/resolve" && method === "POST")
-      return this.sendJson(response, 200, { resolution: await this.backend.resolveVehicle() });
+      return sendJson(response, 200, { resolution: await this.backend.resolveVehicle() });
     if (path === "/api/vehicle/resolve" && method !== "POST")
       throw new HttpError(405, "resolving a vehicle is POST only");
+    // Both halves of the scan (ADR 0049): `dtcs` is what was read, `unread` which
+    // modules did not answer. A 200 with an empty `dtcs` and a non-empty `unread`
+    // is the honest shape of "I could not ask anybody" — not an error, and not
+    // "the car has no faults".
     if (path === "/api/dtc/scan" && method === "POST")
-      return this.sendJson(response, 200, { dtcs: await this.backend.scanDtcs() });
+      return sendJson(response, 200, await this.backend.scanDtcs());
 
     // Fault details and the only write path so far (AGENTS 20, 25, 26).
     if (path === "/api/dtc/snapshot" && method === "POST") {
@@ -280,7 +248,7 @@ export class WebServer {
       );
       const rxId = parseCanId(body.rxId);
       if (!body.code) throw new HttpError(400, "a DTC code is required");
-      return this.sendJson(response, 200, {
+      return sendJson(response, 200, {
         snapshot: await this.backend.readFreezeFrame(rxId, body.code, body.recordNumber ?? 0xff),
       });
     }
@@ -289,7 +257,7 @@ export class WebServer {
         request,
       );
       const rxId = parseCanId(body.rxId);
-      return this.sendJson(response, 200, {
+      return sendJson(response, 200, {
         precheck: await this.backend.precheckDtcClear(rxId, parseVehicleState(body.vehicleState)),
       });
     }
@@ -304,13 +272,13 @@ export class WebServer {
         confirmed: body.confirmed === true,
         vehicleState: parseVehicleState(body.vehicleState),
       });
-      return this.sendJson(response, 200, { result });
+      return sendJson(response, 200, { result });
     }
 
     // Guided Diagnosis (Task 6)
     if (path === "/api/guided-diagnosis" && (method === "GET" || method === "POST")) {
       const state = await this.backend.guidedDiagnosis();
-      return this.sendJson(response, 200, { state });
+      return sendJson(response, 200, { state });
     }
     if (path === "/api/guided-diagnosis/step" && method === "POST") {
       const body = await this.readBody<{ signalId?: string; value?: number }>(request);
@@ -319,7 +287,7 @@ export class WebServer {
           ? { signalId: body.signalId, value: body.value }
           : undefined,
       );
-      return this.sendJson(response, 200, { state });
+      return sendJson(response, 200, { state });
     }
 
     // ECU Coding & Adaptation (Task 8)
@@ -339,7 +307,7 @@ export class WebServer {
         data,
         parseVehicleState(body.vehicleState),
       );
-      return this.sendJson(response, 200, { precheck });
+      return sendJson(response, 200, { precheck });
     }
     if (path === "/api/coding/write" && method === "POST") {
       const body = await this.readBody<{
@@ -359,7 +327,7 @@ export class WebServer {
         body.confirmed === true,
         parseVehicleState(body.vehicleState),
       );
-      return this.sendJson(response, 200, { result });
+      return sendJson(response, 200, { result });
     }
     if (path === "/api/adaptation/precheck" && method === "POST") {
       const body = await this.readBody<{
@@ -377,7 +345,7 @@ export class WebServer {
         value,
         parseVehicleState(body.vehicleState),
       );
-      return this.sendJson(response, 200, { precheck });
+      return sendJson(response, 200, { precheck });
     }
     if (path === "/api/adaptation/write" && method === "POST") {
       const body = await this.readBody<{
@@ -397,7 +365,7 @@ export class WebServer {
         body.confirmed === true,
         parseVehicleState(body.vehicleState),
       );
-      return this.sendJson(response, 200, { result });
+      return sendJson(response, 200, { result });
     }
 
     // Signal Analysis & Anomaly Detection (Task 5)
@@ -405,7 +373,7 @@ export class WebServer {
       const url = new URL(request.url ?? "/", "http://localhost");
       const signalId = url.searchParams.get("signalId") ?? "engine.speed";
       const analysis = this.backend.analyzeSignal(signalId);
-      return this.sendJson(response, 200, { analysis });
+      return sendJson(response, 200, { analysis });
     }
 
     // Chaos Lab Controls (Task 4)
@@ -429,77 +397,77 @@ export class WebServer {
         ...(body.dropRate === undefined ? {} : { dropRate: parseDropRate(body.dropRate) }),
         ...(corruptSequenceCanId === undefined ? {} : { corruptSequenceCanId }),
       });
-      return this.sendJson(response, 200, { status: this.backend.chaosStatus() });
+      return sendJson(response, 200, { status: this.backend.chaosStatus() });
     }
     if (path === "/api/chaos/reset" && method === "POST") {
       this.backend.resetChaos();
-      return this.sendJson(response, 200, { status: this.backend.chaosStatus() });
+      return sendJson(response, 200, { status: this.backend.chaosStatus() });
     }
     if (path === "/api/chaos/status" && method === "GET") {
-      return this.sendJson(response, 200, { status: this.backend.chaosStatus() });
+      return sendJson(response, 200, { status: this.backend.chaosStatus() });
     }
 
     // Scenario engine (AGENTS 32): the catalog, and one run on the virtual vehicle.
     if (path === "/api/simulator/scenarios" && method === "GET") {
       // The catalog view *is* the response body: `scenarios`, `options`, `note` — the
       // projection runs in `backend.ts`, so the route stays a route (ADR 0014).
-      return this.sendJson(response, 200, this.backend.scenarios());
+      return sendJson(response, 200, this.backend.scenarios());
     }
     if (path === "/api/simulator/scenario" && method === "POST") {
       const body = await this.readBody<{ id?: string }>(request);
       const id = typeof body.id === "string" ? body.id : "";
       if (id.trim().length === 0) {
-        return this.sendJson(response, 400, { error: "a scenario run needs an id" });
+        return sendJson(response, 400, { error: "a scenario run needs an id" });
       }
       const result = await this.backend.runScenario(id);
-      if (!result.ok) return this.sendJson(response, 409, { error: result.error });
-      return this.sendJson(response, 200, { run: result.run, panel: result.panel });
+      if (!result.ok) return sendJson(response, 409, { error: result.error });
+      return sendJson(response, 200, { run: result.run, panel: result.panel });
     }
 
     if (path === "/api/live/start" && method === "POST") {
       const body = await this.readBody<{ signalIds?: string[] }>(request);
       await this.backend.startLive(body.signalIds);
-      return this.sendJson(response, 200, { live: true });
+      return sendJson(response, 200, { live: true });
     }
     if (path === "/api/live/stop" && method === "POST") {
       this.backend.stopLive();
-      return this.sendJson(response, 200, { live: false });
+      return sendJson(response, 200, { live: false });
     }
     if (path === "/api/marker" && method === "POST") {
       const body = await this.readBody<{ label?: string }>(request);
       this.backend.addMarker(body.label ?? "marker");
-      return this.sendJson(response, 200, { ok: true });
+      return sendJson(response, 200, { ok: true });
     }
     if (path === "/api/analyze" && method === "POST")
-      return this.sendJson(response, 200, await this.backend.analyze());
+      return sendJson(response, 200, await this.backend.analyze());
 
     // Session persistence (AGENTS 10, 17, 29)
     if (path === "/api/session/save" && method === "POST")
-      return this.sendJson(response, 200, await this.backend.saveSession());
+      return sendJson(response, 200, await this.backend.saveSession());
     if (path === "/api/sessions" && method === "GET")
-      return this.sendJson(response, 200, { sessions: await this.backend.listSessions() });
+      return sendJson(response, 200, { sessions: await this.backend.listSessions() });
     if (path.startsWith("/api/session/") && path.endsWith("/package") && method === "GET") {
       const id = path.slice("/api/session/".length, -"/package".length);
       const bytes = await this.backend.sessionPackage(id);
-      return this.sendBytes(response, `session-${id}.zip`, "application/zip", bytes);
+      return sendBytes(response, `session-${id}.zip`, "application/zip", bytes);
     }
 
     if (path === "/api/export/measurements.csv")
-      return this.sendFile(
+      return sendTextFile(
         response,
         "measurements.csv",
         "text/csv; charset=utf-8",
         this.backend.exportCsv(),
       );
     if (path === "/api/export/trace.csv")
-      return this.sendFile(
+      return sendTextFile(
         response,
         "raw-trace.csv",
         "text/csv; charset=utf-8",
         this.backend.exportTraceCsv(),
       );
     if (path === "/api/export/session.json")
-      return this.sendFile(
+      return sendTextFile(
         response,
         "session.json",
         "application/json; charset=utf-8",
@@ -525,9 +493,9 @@ export class WebServer {
       });
       if (path.endsWith(".pdf")) {
         const bytes = renderPdf(document);
-        return this.sendBytes(response, "diagnostic-report.pdf", "application/pdf", bytes);
+        return sendBytes(response, "diagnostic-report.pdf", "application/pdf", bytes);
       }
-      return this.sendFile(
+      return sendTextFile(
         response,
         "diagnostic-report.html",
         MIME[".html"] ?? "text/html",
@@ -535,96 +503,15 @@ export class WebServer {
       );
     }
 
-    this.sendJson(response, 404, { error: `no route ${method} ${path}` });
+    sendJson(response, 404, { error: `no route ${method} ${path}` });
   }
 
   /**
-   * Serves the compiled chart core as `/lib/<file>` (AGENTS 16).
+   * Reads and parses a JSON request body, with a size ceiling.
    *
-   * Same rules as the public directory — same-origin, GET only, no traversal —
-   * because this is just another static asset that happens to be compiled from
-   * a workspace package instead of living in `public/`.
+   * The ceiling is checked while the body streams in, not after: a body that is
+   * never going to be acceptable must not be buffered first.
    */
-  private async libraryFile(response: ServerResponse, relative: string): Promise<void> {
-    if (relative.includes("..")) {
-      this.sendJson(response, 403, { error: "forbidden" });
-      return;
-    }
-    const resolved = resolveContained(LIB_DIR, relative);
-    if (resolved === null) {
-      this.sendJson(response, 403, { error: "forbidden" });
-      return;
-    }
-    try {
-      const content = await readFile(resolved);
-      response.writeHead(200, {
-        ...SECURITY_HEADERS,
-        "content-type": MIME[extname(resolved)] ?? "text/javascript; charset=utf-8",
-        "cache-control": "no-cache",
-      });
-      response.end(content);
-    } catch {
-      this.sendJson(response, 404, { error: `not found: /lib/${relative}` });
-    }
-  }
-
-  private async staticFile(response: ServerResponse, path: string): Promise<void> {
-    const relative = path === "/" ? "index.html" : path.replace(/^\/+/, "");
-    // Reject anything that would escape the public directory. The containment
-    // test compares path segments — a plain prefix test would also accept a
-    // sibling whose name merely starts with the directory name (SECURITY).
-    const resolved = resolveContained(PUBLIC_DIR, relative);
-    if (resolved === null) {
-      this.sendJson(response, 403, { error: "forbidden" });
-      return;
-    }
-    try {
-      const content = await readFile(resolved);
-      response.writeHead(200, {
-        ...SECURITY_HEADERS,
-        "content-type": MIME[extname(resolved)] ?? "application/octet-stream",
-        "cache-control": "no-cache",
-      });
-      response.end(content);
-    } catch {
-      this.sendJson(response, 404, { error: `not found: ${path}` });
-    }
-  }
-
-  private sendJson(response: ServerResponse, status: number, payload: unknown): void {
-    const body = JSON.stringify(payload);
-    response.writeHead(status, {
-      ...SECURITY_HEADERS,
-      "content-type": MIME[".json"] ?? "application/json",
-      "cache-control": "no-cache",
-    });
-    response.end(body);
-  }
-
-  private sendFile(
-    response: ServerResponse,
-    filename: string,
-    contentType: string,
-    content: string,
-  ): void {
-    this.sendBytes(response, filename, contentType, new TextEncoder().encode(content));
-  }
-
-  private sendBytes(
-    response: ServerResponse,
-    filename: string,
-    contentType: string,
-    bytes: Uint8Array,
-  ): void {
-    response.writeHead(200, {
-      ...SECURITY_HEADERS,
-      "content-type": contentType,
-      "content-length": String(bytes.length),
-      "content-disposition": `attachment; filename="${filename}"`,
-    });
-    response.end(bytes);
-  }
-
   private async readBody<T>(request: IncomingMessage): Promise<T> {
     const chunks: Buffer[] = [];
     let total = 0;
@@ -724,7 +611,7 @@ const invokedDirectly =
   process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.argv[1];
 if (invokedDirectly) {
   const argv = process.argv.slice(2);
-  const log = createLogger("web", { level: "INFO" });
+  const log = createServerLogger();
   const catalog = createWebAdapterCatalog();
 
   if (argv.includes("--list-adapters")) {
@@ -757,7 +644,7 @@ if (invokedDirectly) {
   }
 
   // Sessions land in a local, gitignored directory unless told otherwise.
-  const server = new WebServer({ sessionDir: "sessions-local", ...options });
+  const server = new WebServer({ sessionDir: "sessions-local", logger: log, ...options });
   const { url } = await server.listen();
   const selection = server.backend.adapterSelection;
   process.stdout.write(`yes-you-CAN workbench listening on ${url}\n`);

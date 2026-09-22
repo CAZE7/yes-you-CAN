@@ -235,7 +235,7 @@ export async function runGoldenSession(
     await engine.connect(options.connect ?? GOLDEN_CONNECT_OPTIONS);
     const identity = await engine.detectVehicleIdentity();
     const signals = await engine.snapshotSignals();
-    const scanned = await engine.scanDtcs();
+    const { scanned } = await engine.scanDtcs();
 
     const at = session.provenance.recordedAt;
     const version = session.provenance.definitions.version;

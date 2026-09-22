@@ -33,8 +33,8 @@ export { PLATFORM_VERSION } from "./version.js";
 
 export { PackageDefinitionProvider } from "./definition-service.js";
 
+export { DtcService } from "./dtc-service.js";
 export {
-  DtcService,
   EcuService,
   MeasurementService,
   SafetyService,

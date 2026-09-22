@@ -94,7 +94,14 @@ export const resolveVehicle = () => request("/api/vehicle/resolve", post({}));
 /**
  * Read the fault memory of every reachable ECU.
  *
- * @returns {Promise<{ dtcs: import("../src/views.js").DtcView[] }>}
+ * Both halves of the scan (ADR 0049): `dtcs` is what was read, `unread` which modules
+ * did not answer. An empty `dtcs` next to a non-empty `unread` means "nobody answered",
+ * not "the car has no faults".
+ *
+ * @returns {Promise<{
+ *   dtcs: import("../src/views.js").DtcView[],
+ *   unread: import("../src/views.js").UnreadEcuView[],
+ * }>}
  */
 export const scanDtcs = () => request("/api/dtc/scan", post({}));
 

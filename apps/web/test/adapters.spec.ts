@@ -217,7 +217,7 @@ test("hardware mode runs the full diagnostic path over an injected bus", async (
     );
 
     vehicle.setDtc("engine", "P0420", 0x2f);
-    const dtcs = await backend.scanDtcs();
+    const { dtcs } = await backend.scanDtcs();
     assert.ok(
       dtcs.some((dtc) => dtc.code === "P0420"),
       "DTCs are read from the ECU over the injected bus",
@@ -271,7 +271,7 @@ test("a saved session can be replayed without a vehicle", async () => {
     );
     assert.equal(state.vin, "1HGCM82633A004352", "the recorded VIN response must be replayed");
 
-    const dtcs = await replay.scanDtcs();
+    const { dtcs } = await replay.scanDtcs();
     assert.ok(dtcs.length > 0, "the recorded DTC responses must be replayed as well");
   } finally {
     await replay.stop();

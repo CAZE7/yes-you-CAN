@@ -11,7 +11,7 @@
  */
 
 import assert from "node:assert/strict";
-import { DiagnosticEngine, DtcScanner, type EnrichedDtc } from "@vdp/core";
+import { DiagnosticEngine, DtcScanner, type EnrichedDtc, type ScannedEcu } from "@vdp/core";
 import { type DefinitionPackage, highFidelityPackage } from "@vdp/definitions";
 import { describeEvidence, isProven } from "@vdp/diagnostic-ir";
 import { type Logger, createLogger } from "@vdp/shared";
@@ -25,8 +25,8 @@ function ecuKey(ecu: { definitionEcuId?: string; name: string }): string {
   return ecu.definitionEcuId ?? ecu.name;
 }
 
-const codesOf = (scan: Awaited<ReturnType<DiagnosticEngine["scanDtcs"]>>): string[] =>
-  scan.flatMap((entry) => entry.dtcs.map((dtc) => `${ecuKey(entry.ecu)}:${dtc.code}`));
+const codesOf = (scanned: readonly ScannedEcu[]): string[] =>
+  scanned.flatMap((entry) => entry.dtcs.map((dtc) => `${ecuKey(entry.ecu)}:${dtc.code}`));
 
 let vehicle: HighFidelityVehicle;
 let engine: DiagnosticEngine;
@@ -52,8 +52,12 @@ afterAll(async () => {
 });
 
 test("1. ohne Ursache scannt man nichts — der leere Scan ist der Befund", async () => {
-  const scan = await engine.scanDtcs(0xff);
-  assert.deepEqual(codesOf(scan), []);
+  const { scanned, unread } = await engine.scanDtcs(0xff);
+  assert.deepEqual(codesOf(scanned), []);
+  // Die leere Liste ist nur darum ein Befund, weil jedes Modul geantwortet hat
+  // (ADR 0049): ohne die zweite Hälfte wäre sie nicht von einem toten Bus zu
+  // unterscheiden.
+  assert.deepEqual(unread, []);
 });
 
 test("2. Ursache anlegen → der Monitor latcht → 0x19 meldet B1001 (aktiv)", async () => {
@@ -62,20 +66,24 @@ test("2. Ursache anlegen → der Monitor latcht → 0x19 meldet B1001 (aktiv)", 
   vehicle.setElectricalLoad(25);
   vehicle.advance(600); // Modellzeit, nicht Wanduhr (ADR 0040)
 
-  const scan = await engine.scanDtcs(0xff);
-  const bcmCodes = scan
+  // Ein Scan hat zwei Hälften (ADR 0049): die gelesenen Codes und die Module, die
+  // nicht geantwortet haben. Beides zusammen ist die Aussage — nur die erste Hälfte
+  // zu lesen hieße, eine leere Liste für ein fehlerfreies Auto zu halten.
+  const { scanned, unread } = await engine.scanDtcs(0xff);
+  assert.deepEqual(unread, [], "every module answered, so the list below is complete");
+  const bcmCodes = scanned
     .filter((entry) => ecuKey(entry.ecu) === "bcm")
     .flatMap((entry) => entry.dtcs);
   const underVoltage = bcmCodes.find((dtc) => dtc.code === "B1001");
-  assert.ok(underVoltage, `read ${codesOf(scan)}`);
+  assert.ok(underVoltage, `read ${codesOf(scanned)}`);
   assert.equal(underVoltage.statusBits.testFailed, true, "active: the byte says so");
   // Das Variantenwissen reist mit dem Code (ADR 0024):
   assert.match(underVoltage.description ?? "", /voltage/i);
 });
 
 test("3. IR-Form: DtcState trägt je Hälfte eigene Evidenz (ADR 0037)", async () => {
-  const scan = await engine.scanDtcs(0xff);
-  const records = scan.flatMap((entry) => entry.dtcs);
+  const { scanned } = await engine.scanDtcs(0xff);
+  const records = scanned.flatMap((entry) => entry.dtcs);
   assert.ok(records.length > 0, "the scan found the fault the cause produced");
 
   // `observe` ist der Core-Pfad Scan → IR (DtcScan: DtcState + Varianten-Claim):
@@ -107,8 +115,8 @@ test("4. Heilung ist auch eine Ursache — der Code bleibt im Speicher", async (
   vehicle.setIgnition("on");
   vehicle.advance(1_500);
 
-  const scan = await engine.scanDtcs(0xff);
-  const healed = scan
+  const { scanned } = await engine.scanDtcs(0xff);
+  const healed = scanned
     .filter((entry) => ecuKey(entry.ecu) === "bcm")
     .flatMap((entry) => entry.dtcs)
     .find((dtc) => dtc.code === "B1001");

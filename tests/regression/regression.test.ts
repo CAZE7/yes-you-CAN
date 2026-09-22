@@ -519,7 +519,7 @@ test("REGRESSION: service probing during connect wiped part of the fault memory"
   });
   try {
     await engine.connect({ windowMs: 60, probeDelayMs: 0 });
-    const scanned = await engine.scanDtcs();
+    const scanned = (await engine.scanDtcs()).scanned;
     const codes = scanned.flatMap((entry) => entry.dtcs.map((dtc) => `${dtc.code}:${dtc.status}`));
     assert.ok(
       codes.includes("P0171:8"),

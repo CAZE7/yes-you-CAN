@@ -65,10 +65,10 @@ describe("event bus port", () => {
     const unsubscribe = bus.subscribe("dtcs-read", (payload) =>
       seen.push(String(payload.dtcCount)),
     );
-    bus.publish("dtcs-read", { sessionId: "s", ecuCount: 1, dtcCount: 3 });
+    bus.publish("dtcs-read", { sessionId: "s", ecuCount: 1, dtcCount: 3, unreadCount: 0 });
     assert.deepEqual(seen, ["3"]);
     unsubscribe();
-    bus.publish("dtcs-read", { sessionId: "s", ecuCount: 1, dtcCount: 4 });
+    bus.publish("dtcs-read", { sessionId: "s", ecuCount: 1, dtcCount: 4, unreadCount: 0 });
     assert.deepEqual(seen, ["3"], "no delivery after unsubscribe");
   });
 
@@ -79,7 +79,7 @@ describe("event bus port", () => {
 
   test("recording bus captures events and filters by type", () => {
     const bus = new RecordingEventBus();
-    bus.publish("dtcs-read", { sessionId: "s", ecuCount: 1, dtcCount: 2 });
+    bus.publish("dtcs-read", { sessionId: "s", ecuCount: 1, dtcCount: 2, unreadCount: 0 });
     bus.publish("vehicle-connected", { sessionId: "s", ecuCount: 1 });
     assert.equal(bus.events.length, 2);
     assert.equal(bus.ofType("dtcs-read").length, 1);
@@ -99,10 +99,10 @@ describe("event bus port", () => {
     const seen: number[] = [];
     bus.subscribe("dtcs-read", () => seen.push(1));
     const second = bus.subscribe("dtcs-read", () => seen.push(2));
-    bus.publish("dtcs-read", { sessionId: "s", ecuCount: 1, dtcCount: 0 });
+    bus.publish("dtcs-read", { sessionId: "s", ecuCount: 1, dtcCount: 0, unreadCount: 0 });
     assert.deepEqual(seen.sort(), [1, 2]);
     second();
-    bus.publish("dtcs-read", { sessionId: "s", ecuCount: 1, dtcCount: 0 });
+    bus.publish("dtcs-read", { sessionId: "s", ecuCount: 1, dtcCount: 0, unreadCount: 0 });
     assert.equal(seen.length, 3, "unsubscribed listener stops receiving");
   });
 });

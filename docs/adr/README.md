@@ -66,3 +66,4 @@ AI-Context-Topics) steht in [`architecture/architecture.yaml`](../../architectur
 | [0046](0046-scenario-files-impact-and-ai-input.md) | Szenariodateien, Next-Test in der Analyse und Impact aus einer Quelle | accepted |
 | [0047](0047-integrity-port.md) | Der Raw-Trace-Digest kommt durch einen Port: Core sagt, *was* gehasht wird, Storage liefert *wie* | accepted |
 | [0048](0048-scenario-files-are-the-catalog.md) | Szenario-Dateien sind der Katalog, und der Seed läuft bis zum Lauf durch | accepted |
+| [0049](0049-a-scan-says-which-modules-it-could-not-read.md) | Ein Scan sagt, welche Steuergeräte er nicht lesen konnte | accepted |

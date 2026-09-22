@@ -17,6 +17,7 @@ import type {
   Marker,
   MeasurementSample,
   SignalStatistics,
+  UnreadEcu,
   VehicleDetermination,
   VehicleIdentity,
   VehicleSession,
@@ -35,6 +36,7 @@ import type {
   SessionSummary,
   SignalInfo,
   SignalStatisticsInfo,
+  UnreadEcuInfo,
   VehicleSummary,
   WriteStageInfo,
 } from "@vdp/domain";
@@ -178,6 +180,21 @@ export function toDtcInfo(dtc: EnrichedDtc): DtcInfo {
       : {}),
     ...(dtc.knowledge !== undefined ? { knowledge: toDtcKnowledge(dtc.knowledge) } : {}),
     ...(dtc.evidence !== undefined ? { evidence: dtc.evidence } : {}),
+  };
+}
+
+/**
+ * A module the last scan could not read, in the domain's words (ADR 0049).
+ *
+ * The shape is a copy, not a rename: the core reports the ECU it failed on, and
+ * the domain contract is what a client may hold on to after the session is gone.
+ */
+export function toUnreadEcuInfo(unread: UnreadEcu): UnreadEcuInfo {
+  return {
+    ecuId: unread.ecuId,
+    ecuName: unread.ecuName,
+    rxId: unread.rxId,
+    reason: unread.reason,
   };
 }
 

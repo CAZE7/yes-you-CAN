@@ -149,7 +149,7 @@ export async function recordGoldenSession(options: RecordGoldenOptions): Promise
     await engine.connect(GOLDEN_CONNECT_OPTIONS);
     const identity = await engine.detectVehicleIdentity();
     const signals = await engine.snapshotSignals();
-    const scanned = await engine.scanDtcs();
+    const { scanned } = await engine.scanDtcs();
     const { samples, markers } = engine.recorder.export();
     const { trace, log } = sessionLogger.snapshot();
 

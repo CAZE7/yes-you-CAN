@@ -125,6 +125,10 @@
       <button id="btn-scan-2">Neu auslesen</button>
       <span id="dtc-summary" class="muted"></span>
     </div>
+    <!-- Die zweite Hälfte des Scans (ADR 0049): welche Module nicht geantwortet haben.
+         Eine leere Tabelle über einem stillen Bus ist kein „kein Fehler", und genau das
+         soll hier sichtbar sein — mit dem Grund, den der Bus genannt hat. -->
+    <ul class="plain check-list" id="dtc-unread" hidden></ul>
     <table class="grid">
       <thead><tr><th>Code</th><th>Beschreibung</th><th>ECU</th><th>Status</th><th>Schwere</th><th>Bestätigt</th><th>Pending</th><th>Hinweis (Definition)</th><th>Gesehen</th><th>Aktion</th></tr></thead>
       <tbody id="dtc-rows"></tbody>

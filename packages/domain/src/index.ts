@@ -69,6 +69,7 @@ export type {
   SessionSummary,
   SignalInfo,
   SignalStatisticsInfo,
+  UnreadEcuInfo,
   VehicleStateReading,
   VehicleSummary,
   WriteStageInfo,

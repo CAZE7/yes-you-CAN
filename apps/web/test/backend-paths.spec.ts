@@ -345,12 +345,58 @@ test("a burst aimed at an id nobody answers on is visible as aimed there", async
   }
 });
 
+test("a bus where nobody answers reports the modules, not an empty fault list", async () => {
+  // ADR 0049, measured on the workbench: after a scenario run had drained the battery,
+  // the modules stopped answering and `POST /api/dtc/scan` replied `{"dtcs":[]}` with
+  // HTTP 200 — indistinguishable from a car without faults, while a single-ECU read on
+  // the same connection said "ISO-TP response timeout". The scan keeping going is right;
+  // not saying what it could not ask was the defect.
+  const backend = new DemoBackend({ logger, liveIntervalMs: 60 });
+  try {
+    await backend.start();
+    const answered = await backend.scanDtcs();
+    assert.ok(
+      answered.dtcs.length > 0,
+      "the seeded vehicle stores codes while every module answers",
+    );
+    assert.deepEqual(answered.unread, [], "and the scan says that nothing was missing");
+
+    backend.injectChaos({ dropRate: 1 });
+    const silent = await backend.scanDtcs();
+    assert.deepEqual(silent.dtcs, [], "a bus that takes every frame yields no codes");
+    assert.ok(
+      silent.unread.length > 0,
+      "the modules that stayed silent are part of the answer, not a line in a log nobody reads",
+    );
+    for (const entry of silent.unread) {
+      assert.match(entry.rxId, /^0x[0-9A-F]+$/, "named by the address an operator can look up");
+      assert.ok(entry.reason.length > 0, "with what the bus said instead");
+    }
+    assert.equal(
+      backend.state().unreadEcus.length,
+      silent.unread.length,
+      "the state the panel renders carries the same gap",
+    );
+
+    backend.resetChaos();
+    const back = await backend.scanDtcs();
+    assert.deepEqual(back.unread, [], "the gap closes when the modules answer again");
+    assert.deepEqual(
+      back.dtcs.map((dtc) => dtc.code),
+      answered.dtcs.map((dtc) => dtc.code),
+      "and the same codes come back",
+    );
+  } finally {
+    await backend.stop();
+  }
+});
+
 test("a corrupted response takes codes off the readout, and the aim says which", async () => {
   const backend = new DemoBackend({ logger, liveIntervalMs: 60 });
   try {
     await backend.start();
     await backend.startLive();
-    const clean = (await backend.scanDtcs()).map((dtc) => dtc.code);
+    const clean = (await backend.scanDtcs()).dtcs.map((dtc) => dtc.code);
     assert.equal(
       clean.length,
       8,
@@ -361,7 +407,7 @@ test("a corrupted response takes codes off the readout, and the aim says which",
     // mid-transfer, and the workshop reads fewer codes. That is the effect on the session —
     // not a counter next to it — and the reset hands the full readout back.
     backend.injectChaos({ corruptSequenceCanId: 0x7e8 });
-    const mangled = (await backend.scanDtcs()).map((dtc) => dtc.code);
+    const mangled = (await backend.scanDtcs()).dtcs.map((dtc) => dtc.code);
     assert.ok(
       mangled.length < clean.length,
       `a mangled response must be felt in the readout, got ${mangled.length} of ${clean.length}`,
@@ -369,7 +415,7 @@ test("a corrupted response takes codes off the readout, and the aim says which",
     assert.ok(backend.chaosStatus().corruptedFrames > 0, "and it is counted");
 
     backend.resetChaos();
-    const again = (await backend.scanDtcs()).map((dtc) => dtc.code);
+    const again = (await backend.scanDtcs()).dtcs.map((dtc) => dtc.code);
     assert.deepEqual(again, clean, "with the rules gone the same scan reads the same codes");
 
     // The request id is a different story, and it is the reason the aim is a field of the
@@ -377,7 +423,7 @@ test("a corrupted response takes codes off the readout, and the aim says which",
     // nothing on the readout while still counting frames.
     backend.injectChaos({ corruptSequenceCanId: 0x7e0 });
     assert.deepEqual(
-      (await backend.scanDtcs()).map((dtc) => dtc.code),
+      (await backend.scanDtcs()).dtcs.map((dtc) => dtc.code),
       clean,
       "corruption aimed at the request id leaves a single-frame readout untouched",
     );
