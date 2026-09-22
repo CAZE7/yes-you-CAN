@@ -10,11 +10,11 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import {
-  VIN_POSITIONS,
   containsValue,
   declaredVinCriteria,
   findToken,
   matchesPattern,
+  VIN_POSITIONS,
   vinPositions,
 } from "./vehicles.js";
 

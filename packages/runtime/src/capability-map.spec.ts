@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
-import { UDS_SERVICE_CAPABILITIES, capabilitiesFromServices } from "./index.js";
+import { capabilitiesFromServices, UDS_SERVICE_CAPABILITIES } from "./index.js";
 
 describe("UDS service → capability bridge", () => {
   test("probed services become capabilities", () => {

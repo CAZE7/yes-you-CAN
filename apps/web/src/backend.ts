@@ -32,8 +32,8 @@ import {
   HeuristicAnalysisProvider,
 } from "@vdp/ai";
 import {
-  type ConnectVehicleOptions,
   addMarker,
+  type ConnectVehicleOptions,
   clearDtcs,
   connectVehicle,
   getDtcClearPrecheck,
@@ -54,18 +54,18 @@ import {
 import type { DtcClearPrecheckInfo, VehicleResolutionRef } from "@vdp/domain";
 import type { DtcRecord } from "@vdp/protocols-uds";
 import {
+  createDiagnosticRuntime,
   type DiagnosticRuntime,
   PLATFORM_VERSION,
   type WriteBinding,
-  createDiagnosticRuntime,
 } from "@vdp/runtime";
 import {
   AdapterUnsupportedError,
+  createLogger,
   type Logger,
+  messageOf,
   TransportClosedError,
   TransportError,
-  createLogger,
-  messageOf,
 } from "@vdp/shared";
 import {
   CanChaosBus,
@@ -76,11 +76,11 @@ import {
 } from "@vdp/simulators";
 import {
   FileSystemSessionRepository,
+  nodeIntegrityPort,
   SessionLogger,
   type SessionRepository,
   type StoredSessionSummary,
   type VehicleSessionData,
-  nodeIntegrityPort,
 } from "@vdp/storage";
 import {
   type CanBus,
@@ -89,11 +89,11 @@ import {
   recordingFromSessionJson,
 } from "@vdp/transport-can";
 import {
+  createWebAdapterCatalog,
+  isApplicationManaged,
   REPLAY_ADAPTER_ID,
   SIMULATOR_5ECU_ADAPTER_ID,
   SIMULATOR_ADAPTER_ID,
-  createWebAdapterCatalog,
-  isApplicationManaged,
 } from "./adapters.js";
 import type {
   AdaptationResultView,
@@ -138,7 +138,7 @@ export type {
 } from "./views.js";
 
 import { buildAnalysisInput } from "./analysis-input.js";
-import { type UnreadEcuView, toDtcView, toUnreadEcuView } from "./dtc-view.js";
+import { toDtcView, toUnreadEcuView, type UnreadEcuView } from "./dtc-view.js";
 import { toEcuView, toFreezeFrameView } from "./ecu-view.js";
 import { loadScenarioCatalog } from "./scenario-source.js";
 import {

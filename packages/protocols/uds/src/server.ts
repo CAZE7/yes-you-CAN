@@ -7,17 +7,17 @@
  * Response Pending (NRC 0x78), session gating and negative responses.
  */
 
-import { type Logger, createLogger, messageOf, toHex } from "@vdp/shared";
+import { createLogger, type Logger, messageOf, toHex } from "@vdp/shared";
 import { encodeDtcToBytes } from "./dtc.js";
 import { NRC } from "./nrc.js";
 import {
   DTC_GROUP_ALL,
   DTC_REPORT,
   NEGATIVE_RESPONSE_SID,
+  positiveResponseSid,
   RESET_TYPE,
   SID,
   SUPPRESS_POSITIVE_RESPONSE,
-  positiveResponseSid,
 } from "./services.js";
 import { type SessionDefinition, SessionStateMachine, standardSessions } from "./session-state.js";
 import type { UdsTiming } from "./timing.js";

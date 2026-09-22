@@ -16,7 +16,7 @@
 import assert from "node:assert/strict";
 import { CURRENT_SCHEMA_VERSION, type DefinitionPackage } from "@vdp/definitions";
 import { NRC, SID, type UdsClient, type UdsLink } from "@vdp/protocols-uds";
-import { MemorySink, UdsNegativeResponseError, createLogger } from "@vdp/shared";
+import { createLogger, MemorySink, UdsNegativeResponseError } from "@vdp/shared";
 import { describe, test } from "vitest";
 import { EcuDiagnosticSession } from "./ecu-session.js";
 

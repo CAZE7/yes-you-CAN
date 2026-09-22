@@ -10,13 +10,13 @@
 
 import { SAFETY_STATES, type SafetyResult } from "./canonical.js";
 import {
-  type Json,
-  type Report,
   array,
   bool,
   fail,
   integer,
+  type Json,
   oneOf,
+  type Report,
   record,
   rejectExtras,
   str,

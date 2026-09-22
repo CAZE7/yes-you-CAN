@@ -25,11 +25,10 @@ import { CanableAdapter } from "@vdp/adapter-canable";
 import { Elm327Adapter, MemoryByteStream } from "@vdp/adapter-elm327";
 import { GenericCanAdapter } from "@vdp/adapter-generic-can";
 import { FakeSocketCanBinding, SocketCanAdapter } from "@vdp/adapter-socketcan";
-import { AdapterUnsupportedError, TransportError, fromHex, toHex } from "@vdp/shared";
-import { createLogger } from "@vdp/shared";
+import { AdapterUnsupportedError, createLogger, fromHex, TransportError, toHex } from "@vdp/shared";
 import { CanChaosBus, createVirtualCanNetwork } from "@vdp/simulators";
 import type { CanBus, CanFrame } from "@vdp/transport-can";
-import { ReplayTransport, createFrame } from "@vdp/transport-can";
+import { createFrame, ReplayTransport } from "@vdp/transport-can";
 import { test } from "vitest";
 
 const logger = createLogger("contract", { level: "ERROR" });

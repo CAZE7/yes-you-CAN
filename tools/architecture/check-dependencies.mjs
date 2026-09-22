@@ -29,7 +29,7 @@
  * rules-file error (so a broken rules file is never mistaken for a clean tree).
  */
 
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 

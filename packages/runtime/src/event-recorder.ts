@@ -14,8 +14,8 @@ import {
   type DiagnosticEventMap,
   type DiagnosticEventName,
   type EventBus,
-  type Unsubscribe,
   systemClock,
+  type Unsubscribe,
 } from "@vdp/domain";
 
 /** One observed event. Payloads carry the correlation ids (§24/§25). */

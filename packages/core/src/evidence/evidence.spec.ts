@@ -25,9 +25,9 @@ import type { AdapterInfo, TransportInfo } from "@vdp/transport-can";
 import { describe, test } from "vitest";
 import { type FixturePatch, patched } from "../../../../tests/helpers/fixture.js";
 import type { DtcVariantKnowledge } from "../dtc/scanner.js";
-import { VehicleSession, createEcuSession, createSession } from "../session/session.js";
-import { type EvidenceDtc, collectEvidence } from "./collect.js";
-import { type SamplePoint, confidenceOf, rankHypotheses } from "./hypotheses.js";
+import { createEcuSession, createSession, VehicleSession } from "../session/session.js";
+import { collectEvidence, type EvidenceDtc } from "./collect.js";
+import { confidenceOf, rankHypotheses, type SamplePoint } from "./hypotheses.js";
 
 const adapter: AdapterInfo = {
   id: "virtual",

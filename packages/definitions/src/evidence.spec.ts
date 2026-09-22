@@ -9,18 +9,18 @@
 
 import assert from "node:assert/strict";
 import { test } from "vitest";
+import type { EvidenceKind } from "./evidence.js";
 import {
-  EVIDENCE_WEIGHT,
-  type Rankable,
-  Tally,
   clamp01,
   compareByEvidence,
+  EVIDENCE_WEIGHT,
   provenanceTrust,
+  type Rankable,
   round2,
   sameText,
+  Tally,
   unique,
 } from "./evidence.js";
-import type { EvidenceKind } from "./evidence.js";
 
 function rankable(overrides: Partial<Rankable> = {}): Rankable {
   return {

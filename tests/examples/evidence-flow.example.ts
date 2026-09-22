@@ -17,8 +17,8 @@ import { connectVehicle, readDtcs } from "@vdp/application";
 import { genericPackage } from "@vdp/definitions";
 import { isProven, itemById, itemsOf } from "@vdp/diagnostic-ir";
 import { RecordingEventBus } from "@vdp/domain";
-import { PLATFORM_VERSION, createDiagnosticRuntime } from "@vdp/runtime";
-import { MemorySink, createLogger } from "@vdp/shared";
+import { createDiagnosticRuntime, PLATFORM_VERSION } from "@vdp/runtime";
+import { createLogger, MemorySink } from "@vdp/shared";
 import { VirtualVehicle } from "@vdp/simulators";
 import { afterAll, beforeAll, test } from "vitest";
 

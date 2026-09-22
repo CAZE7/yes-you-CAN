@@ -1,5 +1,11 @@
 #!/usr/bin/env node
-import { type IncomingMessage, type ServerResponse, createServer } from "node:http";
+import { readFileSync } from "node:fs";
+import {
+  createServer as createHttpServer,
+  type IncomingMessage,
+  type ServerResponse,
+} from "node:http";
+import { createServer as createHttpsServer } from "node:https";
 import { fileURLToPath } from "node:url";
 import {
   type AdapterSelection,
@@ -12,20 +18,21 @@ import { buildReport, renderHtml, renderPdf } from "@vdp/reports";
 import {
   AdapterUnsupportedError,
   ConsoleSink,
+  createLogger,
   LOG_LEVEL_ORDER,
-  type LogLevel,
   type Logger,
+  type LogLevel,
+  messageOf,
   SafetyViolationError,
   StorageError,
   TransportClosedError,
   UnknownEcuError,
-  createLogger,
-  messageOf,
 } from "@vdp/shared";
-import { SIMULATOR_ADAPTER_ID, createWebAdapterCatalog } from "./adapters.js";
+import { createWebAdapterCatalog, SIMULATOR_ADAPTER_ID } from "./adapters.js";
 import { AUTH_REFUSAL, type Authenticator, createAuthenticator } from "./auth.js";
-import { DemoBackend } from "./backend.js";
 import type { VehicleStateView } from "./backend.js";
+import { DemoBackend } from "./backend.js";
+import { RateLimiter } from "./rate-limit.js";
 import { HttpError, parseBurstCount, parseCanId, parseDropRate } from "./route-input.js";
 import {
   MIME,
@@ -55,6 +62,14 @@ export interface ServerOptions {
    * before (see `auth.ts`). From `--token=` or `VDP_API_TOKEN`.
    */
   token?: string;
+  /**
+   * TLS certificate and key. When both are set, the server listens with HTTPS
+   * instead of HTTP (CY-05). From `--cert=`/`--key=` or `VDP_TLS_CERT`/`VDP_TLS_KEY`.
+   */
+  certPath?: string;
+  keyPath?: string;
+  /** Rate limit options (for tests). */
+  rateLimit?: { maxRequests?: number; windowMs?: number; maxStreams?: number };
 }
 
 /** The levels `VDP_LOG_LEVEL` may name, derived from the one order the logger has. */
@@ -89,8 +104,9 @@ export class WebServer {
   readonly backend: DemoBackend;
   private readonly log: Logger;
   private readonly auth: Authenticator;
-  private server?: ReturnType<typeof createServer>;
+  private server?: ReturnType<typeof createHttpServer> | ReturnType<typeof createHttpsServer>;
   private readonly streams = new Set<ServerResponse>();
+  private readonly rateLimiter: RateLimiter;
   private unsubscribe?: () => void;
 
   constructor(private readonly options: ServerOptions = {}) {
@@ -100,6 +116,7 @@ export class WebServer {
     // hands its own logger in; a WebServer built by an embedder stays silent.
     const root = this.options.logger ?? createLogger("web", { level: "INFO" });
     this.auth = createAuthenticator(this.options.token ?? process.env.VDP_API_TOKEN);
+    this.rateLimiter = new RateLimiter(this.options.rateLimit);
     this.log = root.child("server");
     this.backend = new DemoBackend({
       logger: root,
@@ -129,7 +146,23 @@ export class WebServer {
         { host, authenticated: this.auth.enabled },
       );
     }
-    this.server = createServer((request, response) => {
+    const certPath = this.options.certPath ?? process.env.VDP_TLS_CERT;
+    const keyPath = this.options.keyPath ?? process.env.VDP_TLS_KEY;
+    const useTls = Boolean(certPath && keyPath);
+    let tlsOptions: { cert: string; key: string } | undefined;
+    if (useTls) {
+      try {
+        tlsOptions = {
+          cert: readFileSync(certPath as string, "utf8"),
+          key: readFileSync(keyPath as string, "utf8"),
+        };
+        this.log.info("TLS enabled", { certPath });
+      } catch (error) {
+        throw new HttpError(400, `failed to read TLS cert/key: ${messageOf(error)}`);
+      }
+    }
+
+    const handler = (request: IncomingMessage, response: ServerResponse) => {
       this.handle(request, response).catch((error) => {
         const status = statusFor(error);
         if (status >= 500) {
@@ -138,7 +171,10 @@ export class WebServer {
         if (!response.headersSent) sendJson(response, status, { error: messageOf(error) });
         else response.end();
       });
-    });
+    };
+
+    this.server =
+      useTls && tlsOptions ? createHttpsServer(tlsOptions, handler) : createHttpServer(handler);
 
     await new Promise<void>((resolve) => {
       this.server?.listen(this.options.port ?? 8080, host, resolve);
@@ -149,8 +185,14 @@ export class WebServer {
     if (this.options.demo) {
       await this.backend.start();
     }
-    this.log.info("web server listening", { port, host, demo: this.options.demo === true });
-    return { port, url: `http://${host === "0.0.0.0" ? "localhost" : host}:${port}` };
+    this.log.info("web server listening", {
+      port,
+      host,
+      demo: this.options.demo === true,
+      tls: useTls,
+    });
+    const scheme = useTls ? "https" : "http";
+    return { port, url: `${scheme}://${host === "0.0.0.0" ? "localhost" : host}:${port}` };
   }
 
   async close(): Promise<void> {
@@ -171,6 +213,20 @@ export class WebServer {
   private async handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
     const url = new URL(request.url ?? "/", "http://localhost");
     const path = url.pathname;
+
+    // Rate limiting (CY-04) — before auth, so even unauthenticated hammering is limited.
+    const ip = RateLimiter.clientIp(request);
+    if (path.startsWith("/api/")) {
+      const result = this.rateLimiter.checkApi(ip);
+      if (!result.allowed) {
+        response.writeHead(429, {
+          ...SECURITY_HEADERS,
+          "retry-after": String(Math.ceil((result.retryAfterMs ?? 1000) / 1000)),
+        });
+        response.end(JSON.stringify({ error: "too many requests — slow down" }));
+        return;
+      }
+    }
 
     // The one-time exchange: the operator opens the workbench with the token in the
     // URL and gets a cookie back. Putting the token in the served HTML instead would
@@ -196,7 +252,15 @@ export class WebServer {
   }
 
   /** SSE endpoint: pushes decoded samples, raw trace entries and DTC updates. */
-  private streamEvents(_request: IncomingMessage, response: ServerResponse): void {
+  private streamEvents(request: IncomingMessage, response: ServerResponse): void {
+    const ip = RateLimiter.clientIp(request);
+    const streamCheck = this.rateLimiter.tryOpenStream(ip);
+    if (!streamCheck.allowed) {
+      response.writeHead(429, SECURITY_HEADERS);
+      response.end(JSON.stringify({ error: "too many streams — close one first" }));
+      return;
+    }
+
     response.writeHead(200, {
       ...SECURITY_HEADERS,
       "content-type": "text/event-stream",
@@ -212,6 +276,7 @@ export class WebServer {
     response.on("close", () => {
       clearInterval(keepAlive);
       this.streams.delete(response);
+      this.rateLimiter.closeStream(ip);
     });
   }
 
@@ -615,6 +680,8 @@ function parseArgs(argv: readonly string[]): ServerOptions {
       options.liveIntervalMs = Number.parseInt(arg.slice(11), 10);
     else if (arg.startsWith("--sessions=")) options.sessionDir = arg.slice(11);
     else if (arg.startsWith("--token=")) options.token = arg.slice(8);
+    else if (arg.startsWith("--cert=")) options.certPath = arg.slice(7);
+    else if (arg.startsWith("--key=")) options.keyPath = arg.slice(6);
   }
   const parsed = parseAdapterArgv(argv, SIMULATOR_ADAPTER_ID);
   if (parsed.errors.length > 0) throw new HttpError(400, parsed.errors.join("; "));

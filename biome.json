@@ -1,17 +1,20 @@
 {
-  "$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
-  "organizeImports": {
-    "enabled": true
+  "$schema": "https://biomejs.dev/schemas/2.5.14/schema.json",
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
   },
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true,
+      "preset": "recommended",
       "correctness": {
         "noUnusedVariables": "error",
         "noUnusedImports": "error",
-        "useExhaustiveDependencies": "off",
-        "noUnnecessaryContinue": "error"
+        "useExhaustiveDependencies": "off"
       },
       "style": {
         "useImportType": "error",
@@ -22,15 +25,21 @@
       },
       "suspicious": {
         "noExplicitAny": "error",
-        "noConsoleLog": "error",
         "noShadowRestrictedNames": "error",
         "noControlCharactersInRegex": "off",
         "noImplicitAnyLet": "error",
-        "noAssignInExpressions": "error"
+        "noAssignInExpressions": "error",
+        "noConsole": {
+          "level": "error",
+          "options": {
+            "allow": ["log"]
+          }
+        }
       },
       "complexity": {
         "noForEach": "off",
-        "useLiteralKeys": "off"
+        "useLiteralKeys": "off",
+        "noUselessContinue": "error"
       },
       "performance": {
         "noDelete": "error"
@@ -52,12 +61,13 @@
   },
   "overrides": [
     {
-      "include": ["**/*.spec.ts", "**/*.test.ts", "tests/**"],
+      "includes": ["**/*.spec.ts", "**/*.test.ts", "**/tests/**"],
       "linter": {
         "rules": {
           "suspicious": {
             "noExplicitAny": "off",
-            "noAssignInExpressions": "off"
+            "noAssignInExpressions": "off",
+            "noConsole": "off"
           },
           "style": {
             "noNonNullAssertion": "off",
@@ -70,11 +80,49 @@
       }
     },
     {
-      "include": ["scripts/**", "packages/shared/src/logger.ts"],
+      "includes": ["**/scripts/**", "**/packages/shared/src/logger.ts"],
       "linter": {
         "rules": {
           "suspicious": {
-            "noConsoleLog": "off"
+            "noConsole": {
+              "level": "off",
+              "options": {
+                "allow": ["log"]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["**/public/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noConsole": "off"
+          },
+          "a11y": {
+            "useButtonType": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["**/packages/charts/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noConsole": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["**/tools/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noConsole": "off"
           }
         }
       }
@@ -82,13 +130,14 @@
   ],
   "files": {
     "ignoreUnknown": false,
-    "ignore": [
-      "node_modules",
-      "dist",
-      "coverage",
-      "sessions-local",
-      "*.tsbuildinfo",
-      "vitest.config.ts"
+    "includes": [
+      "**",
+      "!**/node_modules",
+      "!**/dist",
+      "!**/coverage",
+      "!**/sessions-local",
+      "!**/*.tsbuildinfo",
+      "!**/vitest.config.ts"
     ]
   }
 }

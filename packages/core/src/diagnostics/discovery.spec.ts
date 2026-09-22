@@ -16,7 +16,7 @@ import type {
   FrameListener,
 } from "@vdp/transport-can";
 import { test } from "vitest";
-import { DEFAULT_PROBE_DELAY_MS, EcuDiscovery, deriveTxId } from "./discovery.js";
+import { DEFAULT_PROBE_DELAY_MS, deriveTxId, EcuDiscovery } from "./discovery.js";
 
 const INFO: AdapterInfo = { id: "stub", kind: "virtual", name: "Stub CAN", channels: ["vcan0"] };
 

@@ -15,11 +15,11 @@
  */
 
 import {
-  type DiagnosticEngine,
-  type SamplePoint,
   collectEvidence,
+  type DiagnosticEngine,
   evaluateGuidedDiagnosis,
   rankHypotheses,
+  type SamplePoint,
 } from "@vdp/core";
 import type { EvidenceSet, GuidedDiagnosisState, Hypothesis } from "@vdp/diagnostic-ir";
 

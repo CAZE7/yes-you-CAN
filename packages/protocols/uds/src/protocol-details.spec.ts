@@ -6,8 +6,8 @@ import assert from "node:assert/strict";
 import fc from "fast-check";
 import { describe, expect, test } from "vitest";
 import { decodeDtcBytes } from "./dtc.js";
-import { NRC, isTransientNrc, nrcName } from "./nrc.js";
-import { SID, isPositiveResponse, positiveResponseSid, serviceName } from "./services.js";
+import { isTransientNrc, NRC, nrcName } from "./nrc.js";
+import { isPositiveResponse, positiveResponseSid, SID, serviceName } from "./services.js";
 import { DEFAULT_UDS_TIMING, parseSessionTiming } from "./timing.js";
 
 describe("session timing (ISO 14229-2)", () => {

@@ -21,25 +21,25 @@
  */
 
 import {
-  type Rankable,
-  type ResolutionEvidence,
-  Tally,
   compareByEvidence,
   provenanceTrust,
+  type Rankable,
+  type ResolutionEvidence,
   sameText,
+  Tally,
   unique,
 } from "./evidence.js";
 import { lookupWmi, regionForVin } from "./reference/wmi.js";
 import {
   type DefinitionPackage,
   type EcuDefinition,
+  indexEcus,
+  keyOf,
   type Provenance,
   type VehicleDefinition,
   type VehicleEcuRef,
-  indexEcus,
-  keyOf,
 } from "./schema.js";
-import { type VinFacts, findToken, matchesPattern, vinPositions } from "./vehicles.js";
+import { findToken, matchesPattern, type VinFacts, vinPositions } from "./vehicles.js";
 
 /** One identification value read from an ECU (UDS 0x22 on an identification DID). */
 export interface IdentificationFact {

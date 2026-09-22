@@ -10,15 +10,15 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 import {
   ChartGroup,
-  type Point,
-  Series,
-  TimeViewport,
   computeYRange,
   decimate,
   decimateMinMax,
   formatClock,
   niceTicks,
   niceTimeTicks,
+  type Point,
+  Series,
+  TimeViewport,
 } from "./index.js";
 
 function line(

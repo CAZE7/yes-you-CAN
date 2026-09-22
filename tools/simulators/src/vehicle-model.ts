@@ -38,7 +38,7 @@
  */
 
 import type { ServerDtc } from "@vdp/protocols-uds";
-import { type Logger, createLogger } from "@vdp/shared";
+import { createLogger, type Logger } from "@vdp/shared";
 import { STATUS_ACTIVE, STATUS_HEALED, standardMonitors } from "./vehicle-monitors.js";
 import { readModelSignal } from "./vehicle-signals.js";
 import type {
@@ -55,11 +55,11 @@ import type {
   VehicleThresholds,
 } from "./vehicle-state.js";
 import {
-  VEHICLE_PHYSICS,
-  VEHICLE_THRESHOLDS,
   approach,
   bornVehicleState,
   round,
+  VEHICLE_PHYSICS,
+  VEHICLE_THRESHOLDS,
 } from "./vehicle-state.js";
 import { ModuleWiring } from "./vehicle-wiring.js";
 import { createRandom } from "./virtual-vehicle.js";

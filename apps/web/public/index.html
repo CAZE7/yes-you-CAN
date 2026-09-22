@@ -22,19 +22,19 @@
 </header>
 
 <nav class="tabs" id="tabs">
-  <button class="tab active" data-view="connection">Verbindung</button>
-  <button class="tab" data-view="ecus">ECU Explorer</button>
-  <button class="tab" data-view="dtc">Fehlerspeicher</button>
-  <button class="tab" data-view="guided-diagnosis">Geführte Diagnose</button>
-  <button class="tab" data-view="coding-adaptation">Codierung &amp; Anpassung</button>
-  <button class="tab" data-view="live">Live-Daten</button>
-  <button class="tab" data-view="graphs">Graphen</button>
-  <button class="tab" data-view="chaos-lab">Chaos Lab</button>
-  <button class="tab" data-view="scenarios">Szenarien</button>
-  <button class="tab" data-view="record">Aufnahme</button>
-  <button class="tab" data-view="trace">Roh-Trace</button>
-  <button class="tab" data-view="analysis">Analyse</button>
-  <button class="tab" data-view="log">Log</button>
+  <button type="button" class="tab active" data-view="connection">Verbindung</button>
+  <button type="button" class="tab" data-view="ecus">ECU Explorer</button>
+  <button type="button" class="tab" data-view="dtc">Fehlerspeicher</button>
+  <button type="button" class="tab" data-view="guided-diagnosis">Geführte Diagnose</button>
+  <button type="button" class="tab" data-view="coding-adaptation">Codierung &amp; Anpassung</button>
+  <button type="button" class="tab" data-view="live">Live-Daten</button>
+  <button type="button" class="tab" data-view="graphs">Graphen</button>
+  <button type="button" class="tab" data-view="chaos-lab">Chaos Lab</button>
+  <button type="button" class="tab" data-view="scenarios">Szenarien</button>
+  <button type="button" class="tab" data-view="record">Aufnahme</button>
+  <button type="button" class="tab" data-view="trace">Roh-Trace</button>
+  <button type="button" class="tab" data-view="analysis">Analyse</button>
+  <button type="button" class="tab" data-view="log">Log</button>
 </nav>
 
 <main>
@@ -59,7 +59,7 @@
         <label class="field">Aufzeichnung (Replay)
           <input id="adapter-trace" type="text" placeholder="Session-ID oder Export-Datei" autocomplete="off" spellcheck="false" />
         </label>
-        <button id="btn-adapter-apply" class="primary">Adapter übernehmen</button>
+        <button type="button" id="btn-adapter-apply" class="primary">Adapter übernehmen</button>
       </div>
       <p id="adapter-probe" class="hint"></p>
       <ul id="adapter-hints" class="plain hints"></ul>
@@ -93,15 +93,15 @@
         wird nicht verrechnet oder versteckt (AGENTS 11, 24).
       </p>
       <div class="row">
-        <button id="btn-resolve">Fahrzeug bestimmen</button>
+        <button type="button" id="btn-resolve">Fahrzeug bestimmen</button>
         <span id="vehicle-resolution-summary" class="muted small"></span>
       </div>
       <div id="vehicle-resolution"></div>
     </div>
     <div class="row">
-      <button id="btn-start" class="primary">Verbinden</button>
-      <button id="btn-identify">Identifikation lesen</button>
-      <button id="btn-scan">Fehlerspeicher lesen</button>
+      <button type="button" id="btn-start" class="primary">Verbinden</button>
+      <button type="button" id="btn-identify">Identifikation lesen</button>
+      <button type="button" id="btn-scan">Fehlerspeicher lesen</button>
     </div>
     <p class="hint">
       Diese Oberfläche interpretiert keine CAN-Frames. Alle Werte kommen bereits
@@ -122,7 +122,7 @@
   <section class="view" id="view-dtc">
     <h2>Fehlerspeicher</h2>
     <div class="row">
-      <button id="btn-scan-2">Neu auslesen</button>
+      <button type="button" id="btn-scan-2">Neu auslesen</button>
       <span id="dtc-summary" class="muted"></span>
     </div>
     <!-- Die zweite Hälfte des Scans (ADR 0049): welche Module nicht geantwortet haben.
@@ -144,7 +144,7 @@
       </p>
       <div id="dtc-detail-body"></div>
       <div class="row">
-        <button id="btn-dtc-detail-close">Schließen</button>
+        <button type="button" id="btn-dtc-detail-close">Schließen</button>
       </div>
     </div>
 
@@ -169,10 +169,10 @@
         </label>
       </div>
       <div class="row">
-        <button id="btn-clear-precheck">Vorbedingungen prüfen</button>
+        <button type="button" id="btn-clear-precheck">Vorbedingungen prüfen</button>
         <label class="field checkbox"><input type="checkbox" id="clear-confirm" disabled />
           Ich bestätige den Löschvorgang (Verlust der Fehlerhistorie)</label>
-        <button id="btn-clear-execute" class="danger" disabled>Löschen ausführen</button>
+        <button type="button" id="btn-clear-execute" class="danger" disabled>Löschen ausführen</button>
       </div>
       <ul class="plain small" id="clear-status"></ul>
       <ul class="plain small" id="clear-result"></ul>
@@ -188,7 +188,7 @@
     </p>
 
     <div class="row">
-      <button id="btn-guided-refresh" class="primary">Diagnosezyklus starten / aktualisieren</button>
+      <button type="button" id="btn-guided-refresh" class="primary">Diagnosezyklus starten / aktualisieren</button>
       <span id="guided-status-badge" class="pill pill-possible">bereit</span>
       <span id="guided-summary-text" class="muted small"></span>
     </div>
@@ -200,7 +200,7 @@
         <p class="muted">Noch kein Diagnosezyklus aktiv. Klicken Sie auf „Diagnosezyklus starten / aktualisieren“.</p>
       </div>
       <div class="row" id="guided-next-test-actions" hidden>
-        <button id="btn-guided-step" class="primary">Diesen Test ausführen &amp; Hypothesen bewerten</button>
+        <button type="button" id="btn-guided-step" class="primary">Diesen Test ausführen &amp; Hypothesen bewerten</button>
       </div>
     </div>
 
@@ -267,10 +267,10 @@
           </label>
         </div>
         <div class="row">
-          <button id="btn-coding-precheck">1. Vorbedingungen prüfen</button>
+          <button type="button" id="btn-coding-precheck">1. Vorbedingungen prüfen</button>
           <label class="field checkbox"><input type="checkbox" id="coding-confirm" disabled />
             Ich bestätige die Varianten-Codierung verbindlich</label>
-          <button id="btn-coding-execute" class="danger" disabled>2. Codieren &amp; Verifizieren</button>
+          <button type="button" id="btn-coding-execute" class="danger" disabled>2. Codieren &amp; Verifizieren</button>
         </div>
         <ul class="plain small" id="coding-precheck-status"></ul>
         <div id="coding-result-box" class="small"></div>
@@ -289,10 +289,10 @@
           </label>
         </div>
         <div class="row">
-          <button id="btn-adapt-precheck">1. Vorbedingungen prüfen</button>
+          <button type="button" id="btn-adapt-precheck">1. Vorbedingungen prüfen</button>
           <label class="field checkbox"><input type="checkbox" id="adapt-confirm" disabled />
             Ich bestätige die Parameter-Anpassung verbindlich</label>
-          <button id="btn-adapt-execute" class="danger" disabled>2. Anpassen &amp; Verifizieren</button>
+          <button type="button" id="btn-adapt-execute" class="danger" disabled>2. Anpassen &amp; Verifizieren</button>
         </div>
         <ul class="plain small" id="adapt-precheck-status"></ul>
         <div id="adapt-result-box" class="small"></div>
@@ -304,8 +304,8 @@
   <section class="view" id="view-live">
     <h2>Live-Daten</h2>
     <div class="row">
-      <button id="btn-live-start" class="primary">Start</button>
-      <button id="btn-live-stop">Stop</button>
+      <button type="button" id="btn-live-start" class="primary">Start</button>
+      <button type="button" id="btn-live-stop">Stop</button>
       <span id="live-state" class="muted">gestoppt</span>
     </div>
     <div class="signal-picker" id="signal-picker"></div>
@@ -316,10 +316,10 @@
   <section class="view" id="view-graphs">
     <h2>Graphen <span class="muted small">gemeinsame Zeitachse · synchronisierter Cursor</span></h2>
     <div class="row graph-toolbar">
-      <button id="graph-follow" class="primary" title="Neuesten Daten folgen">Live folgen: an</button>
-      <button id="graph-zoom-in" title="Hineinzoomen">＋</button>
-      <button id="graph-zoom-out" title="Herauszoomen">−</button>
-      <button id="graph-fit">Gesamte Aufnahme</button>
+      <button type="button" id="graph-follow" class="primary" title="Neuesten Daten folgen">Live folgen: an</button>
+      <button type="button" id="graph-zoom-in" title="Hineinzoomen">＋</button>
+      <button type="button" id="graph-zoom-out" title="Herauszoomen">−</button>
+      <button type="button" id="graph-fit">Gesamte Aufnahme</button>
       <label class="field">Fenster
         <select id="graph-window"></select>
       </label>
@@ -329,8 +329,8 @@
           <option value="lttb">LTTB (formtreu)</option>
         </select>
       </label>
-      <button id="graph-clear-selection">Auswahl aufheben</button>
-      <button id="graph-clear-cursor">Cursor löschen</button>
+      <button type="button" id="graph-clear-selection">Auswahl aufheben</button>
+      <button type="button" id="graph-clear-cursor">Cursor löschen</button>
       <span id="graph-status" class="muted small"></span>
     </div>
     <p class="hint">
@@ -407,13 +407,13 @@
           <label class="field">CAN-ID (leer = alle Rahmen)
             <input type="text" id="chaos-burst-can-id" placeholder="0x7E0" />
           </label>
-          <button id="btn-chaos-burst-inject" class="warn">Burst-Drop auslösen</button>
+          <button type="button" id="btn-chaos-burst-inject" class="warn">Burst-Drop auslösen</button>
         </div>
         <div class="row">
           <label class="field">Dauerhafte Drop-Rate (0.0 - 1.0)
             <input type="number" id="chaos-rate-input" value="0.2" min="0" max="1" step="0.05" />
           </label>
-          <button id="btn-chaos-rate-inject">Drop-Rate setzen</button>
+          <button type="button" id="btn-chaos-rate-inject">Drop-Rate setzen</button>
         </div>
       </div>
 
@@ -424,11 +424,11 @@
           <label class="field">CAN-ID für Sequenzkorruption
             <input type="text" id="chaos-corrupt-can-id" value="0x7E8" />
           </label>
-          <button id="btn-chaos-corrupt-inject" class="danger">Frame korrumpieren</button>
+          <button type="button" id="btn-chaos-corrupt-inject" class="danger">Frame korrumpieren</button>
         </div>
         <div class="row">
-          <button id="btn-chaos-reset-all" class="primary">Alle Chaos-Regeln zurücksetzen</button>
-          <button id="btn-chaos-refresh">Status aktualisieren</button>
+          <button type="button" id="btn-chaos-reset-all" class="primary">Alle Chaos-Regeln zurücksetzen</button>
+          <button type="button" id="btn-chaos-refresh">Status aktualisieren</button>
         </div>
       </div>
     </div>
@@ -450,8 +450,8 @@
       <label class="field">Szenario
         <select id="scenario-picker"></select>
       </label>
-      <button id="btn-scenario-run">Ausführen</button>
-      <button id="btn-scenario-refresh">Katalog neu laden</button>
+      <button type="button" id="btn-scenario-run">Ausführen</button>
+      <button type="button" id="btn-scenario-refresh">Katalog neu laden</button>
       <span id="scenario-verdict" class="pill pill-untested">kein Lauf</span>
       <span id="scenario-verdict-detail" class="muted small"></span>
     </div>
@@ -486,7 +486,7 @@
   <section class="view" id="view-record">
     <h2>Aufnahme</h2>
     <div class="row">
-      <button id="btn-marker">Marker setzen</button>
+      <button type="button" id="btn-marker">Marker setzen</button>
       <a class="button" href="/api/export/measurements.csv">Messungen CSV</a>
       <a class="button" href="/api/export/trace.csv">Roh-Trace CSV</a>
       <a class="button" href="/api/export/session.json">Session JSON</a>
@@ -513,7 +513,7 @@
   <!-- Analyse -->
   <section class="view" id="view-analysis">
     <h2>Analyse</h2>
-    <div class="row"><button id="btn-analyze" class="primary">Analyse starten</button><span id="analysis-source" class="muted"></span></div>
+    <div class="row"><button type="button" id="btn-analyze" class="primary">Analyse starten</button><span id="analysis-source" class="muted"></span></div>
     <div id="analysis-out"></div>
 
     <!-- Erweiterte Signalanalyse & Spektral-FFT (Task 5) -->
@@ -533,7 +533,7 @@
             <option value="battery.voltage">Batteriespannung (battery.voltage)</option>
           </select>
         </label>
-        <button id="btn-signal-analyze" class="primary">Signal &amp; FFT analysieren</button>
+        <button type="button" id="btn-signal-analyze" class="primary">Signal &amp; FFT analysieren</button>
       </div>
       <div id="signal-analysis-out"></div>
     </div>

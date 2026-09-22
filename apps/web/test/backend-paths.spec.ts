@@ -14,12 +14,12 @@
 
 import assert from "node:assert/strict";
 import { AdapterCatalog, type AdapterEntry } from "@vdp/adapter-host";
-import { TransportClosedError, createLogger } from "@vdp/shared";
+import { createLogger, TransportClosedError } from "@vdp/shared";
 import {
   MemorySessionRepository,
+  nodeIntegrityPort,
   type RawTraceEntry,
   type RawTraceManifest,
-  nodeIntegrityPort,
   verifyRawTraceManifest,
 } from "@vdp/storage";
 import { test } from "vitest";

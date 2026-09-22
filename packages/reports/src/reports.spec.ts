@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import {
+  createSession,
   type DtcVariantKnowledge,
   type VehicleDetermination,
   type VehicleSessionData,
-  createSession,
 } from "@vdp/core";
 import type { AdapterInfo, TransportInfo } from "@vdp/transport-can";
 import { test } from "vitest";
-import { PdfDocument, buildReport, renderHtml, renderPdf, sanitize } from "./index.js";
+import { buildReport, PdfDocument, renderHtml, renderPdf, sanitize } from "./index.js";
 
 const ADAPTER: AdapterInfo = {
   id: "virtual",

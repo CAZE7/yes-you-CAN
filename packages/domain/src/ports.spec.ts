@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "vitest";
 import type { ResolveVehicleQuery, VehicleCandidateRef } from "./index.js";
 import {
+  clockFrom,
   DefaultIdGenerator,
   FixedClock,
   FixedIdGenerator,
@@ -10,7 +11,6 @@ import {
   NullDefinitionProvider,
   RecordingEventBus,
   StaticDefinitionProvider,
-  clockFrom,
   systemClock,
 } from "./index.js";
 

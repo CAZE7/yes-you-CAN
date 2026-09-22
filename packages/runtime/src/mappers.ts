@@ -22,7 +22,7 @@ import type {
   VehicleIdentity,
   VehicleSession,
 } from "@vdp/core";
-import { type StageReport, describeVehicle } from "@vdp/core";
+import { describeVehicle, type StageReport } from "@vdp/core";
 import type { SignalDefinition } from "@vdp/definitions";
 import type {
   AnomalyInfo,

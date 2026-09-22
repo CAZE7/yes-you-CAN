@@ -3,13 +3,13 @@ import { genericPackage } from "@vdp/definitions";
 import { toHex } from "@vdp/shared";
 import { test } from "vitest";
 import {
-  type TraceFinding,
   analyzeTrace,
   decodeUdsResponse,
   formatTraceReport,
   parseTrace,
   parseTraceLine,
   rebuildIsoTpMessages,
+  type TraceFinding,
 } from "./index.js";
 
 test("candump, CSV and NDJSON trace lines all parse to frames", () => {

@@ -26,7 +26,7 @@
 
 import type { DefinitionPackage, SignalDefinition } from "@vdp/definitions";
 import { OemProtocolRegistry } from "@vdp/protocols-oem";
-import { type Logger, createId, createLogger, toHex } from "@vdp/shared";
+import { createId, createLogger, type Logger, toHex } from "@vdp/shared";
 import type { FreezeFrame } from "../dtc/freeze-frame.js";
 import type { DtcScanner, DtcVehicleContext, EnrichedDtc } from "../dtc/scanner.js";
 import { type DecodedSignal, SignalDecoder } from "../measurements/decoder.js";
@@ -43,14 +43,14 @@ import { DiagnosticContext } from "./engine-context.js";
 import type { DiagnosticEngineOptions } from "./engine-options.js";
 import type { ConnectDiscoveryOptions, ConnectResult } from "./session-opener.js";
 
+export type { DiscoveredEcu } from "./discovery.js";
+export type { DtcScanReport, ScannedEcu, UnreadEcu } from "./dtc-access.js";
 // Types of the collaborators, re-exported so callers (runtime, DoIP tests,
 // tooling) keep one import path.
-export type { OpenedEcuLink, EcuLinkFactory, EcuTarget } from "./ecu-links.js";
+export type { EcuLinkFactory, EcuTarget, OpenedEcuLink } from "./ecu-links.js";
 export type { EcuHandle } from "./ecu-registry.js";
-export type { ConnectResult, ConnectDiscoveryOptions } from "./session-opener.js";
-export type { DtcScanReport, ScannedEcu, UnreadEcu } from "./dtc-access.js";
 export type { DiagnosticEngineOptions } from "./engine-options.js";
-export type { DiscoveredEcu } from "./discovery.js";
+export type { ConnectDiscoveryOptions, ConnectResult } from "./session-opener.js";
 
 export class DiagnosticEngine {
   readonly recorder: MeasurementRecorder;

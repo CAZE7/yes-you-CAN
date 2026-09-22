@@ -3,12 +3,12 @@ import { AdapterUnsupportedError, fromHex, toHex } from "@vdp/shared";
 import { createFrame } from "@vdp/transport-can";
 import { describe, test } from "vitest";
 import {
-  Elm327Adapter,
-  MemoryByteStream,
   assertCanSupport,
+  Elm327Adapter,
   formatIdentifier,
   formatSendPayload,
   isElmError,
+  MemoryByteStream,
   parseFrameLine,
 } from "./index.js";
 

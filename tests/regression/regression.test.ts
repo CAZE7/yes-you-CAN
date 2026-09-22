@@ -10,18 +10,17 @@
 
 import assert from "node:assert/strict";
 import { connectVehicle } from "@vdp/application";
-import { DiagnosticEngine, VehicleSession, createSession } from "@vdp/core";
+import { createSession, DiagnosticEngine, VehicleSession } from "@vdp/core";
 import {
   DefinitionRegistry,
-  SIMULATOR_VIN,
-  VehicleResolver,
   genericPackage,
+  SIMULATOR_VIN,
   simulatorPackage,
+  VehicleResolver,
 } from "@vdp/definitions";
 import { createDiagnosticRuntime } from "@vdp/runtime";
-import { DefinitionError, ascii, fromHex, toHex } from "@vdp/shared";
-import { createLogger } from "@vdp/shared";
-import { VirtualVehicle, createVirtualCanNetwork } from "@vdp/simulators";
+import { ascii, createLogger, DefinitionError, fromHex, toHex } from "@vdp/shared";
+import { createVirtualCanNetwork, VirtualVehicle } from "@vdp/simulators";
 import { ReplayTransport } from "@vdp/transport-can";
 import { IsoTpConnection } from "@vdp/transport-iso-tp";
 import { test } from "vitest";

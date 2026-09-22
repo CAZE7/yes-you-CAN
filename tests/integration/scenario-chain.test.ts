@@ -27,12 +27,12 @@ import { type DefinitionPackage, highFidelityPackage } from "@vdp/definitions";
 import { itemsOf } from "@vdp/diagnostic-ir";
 import { encodeDtcToBytes } from "@vdp/protocols-uds";
 import { EvidenceService } from "@vdp/runtime";
-import { type Logger, createLogger, fromHex } from "@vdp/shared";
+import { createLogger, fromHex, type Logger } from "@vdp/shared";
 import {
+  createRandom,
   HEARTBEAT_IDS,
   HighFidelityVehicle,
   type ScenarioExpectation,
-  createRandom,
 } from "@vdp/simulators";
 import { test } from "vitest";
 import { scenarioFileById, scenarioFiles } from "../helpers/scenario-files.js";

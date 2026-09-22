@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
-import { type CliIo, USAGE, parseArgs, runConformanceCli } from "./conformance.js";
+import { type CliIo, parseArgs, runConformanceCli, USAGE } from "./conformance.js";
 
 const isoVectors = JSON.stringify({
   vectorSet: "spec",

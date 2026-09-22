@@ -5,7 +5,7 @@
  * plus whatever the ECUs report make up the identity stored in a session.
  */
 
-import { type VinAnalysis, analyseVin, guessModelYear } from "./vin.js";
+import { analyseVin, guessModelYear, type VinAnalysis } from "./vin.js";
 
 export interface VehicleIdentity {
   vin?: string;

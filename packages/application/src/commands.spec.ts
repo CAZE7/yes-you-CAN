@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
 import {
-  CommandKinds,
-  QueryKinds,
   addMarker,
+  CommandKinds,
   clearDtcs,
   connectVehicle,
   disconnectVehicle,
@@ -24,6 +23,7 @@ import {
   getStatistics,
   getVehicle,
   identifyEcus,
+  QueryKinds,
   readDid,
   readDtcFreezeFrame,
   readDtcs,

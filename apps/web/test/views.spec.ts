@@ -19,9 +19,9 @@ import { type DtcView, toDtcView } from "../src/dtc-view.js";
 import { type EcuView, toEcuView, toFreezeFrameView } from "../src/ecu-view.js";
 import { summariseScenarios, toScenarioRunView } from "../src/scenario-view.js";
 import {
-  type SampleView,
   formatCanId,
   formatValue,
+  type SampleView,
   toMarkerView,
   toSampleView,
   toTraceView,

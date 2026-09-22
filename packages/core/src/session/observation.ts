@@ -20,8 +20,8 @@
 import {
   type DtcObservation,
   type EcuObservation,
-  type SessionObservation,
   ecuObservation,
+  type SessionObservation,
   sessionObservation,
 } from "@vdp/diagnostic-ir";
 import { dtcObservationOf } from "../dtc/scanner.js";

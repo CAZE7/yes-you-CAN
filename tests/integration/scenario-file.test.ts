@@ -28,8 +28,8 @@ import { DiagnosticEngine, DtcScanner, type EnrichedDtc } from "@vdp/core";
 import { type DefinitionPackage, highFidelityPackage } from "@vdp/definitions";
 import { itemsOf } from "@vdp/diagnostic-ir";
 import { EvidenceService } from "@vdp/runtime";
-import { type Logger, createLogger } from "@vdp/shared";
-import { HighFidelityVehicle, createRandom, parseScenarioFile } from "@vdp/simulators";
+import { createLogger, type Logger } from "@vdp/shared";
+import { createRandom, HighFidelityVehicle, parseScenarioFile } from "@vdp/simulators";
 import { test } from "vitest";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");

@@ -10,13 +10,13 @@
  * (`apps/web/src/scenario-source.ts`). Both are environments binding one pure loader.
  */
 
-import { readFileSync, readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   type LoadedScenarioFile,
-  type ScenarioFileInput,
   loadScenarioLibrary,
+  type ScenarioFileInput,
 } from "@vdp/simulators";
 
 const HERE = dirname(fileURLToPath(import.meta.url));

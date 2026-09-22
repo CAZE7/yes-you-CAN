@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { MemoryByteStream } from "@vdp/adapter-elm327";
-import { MemorySink, createLogger, fromHex, toHex } from "@vdp/shared";
+import { createLogger, fromHex, MemorySink, toHex } from "@vdp/shared";
 import { createFrame } from "@vdp/transport-can";
 import { test } from "vitest";
 import {

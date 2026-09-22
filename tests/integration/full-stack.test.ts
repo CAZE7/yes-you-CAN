@@ -1,20 +1,20 @@
 import assert from "node:assert/strict";
 import {
-  DiagnosticEngine,
-  DtcScanner,
-  MeasurementRecorder,
-  SessionLogger,
   analyseVin,
   clearableEcuOf,
   createWritePort,
+  DiagnosticEngine,
+  DtcScanner,
   deriveTxId,
+  MeasurementRecorder,
   precheckDtcClear,
   runDtcClear,
+  SessionLogger,
 } from "@vdp/core";
 import { genericPackage } from "@vdp/definitions";
 import { itemById, itemsOf, unprovenItems } from "@vdp/diagnostic-ir";
 import { EvidenceService } from "@vdp/runtime";
-import { MemorySink, createLogger, fromHex, toHex } from "@vdp/shared";
+import { createLogger, fromHex, MemorySink, toHex } from "@vdp/shared";
 import { VirtualVehicle } from "@vdp/simulators";
 import { afterAll, beforeAll, test } from "vitest";
 import { tick, waitFor } from "../helpers/wait.js";

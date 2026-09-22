@@ -27,7 +27,7 @@
  * runtime, which may import the domain vocabulary, is where operations are named.
  */
 
-import { type Logger, createLogger, messageOf } from "@vdp/shared";
+import { createLogger, type Logger, messageOf } from "@vdp/shared";
 import type {
   RiskLevel,
   SafetyManager,

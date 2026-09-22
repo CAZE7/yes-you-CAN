@@ -12,26 +12,26 @@ import {
   type DefinitionPackage,
   type DtcDefinition,
   type EcuDefinition,
+  indexPackage,
   type SignalDefinition,
   type SignalIndex,
-  indexPackage,
 } from "@vdp/definitions";
 import { genericPackage } from "@vdp/definitions/generic";
 import {
   type ServerDid,
   type ServerDtc,
+  simulatorSessions,
   UdsServer,
   type UdsServerLink,
   type UdsServerOptions,
-  simulatorSessions,
   xorSeedKeyAlgorithm,
 } from "@vdp/protocols-uds";
-import { type Logger, createLogger, messageOf, toHex } from "@vdp/shared";
+import { createLogger, type Logger, messageOf, toHex } from "@vdp/shared";
 import { IsoTpConnection } from "@vdp/transport-iso-tp";
 import {
+  createVirtualCanNetwork,
   type VirtualCanBus,
   type VirtualCanOptions,
-  createVirtualCanNetwork,
 } from "./virtual-can.js";
 
 export interface VirtualVehicleOptions {

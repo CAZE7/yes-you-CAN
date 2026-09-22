@@ -7,13 +7,13 @@
 
 import assert from "node:assert/strict";
 import {
+  createLogger,
   ProtocolError,
   UdsNegativeResponseError,
   UdsTimeoutError,
-  createLogger,
 } from "@vdp/shared";
 import { describe, expect, test, vi } from "vitest";
-import { UdsClient, didToBytes, parseMultiDidResponse, parseSingleDidResponse } from "./client.js";
+import { didToBytes, parseMultiDidResponse, parseSingleDidResponse, UdsClient } from "./client.js";
 import type { UdsLink } from "./link.js";
 import { NRC } from "./nrc.js";
 import { DID, NEGATIVE_RESPONSE_SID, SESSION } from "./services.js";

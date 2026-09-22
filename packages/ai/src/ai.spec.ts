@@ -15,10 +15,10 @@ import {
   type AnalysisInput,
   type AnalysisResult,
   AnalysisService,
+  analysisInstruction,
   HeuristicAnalysisProvider,
   HttpAnalysisProvider,
   type HttpClient,
-  analysisInstruction,
   redactVin,
 } from "./index.js";
 

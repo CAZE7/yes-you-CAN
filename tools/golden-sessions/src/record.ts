@@ -13,10 +13,10 @@
 
 import {
   type ConnectDiscoveryOptions,
+  createIdentityFromVin,
   type DecodedSignal,
   DiagnosticEngine,
   SessionLogger,
-  createIdentityFromVin,
 } from "@vdp/core";
 import type { DefinitionPackage } from "@vdp/definitions";
 import type { Logger } from "@vdp/shared";

@@ -5,7 +5,7 @@
  * The frame layer stays dumb — no ISO-TP, no UDS (AGENTS 6).
  */
 
-import { type Logger, TransportError, createLogger } from "@vdp/shared";
+import { createLogger, type Logger, TransportError } from "@vdp/shared";
 import type {
   AdapterCapabilities,
   AdapterInfo,

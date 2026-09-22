@@ -26,7 +26,7 @@ import {
   WritePort,
   type WriteRequestContext,
 } from "@vdp/core";
-import { type Logger, createLogger } from "@vdp/shared";
+import { createLogger, type Logger } from "@vdp/shared";
 import type { SafetyState } from "./canonical.js";
 import type {
   ParsedSafetyVector,

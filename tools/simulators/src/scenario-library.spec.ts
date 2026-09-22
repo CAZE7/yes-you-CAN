@@ -10,7 +10,7 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
-import { type ScenarioFileInput, loadScenarioLibrary, scenariosOf } from "./scenario-library.js";
+import { loadScenarioLibrary, type ScenarioFileInput, scenariosOf } from "./scenario-library.js";
 
 const good = (id: string): ScenarioFileInput => ({
   file: `${id}.json`,

@@ -11,8 +11,8 @@ import assert from "node:assert/strict";
 import fc from "fast-check";
 import { describe, expect, test } from "vitest";
 import {
-  CANFD_MAX_PAYLOAD,
   CAN_MAX_DLC,
+  CANFD_MAX_PAYLOAD,
   type CanFrame,
   createFrame,
   dlcToLength,

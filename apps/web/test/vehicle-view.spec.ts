@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 import { EVIDENCE_WEIGHT } from "@vdp/definitions";
 import type { VehicleCandidateRef, VehicleResolutionRef } from "@vdp/domain";
 import { describe, test } from "vitest";
-import { type FixturePatch, dropUndefined, patched } from "../../../tests/helpers/fixture.js";
+import { dropUndefined, type FixturePatch, patched } from "../../../tests/helpers/fixture.js";
 import {
   criterionLabel,
   knownCriterionKinds,

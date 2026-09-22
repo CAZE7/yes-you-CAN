@@ -6,7 +6,7 @@
  * same way. Also owns the adapter registry used by the UI's adapter picker.
  */
 
-import { AdapterUnsupportedError, type Logger, createLogger } from "@vdp/shared";
+import { AdapterUnsupportedError, createLogger, type Logger } from "@vdp/shared";
 import {
   type AdapterCapabilities,
   type AdapterInfo,

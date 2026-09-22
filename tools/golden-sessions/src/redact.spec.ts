@@ -7,10 +7,10 @@ import {
   assertVinGone,
   containsInMessages,
   findVinLikeTokens,
+  redactedVinBytes,
   redactGoldenSession,
   redactRecording,
   redactText,
-  redactedVinBytes,
   vinHexForms,
 } from "./index.js";
 

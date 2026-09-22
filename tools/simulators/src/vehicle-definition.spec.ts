@@ -10,10 +10,10 @@
 
 import assert from "node:assert/strict";
 import {
-  SIMULATOR_VIN,
   genericPackage,
   highFidelityPackage,
   identificationKindForLabel,
+  SIMULATOR_VIN,
   simulatorPackage,
   simulatorVehicle,
 } from "@vdp/definitions";

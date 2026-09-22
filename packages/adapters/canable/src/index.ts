@@ -1,5 +1,6 @@
 export * from "./adapter.js";
 export * from "./slcan.js";
+
 import type { ByteStream } from "@vdp/adapter-elm327";
 import type { CanAdapterFactory } from "@vdp/transport-can";
 import { CanableAdapter, type CanableOptions } from "./adapter.js";

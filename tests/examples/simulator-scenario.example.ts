@@ -18,8 +18,8 @@
 import assert from "node:assert/strict";
 import { DiagnosticEngine, type ScannedEcu } from "@vdp/core";
 import { type DefinitionPackage, highFidelityPackage } from "@vdp/definitions";
-import { type Logger, createLogger } from "@vdp/shared";
-import { HighFidelityVehicle, createRandom, withoutCauses } from "@vdp/simulators";
+import { createLogger, type Logger } from "@vdp/shared";
+import { createRandom, HighFidelityVehicle, withoutCauses } from "@vdp/simulators";
 import { afterAll, beforeAll, test } from "vitest";
 import { scenarioFileById } from "../helpers/scenario-files.js";
 

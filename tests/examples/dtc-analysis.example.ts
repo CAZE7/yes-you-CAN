@@ -14,8 +14,8 @@ import assert from "node:assert/strict";
 import { DiagnosticEngine, DtcScanner, type EnrichedDtc, type ScannedEcu } from "@vdp/core";
 import { type DefinitionPackage, highFidelityPackage } from "@vdp/definitions";
 import { describeEvidence, isProven } from "@vdp/diagnostic-ir";
-import { type Logger, createLogger } from "@vdp/shared";
-import { HighFidelityVehicle, createRandom } from "@vdp/simulators";
+import { createLogger, type Logger } from "@vdp/shared";
+import { createRandom, HighFidelityVehicle } from "@vdp/simulators";
 import { afterAll, beforeAll, test } from "vitest";
 
 const logger: Logger = createLogger("example:dtc", { level: "ERROR" });

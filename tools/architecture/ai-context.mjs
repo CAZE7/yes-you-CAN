@@ -24,7 +24,7 @@
  * (so a typo never looks like a generated context).
  */
 
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { analyzeImpact, filesToPackages, gitChangedFiles } from "./impact.mjs";

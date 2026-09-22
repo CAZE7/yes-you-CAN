@@ -11,7 +11,7 @@ import type { DtcRecord } from "@vdp/protocols-uds";
 import { describe, expect, test } from "vitest";
 import { type FixturePatch, patched } from "../../../../tests/helpers/fixture.js";
 import type { MeasurementSample } from "../measurements/types.js";
-import { type SessionComparisonSide, compareSessions } from "./compare.js";
+import { compareSessions, type SessionComparisonSide } from "./compare.js";
 
 function sample(
   signal: string,

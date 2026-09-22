@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { NoHandlerError } from "@vdp/application";
 import {
   addMarker,
   clearDtcs,
@@ -20,6 +19,7 @@ import {
   getSignalList,
   getStatistics,
   identifyEcus,
+  NoHandlerError,
   readDtcFreezeFrame,
   readDtcs,
   snapshotSignals,
@@ -29,8 +29,7 @@ import {
 import { SafetyManager } from "@vdp/core";
 import { genericPackage } from "@vdp/definitions";
 import { FixedClock, FixedIdGenerator, InMemorySessionStore, RecordingEventBus } from "@vdp/domain";
-import { createLogger } from "@vdp/shared";
-import { UnknownEcuError } from "@vdp/shared";
+import { createLogger, UnknownEcuError } from "@vdp/shared";
 import type { CanBus, CanFilter, CanFrame } from "@vdp/transport-can";
 import { describe, test } from "vitest";
 import { createDiagnosticRuntime, parseEcuAddress, unknownEcu } from "./index.js";

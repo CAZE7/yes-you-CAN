@@ -2,12 +2,12 @@ import assert from "node:assert/strict";
 import { describe, test } from "vitest";
 import type { IsoTpFrame } from "./canonical.js";
 import {
-  FrameError,
   canonicalJson,
   decodeCapturedFrames,
   decodeFrame,
   diffPaths,
   encodeFrame,
+  FrameError,
 } from "./canonical.js";
 
 describe("canonical frame codec", () => {

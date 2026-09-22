@@ -8,8 +8,7 @@
  * actually observed* (AGENTS 24: no judgement without evidence).
  */
 
-import type { SignalGap, SignalReading } from "./signal.js";
-import type { ObservationValue } from "./signal.js";
+import type { ObservationValue, SignalGap, SignalReading } from "./signal.js";
 
 export interface MeasurementWindow {
   kind: "window";

@@ -9,13 +9,13 @@ import assert from "node:assert/strict";
 import { describe, test } from "vitest";
 import {
   type AdaptationTargetEcu,
-  type CodingTargetEcu,
-  SafetyManager,
   applyCodingChanges,
+  type CodingTargetEcu,
   createAdaptationOperation,
   createCodingOperation,
   runAdaptation,
   runCoding,
+  SafetyManager,
 } from "../index.js";
 import { type WriteBinding, WritePort } from "./port.js";
 

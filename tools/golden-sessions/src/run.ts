@@ -18,12 +18,12 @@
 import { type ConnectDiscoveryOptions, type DecodedSignal, DiagnosticEngine } from "@vdp/core";
 import type { DefinitionPackage } from "@vdp/definitions";
 import {
-  type DtcObservation,
-  type EcuObservation,
-  type SessionObservation,
   compareDtcObservations,
+  type DtcObservation,
   dtcObservation,
+  type EcuObservation,
   ecuObservation,
+  type SessionObservation,
   sessionObservation,
 } from "@vdp/diagnostic-ir";
 import type { Logger } from "@vdp/shared";

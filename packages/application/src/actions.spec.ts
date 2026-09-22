@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import type { EcuSummary } from "@vdp/domain";
 import { describe, test } from "vitest";
-import { ActionRegistry, type DiagnosticContext, createStandardActions } from "./index.js";
+import { ActionRegistry, createStandardActions, type DiagnosticContext } from "./index.js";
 
 function makeEcu(overrides: Partial<EcuSummary> = {}): EcuSummary {
   return {

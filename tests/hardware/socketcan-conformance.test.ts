@@ -121,28 +121,26 @@ class SocketCanPair implements ConformancePair {
 
 const ready = hasVcan();
 
-test(
-  "socketcan conformance: the ISO-TP vectors survive a real SocketCAN interface",
-  { skip: !ready },
-  async () => {
-    assert.ok(ready, "vcan0 missing — hardware suite skipped (see file header for setup)");
-    const parsed = parseIsoTpVectorFile(readFileSync(isoPath, "utf8"));
-    assert.ok(parsed.ok, JSON.stringify("errors" in parsed ? parsed.errors : []));
-    if (!parsed.ok) return;
-    const pair = await SocketCanPair.open("vcan0");
-    assert.ok(pair !== null, "no SocketCAN binding installed (`npm i socketcan`) — skipped");
-    if (pair === null) return;
-    // Yielding sleep only: the runner’s settle loop carries the deadline, so
-    // real time is consumed there, not in fixed waits (ADR 0019).
-    const time = { sleep: async (): Promise<void> => new Promise((done) => setImmediate(done)) };
-    // Only the round-trip vectors make sense against a live peer (frames may
-    // be reordered by the socket); the scripted-answer vectors keep their
-    // full authority over the virtual bus in the protocol suite.
-    for (const vector of parsed.vectors.filter(
-      (v) => v.name === "tx-single-frame-answer-delivers-response",
-    )) {
-      const result = await runIsoTpVector(vector, time, pair);
-      assert.deepEqual(result, vector.expect, `hardware deviation in ${vector.name}`);
-    }
-  },
-);
+test("socketcan conformance: the ISO-TP vectors survive a real SocketCAN interface", {
+  skip: !ready,
+}, async () => {
+  assert.ok(ready, "vcan0 missing — hardware suite skipped (see file header for setup)");
+  const parsed = parseIsoTpVectorFile(readFileSync(isoPath, "utf8"));
+  assert.ok(parsed.ok, JSON.stringify("errors" in parsed ? parsed.errors : []));
+  if (!parsed.ok) return;
+  const pair = await SocketCanPair.open("vcan0");
+  assert.ok(pair !== null, "no SocketCAN binding installed (`npm i socketcan`) — skipped");
+  if (pair === null) return;
+  // Yielding sleep only: the runner’s settle loop carries the deadline, so
+  // real time is consumed there, not in fixed waits (ADR 0019).
+  const time = { sleep: async (): Promise<void> => new Promise((done) => setImmediate(done)) };
+  // Only the round-trip vectors make sense against a live peer (frames may
+  // be reordered by the socket); the scripted-answer vectors keep their
+  // full authority over the virtual bus in the protocol suite.
+  for (const vector of parsed.vectors.filter(
+    (v) => v.name === "tx-single-frame-answer-delivers-response",
+  )) {
+    const result = await runIsoTpVector(vector, time, pair);
+    assert.deepEqual(result, vector.expect, `hardware deviation in ${vector.name}`);
+  }
+});

@@ -5,12 +5,12 @@ import {
   type DefinitionPackage,
   DefinitionRegistry,
   type DtcKnowledgeDefinition,
-  type VehicleDefinition,
   ecusOfVehicle,
   genericPackage,
   indexPackage,
   indexVehicles,
   mercedesExamplePackage,
+  type VehicleDefinition,
   vagExamplePackage,
   validateDefinitionPackage,
 } from "./index.js";
@@ -112,7 +112,7 @@ test("a retrieval date nothing can parse is an error, not a warning", () => {
   for (const bad of ["11.09.2026", "September 2026", "2026-9-1", "yesterday"]) {
     pkg.provenance = { sourceType: "own", source: "s", retrievedAt: bad };
     const result = validateDefinitionPackage(pkg);
-    assert.equal(result.valid, false, `\"${bad}\" must not pass as a retrieval date`);
+    assert.equal(result.valid, false, `"${bad}" must not pass as a retrieval date`);
     assert.ok(
       result.errors.some((e) => e.includes("not an ISO-8601 date")),
       result.errors.join(", "),
@@ -121,7 +121,7 @@ test("a retrieval date nothing can parse is an error, not a warning", () => {
   for (const good of ["2026-09-11", "2026-09-11T14:03:00Z", "2026-09-11 14:03+02:00"]) {
     pkg.provenance = { sourceType: "own", source: "s", retrievedAt: good };
     const result = validateDefinitionPackage(pkg);
-    assert.deepEqual(result.errors, [], `\"${good}\" is a date: ${result.errors.join(", ")}`);
+    assert.deepEqual(result.errors, [], `"${good}" is a date: ${result.errors.join(", ")}`);
   }
 });
 

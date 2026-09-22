@@ -4,7 +4,7 @@
  */
 
 import type { ByteStream } from "@vdp/adapter-elm327";
-import { type Logger, TransportError, createLogger, messageOf } from "@vdp/shared";
+import { createLogger, type Logger, messageOf, TransportError } from "@vdp/shared";
 import type {
   AdapterCapabilities,
   AdapterInfo,
@@ -15,10 +15,10 @@ import type {
 } from "@vdp/transport-can";
 import {
   BITRATES,
-  SLCAN_COMMANDS,
   formatSlcanFrame,
   isSlcanError,
   parseSlcanLine,
+  SLCAN_COMMANDS,
 } from "./slcan.js";
 
 export interface CanableOptions {

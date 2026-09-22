@@ -7,7 +7,7 @@
  * before claims, ADR 0019 condition waits instead of sleeps, §28 module
  * boundaries) and every one of them was already satisfied when the gate was
  * written — measured 2026-09-12 over 212 TypeScript/JavaScript files:
- * 0 empty `catch`, 0 `any`, 0 `@ts-ignore`, 0 focused/skipped tests,
+ * 0 empty `catch`, 0 `any`, 0 `@ts-expect-error`, 0 focused/skipped tests,
  * 0 `debugger`, 0 work markers, 0 fixed sleeps in tests.
  *
  * A gate that is green on day one is the point: these zeros were the result of
@@ -18,7 +18,7 @@
  */
 
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "vitest";

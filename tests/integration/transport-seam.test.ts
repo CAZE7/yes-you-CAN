@@ -14,10 +14,10 @@ import assert from "node:assert/strict";
 import { DiagnosticEngine, type OpenedEcuLink } from "@vdp/core";
 import type { DefinitionPackage } from "@vdp/definitions";
 import {
+  createRequestResponseLink,
   type UdsLink,
   UdsServer,
   type UdsServerLink,
-  createRequestResponseLink,
 } from "@vdp/protocols-uds";
 import { createLogger } from "@vdp/shared";
 import { test } from "vitest";

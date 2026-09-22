@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
-import { VehicleBehaviourModel, createRandom, modelTarget, runScenario } from "./index.js";
+import { createRandom, modelTarget, runScenario, VehicleBehaviourModel } from "./index.js";
 import { parseScenarioFile } from "./scenario-file.js";
 
 const file = (over: Record<string, unknown>): string =>

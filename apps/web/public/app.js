@@ -79,13 +79,13 @@ function logError(error) {
 for (const rawTab of document.querySelectorAll(".tab")) {
   const tab = /** @type {HTMLElement} */ (rawTab);
   tab.addEventListener("click", () => {
-    document
-      .querySelectorAll(".tab")
-      .forEach((other) => other.classList.toggle("active", other === tab));
+    document.querySelectorAll(".tab").forEach((other) => {
+      other.classList.toggle("active", other === tab);
+    });
     const view = tab.dataset.view;
-    document
-      .querySelectorAll(".view")
-      .forEach((section) => section.classList.toggle("active", section.id === `view-${view}`));
+    document.querySelectorAll(".view").forEach((section) => {
+      section.classList.toggle("active", section.id === `view-${view}`);
+    });
     // A canvas has no layout size while its tab is hidden, so the charts have to
     // be measured and repainted the moment the tab becomes visible.
     if (view === "graphs") {

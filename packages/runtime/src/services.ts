@@ -12,12 +12,14 @@ import type {
   ConnectVehicleResult,
   ResolveVehicleHints,
 } from "@vdp/application";
+
 export type {
   WriteBinding,
   WriteOperationResult,
-  WritePrecheckResult,
   WritePort,
+  WritePrecheckResult,
 } from "@vdp/core";
+
 import type {
   DiagnosticEngine,
   EcuHandle,
@@ -49,7 +51,7 @@ import type {
   VehicleSummary,
 } from "@vdp/domain";
 import type { Logger } from "@vdp/shared";
-import { UnknownEcuError, messageOf, toHex } from "@vdp/shared";
+import { messageOf, toHex, UnknownEcuError } from "@vdp/shared";
 import { capabilitiesFromServices } from "./capability-map.js";
 import {
   decodedToReading,
@@ -63,10 +65,12 @@ import {
   toVehicleSummary,
 } from "./mappers.js";
 import { type SampleListener, SampleStream } from "./sample-stream.js";
+
 // The stream vocabulary stays importable from the service module: the SSE path
 // and the specs reached it here before the split, and a re-export beats a second
 // import path for the same type (ADR 0014: outward API unchanged).
 export type { SampleListener, SampleRound } from "./sample-stream.js";
+
 import {
   dtcVehicleContextOf,
   resolveVehicleQuery,

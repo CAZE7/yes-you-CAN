@@ -16,13 +16,13 @@
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
 import {
+  canonicalRawTraceChunks,
+  createRawTraceManifest,
+  hashRawTrace,
   type IntegrityPort,
   RAW_TRACE_HASH_ALGORITHM,
   RAW_TRACE_MANIFEST_VERSION,
   type RawTraceManifest,
-  canonicalRawTraceChunks,
-  createRawTraceManifest,
-  hashRawTrace,
   verifyRawTraceManifest,
   withRawTraceManifest,
 } from "./integrity.js";

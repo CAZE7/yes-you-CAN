@@ -22,12 +22,12 @@ import {
 } from "@vdp/definitions";
 import { OemProtocolRegistry } from "@vdp/protocols-oem";
 import {
+  createRequestResponseLink,
   DID,
   type UdsLink,
   UdsServer,
   type UdsServerLink,
   type UdsServerOptions,
-  createRequestResponseLink,
 } from "@vdp/protocols-uds";
 import { createLogger, fromHex } from "@vdp/shared";
 import type { CanBus, CanFilter, CanFrame, FrameListener } from "@vdp/transport-can";
@@ -38,7 +38,7 @@ import { SignalDecoder } from "../measurements/decoder.js";
 import { MeasurementRecorder } from "../measurements/recorder.js";
 import { SafetyManager } from "../safety/safety-manager.js";
 import type { EcuSession } from "../session/session.js";
-import { VehicleSession, createSession } from "../session/session.js";
+import { createSession, VehicleSession } from "../session/session.js";
 import { clearableEcuOf, runDtcClear } from "../writes/dtc-clear.js";
 import type { WriteBinding } from "../writes/port.js";
 import { createWritePort } from "../writes/standard-operations.js";
