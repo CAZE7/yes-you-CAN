@@ -21,7 +21,7 @@
  * 10. Audit: Record permit, before/after hex, diff summary, and verification status.
  */
 
-import { type Logger, createLogger, messageOf, toHex } from "@vdp/shared";
+import { createLogger, type Logger, messageOf, toHex } from "@vdp/shared";
 import type { RiskLevel, WritePermit, WriteRequestContext } from "../safety/safety-manager.js";
 import type { WriteBinding, WriteOperation, WriteOperationResult, WritePort } from "./port.js";
 

@@ -1,5 +1,6 @@
 export * from "./adapter.js";
 export * from "./binding.js";
+
 import type { CanAdapterFactory } from "@vdp/transport-can";
 import { SocketCanAdapter, type SocketCanOptions } from "./adapter.js";
 import type { SocketCanBinding } from "./binding.js";

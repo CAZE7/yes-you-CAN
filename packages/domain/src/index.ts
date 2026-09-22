@@ -10,23 +10,8 @@
  * internal helpers are not re-exported.
  */
 
-// Ids (§24)
-export type {
-  Id,
-  VehicleId,
-  SessionId,
-  EcuId,
-  TraceId,
-  ActionId,
-  DefinitionId,
-  MeasurementId,
-  EventId,
-  IdKind,
-} from "./ids.js";
-export { ID_PREFIXES, asId, asIdOfKind, hasIdPrefix } from "./ids.js";
-
 // Capabilities (§6, §8)
-export type { DiagnosticCapability, DiagnosticCapabilities } from "./capabilities.js";
+export type { DiagnosticCapabilities, DiagnosticCapability } from "./capabilities.js";
 export {
   ALL_CAPABILITIES,
   capabilitiesOf,
@@ -36,15 +21,39 @@ export {
   isDiagnosticCapability,
   missingCapabilities,
 } from "./capabilities.js";
-
-// Risk policy (§15)
-export type { RiskLevel, WriteOperationKind, WriteOperationPolicy } from "./risk.js";
-export {
-  WRITE_OPERATION_KINDS,
-  WRITE_OPERATION_POLICIES,
-  isWriteOperationKind,
-  policyForWriteOperation,
-} from "./risk.js";
+// Domain events (§10)
+export type {
+  ActionExecutedPayload,
+  DiagnosticErrorPayload,
+  DiagnosticEventMap,
+  DiagnosticEventName,
+  DidReadPayload,
+  DtcsClearedPayload,
+  DtcsReadPayload,
+  EcuCapabilitiesUpdatedPayload,
+  EcuDiscoveredPayload,
+  MeasurementsRecordedPayload,
+  SafetyApprovalDeniedPayload,
+  SafetyApprovalGrantedPayload,
+  SafetyApprovalRequestedPayload,
+  VehicleConnectedPayload,
+  VehicleDisconnectedPayload,
+} from "./events.js";
+export { DIAGNOSTIC_EVENT_NAMES } from "./events.js";
+// Ids (§24)
+export type {
+  ActionId,
+  DefinitionId,
+  EcuId,
+  EventId,
+  Id,
+  IdKind,
+  MeasurementId,
+  SessionId,
+  TraceId,
+  VehicleId,
+} from "./ids.js";
+export { asId, asIdOfKind, hasIdPrefix, ID_PREFIXES } from "./ids.js";
 
 // Domain data contracts (§32 Phase 1)
 export type {
@@ -69,38 +78,14 @@ export type {
   SessionSummary,
   SignalInfo,
   SignalStatisticsInfo,
+  UnreadEcuInfo,
   VehicleStateReading,
   VehicleSummary,
   WriteStageInfo,
 } from "./model.js";
-
-// Domain events (§10)
-export type {
-  ActionExecutedPayload,
-  DiagnosticErrorPayload,
-  DiagnosticEventMap,
-  DiagnosticEventName,
-  DidReadPayload,
-  DtcsClearedPayload,
-  DtcsReadPayload,
-  EcuCapabilitiesUpdatedPayload,
-  EcuDiscoveredPayload,
-  MeasurementsRecordedPayload,
-  SafetyApprovalDeniedPayload,
-  SafetyApprovalGrantedPayload,
-  SafetyApprovalRequestedPayload,
-  VehicleConnectedPayload,
-  VehicleDisconnectedPayload,
-} from "./events.js";
-export { DIAGNOSTIC_EVENT_NAMES } from "./events.js";
-
 // Ports (§2, §4, §32 Phase 3)
 export type { Clock } from "./ports/clock.js";
-export { FixedClock, clockFrom, systemClock } from "./ports/clock.js";
-export type { IdGenerator } from "./ports/id-generator.js";
-export { DefaultIdGenerator, FixedIdGenerator } from "./ports/id-generator.js";
-export type { EventBus, RecordedEvent, Unsubscribe } from "./ports/event-bus.js";
-export { InMemoryEventBus, RecordingEventBus } from "./ports/event-bus.js";
+export { clockFrom, FixedClock, systemClock } from "./ports/clock.js";
 export type {
   ConnectionCapabilities,
   DiagnosticRequestOptions,
@@ -108,8 +93,8 @@ export type {
   VehicleConnection,
 } from "./ports/connection.js";
 export type {
-  DidDefinitionRef,
   DefinitionProvider,
+  DidDefinitionRef,
   EcuAddressFactRef,
   EcuAddressRef,
   EcuDefinitionRef,
@@ -129,5 +114,17 @@ export {
   StaticDefinitionProvider,
   unresolvedVehicleResolution,
 } from "./ports/definition-provider.js";
+export type { EventBus, RecordedEvent, Unsubscribe } from "./ports/event-bus.js";
+export { InMemoryEventBus, RecordingEventBus } from "./ports/event-bus.js";
+export type { IdGenerator } from "./ports/id-generator.js";
+export { DefaultIdGenerator, FixedIdGenerator } from "./ports/id-generator.js";
 export type { SessionStore, StoredSessionInfo } from "./ports/session-store.js";
 export { InMemorySessionStore } from "./ports/session-store.js";
+// Risk policy (§15)
+export type { RiskLevel, WriteOperationKind, WriteOperationPolicy } from "./risk.js";
+export {
+  isWriteOperationKind,
+  policyForWriteOperation,
+  WRITE_OPERATION_KINDS,
+  WRITE_OPERATION_POLICIES,
+} from "./risk.js";

@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { NoHandlerError } from "@vdp/application";
 import {
   addMarker,
   clearDtcs,
@@ -8,6 +7,7 @@ import {
   getAvailableActions,
   getDtcClearPrecheck,
   getDtcList,
+  getDtcScanGaps,
   getEcu,
   getEcuCapabilities,
   getEcuList,
@@ -19,6 +19,7 @@ import {
   getSignalList,
   getStatistics,
   identifyEcus,
+  NoHandlerError,
   readDtcFreezeFrame,
   readDtcs,
   snapshotSignals,
@@ -28,8 +29,7 @@ import {
 import { SafetyManager } from "@vdp/core";
 import { genericPackage } from "@vdp/definitions";
 import { FixedClock, FixedIdGenerator, InMemorySessionStore, RecordingEventBus } from "@vdp/domain";
-import { createLogger } from "@vdp/shared";
-import { UnknownEcuError } from "@vdp/shared";
+import { createLogger, UnknownEcuError } from "@vdp/shared";
 import type { CanBus, CanFilter, CanFrame } from "@vdp/transport-can";
 import { describe, test } from "vitest";
 import { createDiagnosticRuntime, parseEcuAddress, unknownEcu } from "./index.js";
@@ -124,6 +124,29 @@ describe("runtime composition", () => {
       runtime.dtc.clear("0x7e8", { userConfirmed: true, vehicleState: { stationary: true } }),
       /unknown ECU/,
     );
+    await runtime.dispose();
+  });
+
+  test("the scan reports what it could not read as a read model of its own", async () => {
+    const events = new RecordingEventBus();
+    const runtime = createDiagnosticRuntime({
+      bus: makeSilentBus(),
+      definitions: [genericPackage],
+      logger: quietLogger,
+      events,
+    });
+    // Before any scan the gap list is empty *by shape*, not by absence: a caller must
+    // never have to guess whether "no gaps" was measured or never asked (ADR 0049).
+    assert.deepEqual(await runtime.commands.query(getDtcScanGaps()), []);
+
+    await runtime.vehicle.connect({ windowMs: 30, probeDelayMs: 0 });
+    await runtime.commands.dispatch(readDtcs());
+    assert.deepEqual(runtime.dtc.lastScanGaps, [], "a silent bus has no module to miss");
+    assert.deepEqual(await runtime.commands.query(getDtcScanGaps()), []);
+
+    // `ofType` hands out the payloads; the trail is what an audit reconstructs from.
+    const read = events.ofType("dtcs-read").at(-1);
+    assert.equal(read?.unreadCount, 0, "the event trail carries the same number");
     await runtime.dispose();
   });
 

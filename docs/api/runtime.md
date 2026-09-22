@@ -18,7 +18,7 @@ damit internes Detail.
 | `DiagnosticRuntime` | Das Objekt: `vehicle`, `ecus`, `dtc`, `measurements`, `signalAnalysis`, `writes`, `evidence`, `session`, `safety`, `definitions`, `actions`, `commands`, `events`, `audit`, `dispose()` |
 | `VehicleService` | `connect()`, `disconnect()`, `identity()`, `resolve()` (Fahrzeugauflösung, ADR 0023/0026) |
 | `EcuService` | `list()`, `get()`, `capabilities()`, `identifyAll()`, `readDid()` |
-| `DtcService` | `scan()`, `freezeFrame()`, `precheckClear()`, `clear()` (über den WritePort) |
+| `DtcService` | `scan()`, `freezeFrame()`, `precheckClear()`, `clear()` (über den WritePort); Read-Modelle `lastScanResult` und `lastScanGaps` — die Module, die der letzte Scan **nicht** lesen konnte (ADR 0049) |
 | `MeasurementService` | `snapshot()`, `start()`/`stop()`, `samples()`, `onSample()` (Streaming), `markers()`, `statistics()`, `rawExport()` |
 | `SignalAnalysisService` | Statistik, Anomalien, Spektrum, Korrelation |
 | `WritePort` (`runtime.writes`) | `precheck(kind, input, binding)`, `run(...)`, `history` — die einzige Schreib-Tür (ADR 0032) |
@@ -31,7 +31,14 @@ damit internes Detail.
 ## Beispiel: eine komplette Lese-Session
 
 ```ts
-import { connectVehicle, readDid, readDtcs, getEcuList, snapshotSignals } from "@vdp/application";
+import {
+  connectVehicle,
+  getDtcScanGaps,
+  getEcuList,
+  readDid,
+  readDtcs,
+  snapshotSignals,
+} from "@vdp/application";
 import { genericPackage } from "@vdp/definitions";
 import { createDiagnosticRuntime } from "@vdp/runtime";
 import { VirtualVehicle } from "@vdp/simulators";
@@ -50,6 +57,9 @@ const { session, ecus, vehicle: identity } = await runtime.commands.dispatch(
 const engineEcu = (await runtime.commands.query(getEcuList())).find((e) => e.rxId === 0x7e8);
 const vin = await runtime.commands.dispatch(readDid(engineEcu.ecuId, 0xf190));
 const dtcs = await runtime.commands.dispatch(readDtcs());
+// Die zweite Hälfte der Antwort: über welche Module die Liste oben überhaupt
+// zustande kam. Leer, wenn jedes Modul geantwortet hat (ADR 0049).
+const unread = await runtime.commands.query(getDtcScanGaps());
 const readings = await runtime.commands.dispatch(snapshotSignals(["engine.rpm"]));
 
 const evidence = runtime.evidence.collect(); // → EvidenceSet (read-only)
@@ -69,3 +79,8 @@ await vehicle.stop();
    Service-Methode am Lesepfad (ADR 0032).
 5. **Transport-Seam:** `linkFactory` erlaubt DoIP oder Custom-Links, ohne
    dass sich eine Zeile im Core ändert (AGENTS 5/36).
+6. **Ein Scan antwortet in zwei Hälften.** `scanned` sind die Codes, `unread` die
+   Module ohne Antwort — mit `ecuId`, `ecuName`, `rxId` und Grund. Dieselbe Zahl
+   steht als Pflichtfeld `unreadCount` im `dtcs-read`-Ereignis, damit kein Trail
+   „gelesen" sagen kann, ohne zu sagen, wie viel davon fehlte (ADR 0049; dieselbe
+   Regel wie ADR 0033 für Messwerte).

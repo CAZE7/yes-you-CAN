@@ -30,7 +30,7 @@ import type { DtcRecord } from "@vdp/protocols-uds";
 import { DTC_GROUP_ALL, SESSION } from "@vdp/protocols-uds";
 import { nowIso } from "@vdp/shared";
 import type { EcuHandle } from "../diagnostics/ecu-registry.js";
-import type { ClearDtcResult, ClearableEcu } from "../dtc/clear.js";
+import type { ClearableEcu, ClearDtcResult } from "../dtc/clear.js";
 import type { DtcScanner } from "../dtc/scanner.js";
 import type {
   WriteBinding,

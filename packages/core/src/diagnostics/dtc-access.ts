@@ -29,6 +29,33 @@ export interface ScannedEcu {
   interpretations: OemDtcInterpretation[];
 }
 
+/**
+ * One ECU whose fault memory this scan could **not** read (ADR 0049).
+ *
+ * A scan that keeps going after a failure is right — one dead module must not
+ * hide the other four. But "I could not ask this module" is a fact about the
+ * vehicle, and dropping it turns an empty fault list into a claim that no fault
+ * is stored (ADR 0033: missing evidence is a failure, not a warning). So the
+ * failure travels with the result as data, named by the address an operator can
+ * look up, with the reason the bus gave.
+ */
+export interface UnreadEcu {
+  ecuId: string;
+  ecuName: string;
+  rxId: number;
+  /** What the read threw, verbatim — the timeout or NRC is the evidence. */
+  reason: string;
+}
+
+/**
+ * The whole answer of a full scan: the fault memories that were read, and the
+ * modules that did not answer. Both halves are results; neither is an exception.
+ */
+export interface DtcScanReport {
+  scanned: ScannedEcu[];
+  unread: UnreadEcu[];
+}
+
 export interface DtcAccessOptions {
   registry: EcuRegistry;
   scanner: DtcScanner;
@@ -74,13 +101,19 @@ export class DtcAccess {
    * `activeOem` is the manufacturer of the package that drives this session —
    * the OEM hooks are consulted under that name, never under the name of a
    * package that merely happens to be installed too.
+   *
+   * A module that does not answer is **not** dropped: it comes back in
+   * {@link DtcScanReport.unread}, so an empty code list can always be told apart
+   * from "nobody answered" (ADR 0049). The scan still continues — one dead
+   * module must not hide the fault memories of the others.
    */
   async scanAll(
     session: VehicleSession,
     activeOem?: string,
     statusMask = 0xff,
-  ): Promise<ScannedEcu[]> {
+  ): Promise<DtcScanReport> {
     const results: ScannedEcu[] = [];
+    const unread: UnreadEcu[] = [];
     for (const handle of this.registry.all) {
       try {
         // Enrichment (description, severity, first/last seen, related signals)
@@ -100,16 +133,27 @@ export class DtcAccess {
         // *which* fault appeared, and a code is what the operator filters by.
         this.mark(handle.session.record.name, dtcs);
       } catch (error) {
+        const reason = messageOf(error);
         this.log.warn("DTC scan failed for ECU", {
           ecu: handle.session.record.name,
-          error: messageOf(error),
+          error: reason,
+        });
+        unread.push({
+          ecuId: handle.session.record.id,
+          ecuName: handle.session.record.name,
+          rxId: handle.discovered.rxId,
+          reason,
         });
       }
     }
     const all = results.flatMap((r) => r.dtcs);
     if (all.length > 0) session.addDtcSnapshot(all, "scan");
-    this.log.info("DTC scan complete", { ecus: results.length, codes: all.length });
-    return results;
+    this.log.info("DTC scan complete", {
+      ecus: results.length,
+      codes: all.length,
+      unread: unread.length,
+    });
+    return { scanned: results, unread };
   }
 
   /** Freeze frame of one fault code, or `null` when the ECU has none. */

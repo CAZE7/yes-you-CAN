@@ -18,6 +18,7 @@
  */
 
 import type { DtcRecord } from "@vdp/protocols-uds";
+import { formatMeasuredValue } from "@vdp/shared";
 import { summarizeAllSamples } from "../measurements/statistics.js";
 import type { MeasurementSample, SignalStatistics } from "../measurements/types.js";
 
@@ -350,7 +351,7 @@ function compareSignals(
       ...base,
       delta,
       verdict: "changed" as const,
-      reason: `Mittelwert ${formatNumber(before)} → ${formatNumber(after)} (${percentText})`,
+      reason: `Mittelwert ${formatMeasuredValue(before)} → ${formatMeasuredValue(after)} (${percentText})`,
     };
   });
 }
@@ -358,8 +359,4 @@ function compareSignals(
 function numericDelta(left: number | null, right: number | null): number | null {
   if (left === null || right === null) return null;
   return right - left;
-}
-
-function formatNumber(value: number): string {
-  return Number.isInteger(value) ? String(value) : value.toFixed(2);
 }

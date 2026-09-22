@@ -12,7 +12,7 @@
  * undocumented signal is how a simulator starts reporting values nobody measured.
  */
 
-import { type VehicleModelState, type VehicleThresholds, ignitionCode } from "./vehicle-state.js";
+import { ignitionCode, type VehicleModelState, type VehicleThresholds } from "./vehicle-state.js";
 
 /** What the mapping may ask the model about. */
 export interface ModelSignalSource {

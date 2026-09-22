@@ -8,7 +8,7 @@
  * nothing may bypass it.
  */
 
-import { type DefinitionPackage, type SignalDefinition, indexPackage } from "@vdp/definitions";
+import { type DefinitionPackage, indexPackage, type SignalDefinition } from "@vdp/definitions";
 import type { Logger } from "@vdp/shared";
 import { messageOf } from "@vdp/shared";
 import type { DecodedSignal, SignalDecoder } from "../measurements/decoder.js";

@@ -13,10 +13,10 @@
 
 import {
   type ConnectDiscoveryOptions,
+  createIdentityFromVin,
   type DecodedSignal,
   DiagnosticEngine,
   SessionLogger,
-  createIdentityFromVin,
 } from "@vdp/core";
 import type { DefinitionPackage } from "@vdp/definitions";
 import type { Logger } from "@vdp/shared";
@@ -119,12 +119,32 @@ export function signalExpectations(signals: readonly DecodedSignal[]): GoldenSig
  */
 export async function recordGoldenSession(options: RecordGoldenOptions): Promise<RecordedGolden> {
   const logger = options.logger;
+  // The recorder's own clock, advanced at fixed points below.
+  //
+  // Without it the vehicle reads the wall clock for every evolving signal
+  // (`signalValue` derives elapsed seconds from it), so two recordings of the same
+  // recipe differ by however fast the machine happened to be — measured before this
+  // existed: `abs.wheel_speed` 40,76 → 40,78, `engine.rpm` 831,3 → 832, 44 value
+  // lines drifting on an unchanged tree (ADR 0052).
+  //
+  // Stepped, not frozen: a frozen clock would pin every signal to its t=0 value and
+  // the fixture would stop showing a car in motion. One step per phase keeps the
+  // values inside a phase constant — which is what makes an `equal` expectation an
+  // `equal` expectation instead of a range.
+  const PHASE_MS = 50;
+  let modelMs = 0;
+  const modelClock = (): number => 1_700_000_000_000 + modelMs;
+  const advancePhase = (): void => {
+    modelMs += PHASE_MS;
+  };
+
   const vehicle = new VirtualVehicle({
     definitions: options.definitions,
     ...(logger ? { logger } : {}),
     // Both directions have to be recorded, otherwise half the conversation — and
     // therefore half of the replay — is missing.
     networkOptions: { echoToSender: true },
+    clock: modelClock,
     ...options.recipe.vehicle,
   });
   await vehicle.start();
@@ -147,9 +167,12 @@ export async function recordGoldenSession(options: RecordGoldenOptions): Promise
 
   try {
     await engine.connect(GOLDEN_CONNECT_OPTIONS);
+    advancePhase();
     const identity = await engine.detectVehicleIdentity();
+    advancePhase();
     const signals = await engine.snapshotSignals();
-    const scanned = await engine.scanDtcs();
+    advancePhase();
+    const { scanned } = await engine.scanDtcs();
     const { samples, markers } = engine.recorder.export();
     const { trace, log } = sessionLogger.snapshot();
 

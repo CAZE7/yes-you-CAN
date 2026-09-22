@@ -27,6 +27,7 @@ import type { ChaosStatusView } from "../src/views.js";
 
 /** The chaos status as this file reads it — the same shape the panel gets. */
 type ChaosStatus = ChaosStatusView;
+
 import { WebServer } from "../src/server.js";
 
 /** What `/api/history` exposes of the recording — only the part these tests read. */

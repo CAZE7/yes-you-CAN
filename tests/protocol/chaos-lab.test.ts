@@ -9,7 +9,7 @@
  */
 
 import assert from "node:assert/strict";
-import { SafetyManager, WritePort, createCodingOperation, runCoding } from "@vdp/core";
+import { createCodingOperation, runCoding, SafetyManager, WritePort } from "@vdp/core";
 import { ChaosLab, createVirtualCanNetwork } from "@vdp/simulators";
 import { createFrame } from "@vdp/transport-can";
 import { IsoTpConnection } from "@vdp/transport-iso-tp";

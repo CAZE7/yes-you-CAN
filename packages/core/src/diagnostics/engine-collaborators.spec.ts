@@ -22,12 +22,12 @@ import {
 } from "@vdp/definitions";
 import { OemProtocolRegistry } from "@vdp/protocols-oem";
 import {
+  createRequestResponseLink,
   DID,
   type UdsLink,
   UdsServer,
   type UdsServerLink,
   type UdsServerOptions,
-  createRequestResponseLink,
 } from "@vdp/protocols-uds";
 import { createLogger, fromHex } from "@vdp/shared";
 import type { CanBus, CanFilter, CanFrame, FrameListener } from "@vdp/transport-can";
@@ -38,7 +38,7 @@ import { SignalDecoder } from "../measurements/decoder.js";
 import { MeasurementRecorder } from "../measurements/recorder.js";
 import { SafetyManager } from "../safety/safety-manager.js";
 import type { EcuSession } from "../session/session.js";
-import { VehicleSession, createSession } from "../session/session.js";
+import { createSession, VehicleSession } from "../session/session.js";
 import { clearableEcuOf, runDtcClear } from "../writes/dtc-clear.js";
 import type { WriteBinding } from "../writes/port.js";
 import { createWritePort } from "../writes/standard-operations.js";
@@ -496,7 +496,7 @@ describe("DtcAccess — fault memory, enrichment and the write path", () => {
     assert.match(markers[0]?.detail ?? "", /Status 0x08/);
   });
 
-  test("scanAll keeps going when one ECU fails and snapshots the scan", async () => {
+  test("scanAll keeps going when one ECU fails — and names the one it could not read", async () => {
     const ecu = createInMemoryEcu({ name: "engine", dtcs: [{ code: "P0420", status: 0x08 }] });
     const links = new EcuLinks(
       { linkFactory: { open: () => ({ link: ecu.link, close: () => undefined }) } },
@@ -523,9 +523,37 @@ describe("DtcAccess — fault memory, enrichment and the write path", () => {
         transport: { kind: "can", channel: "vcan0", mtu: 8 },
       }),
     );
-    const results = await dtcAccess(h).scanAll(session, "test");
-    assert.equal(results.length, 1, "the failed ECU is skipped, not fatal");
+    const { scanned, unread } = await dtcAccess(h).scanAll(session, "test");
+    assert.equal(scanned.length, 1, "the failed ECU is skipped, not fatal");
     assert.equal(session.data.dtcSnapshots.length, 1, "a full scan becomes the session snapshot");
+    // Skipping is not silencing (ADR 0049). The module that stayed silent comes back
+    // with the address it was asked on and the reason the bus gave, because a result
+    // of "one code" over a bus where a second module never answered is a claim about
+    // the car that the scan did not measure.
+    assert.deepEqual(unread, [
+      { ecuId: "ghost", ecuName: "Ghost ECU", rxId: 0x7e9, reason: "no response from 0x7e9" },
+    ]);
+  });
+
+  test("a scan every module answered reports no gaps", async () => {
+    const ecu = createInMemoryEcu({ name: "engine", dtcs: [{ code: "P0420", status: 0x08 }] });
+    const links = new EcuLinks(
+      { linkFactory: { open: () => ({ link: ecu.link, close: () => undefined }) } },
+      logger,
+    );
+    const h = harness({ links });
+    await h.attacher.attach(discovered());
+    const session = new VehicleSession(
+      createSession({
+        adapter: new StubBus().info,
+        transport: { kind: "can", channel: "vcan0", mtu: 8 },
+      }),
+    );
+    const { scanned, unread } = await dtcAccess(h).scanAll(session, "test");
+    assert.equal(scanned.length, 1, "the answering module is in the result");
+    // The other half has a shape for "nothing was missing", so a caller never has to
+    // guess whether an empty list means healthy or unheard.
+    assert.deepEqual(unread, []);
   });
 
   test("the read side cannot write: a handle crosses to the write port, which owns the permit", async () => {

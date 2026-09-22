@@ -5,7 +5,7 @@
  * 4-byte payload length. Everything else is a payload type specific body.
  */
 
-import { ProtocolError, concatBytes, u16be, u32be, writeU16be, writeU32be } from "@vdp/shared";
+import { concatBytes, ProtocolError, u16be, u32be, writeU16be, writeU32be } from "@vdp/shared";
 
 export const DOIP_PROTOCOL_VERSION = 0x02;
 export const DOIP_UDP_PORT = 13400;

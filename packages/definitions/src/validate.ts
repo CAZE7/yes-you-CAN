@@ -15,8 +15,8 @@ import {
   type FailurePatternDefinition,
   type MeasurementCheckDefinition,
   type Provenance,
-  SUPPORTED_SCHEMA_VERSIONS,
   type SignalDefinition,
+  SUPPORTED_SCHEMA_VERSIONS,
   type VehicleDefinition,
 } from "./schema.js";
 

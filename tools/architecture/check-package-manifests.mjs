@@ -33,7 +33,7 @@
  * read the tree (so a broken manifest is never mistaken for a clean workspace).
  */
 
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 

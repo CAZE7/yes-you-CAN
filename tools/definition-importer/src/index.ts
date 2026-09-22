@@ -19,12 +19,12 @@ import {
   type DefinitionPackage,
   type EcuDefinition,
   type Provenance,
+  parseDefinitionPackage,
   type SignalDefinition,
   type SignalEncoding,
-  parseDefinitionPackage,
   validateDefinitionPackage,
 } from "@vdp/definitions";
-import { DefinitionError, type Logger, createLogger, messageOf } from "@vdp/shared";
+import { createLogger, DefinitionError, type Logger, messageOf } from "@vdp/shared";
 
 export interface ImportOptions {
   oem: string;

@@ -1,38 +1,38 @@
-export * from "./schema.js";
-export * from "./validate.js";
-export * from "./json.js";
-export * from "./migrate.js";
-export * from "./vehicles.js";
 export * from "./evidence.js";
+export { genericPackage } from "./generic/generic-package.js";
+export * from "./json.js";
 export * from "./knowledge.js";
-export * from "./resolve.js";
+export { mercedesExamplePackage } from "./mercedes/mercedes-package.js";
+export * from "./migrate.js";
 export {
-  WMI_PROVENANCE,
-  type WmiEntry,
   knownWmis,
   lookupWmi,
   regionForVin,
+  WMI_PROVENANCE,
+  type WmiEntry,
 } from "./reference/wmi.js";
-export { genericPackage } from "./generic/generic-package.js";
-export { vagExamplePackage } from "./vag/vag-package.js";
-export { mercedesExamplePackage } from "./mercedes/mercedes-package.js";
-export {
-  SIMULATOR_VIN,
-  simulatorPackage,
-  simulatorVehicle,
-} from "./simulator/simulator-package.js";
+export * from "./resolve.js";
+export * from "./schema.js";
 export {
   highFidelityEcus,
   highFidelityPackage,
   highFidelitySignals,
   highFidelityVehicle,
 } from "./simulator/high-fidelity-package.js";
+export {
+  SIMULATOR_VIN,
+  simulatorPackage,
+  simulatorVehicle,
+} from "./simulator/simulator-package.js";
+export { vagExamplePackage } from "./vag/vag-package.js";
+export * from "./validate.js";
+export * from "./vehicles.js";
 
 import { genericPackage } from "./generic/generic-package.js";
 import { type DtcKnowledgeHit, type DtcKnowledgeQuery, findDtcKnowledge } from "./knowledge.js";
 import { mercedesExamplePackage } from "./mercedes/mercedes-package.js";
 import { type VehicleResolution, type VehicleResolutionInput, VehicleResolver } from "./resolve.js";
-import { type DefinitionPackage, type VehicleDefinition, indexVehicles, keyOf } from "./schema.js";
+import { type DefinitionPackage, indexVehicles, keyOf, type VehicleDefinition } from "./schema.js";
 import { vagExamplePackage } from "./vag/vag-package.js";
 
 /** A vehicle definition together with the package that declares it. */

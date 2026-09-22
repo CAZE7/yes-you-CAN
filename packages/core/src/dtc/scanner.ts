@@ -34,14 +34,14 @@ import {
   findDtcKnowledge,
 } from "@vdp/definitions";
 import {
+  compareDtcObservations,
   type DtcObservation,
   type DtcState,
-  type Evidence,
-  compareDtcObservations,
   describeEvidence,
   dtcEnrichment,
   dtcKey,
   dtcObservation,
+  type Evidence,
 } from "@vdp/diagnostic-ir";
 import { type DtcRecord, dtcSeverity } from "@vdp/protocols-uds";
 

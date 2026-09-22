@@ -28,9 +28,9 @@ import {
   stopMeasurements,
 } from "@vdp/application";
 import { genericPackage } from "@vdp/definitions";
-import { RecordingEventBus, policyForWriteOperation } from "@vdp/domain";
+import { policyForWriteOperation, RecordingEventBus } from "@vdp/domain";
 import { createDiagnosticRuntime } from "@vdp/runtime";
-import { MemorySink, createLogger } from "@vdp/shared";
+import { createLogger, MemorySink } from "@vdp/shared";
 import { VirtualVehicle } from "@vdp/simulators";
 import { afterAll, beforeAll, test } from "vitest";
 import { waitFor } from "../helpers/wait.js";

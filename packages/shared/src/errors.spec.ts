@@ -2,11 +2,13 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 import {
   AdapterUnsupportedError,
+  asError,
   DecodeError,
   DefinitionError,
   EncodeError,
   type ErrorCode,
   IsoTpError,
+  messageOf,
   ProtocolError,
   SafetyViolationError,
   SessionError,
@@ -17,8 +19,6 @@ import {
   UdsNegativeResponseError,
   UdsTimeoutError,
   VdpError,
-  asError,
-  messageOf,
 } from "./errors.js";
 
 /**

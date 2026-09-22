@@ -13,8 +13,9 @@
  * resolved vehicle produced it (AGENTS 20.1) — never borrowed from the package.
  */
 
-import type { DtcInfo } from "@vdp/domain";
+import type { DtcInfo, UnreadEcuInfo } from "@vdp/domain";
 import { type DtcKnowledgeView, toDtcKnowledgeView } from "./dtc-knowledge-view.js";
+import { formatCanId } from "./trace-view.js";
 
 export interface DtcView {
   code: string;
@@ -86,5 +87,30 @@ export function toDtcView(info: DtcInfo, ecus: readonly { id: string; rxId: stri
     // (AGENTS 24). Absent for a code the platform never enriched.
     ...(info.evidence !== undefined ? { provenance: info.evidence } : {}),
     freezeFrame: info.hasFreezeFrame,
+  };
+}
+
+/**
+ * A module the last scan could not read (ADR 0049).
+ *
+ * The row is the answer to a question the empty fault table cannot answer: an
+ * operator who sees "keine Einträge" over a bus where five modules stayed silent
+ * is being told the car is healthy. `reason` is what the bus said — a timeout or
+ * an NRC, verbatim — because a paraphrase would be a second copy of the evidence.
+ */
+export interface UnreadEcuView {
+  /** Name of the module, as the ECU list knows it. */
+  ecu: string;
+  /** Response id it was asked on, formatted like every other id on this wire. */
+  rxId: string;
+  reason: string;
+}
+
+/** The scan's other half: the modules that did not answer (ADR 0049). */
+export function toUnreadEcuView(info: UnreadEcuInfo): UnreadEcuView {
+  return {
+    ecu: info.ecuName,
+    rxId: formatCanId(info.rxId),
+    reason: info.reason,
   };
 }

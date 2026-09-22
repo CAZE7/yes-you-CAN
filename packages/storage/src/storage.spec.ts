@@ -2,18 +2,18 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SESSION_SCHEMA_VERSION, type VehicleSessionData, createSession } from "@vdp/core";
-import { StorageError, createLogger } from "@vdp/shared";
+import { createSession, SESSION_SCHEMA_VERSION, type VehicleSessionData } from "@vdp/core";
+import { createLogger, StorageError } from "@vdp/shared";
 import type { AdapterInfo, TransportInfo } from "@vdp/transport-can";
 import { test } from "vitest";
 import {
-  FileSystemSessionRepository,
-  MemorySessionRepository,
-  MigrationRegistry,
   assertSafeId,
   crc32,
   createZip,
+  FileSystemSessionRepository,
   listZipEntries,
+  MemorySessionRepository,
+  MigrationRegistry,
 } from "./index.js";
 
 const ADAPTER: AdapterInfo = {

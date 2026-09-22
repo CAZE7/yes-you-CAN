@@ -9,29 +9,29 @@ import {
   type DefinitionPackage,
   type DtcDefinition,
   type EcuDefinition,
-  type SignalDefinition,
-  type SignalIndex,
   indexEcus,
   indexPackage,
+  type SignalDefinition,
+  type SignalIndex,
 } from "@vdp/definitions";
 import {
   DID,
   type DtcRecord,
   NRC,
+  nrcName,
   SESSION,
   SID,
   type UdsClient,
   type UdsLink,
-  nrcName,
 } from "@vdp/protocols-uds";
-import { type Logger, UdsNegativeResponseError, createLogger, messageOf, toHex } from "@vdp/shared";
-import { type FreezeFrame, decodeFreezeFrame } from "../dtc/freeze-frame.js";
+import { createLogger, type Logger, messageOf, toHex, UdsNegativeResponseError } from "@vdp/shared";
+import { decodeFreezeFrame, type FreezeFrame } from "../dtc/freeze-frame.js";
 import { type DecodedSignal, SignalDecoder } from "../measurements/decoder.js";
 import {
+  createEcuSession,
   type EcuIdentification,
   type EcuSession,
   type ServiceProbeResult,
-  createEcuSession,
 } from "../session/session.js";
 
 export interface EcuDiagnosticSessionOptions {

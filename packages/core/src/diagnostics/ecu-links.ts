@@ -31,9 +31,11 @@ export interface OpenedEcuLink {
  * CAN {@link CanBus}.
  */
 export interface EcuLinkFactory {
-  open(ecu: { txId: number; rxId: number; extended?: boolean }):
-    | Promise<OpenedEcuLink>
-    | OpenedEcuLink;
+  open(ecu: {
+    txId: number;
+    rxId: number;
+    extended?: boolean;
+  }): Promise<OpenedEcuLink> | OpenedEcuLink;
 }
 
 /** One ECU as it is addressed on the bus. */

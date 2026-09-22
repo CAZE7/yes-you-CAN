@@ -19,6 +19,7 @@ import type {
   SessionSummary,
   SignalInfo,
   SignalStatisticsInfo,
+  UnreadEcuInfo,
   VehicleResolutionRef,
   VehicleStateReading,
   VehicleSummary,
@@ -34,6 +35,7 @@ export const QueryKinds = {
   GetEcu: "ecu.get",
   GetEcuCapabilities: "ecu.capabilities",
   GetDtcList: "dtc.list",
+  GetDtcScanGaps: "dtc.scan-gaps",
   GetDtcClearPrecheck: "dtc.clear-precheck",
   GetMeasurements: "measurement.list",
   GetMeasurementStatus: "measurement.status",
@@ -135,6 +137,22 @@ export function getDtcList(ecuId?: string): GetDtcListQuery {
   return ecuId === undefined
     ? { kind: QueryKinds.GetDtcList }
     : { kind: QueryKinds.GetDtcList, ecuId };
+}
+
+/**
+ * Which modules the last full scan could not read (ADR 0049).
+ *
+ * A query of its own, not a field on {@link getDtcList}: the fault list answers
+ * "what is stored", and an empty list is a complete answer to that question. What
+ * the scan could *not* ask is a separate fact about the same scan, and a client
+ * that only wants the codes must not have to carry it.
+ */
+export interface GetDtcScanGapsQuery extends Query<readonly UnreadEcuInfo[]> {
+  readonly kind: typeof QueryKinds.GetDtcScanGaps;
+}
+
+export function getDtcScanGaps(): GetDtcScanGapsQuery {
+  return { kind: QueryKinds.GetDtcScanGaps };
 }
 
 export interface GetMeasurementsQuery extends Query<readonly MeasurementReading[]> {

@@ -7,21 +7,21 @@
  */
 
 import {
-  IsoTpError,
-  type Logger,
-  TransportError,
   concatBytes,
   createLogger,
+  IsoTpError,
+  type Logger,
   messageOf,
+  TransportError,
 } from "@vdp/shared";
 import { type CanBus, type CanFrame, createFrame } from "@vdp/transport-can";
 import {
   DEFAULT_TIMING,
+  encodeStMin,
   FLOW_STATUS,
   FRAME_TYPE,
   type IsoTpOptions,
   type IsoTpTiming,
-  encodeStMin,
   parseStMin,
 } from "./params.js";
 

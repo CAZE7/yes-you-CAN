@@ -4,6 +4,10 @@
 > DtcEnrichment (Wissen) → DtcState → EvidenceItem`.
 
 ```text
+Scan über alle Module (DtcAccess.scanAll, ADR 0049)
+  ├─ antwortet  → ScannedEcu { ecuId, dtcs[] }   ─┐
+  └─ antwortet nicht → UnreadEcu { ecuId, ecuName, rxId, reason }
+                                                   │  DtcScanReport { scanned, unread }
 ECU meldet Fehlerspeicher (0x19 READ_DTC_INFORMATION)
   ▼
 @vdp/transport-can          CanFrame (Roh)
@@ -49,10 +53,19 @@ ECU meldet Fehlerspeicher (0x19 READ_DTC_INFORMATION)
   `@vdp/protocols-uds` (Core, Simulator, Workbench-View alle benutzen sie).
 - **Zwei Scans ergeben Historie:** `firstSeen` erscheint erst ab dem zweiten
   Scan, in dem der Code sichtbar ist (AGENTS 20).
+- **Ein Scan hat zwei Hälften (ADR 0049):** `scanned` sind die Codes, `unread` sind
+  die Module, die nicht geantwortet haben — mit `ecuId`, `ecuName`, `rxId` und Grund.
+  Ein Bus, an dem niemand antwortet, liefert `scanned: []` **und** ein volles
+  `unread`; nur die erste Hälfte zu zeigen ist der Defekt, den das ADR behebt
+  (nachgemessen: 200 `{"dtcs":[]}` bei 8,01 V Batteriespannung). Die Lücke reist als
+  `QueryKinds.GetDtcScanGaps` und als Pflichtfeld `DtcsReadPayload.unreadCount`, und
+  sie altert bei der nächsten Antwort des Moduls.
 
 **Verboten:** `EnrichedDtc` aus `@vdp/core` direkt in Report/UI weiterreichen
 (das ist die alte Einheitsform — die IR-Hälften sind der Kontrakt, ADR 0037);
-DTC-Texte ohne Quelle zitieren; Status-Byte-Logik neu schreiben.
+DTC-Texte ohne Quelle zitieren; Status-Byte-Logik neu schreiben; `unread` aus einem
+`DtcScanReport` verwerfen und nur `.scanned` weiterreichen (ADR 0049 — wer die erste
+Hälfte will, schreibt es hin).
 
 **Zugehörig:** [`docs/flows/ai-analysis.md`](ai-analysis.md) (was aus den
 Items wird), [`tests/examples/dtc-analysis.example.ts`](../../tests/examples/dtc-analysis.example.ts).

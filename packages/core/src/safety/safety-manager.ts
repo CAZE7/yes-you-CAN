@@ -18,7 +18,7 @@
  * auditable in one place.
  */
 
-import { type Logger, SafetyViolationError, createId, createLogger, nowIso } from "@vdp/shared";
+import { createId, createLogger, type Logger, nowIso, SafetyViolationError } from "@vdp/shared";
 
 export interface VehicleState {
   /** Vehicle standing still. */
@@ -111,7 +111,7 @@ export class SafetyManager {
     detail: string;
   }> = [];
 
-  constructor(private readonly options: SafetyManagerOptions = {}) {
+  constructor(options: SafetyManagerOptions = {}) {
     this.log = (options.logger ?? createLogger("safety", { level: "INFO" })).child("safety");
     this.minBatteryVoltage = options.minBatteryVoltage ?? DEFAULT_MIN_BATTERY_VOLTAGE;
     this.permitTtlMs = options.permitTtlMs ?? 60_000;

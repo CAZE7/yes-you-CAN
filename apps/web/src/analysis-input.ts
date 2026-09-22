@@ -21,7 +21,7 @@ import type {
   AnalysisInput,
   AnalysisVersions,
 } from "@vdp/ai";
-import { type EvidenceItem, describeEvidence, itemsOf } from "@vdp/diagnostic-ir";
+import { describeEvidence, type EvidenceItem, itemsOf } from "@vdp/diagnostic-ir";
 import type { AnomalyInfo, SignalStatisticsInfo, VehicleSummary } from "@vdp/domain";
 import type { EvidenceSnapshot } from "@vdp/runtime";
 import type { VehicleSessionData } from "@vdp/storage";

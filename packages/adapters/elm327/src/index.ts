@@ -1,6 +1,7 @@
 export * from "./adapter.js";
 export * from "./protocol.js";
 export * from "./stream.js";
+
 import type { CanAdapterFactory } from "@vdp/transport-can";
 import { Elm327Adapter, type Elm327Options } from "./adapter.js";
 import type { ByteStream } from "./stream.js";

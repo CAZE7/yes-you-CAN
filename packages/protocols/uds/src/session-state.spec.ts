@@ -14,11 +14,11 @@ import { NRC } from "./nrc.js";
 import { SESSION, SID } from "./services.js";
 import {
   ALWAYS_AVAILABLE_SERVICES,
-  type SessionDefinition,
-  SessionStateMachine,
   defaultSessionDefinition,
   extendedSessionDefinition,
   programmingSessionDefinition,
+  type SessionDefinition,
+  SessionStateMachine,
   simulatorSessions,
   standardSessions,
 } from "./session-state.js";

@@ -12,12 +12,12 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import {
-  RAW_TRACE_HASH_ALGORITHM,
-  type RawTraceEntry,
-  type RawTraceManifest,
   canonicalRawTraceChunks,
   createRawTraceManifest,
   hashRawTrace,
+  RAW_TRACE_HASH_ALGORITHM,
+  type RawTraceEntry,
+  type RawTraceManifest,
   verifyRawTraceManifest,
 } from "@vdp/core";
 import { test } from "vitest";

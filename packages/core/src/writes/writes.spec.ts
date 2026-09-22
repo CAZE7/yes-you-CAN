@@ -24,18 +24,18 @@ import { genericPackage } from "@vdp/definitions";
 import type { DtcRecord } from "@vdp/protocols-uds";
 import { test } from "vitest";
 import {
-  type ClearDtcResult,
   type ClearableEcu,
+  type ClearDtcResult,
+  createDtcClearOperation,
+  createWritePort,
   DtcScanner,
+  precheckDtcClear,
+  runDtcClear,
   SafetyManager,
   type WriteBinding,
   type WriteOperation,
   type WriteOperationResult,
   WritePort,
-  createDtcClearOperation,
-  createWritePort,
-  precheckDtcClear,
-  runDtcClear,
 } from "../index.js";
 import { DiagnosticTransaction } from "./transaction.js";
 

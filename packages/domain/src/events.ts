@@ -44,6 +44,12 @@ export interface DtcsReadPayload {
   ecuId?: string;
   ecuCount: number;
   dtcCount: number;
+  /**
+   * How many modules the scan could not read (ADR 0049). A consumer that logs or
+   * reports `dtcCount: 0` must be able to say whether that was an empty fault
+   * memory or a bus where nobody answered.
+   */
+  unreadCount: number;
 }
 
 export interface DtcsClearedPayload {

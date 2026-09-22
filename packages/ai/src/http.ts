@@ -11,7 +11,7 @@
  */
 
 import type { DiscriminatingTest } from "@vdp/diagnostic-ir";
-import { type Logger, createLogger, messageOf } from "@vdp/shared";
+import { createLogger, type Logger, messageOf } from "@vdp/shared";
 import { analysisInstruction } from "./prompt.js";
 import { citableIds, knownCitations, provenanceOf } from "./provenance.js";
 import {

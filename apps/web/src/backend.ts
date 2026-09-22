@@ -32,11 +32,12 @@ import {
   HeuristicAnalysisProvider,
 } from "@vdp/ai";
 import {
-  type ConnectVehicleOptions,
   addMarker,
+  type ConnectVehicleOptions,
   clearDtcs,
   connectVehicle,
   getDtcClearPrecheck,
+  getDtcScanGaps,
   getMarkers,
   identifyEcus,
   readDtcFreezeFrame,
@@ -53,18 +54,18 @@ import {
 import type { DtcClearPrecheckInfo, VehicleResolutionRef } from "@vdp/domain";
 import type { DtcRecord } from "@vdp/protocols-uds";
 import {
+  createDiagnosticRuntime,
   type DiagnosticRuntime,
   PLATFORM_VERSION,
   type WriteBinding,
-  createDiagnosticRuntime,
 } from "@vdp/runtime";
 import {
   AdapterUnsupportedError,
+  createLogger,
   type Logger,
+  messageOf,
   TransportClosedError,
   TransportError,
-  createLogger,
-  messageOf,
 } from "@vdp/shared";
 import {
   CanChaosBus,
@@ -75,11 +76,11 @@ import {
 } from "@vdp/simulators";
 import {
   FileSystemSessionRepository,
+  nodeIntegrityPort,
   SessionLogger,
   type SessionRepository,
   type StoredSessionSummary,
   type VehicleSessionData,
-  nodeIntegrityPort,
 } from "@vdp/storage";
 import {
   type CanBus,
@@ -88,11 +89,11 @@ import {
   recordingFromSessionJson,
 } from "@vdp/transport-can";
 import {
+  createWebAdapterCatalog,
+  isApplicationManaged,
   REPLAY_ADAPTER_ID,
   SIMULATOR_5ECU_ADAPTER_ID,
   SIMULATOR_ADAPTER_ID,
-  createWebAdapterCatalog,
-  isApplicationManaged,
 } from "./adapters.js";
 import type {
   AdaptationResultView,
@@ -137,7 +138,7 @@ export type {
 } from "./views.js";
 
 import { buildAnalysisInput } from "./analysis-input.js";
-import { toDtcView } from "./dtc-view.js";
+import { toDtcView, toUnreadEcuView, type UnreadEcuView } from "./dtc-view.js";
 import { toEcuView, toFreezeFrameView } from "./ecu-view.js";
 import { loadScenarioCatalog } from "./scenario-source.js";
 import {
@@ -228,6 +229,8 @@ export class DemoBackend {
   private unsubscribeEvents: (() => void) | undefined;
   private ecus: EcuView[] = [];
   private dtcs: DtcView[] = [];
+  /** Modules the last full scan could not read (ADR 0049) — the scan's other half. */
+  private unreadEcus: UnreadEcuView[] = [];
   private live = false;
   private connected = false;
   private readonly vin: string;
@@ -620,6 +623,7 @@ export class DemoBackend {
     this.connected = false;
     this.ecus = [];
     this.dtcs = [];
+    this.unreadEcus = [];
     this.resolution = undefined;
     this.guidedDiagnosisSteps = 0;
     this.chaosDropRate = 0;
@@ -656,23 +660,38 @@ export class DemoBackend {
     return this.resolution;
   }
 
-  /** Read fault codes from all ECUs. */
-  async scanDtcs(): Promise<DtcView[]> {
+  /**
+   * Read fault codes from all ECUs.
+   *
+   * Both halves of the scan come back (ADR 0049): the codes that were read, and
+   * the modules that did not answer. An empty list on its own is not the answer to
+   * "is the car free of faults" — it is the answer over the modules that answered,
+   * and the panel has to be able to say which ones stayed silent.
+   */
+  async scanDtcs(): Promise<{ dtcs: DtcView[]; unread: UnreadEcuView[] }> {
     const runtime = this.requireRuntime();
     const infos = await runtime.commands.dispatch(readDtcs());
     // The runtime already enriched the codes with the definition package
     // (description, severity, first/last seen, related signals); the backend
     // only maps them to the view shape the UI consumes (AGENTS 13/20).
     this.dtcs = infos.map((info) => toDtcView(info, this.ecus));
+    const gaps = await runtime.commands.query(getDtcScanGaps());
+    this.unreadEcus = gaps.map(toUnreadEcuView);
     for (const view of this.dtcs) this.emit("dtc", view);
-    this.sessionLogger.log("dtc", "scan complete", { count: this.dtcs.length });
-    this.log.info("DTC scan complete", { count: this.dtcs.length });
+    this.sessionLogger.log("dtc", "scan complete", {
+      count: this.dtcs.length,
+      unread: this.unreadEcus.length,
+    });
+    this.log.info("DTC scan complete", {
+      count: this.dtcs.length,
+      unread: this.unreadEcus.length,
+    });
     // The runtime wrote one marker per fault code while scanning; publish the
     // complete list so open graphs show them without waiting for a history
     // reload.
     const markers = await runtime.commands.query(getMarkers());
     this.emit("markers", markers.map(toMarkerView));
-    return this.dtcs;
+    return { dtcs: this.dtcs, unread: this.unreadEcus };
   }
 
   /**
@@ -1359,6 +1378,7 @@ export class DemoBackend {
         : { kind: "none", channel: "-", mtu: 0 },
       ecus: this.ecus,
       dtcs: this.dtcs,
+      unreadEcus: this.unreadEcus,
       samples: this.recentSamples(),
       statistics: runtime
         ? runtime.measurements.statistics().map((stat) => ({

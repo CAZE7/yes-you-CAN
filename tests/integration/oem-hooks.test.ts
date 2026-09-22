@@ -79,7 +79,7 @@ test("a documented ECU keeps its definition name over the OEM guess", async () =
 
 test("DTC scanning attaches manufacturer interpretations next to the codes", async () => {
   await withEngine({ definitions: [genericPackage], oemProtocols: [testOem] }, async (engine) => {
-    const results = await engine.scanDtcs();
+    const results = (await engine.scanDtcs()).scanned;
     const engineResult = results.find((entry) => entry.dtcs.some((dtc) => dtc.code === "P0420"));
     assert.ok(engineResult, "P0420 must be read from the engine ECU");
 
@@ -97,7 +97,7 @@ test("DTC scanning attaches manufacturer interpretations next to the codes", asy
 
 test("without OEM protocols the engine behaves exactly as before", async () => {
   await withEngine({ definitions: [genericPackage], oemProtocols: [] }, async (engine) => {
-    const results = await engine.scanDtcs();
+    const results = (await engine.scanDtcs()).scanned;
     assert.ok(
       results.every((entry) => entry.interpretations.length === 0),
       "no hooks means no interpretations",

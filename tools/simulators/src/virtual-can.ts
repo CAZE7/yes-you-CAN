@@ -193,7 +193,7 @@ export class VirtualCanBus implements CanBus {
     id: string,
     private readonly channel: string,
     capabilities: Partial<AdapterCapabilities>,
-    private readonly options: VirtualCanOptions,
+    _options: VirtualCanOptions,
   ) {
     this.info = { id, kind: "virtual", name: `Virtual CAN ${id}`, channels: [channel] };
     this.capabilities = {

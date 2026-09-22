@@ -1,9 +1,17 @@
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
 import { tick } from "../../../tests/helpers/wait.js";
-import { CommandBus, DuplicateHandlerError, NoHandlerError } from "./index.js";
-import { CommandKinds, connectVehicle, readDtcs } from "./index.js";
-import { QueryKinds, getEcuList, getSession } from "./index.js";
+import {
+  CommandBus,
+  CommandKinds,
+  connectVehicle,
+  DuplicateHandlerError,
+  getEcuList,
+  getSession,
+  NoHandlerError,
+  QueryKinds,
+  readDtcs,
+} from "./index.js";
 
 describe("command bus", () => {
   test("dispatch routes to the registered command handler", async () => {

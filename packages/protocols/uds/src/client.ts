@@ -7,14 +7,14 @@
  */
 
 import {
+  createLogger,
   DefinitionError,
   type Logger,
+  messageOf,
   ProtocolError,
+  toHex,
   UdsNegativeResponseError,
   UdsTimeoutError,
-  createLogger,
-  messageOf,
-  toHex,
 } from "@vdp/shared";
 import {
   type DtcSeverity,
@@ -25,12 +25,13 @@ import {
   encodeDtcToBytes,
 } from "./dtc.js";
 import type { UdsLink } from "./link.js";
-import { NRC, isTransientNrc, nrcName } from "./nrc.js";
-import { type SeedKeyAlgorithm, refuseAllSecurityAccess } from "./security.js";
+import { isTransientNrc, NRC, nrcName } from "./nrc.js";
+import { refuseAllSecurityAccess, type SeedKeyAlgorithm } from "./security.js";
 import {
   DID,
   DTC_GROUP_ALL,
   DTC_REPORT,
+  isPositiveResponse,
   NEGATIVE_RESPONSE_SID,
   RESET_TYPE,
   ROUTINE_CONTROL_TYPE,
@@ -38,13 +39,12 @@ import {
   SESSION_NAMES,
   SID,
   SUPPRESS_POSITIVE_RESPONSE,
-  isPositiveResponse,
 } from "./services.js";
 import {
   DEFAULT_UDS_TIMING,
+  parseSessionTiming,
   TIMING_MARGIN_MS,
   type UdsTiming,
-  parseSessionTiming,
 } from "./timing.js";
 
 export interface DtcRecord {

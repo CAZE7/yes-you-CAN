@@ -12,14 +12,15 @@ import type {
   ConnectVehicleResult,
   ResolveVehicleHints,
 } from "@vdp/application";
+
 export type {
   WriteBinding,
   WriteOperationResult,
-  WritePrecheckResult,
   WritePort,
+  WritePrecheckResult,
 } from "@vdp/core";
+
 import type {
-  ClearDtcResult,
   DiagnosticEngine,
   EcuHandle,
   EcuSession,
@@ -29,23 +30,14 @@ import type {
   SafetyManager,
   VehicleSessionData,
   VehicleState,
-  WriteBinding,
-  WriteOperationResult,
-  WritePort,
   WriteRequestContext,
 } from "@vdp/core";
-import { clearableEcuOf, precheckDtcClear, runDtcClear } from "@vdp/core";
 import type {
   AnomalyInfo,
-  ClearDtcOutcome,
   DefinitionProvider,
   DiagnosticCapability,
-  DtcClearPrecheckInfo,
-  DtcInfo,
   EcuSummary,
   EventBus,
-  FreezeFrameInfo,
-  IdGenerator,
   MarkerInfo,
   MeasurementReading,
   MeasurementStatus,
@@ -56,34 +48,29 @@ import type {
   SignalInfo,
   SignalStatisticsInfo,
   VehicleResolutionRef,
-  VehicleStateReading,
   VehicleSummary,
 } from "@vdp/domain";
-import { policyForWriteOperation } from "@vdp/domain";
 import type { Logger } from "@vdp/shared";
-import { UnknownEcuError, messageOf, toHex } from "@vdp/shared";
+import { messageOf, toHex, UnknownEcuError } from "@vdp/shared";
 import { capabilitiesFromServices } from "./capability-map.js";
 import {
   decodedToReading,
-  deniedClearOutcome,
   toAnomalyInfo,
-  toClearDtcOutcome,
-  toDtcInfo,
   toEcuSummary,
-  toFreezeFrameInfo,
   toMarkerInfo,
   toMeasurementReading,
   toSessionSummary,
   toSignalInfo,
   toSignalStatisticsInfo,
   toVehicleSummary,
-  toWriteStageInfo,
 } from "./mappers.js";
 import { type SampleListener, SampleStream } from "./sample-stream.js";
+
 // The stream vocabulary stays importable from the service module: the SSE path
 // and the specs reached it here before the split, and a re-export beats a second
 // import path for the same type (ADR 0014: outward API unchanged).
 export type { SampleListener, SampleRound } from "./sample-stream.js";
+
 import {
   dtcVehicleContextOf,
   resolveVehicleQuery,
@@ -312,257 +299,6 @@ export class VehicleService {
       durationMs: session.durationMs(),
     });
     this.log.info("runtime disconnected", { session: session.id });
-  }
-}
-
-/**
- * Fault memory: scan (all or one ECU) and clear.
- *
- * Clearing goes through the {@link WritePort} (master backlog P0 #3): this
- * service decides *when* a write is offered and what the domain event trail
- * says about it, while preconditions, permit, stages and audit stay where they
- * belong — in the write path. The read methods here cannot write: the scan path
- * hands out fault memory, not a way to erase it.
- */
-export class DtcService {
-  private lastScan: DtcInfo[] = [];
-
-  constructor(
-    private readonly engine: DiagnosticEngine,
-    private readonly ecus: EcuService,
-    private readonly writes: WritePort,
-    private readonly events: EventBus,
-    private readonly log: Logger,
-    private readonly ids: IdGenerator,
-  ) {}
-
-  /** Read model: the DTCs of the most recent scan. */
-  get lastScanResult(): readonly DtcInfo[] {
-    return this.lastScan;
-  }
-
-  /**
-   * Scan every reachable ECU (no `ecuId`) or exactly one. A full scan
-   * replaces the read model; a single-ECU scan updates that ECU's entries.
-   */
-  async scan(ecuId?: string, statusMask?: number): Promise<DtcInfo[]> {
-    const session = this.engine.vehicleSession;
-    if (!session) throw new Error("no session — call vehicle.connect() first");
-    const mask = statusMask ?? 0xff;
-
-    if (ecuId === undefined) {
-      const results = await this.engine.scanDtcs(mask);
-      const infos = results.flatMap((result) => result.dtcs.map(toDtcInfo));
-      this.lastScan = infos;
-      this.events.publish("dtcs-read", {
-        sessionId: session.id,
-        ecuCount: results.length,
-        dtcCount: infos.length,
-      });
-      return infos;
-    }
-
-    const handle = this.ecus.resolveHandle(ecuId);
-    if (!handle) throw unknownEcu(ecuId);
-    const { dtcs } = await this.engine.scanEcu(handle.discovered.rxId, mask);
-    const infos = dtcs.map(toDtcInfo);
-    const targetId = handle.session.record.id;
-    this.lastScan = [...this.lastScan.filter((dtc) => dtc.ecuId !== targetId), ...infos];
-    this.events.publish("dtcs-read", {
-      sessionId: session.id,
-      ecuId: targetId,
-      ecuCount: 1,
-      dtcCount: infos.length,
-    });
-    return infos;
-  }
-
-  /**
-   * Read one documented freeze frame of one fault code (AGENTS 20 "Snapshot").
-   *
-   * The decoded values travel together with their raw bytes: a record whose
-   * layout no definition documents stays visible as evidence. Throws when the
-   * ECU has no snapshot for the code — callers surface that as "not available".
-   */
-  async freezeFrame(ecuId: string, code: string, recordNumber = 0xff): Promise<FreezeFrameInfo> {
-    if (!this.engine.vehicleSession) throw new Error("no session — call vehicle.connect() first");
-    const handle = this.ecus.resolveHandle(ecuId);
-    if (!handle) throw unknownEcu(ecuId);
-    const frame = await this.engine.readDtcSnapshot(handle.discovered.rxId, code, recordNumber);
-    if (!frame) {
-      throw new Error(`ECU ${handle.session.record.name} has no freeze frame for ${code}`);
-    }
-    return toFreezeFrameInfo(frame);
-  }
-
-  /**
-   * What the safety chain still requires before a clear is permitted
-   * (AGENTS 26). Read-only: evaluates with `userConfirmed: false`, so the
-   * list contains everything that still has to happen — including the
-   * confirmation itself. Nothing is written and no permit is issued (§15).
-   */
-  precheckClear(ecuId: string, vehicleState: VehicleStateReading): DtcClearPrecheckInfo {
-    const handle = this.ecus.resolveHandle(ecuId);
-    if (!handle) throw unknownEcu(ecuId);
-    const checks = precheckDtcClear(
-      this.writes,
-      { target: clearableEcuOf(handle), userConfirmed: false },
-      this.bindingOf(handle, vehicleState),
-      { userConfirmed: false },
-    );
-    return {
-      ecuId: handle.session.record.id,
-      ecuName: handle.session.record.name,
-      ok: checks.ok,
-      failed: [...checks.failed],
-      unproven: [...checks.unproven],
-      warnings: [...checks.warnings],
-    };
-  }
-
-  /**
-   * Clear one ECU's fault memory.
-   *
-   * The safety chain is not re-implemented here: the {@link WritePort} evaluates
-   * the preconditions, issues the permit, runs the stages and keeps the audit
-   * trail (AGENTS 25/26; master backlog P0 #3/#4). This method decides what the
-   * domain event trail says about it and maps the result to the domain shape —
-   * including the stages, so a refusal can be explained instead of asserted.
-   */
-  async clear(
-    ecuId: string,
-    input: {
-      userConfirmed: boolean;
-      vehicleState: VehicleStateReading;
-      definitionVersion?: string;
-    },
-  ): Promise<ClearDtcOutcome> {
-    const session = this.engine.vehicleSession;
-    if (!session) throw new Error("no session — call vehicle.connect() first");
-    const handle = this.ecus.resolveHandle(ecuId);
-    if (!handle) throw unknownEcu(ecuId);
-    const record = handle.session.record;
-    const definitionVersion = input.definitionVersion ?? this.engine.activePackage?.version;
-
-    const actionId = this.ids.next("act");
-    const policy = policyForWriteOperation("clear-dtc");
-    this.events.publish("safety-approval-requested", {
-      actionId,
-      operation: "clear-dtc",
-      risk: policy.risk,
-      ecuId: record.id,
-    });
-
-    let result: WriteOperationResult<ClearDtcResult>;
-    try {
-      result = await runDtcClear(
-        this.writes,
-        {
-          target: clearableEcuOf(handle),
-          userConfirmed: input.userConfirmed,
-          recordSnapshot: (records, label) => {
-            session.addDtcSnapshot([...records], label);
-          },
-          recordAction: (action) => {
-            session.recordAction(action);
-          },
-        },
-        {
-          ecuId: record.id,
-          ecuName: record.name,
-          sessionId: session.id,
-          sessionType: record.sessionType,
-          ...(definitionVersion !== undefined ? { definitionVersion } : {}),
-          vehicleState: input.vehicleState,
-        },
-      );
-    } catch (error) {
-      // Unknown kind or a programming error in the port — a write that cannot
-      // even be attempted must still leave a trail (AGENTS 25).
-      const message = messageOf(error);
-      this.events.publish("action-executed", {
-        actionId,
-        operation: "clear-dtc",
-        ecuId: record.id,
-        ok: false,
-        detail: message,
-      });
-      this.events.publish("diagnostic-error", {
-        sessionId: session.id,
-        ecuId: record.id,
-        phase: "dtc.clear",
-        message,
-      });
-      throw error;
-    }
-
-    const cleared = result.value;
-    if (!result.ok || !cleared) {
-      this.events.publish("safety-approval-denied", {
-        actionId,
-        ecuId: record.id,
-        reasons: [...result.reasons],
-      });
-      this.log.warn("DTC clear not executed", { ecu: record.name, reasons: result.reasons });
-      this.events.publish("action-executed", {
-        actionId,
-        operation: "clear-dtc",
-        ecuId: record.id,
-        ok: false,
-        ...(result.reasons[0] !== undefined ? { detail: result.reasons[0] } : {}),
-      });
-      return {
-        ...deniedClearOutcome(record.id, record.name, result.reasons),
-        stages: result.stages.map(toWriteStageInfo),
-        transactionId: result.transaction.id,
-      };
-    }
-
-    const outcome = toClearDtcOutcome(cleared, [...result.warnings]);
-    this.events.publish("safety-approval-granted", {
-      actionId,
-      permitId: cleared.permit.id,
-      ecuId: record.id,
-    });
-    this.events.publish("dtcs-cleared", {
-      sessionId: session.id,
-      ecuId: record.id,
-      clearedCount: cleared.comparison.removed.length,
-      remainingCount: cleared.after.length,
-      verified: cleared.verified,
-    });
-    this.events.publish("action-executed", {
-      actionId,
-      operation: "clear-dtc",
-      ecuId: record.id,
-      ok: true,
-      ...(cleared.verified ? {} : { detail: "verification re-read found remaining codes" }),
-    });
-    this.log.info("DTC clear finished", {
-      ecu: record.name,
-      cleared: cleared.cleared,
-      verified: cleared.verified,
-    });
-    return {
-      ...outcome,
-      actionId,
-      stages: result.stages.map(toWriteStageInfo),
-      transactionId: result.transaction.id,
-    };
-  }
-
-  /** Binding a write runs under: the ECU record plus the session reference. */
-  private bindingOf(handle: EcuHandle, vehicleState: VehicleStateReading): WriteBinding {
-    const session = this.engine.vehicleSession;
-    const version = this.engine.activePackage?.version;
-    return {
-      ecuId: handle.session.record.id,
-      ecuName: handle.session.record.name,
-      ...(session ? { sessionId: session.id } : {}),
-      sessionType: handle.session.record.sessionType,
-      ...(version !== undefined ? { definitionVersion: version } : {}),
-      vehicleState,
-    };
   }
 }
 

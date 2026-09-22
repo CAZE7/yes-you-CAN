@@ -20,13 +20,16 @@ nicht diese Datei.
 | ISO-TP-Parameter / Segmentierung | `packages/transport/iso-tp/src/{connection,params}.ts` | `tests/protocol/` |
 | DoIP-Verhalten | `packages/transport/doip/src/` | `packages/runtime/src/transport.ts` (`DoipEcuLinkFactory`), `tests/integration/doip-engine.test.ts` |
 | Neues IR-Objekt / neue Observations-Form | `packages/diagnostic-ir/src/` (neues Modul + Export in `index.ts`) | `packages/core/src/session/observation.ts` (Erzeugung), `packages/runtime/src/mappers.ts`, `docs/api/diagnostic-ir.md`, ADR (Regel 34.15) |
-| DTC-Analyse / -Ablauf | `packages/core/src/dtc/` (scanner, freeze-frame, clear) | `packages/diagnostic-ir/src/dtc.ts`, `packages/runtime/src/services.ts` (`DtcService`), `docs/flows/dtc-analysis.md` |
+| DTC-Analyse / -Ablauf | `packages/core/src/dtc/` (scanner, freeze-frame, clear) | `packages/diagnostic-ir/src/dtc.ts`, `packages/runtime/src/dtc-service.ts` (`DtcService`, ADR 0049 aus `services.ts` geteilt), `docs/flows/dtc-analysis.md` |
+| Scan über alle Module / „wer hat nicht geantwortet?" | `packages/core/src/diagnostics/dtc-access.ts` (`scanAll` → `DtcScanReport`) | `packages/runtime/src/dtc-service.ts`, `packages/application/src/queries.ts` (`GetDtcScanGaps`), `apps/web/src/dtc-view.ts` + `public/app.js` (`#dtc-unread`), ADR 0049 |
 | DTC-Wissen (Varianten, Beschreibungen) | `packages/definitions/src/<oem>/` | `packages/definitions/src/validate.ts` (Qualitäts-Gates, ADR 0025), `tools/definition-importer/` |
 | Evidence / Hypothesen-Logik | `packages/core/src/evidence/{collect,hypotheses,guided-diagnosis}.ts` | `packages/diagnostic-ir/src/evidence.ts`, `packages/runtime/src/evidence-service.ts` |
 | AI-Analyse / Provider | `packages/ai/src/` | `apps/web/src/analysis-input.ts` (Input-Bau inkl. `recordingId`/`scenario`), ADR 0038/0046 (Kontrakt) |
 | Write-Operation hinzufügen | `packages/core/src/writes/` (neues `WriteOperation`-Modul) | `createWritePort`-Wiring in `packages/runtime/src/runtime.ts`, `SafetyManager`-Policy in `packages/domain/src/risk.ts`, ADR 0032/AGENTS 26 |
 | UI-View / -Panel | `apps/web/src/views.ts` (Wire-Contract) + `apps/web/public/` | `apps/web/src/backend.ts`, `apps/web/test/`, ADR 0030 |
 | Neue HTTP-Route | `apps/web/src/server.ts` | `apps/web/src/route-input.ts` (Grammatik-Prüfung), `apps/web/src/backend.ts` |
+| Statische Dateien, MIME, Sicherheits-Header | `apps/web/src/static-assets.ts` (ADR 0049 aus `server.ts` geteilt) | `apps/web/src/paths.ts` (Containment, ADR 0009), `apps/web/test/static-assets.spec.ts` |
+| Was der Prozess auf stdout schreibt | `packages/shared/src/logger.ts` (`createLogger`, `ConsoleSink`) | `apps/web/src/server.ts` (`createServerLogger`, `VDP_LOG_LEVEL`) — der Sink hängt am Einstieg, nie in einem Konstruktor |
 | Simulator-Verhalten (Fahrzeug-Modell) | `tools/simulators/src/vehicle-model.ts` + `vehicle-state.ts` | `vehicle-wiring.ts`, `vehicle-monitors.ts`, `tests/integration/scenario-chain.test.ts` |
 | Szenario hinzufügen | `scenarios/*.json` (der Katalog selbst, ADR 0048) | `tools/simulators/src/scenario-file.ts` (Grammatik) + `scenario-library.ts` (Lader), `scenarios/README.md` |
 | Fault-Injection / Chaos | `tools/simulators/src/{faulty-link,chaos-lab}.ts` | `apps/web/src/backend.ts` (Chaos-Schalter, ADR 0029) |

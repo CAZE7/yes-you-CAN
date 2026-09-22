@@ -13,7 +13,7 @@ import type { DefinitionPackage } from "@vdp/definitions";
 import type { Logger } from "@vdp/shared";
 import { messageOf } from "@vdp/shared";
 import type { CanBus, TransportInfo } from "@vdp/transport-can";
-import { VehicleSession, createSession } from "../session/session.js";
+import { createSession, VehicleSession } from "../session/session.js";
 import { describeVehicle } from "../vehicle/identity.js";
 import { type DiscoveredEcu, EcuDiscovery } from "./discovery.js";
 import type { EcuAttacher } from "./ecu-attacher.js";

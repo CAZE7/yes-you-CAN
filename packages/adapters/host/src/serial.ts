@@ -25,11 +25,11 @@ import { type FileHandle, open } from "node:fs/promises";
 import type { ByteStream } from "@vdp/adapter-elm327";
 import {
   AdapterUnsupportedError,
-  type Logger,
-  TransportError,
   asError,
   createLogger,
+  type Logger,
   messageOf,
+  TransportError,
 } from "@vdp/shared";
 
 export interface SerialStreamOptions {

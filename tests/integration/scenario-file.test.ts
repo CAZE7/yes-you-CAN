@@ -28,8 +28,8 @@ import { DiagnosticEngine, DtcScanner, type EnrichedDtc } from "@vdp/core";
 import { type DefinitionPackage, highFidelityPackage } from "@vdp/definitions";
 import { itemsOf } from "@vdp/diagnostic-ir";
 import { EvidenceService } from "@vdp/runtime";
-import { type Logger, createLogger } from "@vdp/shared";
-import { HighFidelityVehicle, createRandom, parseScenarioFile } from "@vdp/simulators";
+import { createLogger, type Logger } from "@vdp/shared";
+import { createRandom, HighFidelityVehicle, parseScenarioFile } from "@vdp/simulators";
 import { test } from "vitest";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -88,7 +88,7 @@ test("the file’s cause reaches the fault memory through the whole communicatio
   await engine.connect({ windowMs: 150, probeDelayMs: 0 });
   try {
     // Before: no code, no fault — the file has not run yet.
-    const before = await engine.scanDtcs(0xff);
+    const before = (await engine.scanDtcs(0xff)).scanned;
     assert.deepEqual(
       before.flatMap((entry) => entry.dtcs),
       [],
@@ -109,7 +109,7 @@ test("the file’s cause reaches the fault memory through the whole communicatio
 
     // The read over the wire is the one the file predicted: B1001 active, on
     // the BCM, answered by UDS 0x19 over ISO-TP — not written into a field.
-    const scan = await engine.scanDtcs(0xff);
+    const scan = (await engine.scanDtcs(0xff)).scanned;
     const bcmDtc = scan
       .filter((entry) => ecuKey(entry.ecu) === "bcm")
       .flatMap((entry) => entry.dtcs)

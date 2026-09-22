@@ -7,10 +7,10 @@
 
 import {
   AdapterUnsupportedError,
-  type Logger,
-  TransportError,
   asError,
   createLogger,
+  type Logger,
+  TransportError,
 } from "@vdp/shared";
 import type {
   AdapterCapabilities,

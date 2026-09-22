@@ -1,20 +1,20 @@
 import assert from "node:assert/strict";
 import {
-  DiagnosticEngine,
-  DtcScanner,
-  MeasurementRecorder,
-  SessionLogger,
   analyseVin,
   clearableEcuOf,
   createWritePort,
+  DiagnosticEngine,
+  DtcScanner,
   deriveTxId,
+  MeasurementRecorder,
   precheckDtcClear,
   runDtcClear,
+  SessionLogger,
 } from "@vdp/core";
 import { genericPackage } from "@vdp/definitions";
 import { itemById, itemsOf, unprovenItems } from "@vdp/diagnostic-ir";
 import { EvidenceService } from "@vdp/runtime";
-import { MemorySink, createLogger, fromHex, toHex } from "@vdp/shared";
+import { createLogger, fromHex, MemorySink, toHex } from "@vdp/shared";
 import { VirtualVehicle } from "@vdp/simulators";
 import { afterAll, beforeAll, test } from "vitest";
 import { tick, waitFor } from "../helpers/wait.js";
@@ -98,7 +98,7 @@ test("a broken VIN read is reported as a check digit problem, not silently accep
 
 test("DTCs are read from every ECU, decoded and enriched (AGENTS 20)", async () => {
   const scanner = new DtcScanner({ definitions: [genericPackage] });
-  const perEcu = await engine.scanDtcs(0xff);
+  const perEcu = (await engine.scanDtcs(0xff)).scanned;
   assert.ok(perEcu.length >= 1);
   const all = perEcu.flatMap((entry) => scanner.enrich(entry.dtcs, entry.ecu.name, entry.ecu.id));
   assert.ok(all.length > 0, "the simulator seeds DTCs, so at least one must be found");
@@ -148,7 +148,7 @@ test("a freeze frame is decoded through the definition package, byte by byte (AG
 });
 
 test("the engine tracks when a fault code was first and last seen (AGENTS 20)", async () => {
-  const first = await engine.scanDtcs();
+  const first = (await engine.scanDtcs()).scanned;
   const catalyst = first.flatMap((entry) => entry.dtcs).find((dtc) => dtc.code === "P0420");
   assert.ok(catalyst);
   assert.ok(catalyst.firstSeen, "a scan records the first sighting");
@@ -163,7 +163,7 @@ test("the engine tracks when a fault code was first and last seen (AGENTS 20)", 
   await waitFor(() => Date.now() > Date.parse(catalyst.lastSeen ?? ""), undefined, {
     message: "clock past the first sighting",
   });
-  const second = await engine.scanDtcs();
+  const second = (await engine.scanDtcs()).scanned;
   const again = second.flatMap((entry) => entry.dtcs).find((dtc) => dtc.code === "P0420");
   assert.equal(again?.firstSeen, catalyst.firstSeen, "the first sighting never moves");
   assert.ok(
@@ -181,7 +181,7 @@ test("clearing fault memory runs through the write port and is verified by re-re
   const handle = engine.handleFor(0x7e8);
   assert.ok(handle);
 
-  const before = await engine.scanDtcs();
+  const before = (await engine.scanDtcs()).scanned;
   const codes = before.flatMap((entry) => entry.dtcs).map((dtc) => dtc.code);
   assert.ok(codes.includes("P0420"));
 
@@ -357,7 +357,7 @@ test("CSV and JSON exports contain raw and decoded values (AGENTS 17)", () => {
 test("the evidence service cites the session instead of restating it (P0 #39, ADR 0038)", async () => {
   const session = engine.vehicleSession;
   assert.ok(session, "the earlier tests connected the engine");
-  const perEcu = await engine.scanDtcs(0xff);
+  const perEcu = (await engine.scanDtcs(0xff)).scanned;
   // The scan is stored the way the read path stores it, so the evidence set reads a
   // real record of this session rather than a fixture invented next to it.
   const scanner = new DtcScanner({ definitions: [genericPackage] });

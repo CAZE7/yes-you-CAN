@@ -5,11 +5,11 @@ import { fromHex, toHex } from "@vdp/shared";
 import { test } from "vitest";
 import {
   type ClearableEcu,
-  DtcScanner,
-  SafetyManager,
   createWritePort,
+  DtcScanner,
   decodeFreezeFrame,
   runDtcClear,
+  SafetyManager,
 } from "../index.js";
 
 const index = indexPackage(genericPackage);

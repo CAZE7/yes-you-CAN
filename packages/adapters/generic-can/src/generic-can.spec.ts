@@ -6,11 +6,11 @@ import {
   type CanBus,
   type CanFilter,
   type CanFrame,
-  type FrameListener,
   createFrame,
+  type FrameListener,
 } from "@vdp/transport-can";
 import { test } from "vitest";
-import { GenericCanAdapter, createAdapterRegistry, createGenericCanFactory } from "./index.js";
+import { createAdapterRegistry, createGenericCanFactory, GenericCanAdapter } from "./index.js";
 
 class RecordingBus implements CanBus {
   readonly info: AdapterInfo = { id: "inner", kind: "test", name: "Inner bus", channels: ["can9"] };

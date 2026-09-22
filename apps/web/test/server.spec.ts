@@ -120,11 +120,17 @@ test("the DTC scan returns the seeded fault codes with severity", async () => {
     await json(base, "/api/start", { method: "POST" });
     const scanned = await json(base, "/api/dtc/scan", { method: "POST" });
     assert.equal(scanned.status, 200);
-    const dtcs = (scanned.body as { dtcs: Array<{ code: string; severity: string; ecu: string }> })
-      .dtcs;
-    assert.ok(dtcs.some((dtc) => dtc.code === "P0420"));
-    assert.ok(dtcs.some((dtc) => dtc.code === "P0300"));
-    assert.ok(dtcs.every((dtc) => dtc.severity.length > 0));
+    const body = scanned.body as {
+      dtcs: Array<{ code: string; severity: string; ecu: string }>;
+      unread: Array<{ ecu: string; rxId: string; reason: string }>;
+    };
+    assert.ok(body.dtcs.some((dtc) => dtc.code === "P0420"));
+    assert.ok(body.dtcs.some((dtc) => dtc.code === "P0300"));
+    assert.ok(body.dtcs.every((dtc) => dtc.severity.length > 0));
+    // The answer names both halves (ADR 0049): an empty `unread` is the scan saying
+    // "every module answered", which is what makes the code list a statement about
+    // the whole car and not about the part of it that happened to reply.
+    assert.deepEqual(body.unread, []);
   });
 });
 

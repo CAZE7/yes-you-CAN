@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import type { UdsLink } from "@vdp/protocols-uds";
-import { UdsNegativeResponseError, fromHex, toHex } from "@vdp/shared";
+import { fromHex, toHex, UdsNegativeResponseError } from "@vdp/shared";
 import { test } from "vitest";
 import { KWP_LOCAL_ID, KWP_SID, Kwp2000Client, kwpServiceName } from "./index.js";
 

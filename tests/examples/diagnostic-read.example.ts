@@ -23,7 +23,7 @@ import { genericPackage } from "@vdp/definitions";
 import { itemsOf } from "@vdp/diagnostic-ir";
 import { RecordingEventBus } from "@vdp/domain";
 import { createDiagnosticRuntime } from "@vdp/runtime";
-import { MemorySink, createLogger } from "@vdp/shared";
+import { createLogger, MemorySink } from "@vdp/shared";
 import { VirtualVehicle } from "@vdp/simulators";
 import { afterAll, beforeAll, test } from "vitest";
 

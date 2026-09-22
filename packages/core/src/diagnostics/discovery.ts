@@ -10,7 +10,7 @@
 
 import type { DefinitionPackage } from "@vdp/definitions";
 import { SID } from "@vdp/protocols-uds";
-import { type Logger, createLogger, messageOf, toHex } from "@vdp/shared";
+import { createLogger, type Logger, messageOf, toHex } from "@vdp/shared";
 import type { CanBus, CanFrame } from "@vdp/transport-can";
 import { IsoTpConnection } from "@vdp/transport-iso-tp";
 

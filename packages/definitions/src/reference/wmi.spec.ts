@@ -9,7 +9,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { WMI_PROVENANCE, knownWmis, lookupWmi, regionForVin } from "./wmi.js";
+import { knownWmis, lookupWmi, regionForVin, WMI_PROVENANCE } from "./wmi.js";
 
 test("known WMIs name manufacturer, brand and country", () => {
   const vw = lookupWmi("WVW");

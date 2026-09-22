@@ -12,7 +12,7 @@ import type { Marker, MeasurementSample, RecordingWindow, SignalStatistics } fro
 
 // Re-exported so the existing importers keep working; the definitions themselves
 // live in `types.ts` to keep this module free of cycles (statistics.ts needs them).
-export type { MeasurementSample, Marker, RecordingWindow, SignalStatistics } from "./types.js";
+export type { Marker, MeasurementSample, RecordingWindow, SignalStatistics } from "./types.js";
 
 export class MeasurementRecorder {
   private readonly samples: MeasurementSample[] = [];

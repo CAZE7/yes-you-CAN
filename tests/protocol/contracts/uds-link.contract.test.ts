@@ -15,7 +15,7 @@
 
 import assert from "node:assert/strict";
 import { RequestResponseLink, type UdsLink } from "@vdp/protocols-uds";
-import { VdpError, createLogger, fromHex } from "@vdp/shared";
+import { createLogger, fromHex, VdpError } from "@vdp/shared";
 import { createVirtualCanNetwork } from "@vdp/simulators";
 import { createFrame } from "@vdp/transport-can";
 import { IsoTpConnection } from "@vdp/transport-iso-tp";
