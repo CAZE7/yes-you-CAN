@@ -346,7 +346,7 @@
       "title": "Formal reference and conformance vectors",
       "summary": "Changing the ISO-TP transport or the write-safety chain, the Haskell reference models in formal/, or the shared test vectors both are graded against.",
       "packages": ["@vdp/transport-iso-tp", "@vdp/core", "@vdp/formal-conformance"],
-      "adrs": ["0045"],
+      "adrs": ["0045", "0050"],
       "docs": ["docs/api/transport.md", "docs/api/runtime.md"],
       "flows": ["docs/flows/diagnostic-write.md"],
       "examples": []
