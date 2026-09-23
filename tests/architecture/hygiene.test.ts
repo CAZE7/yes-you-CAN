@@ -459,7 +459,7 @@ test("modules stay reviewable: no production file above the size budget", () => 
     {
       file: "apps/web/src/backend.ts",
       reason:
-        "1539 lines — split tracked as AGENTS 0.E E15; the wire contract moved to views.ts in " +
+        "1537 lines — split tracked as AGENTS 0.E E15; the wire contract moved to views.ts in " +
         "E19 (1326 → 1117), `get canBus()` (which nothing had used since the replay suites " +
         "moved to injected buses) is gone (1427 → 1419), and E24's chaos-in-the-path added the " +
         "wrapper in `start()`, the burst target and the refusal before a connection: 1419 → " +
@@ -471,7 +471,19 @@ test("modules stay reviewable: no production file above the size budget", () => 
         "modules it could not read, and the chaos lab reporting the same list (ADR 0049) — " +
         "added 20: 1490 → 1510; the interactive diagnosis step (ADR 0056: `guidedDiagnosis()` " +
         "through `advanceDiagnosis`, loop state in `analyze()`, the for/against mapping in the " +
-        "view) added 29: 1510 → 1539. The budget only keeps the *rest* from growing unnoticed",
+        "view) added 29: 1510 → 1539; the unused `_MAX_TRACE` constant is gone: 1539 → 1537. " +
+        "The budget only keeps the *rest* from growing unnoticed",
+    },
+    {
+      file: "packages/transport/iso-tp/src/connection.ts",
+      reason:
+        "845 lines — the production N_Cr timer (AGENTS 1.45, tracked as 0.E E26) added " +
+        "60 on 2026-09-23: the `crTimer` field and its doc block, `armCrTimeout()`/`clearCrTimeout()` " +
+        "with the timeout callback, the arm points in the First-Frame and Consecutive-Frame branches, " +
+        "the disarms in the Single-Frame/completion/sequence-error paths and in `close()`, and the " +
+        "`checkCrTimeout()` doc block: 785 → 845. The split candidate is the timeout machinery as a " +
+        "small collaborator module (rx-state timers); until then the budget only keeps the *rest* " +
+        "from growing unnoticed",
     },
     {
       file: "apps/web/public/app.js",

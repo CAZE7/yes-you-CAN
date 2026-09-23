@@ -5,8 +5,9 @@
  * A single client could open unlimited SSE streams or hammer the API with polling,
  * and the only thing that limited it was the TCP stack.
  *
- * This is intentionally simple: an in-memory sliding window per IP, no external
- * store, no distributed state. A diagnostic tool on a bench does not need a
+ * This is intentionally simple: an in-memory fixed window per IP (reset lazily
+ * on the next request from that IP — see the class below), no external store,
+ * no distributed state. A diagnostic tool on a bench does not need a
  * Redis-backed token bucket; it needs a guard that says "slow down" before the
  * event loop is saturated, and that guard must be testable without a network.
  *
