@@ -60,7 +60,10 @@
     "ai:context": "node tools/architecture/ai-context.mjs",
     "ai:context:changed": "node tools/architecture/ai-context.mjs --changed",
     "formal:conform": "npm run build && node tools/formal-conformance/dist/src/cli.js",
-    "golden:record": "npm run build && node tools/golden-sessions/dist/src/cli.js --out tests/fixtures/golden-sessions --verify"
+    "golden:record": "npm run build && node tools/golden-sessions/dist/src/cli.js --out tests/fixtures/golden-sessions --verify",
+    "traces:record": "npm run build && node scripts/record-trace-fixtures.mjs",
+    "check:matrix": "node scripts/check-verification-matrix.mjs",
+    "check:docs": "node scripts/check-docs-links.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",

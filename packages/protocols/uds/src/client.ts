@@ -443,6 +443,11 @@ export class UdsClient {
         const nrc = response[2] ?? 0;
         if (nrc === NRC.REQUEST_CORRECTLY_RECEIVED_RESPONSE_PENDING) {
           if (pending >= this.maxPendingResponses) {
+            // An ECU that stays in pending past `maxPendingResponses` is *not*
+            // making progress any more — it is as stuck as a bus that never
+            // answered. The counter must agree, otherwise a fleet report cannot
+            // tell the two apart.
+            this.stats.timeouts++;
             throw new UdsTimeoutError(
               `ECU stayed in ResponsePending beyond ${this.maxPendingResponses} iterations`,
               { ecu: this.name },

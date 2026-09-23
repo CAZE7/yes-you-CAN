@@ -2,8 +2,9 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version tags
 follow SemVer and match the platform version (`package.json`, `PLATFORM_VERSION`).
-The dense German milestone history of the engineering contract lives in `AGENTS.md`;
-this file is the release changelog.
+The dense German milestone history of the engineering contract lives in
+[`docs/agents/changelog.md`](docs/agents/changelog.md) (moved out of `AGENTS.md` with
+version 2.0); this file is the release changelog.
 
 ## [0.1.0] - 2026-09-22
 

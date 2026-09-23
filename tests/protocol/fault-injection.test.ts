@@ -152,8 +152,8 @@ test("an ECU that pends forever stops at the client's pending limit, not at rand
   assert.equal(client.stats.pendingResponses, 10);
   assert.equal(
     client.stats.timeouts,
-    0,
-    "the pending budget is a protocol abort, not a transport timeout — the same distinction client-engine.spec.ts pins",
+    1,
+    "an ECU that pends past the budget is exactly the case `timeouts` counts",
   );
 });
 

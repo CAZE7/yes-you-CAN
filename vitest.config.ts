@@ -167,8 +167,12 @@ export default defineConfig({
         // `tests/examples/**` is runnable documentation (ADR 0043): the four
         // standard paths as live tests, so "so wird diese API benutzt" stays
         // true by construction instead of by memory.
+        // Both suffixes on purpose: `.test.ts` is the convention in `tests/`, but
+        // `tests/integration/` also holds `.spec.ts` files, and a suite no project
+        // includes is a suite that never runs (host-serial.spec.ts, iso-tp-trace).
         include: [
           'tests/integration/**/*.test.ts',
+          'tests/integration/**/*.spec.ts',
           'tests/examples/**/*.example.ts',
           'apps/web/test/**/*.spec.ts',
         ],
