@@ -80,6 +80,9 @@
       "path": "tools/definition-importer"
     },
     {
+      "path": "tools/harvest"
+    },
+    {
       "path": "tools/formal-conformance"
     },
     {

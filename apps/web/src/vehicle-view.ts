@@ -40,6 +40,7 @@ const CRITERION_LABELS: Readonly<Record<EvidenceKind, string>> = {
 /** Where the data behind a candidate comes from, in operator language (§24). */
 const PROVENANCE_LABELS: Readonly<Record<Provenance["sourceType"], string>> = {
   own: "eigene Daten",
+  observed: "am Fahrzeug ausgelesen — Bedeutung nicht dokumentiert",
   standard: "Standard (SAE J1979 / ISO 14229)",
   licensed: "lizenzierte Daten",
   community: "Community-Daten",

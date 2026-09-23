@@ -7,5 +7,6 @@ dist/
 !.env.example
 *.log
 sessions-local/
+harvest-local/
 coverage/
 .ai/generated/

@@ -905,3 +905,92 @@ test("entry provenance is validated like every other source (AGENTS 24)", () => 
     reviewedMessages.join("\n"),
   );
 });
+
+test("observed provenance is a dated measurement, not a licence claim (ADR 0058)", () => {
+  const undated = clone(genericPackage);
+  undated.provenance = {
+    sourceType: "observed",
+    source: "harvest 2026-09-23, WVWZZZ3CZWE123456, ECU 0x7e8",
+  };
+  const undatedResult = validateDefinitionPackage(undated);
+  assert.equal(undatedResult.valid, true, "an undated observation is usable, but not silently");
+  assert.ok(
+    undatedResult.warnings.some((w) => w.includes("cannot be dated")),
+    undatedResult.warnings.join("\n"),
+  );
+
+  const dated = clone(genericPackage);
+  dated.provenance = {
+    sourceType: "observed",
+    source: "harvest 2026-09-23, WVWZZZ3CZWE123456, ECU 0x7e8",
+    retrievedAt: "2026-09-23",
+  };
+  const datedResult = validateDefinitionPackage(dated);
+  assert.equal(datedResult.valid, true);
+  assert.equal(
+    datedResult.warnings.some((w) => w.includes("cannot be dated")),
+    false,
+    "a dated observation carries no dating warning",
+  );
+
+  const licensedClaim = clone(genericPackage);
+  licensedClaim.provenance = {
+    sourceType: "observed",
+    source: "harvest",
+    retrievedAt: "2026-09-23",
+    license: "MIT",
+  };
+  const claimResult = validateDefinitionPackage(licensedClaim);
+  assert.ok(
+    claimResult.warnings.some((w) => w.includes("was measured, not licensed")),
+    claimResult.warnings.join("\n"),
+  );
+
+  const nameless = clone(genericPackage);
+  nameless.provenance = { sourceType: "observed", source: "", retrievedAt: "2026-09-23" };
+  assert.equal(
+    validateDefinitionPackage(nameless).valid,
+    false,
+    "an observation still has to name the vehicle, ECU or session it came from",
+  );
+});
+
+test("per-item provenance on ECUs, DTCs and signals is validated like any other (ADR 0058)", () => {
+  const pkg = clone(genericPackage);
+  const ecu = pkg.ecus[0];
+  assert.ok(ecu);
+  ecu.provenance = { sourceType: "observed", source: "harvest 0x7e8", retrievedAt: "2026-09-23" };
+  ecu.dtcs = [
+    {
+      code: "P0420",
+      description: "code seen on this ECU; meaning not documented",
+      provenance: { sourceType: "licensed", source: "no licence named" },
+    },
+  ];
+  const first = pkg.signals[0];
+  assert.ok(first);
+  first.provenance = { sourceType: "observed", source: "harvest", retrievedAt: "2026-09-23" };
+
+  const result = validateDefinitionPackage(pkg);
+  assert.ok(
+    result.errors.some((e) =>
+      e.includes("DTC P0420.provenance: licensed data must declare a license"),
+    ),
+    result.errors.join("\n"),
+  );
+  assert.equal(
+    result.warnings.some((w) => w.includes('signal "') && w.includes("cannot be dated")),
+    false,
+    "the dated signal and ECU observations warn about nothing",
+  );
+
+  const undatedSignal = clone(pkg);
+  const signal = undatedSignal.signals[0];
+  assert.ok(signal);
+  signal.provenance = { sourceType: "observed", source: "harvest" };
+  assert.ok(
+    validateDefinitionPackage(undatedSignal).warnings.some((w) =>
+      w.includes("observed data without a retrieval date"),
+    ),
+  );
+});

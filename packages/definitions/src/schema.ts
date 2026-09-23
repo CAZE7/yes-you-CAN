@@ -52,6 +52,17 @@ export interface SignalDefinition {
   description?: string;
   /** Marks a signal as safety relevant for reports/anomaly detection. */
   critical?: boolean;
+  /**
+   * Where *this* signal's description comes from (AGENTS 24, ADR 0058).
+   *
+   * The package provenance covers the package; a signal that was harvested from
+   * a real vehicle needs its own, because the difference matters when it is
+   * read back: `sourceType: "observed"` says „somebody saw these bytes at this
+   * time, the meaning is not documented“, while `standard`/`licensed` says
+   * „this decoding is published somewhere checkable“. Absent means the package
+   * provenance applies — an unmarked item is not an unsourced item.
+   */
+  provenance?: Provenance;
 }
 
 export interface EcuAddress {
@@ -115,6 +126,15 @@ export interface DtcDefinition {
    * analysis, and they are only ever the package's own signals.
    */
   relatedSignals?: string[];
+  /**
+   * Where *this* code's wording comes from (AGENTS 24, ADR 0058).
+   *
+   * A code that was only ever seen on one vehicle is an observation: it says
+   * „this ECU reported this code“, not „this is what the code means“. Keeping
+   * that difference on the entry itself is what stops a harvested code from
+   * being displayed with the same authority as a documented one.
+   */
+  provenance?: Provenance;
 }
 
 export interface EcuDefinition {
@@ -129,6 +149,12 @@ export interface EcuDefinition {
   services?: number[];
   dtcs?: DtcDefinition[];
   description?: string;
+  /**
+   * Where *this* ECU's description comes from (AGENTS 24, ADR 0058) — the
+   * addresses and identification DIDs of a harvested ECU are observed facts,
+   * its name is usually not.
+   */
+  provenance?: Provenance;
 }
 
 /**
@@ -318,10 +344,20 @@ export interface VehicleDefinition {
   description?: string;
 }
 
-/** Provenance is mandatory — no undocumented data sources (AGENTS 24). */
+/**
+ * Provenance is mandatory — no undocumented data sources (AGENTS 24).
+ *
+ * `observed` is the source type for data that was **read off a real vehicle**
+ * (ADR 0058): a harvest produces byte recipes, addresses and codes a car
+ * actually reported, without any claim about their meaning. It is the honest
+ * label for the output of a read-only scan, and it is deliberately *not*
+ * `reverse-engineered` — that word describes knowledge somebody deduced, while
+ * an observation is a measurement with a time and a vehicle behind it.
+ */
 export interface Provenance {
   sourceType:
     | "own"
+    | "observed"
     | "standard"
     | "licensed"
     | "community"
