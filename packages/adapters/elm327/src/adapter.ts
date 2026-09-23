@@ -89,6 +89,7 @@ export class Elm327Adapter implements CanBus {
     timer: ReturnType<typeof setTimeout>;
   }> = [];
   private currentLines: string[] = [];
+  private lastCommand = "";
   private txCount = 0;
   private rxCount = 0;
 
@@ -184,6 +185,7 @@ export class Elm327Adapter implements CanBus {
   async command(command: string): Promise<string[]> {
     this.status.commandsRun++;
     this.currentLines = [];
+    this.lastCommand = command.trim();
     return new Promise<string[]>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending = this.pending.filter((entry) => entry.resolve !== resolve);
@@ -221,9 +223,14 @@ export class Elm327Adapter implements CanBus {
   }
 
   private handleLine(line: string): void {
-    const trimmed = line.trim();
-    if (trimmed.length === 0 || trimmed === ">") return;
+    const trimmed = line.replace(/[\r\0>]/g, "").trim();
+    if (trimmed.length === 0) return;
     this.currentLines.push(trimmed);
+
+    // Suppress command echoes from cheap clones that fail to disable echo (ATE0)
+    if (trimmed.toUpperCase().startsWith("AT") || trimmed === this.lastCommand) {
+      return;
+    }
 
     const frame = parseFrameLine(trimmed, this.channel);
     if (frame) {

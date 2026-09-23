@@ -1,10 +1,10 @@
-//! ISO 15765-2 (ISO-TP) Zero-Copy Network Layer Implementation.
+//! ISO 15765-2 (ISO-TP) Network Layer Implementation.
 //!
-//! Provides high-throughput framing and defragmentation for CAN and CAN-FD networks:
-//! - Single Frame (SF) handling up to 7 bytes (Classic CAN) or 62 bytes (CAN-FD).
-//! - First Frame (FF) & Consecutive Frame (CF) segmentation up to 4095 bytes (or 4 GB with 32-bit DL).
+//! Provides framing and defragmentation for Classic CAN (ISO 15765-2):
+//! - Single Frame (SF) handling up to 7 bytes (Classic CAN).
+//! - First Frame (FF) & Consecutive Frame (CF) segmentation up to 4095 bytes (12-bit DL).
 //! - Flow Control (FC) pacing: CTS, WAIT, and OVERFLOW status codes with STmin delay pacing.
-//! - Bounded memory guarantees with zero dynamic reallocation in hot paths.
+//! - Slice-based decoding avoiding allocations on decode paths.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FlowStatus {

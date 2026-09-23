@@ -46,10 +46,9 @@ export function parseFrameLine(
   channel: string,
   timestamp = Date.now(),
 ): CanFrame | null {
-  const tokens = line
-    .trim()
-    .split(/\s+/)
-    .filter((token) => token.length > 0);
+  // Strip trailing prompts, carriage returns and null bytes from cheap clones
+  const cleaned = line.replace(/[\r\0>]/g, "").trim();
+  const tokens = cleaned.split(/\s+/).filter((token) => token.length > 0);
   if (tokens.length < 2) return null;
   if (!tokens.every((token) => /^[0-9A-Fa-f]+$/.test(token))) return null;
 
@@ -62,20 +61,46 @@ export function parseFrameLine(
   const lengthToken = tokens[1] as string;
   if (lengthToken.length !== 2) return null;
   const declaredLength = Number.parseInt(lengthToken, 16);
-  const dataTokens = tokens.slice(2, 2 + declaredLength);
-  if (dataTokens.length !== declaredLength) return null;
 
-  const payload = new Uint8Array(dataTokens.map((token) => Number.parseInt(token, 16)));
-  return {
-    timestamp,
-    id,
-    extended: idLength === 8,
-    fd: false,
-    dlc: payload.length,
-    payload,
-    channel,
-    direction: "rx",
-  };
+  // If token 1 specifies a length between 0 and 8:
+  if (declaredLength <= 8) {
+    const dataTokens = tokens.slice(2, 2 + declaredLength);
+    // Truncated frame check: if fewer tokens exist than declared, it's corrupt/truncated
+    if (tokens.length - 2 < declaredLength) return null;
+    if (dataTokens.length === declaredLength && tokens.length === 2 + declaredLength) {
+      const payload = new Uint8Array(dataTokens.map((token) => Number.parseInt(token, 16)));
+      return {
+        timestamp,
+        id,
+        extended: idLength === 8,
+        fd: false,
+        dlc: payload.length,
+        payload,
+        channel,
+        direction: "rx",
+      };
+    }
+  }
+
+  // Raw CAN frame mode (e.g. UDS First Frame "7E8 10 14 62 F1 90 57 56 57" where 10 is payload)
+  const rawDataTokens = tokens.slice(1);
+  if (rawDataTokens.length >= 1 && rawDataTokens.length <= 8) {
+    if (rawDataTokens.every((token) => token.length === 2)) {
+      const payload = new Uint8Array(rawDataTokens.map((token) => Number.parseInt(token, 16)));
+      return {
+        timestamp,
+        id,
+        extended: idLength === 8,
+        fd: false,
+        dlc: payload.length,
+        payload,
+        channel,
+        direction: "rx",
+      };
+    }
+  }
+
+  return null;
 }
 
 /** Format a frame the way ELM327 expects it as input (data bytes only). */

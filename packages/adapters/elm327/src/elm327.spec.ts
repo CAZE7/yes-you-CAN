@@ -49,6 +49,21 @@ test("29-bit identifiers are recognised by their 8 hex digits", () => {
   assert.equal(frame.extended, true);
 });
 
+test("raw CAN multi-byte frames (e.g. UDS First Frame 8 bytes) are parsed without dropped frames", () => {
+  const frame = parseFrameLine("7E8 10 14 62 F1 90 57 56 57", "elm0");
+  assert.ok(frame);
+  assert.equal(frame.id, 0x7e8);
+  assert.equal(frame.dlc, 8);
+  assert.equal(toHex(frame.payload), "10 14 62 F1 90 57 56 57");
+});
+
+test("frames with garbage characters (trailing prompt, null bytes, CR) are sanitized", () => {
+  const frame = parseFrameLine("7E8 03 41 0C 1F >\r\0", "elm0");
+  assert.ok(frame);
+  assert.equal(frame.id, 0x7e8);
+  assert.equal(toHex(frame.payload), "41 0C 1F");
+});
+
 test("non-frame lines are rejected instead of guessed", () => {
   assert.equal(parseFrameLine("OK", "elm0"), null);
   assert.equal(parseFrameLine("7E8 06 62", "elm0"), null, "declared length must match the payload");
@@ -112,6 +127,25 @@ test("received frames reach subscribers and honour filters", async () => {
   assert.deepEqual(received, ["0x7e8"]);
   assert.deepEqual(ignored, []);
   assert.equal(adapter.counters.rx, 1);
+});
+
+test("echo frames from cheap clones are suppressed and not dispatched as rx", async () => {
+  const stream = new MemoryByteStream();
+  stream.open();
+  // Echo the command ATSH or the sent payload before responding
+  stream.responder = (cmd) => {
+    if (cmd.startsWith("AT")) return "OK\r\n>";
+    return `${cmd}\r\n7E8 03 62 F1 90\r\n>`;
+  };
+  const adapter = new Elm327Adapter({ stream, commandTimeoutMs: 500 });
+  await adapter.open();
+
+  const received: string[] = [];
+  adapter.subscribe((f) => received.push(`0x${f.id.toString(16)}`));
+  await adapter.send(createFrame(0x7e0, fromHex("22 F1 90")));
+
+  // Only the 0x7E8 response is dispatched, NOT the echoed 0x7E0 request!
+  assert.deepEqual(received, ["0x7e8"]);
 });
 
 test("ELM errors are surfaced in the adapter status, not swallowed", async () => {

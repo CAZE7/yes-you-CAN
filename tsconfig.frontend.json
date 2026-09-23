@@ -12,13 +12,20 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "paths": {
-      "/graphs.js": ["./apps/web/public/graphs.js"],
-      "/vehicle.js": ["./apps/web/public/vehicle.js"],
-      "/scenario.js": ["./apps/web/public/scenario.js"],
+      "/adapters.js": ["./apps/web/public/adapters.js"],
+      "/analysis.js": ["./apps/web/public/analysis.js"],
+      "/api.js": ["./apps/web/public/api.js"],
+      "/chaos.js": ["./apps/web/public/chaos.js"],
       "/chart.js": ["./apps/web/public/chart.js"],
-      "/lib/index.js": ["./packages/charts/src/index.ts"],
+      "/coding-adaptation.js": ["./apps/web/public/coding-adaptation.js"],
       "/dom.js": ["./apps/web/public/dom.js"],
-      "/api.js": ["./apps/web/public/api.js"]
+      "/dtc.js": ["./apps/web/public/dtc.js"],
+      "/graphs.js": ["./apps/web/public/graphs.js"],
+      "/guided-diagnosis.js": ["./apps/web/public/guided-diagnosis.js"],
+      "/lib/index.js": ["./packages/charts/src/index.ts"],
+      "/scenario.js": ["./apps/web/public/scenario.js"],
+      "/signal-analysis.js": ["./apps/web/public/signal-analysis.js"],
+      "/vehicle.js": ["./apps/web/public/vehicle.js"]
     }
   },
   "include": ["apps/web/public/**/*.js"]

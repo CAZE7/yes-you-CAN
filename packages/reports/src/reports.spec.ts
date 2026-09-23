@@ -759,3 +759,20 @@ test("a session that measured everything says so without pretending to be certai
     "no gaps means no table, not a table with one reassuring row",
   );
 });
+
+test("provenance section is included when session carries ADR 0057 fields", () => {
+  const session = sampleSession();
+  session.platformVersion = "0.1.0";
+  session.scenario = { id: "alternator_failure", title: "Alternator failure", seed: 42 };
+  session.traceId = "t-8600983e12345678";
+
+  const report = buildReport({ session });
+  const prov = report.sections.find((s) => s.heading === "Provenance & audit trail");
+  assert.ok(prov, "provenance section must be included");
+  assert.equal(prov.rows.find((r) => r.label === "Platform version")?.value, "0.1.0");
+  assert.equal(
+    prov.rows.find((r) => r.label === "Scenario")?.value,
+    "Alternator failure (alternator_failure, seed: 42)",
+  );
+  assert.equal(prov.rows.find((r) => r.label === "Trace ID")?.value, "t-8600983e12345678");
+});

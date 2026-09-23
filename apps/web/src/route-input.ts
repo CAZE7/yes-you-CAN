@@ -18,6 +18,8 @@
  */
 
 /** Error carrying the HTTP status the request should fail with. */
+import type { VehicleStateView } from "./views.js";
+
 export class HttpError extends Error {
   constructor(
     readonly statusCode: number,
@@ -62,4 +64,21 @@ export function parseDropRate(value: unknown): number {
     throw new HttpError(400, `a drop rate is a fraction between 0 and 1, got "${String(value)}"`);
   }
   return value;
+}
+
+/**
+ * Parse the operator's claimed vehicle state from a request body.
+ *
+ * Everything defaults to "not confirmed": a precondition that was not asserted is
+ * not met, so a UI bug can never silently turn into a write (AGENTS 26).
+ */
+export function parseVehicleState(payload: Record<string, unknown> | undefined): VehicleStateView {
+  const record = payload ?? {};
+  const voltage = record["batteryVoltage"];
+  return {
+    stationary: record["stationary"] === true,
+    ignitionOn: record["ignitionOn"] === true,
+    parkingBrake: record["parkingBrake"] === true,
+    ...(typeof voltage === "number" && Number.isFinite(voltage) ? { batteryVoltage: voltage } : {}),
+  };
 }
