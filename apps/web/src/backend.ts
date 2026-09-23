@@ -185,8 +185,6 @@ export interface BackendOptions {
   discovery?: ConnectVehicleOptions;
 }
 
-const _MAX_TRACE = 800;
-
 /**
  * Discovery timing while the simulator is the transport.
  *

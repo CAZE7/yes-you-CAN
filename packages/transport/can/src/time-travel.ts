@@ -212,7 +212,8 @@ export class TimeTravelCanBus implements CanBus {
     this.pause();
     if (this.frames.length === 0) return;
 
-    // Find closest frame at or just before targetT
+    // Position the cursor on the first frame at or after targetT — the next
+    // frame stepForward() would emit. Frames before targetT stay "played".
     let idx = 0;
     while (idx < this.frames.length && (this.frames[idx]?.t ?? 0) < targetT) {
       idx++;
