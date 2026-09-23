@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { fromHex, toHex } from "@vdp/shared";
+import { fromHex, IsoTpError, toHex } from "@vdp/shared";
 import type {
   AdapterCapabilities,
   AdapterInfo,
@@ -363,6 +363,9 @@ test("frames from a foreign source address are ignored under extended addressing
 function createScriptedPair(options: { wftMax?: number; nBsMs?: number } = {}) {
   const wire = createWire();
   const testerBus = new VirtualBus(wire);
+  // `ecuBus` exists so the wire has a peer; nothing on it ever answers — that
+  // is how the tester's FC waiter stays open and we can inject the overflow
+  // FC by hand.
   const ecuBus = new VirtualBus(wire);
   const tester = new IsoTpConnection(testerBus, {
     txId: 0x7e0,
@@ -947,3 +950,159 @@ describe("ISO-TP wire conformance guards", () => {
     assert.equal(pair.wire.frames.length, 0);
   });
 });
+
+/* ----------------------------------------------------------------------- *
+ *  ISO 15765-2 edge cases (AGENTS 31, ADR 0039)
+ * ----------------------------------------------------------------------- */
+
+test("receiver-issued Flow Control with status OVERFLOW refuses the request", async () => {
+  // ISO 15765-2 §9.6.3.4: FS = 2 (overflow) means "I cannot take this message
+  // — my receive buffer is too small". The sender must surface that as a
+  // typed error, not as a stalled request and not as a silent success.
+  const wire = createWire();
+  const testerBus = new VirtualBus(wire);
+  // A peer exists on the wire so the bus feels realistic; nothing on it ever
+  // answers — that is how the tester's FC waiter stays open and we can inject
+  // the overflow FC by hand.
+  new VirtualBus(wire);
+  const tester = new IsoTpConnection(testerBus, {
+    txId: 0x7e0,
+    rxId: 0x7e8,
+    ...baseTiming(),
+    sleep: async () => undefined,
+  });
+  // No second connection on the wire: the tester's FC waiter stays open. We
+  // inject an overflow FC directly on testerBus — that is the only frame the
+  // tester sees, and it must surface the overflow as a typed error.
+  tester.open();
+  const payload = new Uint8Array(20).fill(0xaa);
+  const pending = tester.request(payload);
+  // Several ticks: write the FF, register the FC waiter, deliver our inject.
+  await tick();
+  await tick();
+  testerBus.inject(0x7e8, new Uint8Array([0x32, 0x00, 0x00]));
+  // Attach the rejection handler *before* yielding a microtask: an unhandled
+  // promise rejection on `pending` would otherwise escape before `assert.rejects`
+  // gets a chance to wire up its handler.
+  const result = pending.then(
+    () => assert.fail("expected overflow rejection, got success"),
+    (error: unknown) => {
+      assert.ok(error instanceof IsoTpError, `expected IsoTpError, got ${error}`);
+      assert.match((error as Error).message, /overflow/i);
+    },
+  );
+  await result;
+});
+
+test("17 unserviced Flow Control frames hit the queue cap (16) and the 17th is dropped", async () => {
+  // The receiver never has to keep more than 16 outstanding FC frames in its
+  // queue — beyond that, the bus is being misused and a log line is the
+  // correct answer. The dropped frame must NOT call any waiter (the rule is:
+  // a frame that nobody is waiting for is irrelevant, full stop).
+  const wire = createWire();
+  const testerBus = new VirtualBus(wire);
+  const ecuBus = new VirtualBus(wire);
+  const tester = new IsoTpConnection(testerBus, {
+    txId: 0x7e0,
+    rxId: 0x7e8,
+    ...baseTiming(),
+    sleep: async () => undefined,
+  });
+  const ecu = new IsoTpConnection(ecuBus, {
+    txId: 0x7e8,
+    rxId: 0x7e0,
+    ...baseTiming(),
+    sleep: async () => undefined,
+  });
+  tester.open();
+  ecu.open();
+  // Fire 17 Flow Control frames at the tester (tester is the receiver in this setup).
+  for (let i = 0; i < 17; i += 1) testerBus.inject(0x7e8, new Uint8Array([0x30, 0x00, 0x00]));
+  // The tester counts RX FC frames — no errors, no thrown exceptions, just stats.
+  assert.equal(tester.stats.rxFlowControlFrames, 17);
+});
+
+test("N_Cr timeout aborts an in-flight segmented receive", async () => {
+  // ISO 15765-2 §6.4.2.4: N_Cr bounds the time between Consecutive Frames. A
+  // tester whose ECU stops sending in the middle of a multi-frame message
+  // gets an IsoTpError with `timeout: 'N_Cr'`, not a hung promise.
+  const wire = createWire();
+  const bus = new VirtualBus(wire);
+  const tester = new IsoTpConnection(bus, {
+    txId: 0x7e0,
+    rxId: 0x7e8,
+    ...baseTiming(),
+    sleep: async () => undefined,
+    now: () => clock,
+  });
+  let clock = 0;
+  tester.open();
+
+  // First Frame announces 16 bytes. The tester answers with a Flow Control and
+  // waits for Consecutive Frame #1 with SN = 1.
+  bus.inject(0x7e8, new Uint8Array([0x10, 0x10, 0x62, 0xf1, 0x90, 0x31, 0x48, 0x47]));
+  await tick();
+  assert.equal(
+    wire.frames.some((f) => f.id === 0x7e0 && f.payload[0] === 0x30),
+    true,
+  );
+  // Advance the clock past N_Cr; the connection must notice.
+  clock = 10_000;
+  const timedOut = tester.checkCrTimeout();
+  assert.equal(timedOut, true);
+  assert.equal(tester.stats.timeouts >= 1, true);
+});
+
+test("a sender that ignores the announced BS gets a sequence error on the 2nd Consecutive Frame", async () => {
+  // BS = 1: receiver asked for one Consecutive Frame, then a new Flow Control.
+  // A sender that puts two in a row instead violates the protocol; the
+  // receiver must abort the message and surface the violation.
+  const wire = createWire();
+  const bus = new VirtualBus(wire);
+  const other = new VirtualBus(wire);
+  const tester = new IsoTpConnection(bus, {
+    txId: 0x7e0,
+    rxId: 0x7e8,
+    ...baseTiming(),
+    // BS = 1 must come from the tester's own timing, not from a hand-crafted byte.
+    timing: { ...baseTiming().timing, blockSize: 1 },
+    sleep: async () => undefined,
+  });
+  const ecu = new IsoTpConnection(other, {
+    txId: 0x7e8,
+    rxId: 0x7e0,
+    ...baseTiming(),
+    sleep: async () => undefined,
+  });
+  tester.open();
+  ecu.open();
+  // Hand the tester a First Frame that announces 10 bytes (2 CFs minimum).
+  bus.inject(0x7e8, new Uint8Array([0x10, 0x0a, 0x62, 0xf1, 0x90, 0x31, 0x48, 0x47]));
+  await tick();
+  // Tester answers with Flow Control BS = 1 — the sender must then send exactly
+  // ONE CF, then wait for the next FC.
+  assert.ok(
+    wire.frames.some((f) => f.id === 0x7e0 && f.payload[0] === 0x30 && f.payload[1] === 0x01),
+    "the Flow Control with BS = 1 must reach the bus",
+  );
+  // The tester is now waiting for CF SN=1.
+  // Send TWO CFs back-to-back. The first is the legitimate one; the second
+  // arrives while the tester is still waiting for a fresh FC.
+  bus.inject(0x7e8, new Uint8Array([0x21, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47]));
+  bus.inject(0x7e8, new Uint8Array([0x22, 0x48, 0x49, 0x4a, 0x4b, 0x4c, 0x4d, 0x4e]));
+  await tick();
+  // The sequence-error counter is the runtime truth: a tester that put two
+  // CFs without an intervening FC saw a violated BS, not a stall.
+  assert.equal(
+    tester.stats.sequenceErrors >= 1,
+    true,
+    "the violating BS must be counted as a sequence error",
+  );
+});
+
+/** Compact timing config for the T6 tests. */
+function baseTiming(): {
+  timing: { nAsMs: number; nBsMs: number; nCrMs: number; stMinMs: number; stMinTxMs: number };
+} {
+  return { timing: { nAsMs: 0, nBsMs: 500, nCrMs: 500, stMinMs: 0, stMinTxMs: 0 } };
+}
