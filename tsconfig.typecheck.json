@@ -8,7 +8,6 @@
     "declarationMap": false,
     "sourceMap": false,
     "rootDir": ".",
-    "types": ["node"],
     "paths": {
       "@vdp/shared": ["./packages/shared/src/index.ts"],
       "@vdp/domain": ["./packages/domain/src/index.ts"],
