@@ -92,6 +92,17 @@ export class IsoTpConnection {
   private readonly now: () => number;
   private readonly mtu: number;
   private rxState: RxState | null = null;
+  /**
+   * The live N_Cr timer of the active reception.
+   *
+   * Armed when a First Frame opens the reception and reset by every Consecutive
+   * Frame: the ISO 15765-2 receiver must not hold an in-flight reception open
+   * for a sender that stopped. Without the timer, a stalled sender left
+   * `rxState` — and any expectation built on it — alive until the next First
+   * Frame or `close()`, and only the request's own response deadline noticed
+   * the silence (ADR 0045, AGENTS 7 "Timeouts").
+   */
+  private crTimer: ReturnType<typeof setTimeout> | null = null;
   private pending: PendingRequest | null = null;
   private unsubscribe: (() => void) | null = null;
   private unsolicitedListeners: Array<(payload: Uint8Array) => void> = [];
@@ -142,9 +153,43 @@ export class IsoTpConnection {
       abort(new IsoTpError("ISO-TP connection closed while a frame was being written"));
     this.queueGeneration++;
     this.fcQueue = [];
+    this.clearCrTimeout();
     this.rxState = null;
     this.transmitLock = Promise.resolve();
     for (const wake of this.receiveWaiters.splice(0)) wake();
+  }
+
+  /**
+   * Arm the N_Cr timer for the reception that is active at this moment.
+   *
+   * Real `setTimeout`, like the N_Bs and response timers of this connection: the
+   * injectable `now()` only drives the bookkeeping (`lastFrameAt`), the deadlines
+   * themselves run on the process clock, and `checkCrTimeout()` stays the manual
+   * evaluation the conformance runner drives from its vectors.
+   */
+  private armCrTimeout(): void {
+    this.clearCrTimeout();
+    this.crTimer = setTimeout(() => {
+      this.crTimer = null;
+      if (this.rxState === null) return;
+      this.rxState = null;
+      this.stats.timeouts++;
+      this.log.warn("N_Cr timeout — the sender stopped mid-message, reception aborted", {
+        nCrMs: this.timing.nCrMs,
+      });
+      this.failPending(
+        new IsoTpError(`N_Cr timeout: Consecutive Frame missing for ${this.timing.nCrMs} ms`, {
+          timeout: "N_Cr",
+        }),
+      );
+    }, this.timing.nCrMs);
+  }
+
+  private clearCrTimeout(): void {
+    if (this.crTimer !== null) {
+      clearTimeout(this.crTimer);
+      this.crTimer = null;
+    }
   }
 
   onUnsolicited(listener: (payload: Uint8Array) => void): () => void {
@@ -618,6 +663,9 @@ export class IsoTpConnection {
       }
       const payload = body.subarray(headerLength, headerLength + length);
       this.stats.rxSingleFrames++;
+      // A Single Frame where a reception was in flight is a wire violation; the
+      // abandoned message must not keep its N_Cr timer armed behind the new one.
+      this.clearCrTimeout();
       this.rxState = null;
       this.deliver(payload.slice());
       return;
@@ -653,6 +701,7 @@ export class IsoTpConnection {
         lastFrameAt: this.now(),
         blockCount: 0,
       };
+      this.armCrTimeout();
       void this.sendFlowControl(FLOW_STATUS.CONTINUE_TO_SEND);
       return;
     }
@@ -671,6 +720,7 @@ export class IsoTpConnection {
           `ISO-TP sequence error: expected ${state.nextSequence}, got ${sequence}`,
           { sequenceError: true, expected: state.nextSequence, got: sequence },
         );
+        this.clearCrTimeout();
         this.rxState = null;
         this.failPending(error);
         return;
@@ -682,8 +732,10 @@ export class IsoTpConnection {
       state.nextSequence = (state.nextSequence + 1) & 0x0f;
       state.lastFrameAt = this.now();
       state.blockCount++;
+      this.armCrTimeout();
       if (state.received >= state.expectedLength) {
         const payload = concatBytes(state.chunks).subarray(0, state.expectedLength);
+        this.clearCrTimeout();
         this.rxState = null;
         this.stats.rxMultiFrameMessages++;
         this.deliver(payload.slice());
@@ -747,11 +799,19 @@ export class IsoTpConnection {
     for (const listener of this.unsolicitedListeners) listener(payload);
   }
 
-  /** Abort an in-flight reception because N_Cr elapsed (called by tests/tooling). */
+  /**
+   * Manual N_Cr evaluation against the injected clock.
+   *
+   * The conformance runner drives it from its vectors (`checkCr` events) instead of
+   * waiting for the process clock; in production the same check runs on the real
+   * timer armed by {@link armCrTimeout}, and this method then only ever reports
+   * what the timer has not handled yet.
+   */
   checkCrTimeout(): boolean {
     const state = this.rxState;
     if (!state) return false;
     if (this.now() - state.lastFrameAt > this.timing.nCrMs) {
+      this.clearCrTimeout();
       this.rxState = null;
       this.stats.timeouts++;
       this.failPending(

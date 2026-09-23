@@ -9,6 +9,7 @@ import type {
   FrameListener,
 } from "@vdp/transport-can";
 import { test } from "vitest";
+import { settle } from "../../../../tests/helpers/wait.js";
 import { IsoTpConnection, parseStMin } from "./index.js";
 
 /**
@@ -302,6 +303,99 @@ test("N_Bs timeout triggers a retry when maxRetries is configured", async () => 
   // Multi-frame path with nobody answering Flow Control → N_Bs timeout.
   await assert.rejects(tester.request(new Uint8Array(30).fill(0x11)), /N_Bs timeout/);
   assert.equal(tester.stats.retries, 2, "both configured retries must be attempted");
+});
+
+test("a stalled sender is aborted by the connection's own N_Cr timer, without any checkCrTimeout()", async () => {
+  // Before the timer was armed automatically, only the conformance runner ever
+  // evaluated N_Cr: a sender that stopped after the First Frame left the reception
+  // alive, and only the request's response deadline eventually noticed the silence.
+  const wire = createWire();
+  const testerBus = new VirtualBus(wire);
+  const tester = new IsoTpConnection(testerBus, {
+    txId: 0x7e0,
+    rxId: 0x7e8,
+    sleep: async () => undefined,
+    timing: { nCrMs: 40, nBsMs: 5000, maxRetries: 0 },
+  });
+  tester.open();
+  const promise = tester.request(fromHex("22 F1 90"), 5000);
+  await tick();
+  // The ECU announces 18 bytes, delivers the first chunk, then goes silent.
+  testerBus.inject(0x7e8, fromHex("10 12 62 F1 90 AA AA AA"));
+  await assert.rejects(promise, /N_Cr timeout/);
+  assert.equal(tester.stats.timeouts, 1);
+  // The reception is abandoned: a late Consecutive Frame completes nothing and is
+  // counted as a sequence error instead of a second timeout.
+  assert.equal(tester.stats.rxMultiFrameMessages, 0);
+  testerBus.inject(0x7e8, fromHex("21 AA AA AA"));
+  await tick();
+  assert.equal(tester.stats.sequenceErrors, 1);
+  assert.equal(tester.stats.timeouts, 1, "the timeout is counted once, by the timer alone");
+  tester.close();
+});
+
+test("an N_Cr timeout is retried like an N_Bs timeout, and the retry completes", async () => {
+  const wire = createWire();
+  const testerBus = new VirtualBus(wire);
+  const ecuBus = new VirtualBus(wire);
+  const tester = new IsoTpConnection(testerBus, {
+    txId: 0x7e0,
+    rxId: 0x7e8,
+    sleep: async () => undefined,
+    timing: { nCrMs: 30, nBsMs: 5000, nAsMs: 0, maxRetries: 2 },
+  });
+  tester.open();
+  // The request itself is a Single Frame, so the retry is the tester's second
+  // *request* (its Flow Control answers to the received First Frames must not
+  // count — that would fire the "retry" on the very first attempt); the answer to
+  // the retry is a whole re-sent message (FF plus CFs), which is exactly what the
+  // standard requires of the receiver of a retransmit.
+  let requests = 0;
+  const off = ecuBus.subscribe((frame) => {
+    if (frame.id !== 0x7e0) return;
+    if (((frame.payload[0] ?? 0) & 0xf0) !== 0x00) return;
+    requests++;
+    if (requests >= 2) {
+      // The retry reached the bus: the ECU re-sends the message, and this time
+      // it delivers to the end.
+      testerBus.inject(0x7e8, fromHex("10 12 62 F1 90 AA AA AA"));
+      testerBus.inject(0x7e8, fromHex("21 AA AA AA AA AA AA AA"));
+      testerBus.inject(0x7e8, fromHex("22 AA AA AA AA AA"));
+    }
+  });
+  const promise = tester.request(fromHex("22 F1 90"), 5000);
+  await tick();
+  // Attempt one: the ECU sends the First Frame, then stalls mid-message.
+  testerBus.inject(0x7e8, fromHex("10 12 62 F1 90 AA AA AA"));
+  const response = await promise;
+  off();
+  assert.equal(response.length, 18, "the declared FF_DL bytes, nothing more");
+  assert.equal(toHex(response), "62 F1 90 AA AA AA AA AA AA AA AA AA AA AA AA AA AA AA");
+  assert.equal(tester.stats.retries, 1, "one retry, the way N_Bs gets retried");
+  assert.equal(tester.stats.timeouts, 1);
+  tester.close();
+});
+
+test("close() disarms the N_Cr timer: the teardown reason wins over the stall", async () => {
+  const wire = createWire();
+  const testerBus = new VirtualBus(wire);
+  const tester = new IsoTpConnection(testerBus, {
+    txId: 0x7e0,
+    rxId: 0x7e8,
+    sleep: async () => undefined,
+    timing: { nCrMs: 30, nBsMs: 5000, maxRetries: 0 },
+  });
+  tester.open();
+  const promise = tester.request(fromHex("22 F1 90"), 5000);
+  await tick();
+  testerBus.inject(0x7e8, fromHex("10 12 62 F1 90 AA AA AA"));
+  tester.close();
+  await assert.rejects(promise, /closed/);
+  // Quiet period past the 30 ms stall window: a timer that survived the teardown
+  // would count a timeout on a connection that no longer exists.
+  await settle(50, "no N_Cr fires after close, beyond the 30 ms stall window");
+  assert.equal(tester.stats.timeouts, 0, "no N_Cr fires on a closed connection");
+  assert.equal(tester.stats.rxMultiFrameMessages, 0);
 });
 
 test("padding fills frames to the MTU with the pad byte", async () => {
