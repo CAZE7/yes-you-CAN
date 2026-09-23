@@ -29,6 +29,9 @@ workbench integration tests serve the compiled chart core from `/lib`
 4. CI must be green on Node 22 **and** 24. No merge on red.
 5. Architecture or toolchain decisions get an ADR in `docs/adr/` (AGENTS 34.15).
    Superseded ADRs are marked, never deleted.
+6. A branch whose content reached `main` is deleted; an unmerged branch is pinned
+   as an `archive/*` tag first. Inventory and rule:
+   [`docs/maintenance/branch-hygiene.md`](docs/maintenance/branch-hygiene.md).
 
 ## Project structure
 
