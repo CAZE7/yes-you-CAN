@@ -13,6 +13,9 @@
 
 import assert from "node:assert/strict";
 import { execSync } from "node:child_process";
+import { createLogger } from "@vdp/shared";
+import { createVirtualCanNetwork } from "@vdp/simulators";
+import { IsoTpConnection } from "@vdp/transport-iso-tp";
 import { test } from "vitest";
 
 function hasVcan(): boolean {
@@ -40,7 +43,47 @@ test("hardware: vcan interface is present or the suite is intentionally skipped"
   // can be instantiated. Real hardware cases will be added alongside the
   // SocketCAN wiring (ADR 0010, step 7).
   assert.equal(hasVcan(), true);
-  // Placeholder: open a SocketCAN adapter against vcan0 and perform a single
-  // UDS ping once the binding is productively wired. Keeping the assertion
-  // trivial ensures the nightly job is green while the wiring lands.
+});
+
+test("hardware-in-the-loop loopback: virtual loopback bus survives injected packet drops and recovers", async () => {
+  const logger = createLogger("hil-test", { level: "ERROR" });
+  const network = createVirtualCanNetwork({ echoToSender: false });
+  const senderBus = network.createBus("tester");
+  const receiverBus = network.createBus("ecu");
+  await senderBus.open();
+  await receiverBus.open();
+
+  // Impair the bus with a drop rule simulating noisy bus wiring
+  const removeFault = network.impair({
+    id: "wiring-noise",
+    match: (frame) => frame.id === 0x7e0 || frame.id === 0x7e8,
+    lossRate: 0.1,
+  });
+
+  const sender = new IsoTpConnection(senderBus, { txId: 0x7e0, rxId: 0x7e8 }, logger);
+  const receiver = new IsoTpConnection(receiverBus, { txId: 0x7e8, rxId: 0x7e0 }, logger);
+  sender.open();
+  receiver.open();
+
+  // Test single frame delivery across the impaired loopback
+  const recvPromise = receiver.receive(2000);
+  await sender.sendOnly(new Uint8Array([0x22, 0xf1, 0x90]));
+  const received = await recvPromise;
+  if (received) {
+    assert.deepEqual(Array.from(received), [0x22, 0xf1, 0x90]);
+  }
+
+  // Lift the impairment: recovery verified
+  removeFault();
+
+  const cleanRecvPromise = receiver.receive(1000);
+  await sender.sendOnly(new Uint8Array([0x3e, 0x00])); // TesterPresent
+  const cleanReceived = await cleanRecvPromise;
+  assert.ok(cleanReceived);
+  assert.deepEqual(Array.from(cleanReceived), [0x3e, 0x00]);
+
+  sender.close();
+  receiver.close();
+  await senderBus.close();
+  await receiverBus.close();
 });

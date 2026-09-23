@@ -1,3 +1,4 @@
+export * from "./dbc.js";
 export * from "./evidence.js";
 export { genericPackage } from "./generic/generic-package.js";
 export * from "./json.js";

@@ -29,11 +29,23 @@ import {
   UnknownEcuError,
 } from "@vdp/shared";
 import { createWebAdapterCatalog, SIMULATOR_ADAPTER_ID } from "./adapters.js";
-import { AUTH_REFUSAL, type Authenticator, createAuthenticator } from "./auth.js";
-import type { VehicleStateView } from "./backend.js";
+import {
+  AUTH_REFUSAL,
+  type Authenticator,
+  createAuthenticator,
+  generateEphemeralToken,
+  ORIGIN_REFUSAL,
+  validateRequestOrigin,
+} from "./auth.js";
 import { DemoBackend } from "./backend.js";
 import { RateLimiter } from "./rate-limit.js";
-import { HttpError, parseBurstCount, parseCanId, parseDropRate } from "./route-input.js";
+import {
+  HttpError,
+  parseBurstCount,
+  parseCanId,
+  parseDropRate,
+  parseVehicleState,
+} from "./route-input.js";
 import {
   MIME,
   SECURITY_HEADERS,
@@ -62,6 +74,10 @@ export interface ServerOptions {
    * before (see `auth.ts`). From `--token=` or `VDP_API_TOKEN`.
    */
   token?: string;
+  /** Automatically generate an ephemeral token if none provided and exposed. */
+  ephemeralToken?: boolean;
+  /** Opt-out of authentication when binding to 0.0.0.0. */
+  insecureNoAuth?: boolean;
   /**
    * TLS certificate and key. When both are set, the server listens with HTTPS
    * instead of HTTP (CY-05). From `--cert=`/`--key=` or `VDP_TLS_CERT`/`VDP_TLS_KEY`.
@@ -103,7 +119,8 @@ const MAX_BODY_BYTES = 1_000_000;
 export class WebServer {
   readonly backend: DemoBackend;
   private readonly log: Logger;
-  private readonly auth: Authenticator;
+  readonly auth: Authenticator;
+  readonly ephemeralToken?: string;
   private server?: ReturnType<typeof createHttpServer> | ReturnType<typeof createHttpsServer>;
   private readonly streams = new Set<ServerResponse>();
   private readonly rateLimiter: RateLimiter;
@@ -115,7 +132,12 @@ export class WebServer {
     // No sink here on purpose: see {@link createServerLogger}. The process entry
     // hands its own logger in; a WebServer built by an embedder stays silent.
     const root = this.options.logger ?? createLogger("web", { level: "INFO" });
-    this.auth = createAuthenticator(this.options.token ?? process.env.VDP_API_TOKEN);
+    let token = this.options.token ?? process.env.VDP_API_TOKEN;
+    if (!token && this.options.ephemeralToken === true) {
+      token = generateEphemeralToken();
+      this.ephemeralToken = token;
+    }
+    this.auth = createAuthenticator(token);
     this.rateLimiter = new RateLimiter(this.options.rateLimit);
     this.log = root.child("server");
     this.backend = new DemoBackend({
@@ -226,6 +248,16 @@ export class WebServer {
         response.end(JSON.stringify({ error: "too many requests — slow down" }));
         return;
       }
+    }
+
+    // Origin and Host validation (CY-02 CSRF & DNS rebinding protection)
+    const originCheck = validateRequestOrigin(request, { allowedHost: this.options.host });
+    if (!originCheck.ok) {
+      return sendJson(
+        response,
+        403,
+        ORIGIN_REFUSAL(originCheck.reason ?? "origin validation failed"),
+      );
     }
 
     // The one-time exchange: the operator opens the workbench with the token in the
@@ -624,23 +656,6 @@ export class WebServer {
 }
 
 /**
- * Read the operator's precondition assertions.
- *
- * Everything defaults to "not confirmed": a precondition that was not asserted is
- * not met, so a UI bug can never silently turn into a write (AGENTS 26).
- */
-function parseVehicleState(payload: Record<string, unknown> | undefined): VehicleStateView {
-  const record = payload ?? {};
-  const voltage = record["batteryVoltage"];
-  return {
-    stationary: record["stationary"] === true,
-    ignitionOn: record["ignitionOn"] === true,
-    parkingBrake: record["parkingBrake"] === true,
-    ...(typeof voltage === "number" && Number.isFinite(voltage) ? { batteryVoltage: voltage } : {}),
-  };
-}
-
-/**
  * Map a domain error to an HTTP status.
  *
  * A rejected adapter selection or a refused write is the caller's problem (4xx),
@@ -680,6 +695,8 @@ function parseArgs(argv: readonly string[]): ServerOptions {
       options.liveIntervalMs = Number.parseInt(arg.slice(11), 10);
     else if (arg.startsWith("--sessions=")) options.sessionDir = arg.slice(11);
     else if (arg.startsWith("--token=")) options.token = arg.slice(8);
+    else if (arg === "--generate-token") options.ephemeralToken = true;
+    else if (arg === "--insecure" || arg === "--no-auth") options.insecureNoAuth = true;
     else if (arg.startsWith("--cert=")) options.certPath = arg.slice(7);
     else if (arg.startsWith("--key=")) options.keyPath = arg.slice(6);
   }
@@ -742,6 +759,10 @@ if (invokedDirectly) {
   // Sessions land in a local, gitignored directory unless told otherwise.
   const server = new WebServer({ sessionDir: "sessions-local", logger: log, ...options });
   const { url } = await server.listen();
+  if (server.ephemeralToken) {
+    process.stdout.write(`ephemeral API token: ${server.ephemeralToken}\n`);
+    process.stdout.write(`open URL with token:  ${url}/?token=${server.ephemeralToken}\n`);
+  }
   const selection = server.backend.adapterSelection;
   process.stdout.write(`yes-you-CAN workbench listening on ${url}\n`);
   process.stdout.write(

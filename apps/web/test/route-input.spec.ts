@@ -9,7 +9,13 @@
 
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
-import { HttpError, parseBurstCount, parseCanId, parseDropRate } from "../src/route-input.js";
+import {
+  HttpError,
+  parseBurstCount,
+  parseCanId,
+  parseDropRate,
+  parseVehicleState,
+} from "../src/route-input.js";
 
 describe("parseCanId", () => {
   test("both spellings of an address mean the same number", () => {
@@ -74,5 +80,37 @@ describe("the chaos fields", () => {
         `"${String(notAFraction)}" does not say what the field claims`,
       );
     }
+  });
+});
+
+describe("parseVehicleState", () => {
+  test("undefined or empty object defaults to safe false state", () => {
+    assert.deepEqual(parseVehicleState(undefined), {
+      stationary: false,
+      ignitionOn: false,
+      parkingBrake: false,
+    });
+    assert.deepEqual(parseVehicleState({}), {
+      stationary: false,
+      ignitionOn: false,
+      parkingBrake: false,
+    });
+  });
+
+  test("explicit boolean flags and finite battery voltage are preserved", () => {
+    assert.deepEqual(
+      parseVehicleState({
+        stationary: true,
+        ignitionOn: true,
+        parkingBrake: true,
+        batteryVoltage: 12.6,
+      }),
+      {
+        stationary: true,
+        ignitionOn: true,
+        parkingBrake: true,
+        batteryVoltage: 12.6,
+      },
+    );
   });
 });

@@ -21,8 +21,11 @@ Where possible, include:
 ## Baseline expectations
 
 - The web server binds localhost by default (ADR 0009); exposing it via
-  `--host`/`VDP_HOST` is an explicit, logged decision. The UI has no
-  authentication — treat any network exposure as granting full access.
+  `--host`/`VDP_HOST` is an explicit, logged decision. API authentication
+  is enforced via Bearer token or session cookie exchange (`?token=…`,
+  ADR 0051). An ephemeral token is generated when binding to non-localhost
+  interfaces without an explicit token. Mutating endpoints (`POST`/`DELETE`)
+  enforce strict Origin and Host validation against DNS rebinding and CSRF.
 - Request bodies are size-limited, static files are confined to `public/`,
   and session IDs are validated before any filesystem access (ADR 0007).
 - No secrets in source (AGENTS 34.16); the AI gateway redacts the VIN before

@@ -459,7 +459,7 @@ test("modules stay reviewable: no production file above the size budget", () => 
     {
       file: "apps/web/src/backend.ts",
       reason:
-        "1537 lines — split tracked as AGENTS 0.E E15; the wire contract moved to views.ts in " +
+        "1571 lines — split tracked as AGENTS 0.E E15; the wire contract moved to views.ts in " +
         "E19 (1326 → 1117), `get canBus()` (which nothing had used since the replay suites " +
         "moved to injected buses) is gone (1427 → 1419), and E24's chaos-in-the-path added the " +
         "wrapper in `start()`, the burst target and the refusal before a connection: 1419 → " +
@@ -471,7 +471,9 @@ test("modules stay reviewable: no production file above the size budget", () => 
         "modules it could not read, and the chaos lab reporting the same list (ADR 0049) — " +
         "added 20: 1490 → 1510; the interactive diagnosis step (ADR 0056: `guidedDiagnosis()` " +
         "through `advanceDiagnosis`, loop state in `analyze()`, the for/against mapping in the " +
-        "view) added 29: 1510 → 1539; the unused `_MAX_TRACE` constant is gone: 1539 → 1537. " +
+        "view) added 29: 1510 → 1539; the unused `_MAX_TRACE` constant is gone: 1539 → 1537; " +
+        "ADR-0057 Migration 5 (Process-Signer wiring, manifest signature, session provenance " +
+        "fields platformVersion/scenario/traceId) added 34: 1537 → 1571. " +
         "The budget only keeps the *rest* from growing unnoticed",
     },
     {
@@ -484,18 +486,6 @@ test("modules stay reviewable: no production file above the size budget", () => 
         "`checkCrTimeout()` doc block: 785 → 845. The split candidate is the timeout machinery as a " +
         "small collaborator module (rx-state timers); until then the budget only keeps the *rest* " +
         "from growing unnoticed",
-    },
-    {
-      file: "apps/web/public/app.js",
-      reason:
-        "1702 lines — browser front end without a bundler; served as one module, and typed " +
-        "against views.ts since E19 (JSDoc costs lines instead of hiding them); E24's burst " +
-        "target field and the aim line in the status card are 28 of the growth (1648 → 1676), " +
-        "and the two silent fallbacks it replaced cost nothing: a missing field now refuses in " +
-        "the panel instead of sending a guessed address. The DTC gap list (ADR 0049) added 26 " +
-        "(1676 → 1702): a `renderUnreadEcus`, its typedef, the coverage suffix in the summary " +
-        "line, and three call sites that now hand the second half of the answer to the panel " +
-        "instead of dropping it",
     },
   ];
   const allowed = new Set(oversize.map((entry) => entry.file));

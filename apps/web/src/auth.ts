@@ -25,11 +25,16 @@
  *   to remove (ADR 0049).
  */
 
-import { createHash, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage } from "node:http";
 
 /** Name of the cookie the token exchange sets. */
 export const AUTH_COOKIE = "vdp_session";
+
+/** Generate a 32-hex-character ephemeral token for non-interactive / headless start. */
+export function generateEphemeralToken(): string {
+  return randomBytes(16).toString("hex");
+}
 
 /** Cookie attributes: never readable by script, never sent cross-site. */
 const COOKIE_ATTRIBUTES = "HttpOnly; SameSite=Strict; Path=/";
@@ -122,3 +127,88 @@ export const AUTH_REFUSAL = {
   error:
     "not authenticated — pass the token as `Authorization: Bearer <token>` or open the workbench once with ?token=<token>",
 };
+
+const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+export interface OriginValidationResult {
+  readonly ok: boolean;
+  readonly reason?: string;
+}
+
+/**
+ * Validate Host and Origin headers to protect against DNS rebinding and
+ * cross-site request forgery (CSRF) on mutating routes (ISO 21434 / CY-02).
+ */
+export function validateRequestOrigin(
+  request: IncomingMessage,
+  options: { allowedHost?: string | undefined } = {},
+): OriginValidationResult {
+  const method = (request.method ?? "GET").toUpperCase();
+  const hostHeader = request.headers.host;
+
+  // 1. Host header validation against DNS rebinding
+  if (hostHeader) {
+    const hostName = hostHeader.split(":")[0]?.toLowerCase() ?? "";
+    const isLocalhost =
+      hostName === "localhost" ||
+      hostName === "127.0.0.1" ||
+      hostName === "::1" ||
+      hostName === "[::1]";
+    const isPrivateIp =
+      /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostName) ||
+      /^192\.168\.\d{1,3}\.\d{1,3}$/.test(hostName) ||
+      /^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(hostName);
+    const isE2bOrAllowed =
+      hostName.endsWith(".e2b.app") ||
+      (options.allowedHost !== undefined &&
+        (hostName === options.allowedHost.toLowerCase() || options.allowedHost === "0.0.0.0"));
+
+    if (!isLocalhost && !isPrivateIp && !isE2bOrAllowed) {
+      return {
+        ok: false,
+        reason: `untrusted Host header "${hostHeader}" — potential DNS rebinding attack`,
+      };
+    }
+  }
+
+  // 2. For mutating requests, validate Origin and Sec-Fetch-Site
+  if (MUTATING_METHODS.has(method)) {
+    const originHeader = request.headers.origin;
+    if (originHeader) {
+      let originUrl: URL;
+      try {
+        originUrl = new URL(originHeader);
+      } catch {
+        return { ok: false, reason: `malformed Origin header "${originHeader}"` };
+      }
+      const originHost = originUrl.host.toLowerCase();
+      const host = (hostHeader ?? "").toLowerCase();
+
+      if (host && originHost !== host) {
+        const originHostname = originUrl.hostname.toLowerCase();
+        const hostHostname = host.split(":")[0]?.toLowerCase() ?? "";
+        const bothLocal =
+          (originHostname === "localhost" || originHostname === "127.0.0.1") &&
+          (hostHostname === "localhost" || hostHostname === "127.0.0.1");
+
+        if (!bothLocal && !originHostname.endsWith(".e2b.app")) {
+          return {
+            ok: false,
+            reason: `cross-origin mutating request refused: origin "${originHeader}" does not match host "${hostHeader}"`,
+          };
+        }
+      }
+    }
+
+    const secFetchSite = request.headers["sec-fetch-site"];
+    if (secFetchSite === "cross-site") {
+      return { ok: false, reason: "cross-site mutating request refused via Sec-Fetch-Site" };
+    }
+  }
+
+  return { ok: true };
+}
+
+export const ORIGIN_REFUSAL = (reason: string) => ({
+  error: `forbidden — ${reason}`,
+});

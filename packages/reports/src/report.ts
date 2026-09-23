@@ -82,6 +82,9 @@ export function buildReport(input: ReportInput): ReportDocument {
     sections: [
       vehicleSection(input),
       transportSection(session),
+      ...(session.platformVersion || session.scenario || session.ai || session.traceId
+        ? [provenanceSection(session)]
+        : []),
       ecuOverviewSection(session),
       dtcSummarySection(dtcs, knowledge),
       variantKnowledgeSection(dtcs, knowledge, session.determination),
@@ -505,6 +508,30 @@ const GAP_LABELS: Record<SessionGap["kind"], string> = {
   "no-scan-history": "no scan to compare with",
   "no-measurements": "no signal recorded",
 };
+
+/** Audit trail of provenance data (ADR 0057). */
+function provenanceSection(session: VehicleSessionData): ReportSection {
+  const rows: Array<{ label: string; value: string }> = [];
+  if (session.platformVersion)
+    rows.push({ label: "Platform version", value: session.platformVersion });
+  if (session.scenario) {
+    rows.push({
+      label: "Scenario",
+      value: `${session.scenario.title} (${session.scenario.id}, seed: ${session.scenario.seed})`,
+    });
+  }
+  if (session.ai) {
+    rows.push({
+      label: "AI analysis",
+      value: `${session.ai.provider} (prompt v${session.ai.promptVersion}, runtime v${session.ai.runtimeVersion})`,
+    });
+  }
+  if (session.traceId) rows.push({ label: "Trace ID", value: session.traceId });
+  return {
+    heading: "Provenance & audit trail",
+    rows,
+  };
+}
 
 /** Audit log of everything this session wrote (AGENTS 25). */
 function actionSection(session: VehicleSessionData): ReportSection {

@@ -14,7 +14,14 @@
 import assert from "node:assert/strict";
 import type { IncomingMessage } from "node:http";
 import { afterAll, describe, test } from "vitest";
-import { AUTH_COOKIE, cookieValue, createAuthenticator, secretsEqual } from "../src/auth.js";
+import {
+  AUTH_COOKIE,
+  cookieValue,
+  createAuthenticator,
+  generateEphemeralToken,
+  secretsEqual,
+  validateRequestOrigin,
+} from "../src/auth.js";
 import { WebServer } from "../src/server.js";
 
 /** The two fields the authenticator reads — the rest of the request is irrelevant. */
@@ -186,5 +193,86 @@ describe("over a real socket — a route that is only protected in a unit test i
     const { port } = await server.listen();
     const response = await fetch(`http://127.0.0.1:${port}/api/state`);
     assert.equal(response.status, 200, "no credential needed when none was configured");
+  });
+
+  test("ephemeralToken: true creates a random token and enforces it", async () => {
+    const server = new WebServer({ port: 0, liveIntervalMs: 60, ephemeralToken: true });
+    servers.push(server);
+    const { port } = await server.listen();
+    assert.ok(server.ephemeralToken !== undefined);
+    assert.match(server.ephemeralToken, /^[0-9a-f]{32}$/);
+    assert.equal(server.auth.enabled, true);
+
+    const unauth = await fetch(`http://127.0.0.1:${port}/api/state`);
+    assert.equal(unauth.status, 401);
+
+    const authed = await fetch(`http://127.0.0.1:${port}/api/state`, {
+      headers: { authorization: `Bearer ${server.ephemeralToken}` },
+    });
+    assert.equal(authed.status, 200);
+  });
+
+  test("mutating request with cross-site Origin is rejected with 403 Forbidden", async () => {
+    const server = new WebServer({ port: 0, liveIntervalMs: 60 });
+    servers.push(server);
+    const { port } = await server.listen();
+
+    const response = await fetch(`http://127.0.0.1:${port}/api/dtc/clear`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: "http://malicious-workshop.example.com",
+      },
+      body: "{}",
+    });
+    assert.equal(response.status, 403);
+    const body = (await response.json()) as { error: string };
+    assert.match(body.error, /forbidden/);
+    assert.match(body.error, /origin/i);
+  });
+});
+
+describe("validateRequestOrigin — CSRF and DNS rebinding protections", () => {
+  test("ephemeral token generator returns 32 hex chars", () => {
+    const t1 = generateEphemeralToken();
+    const t2 = generateEphemeralToken();
+    assert.match(t1, /^[0-9a-f]{32}$/);
+    assert.notEqual(t1, t2);
+  });
+
+  test("GET requests pass regardless of origin header", () => {
+    const req = {
+      method: "GET",
+      headers: { host: "localhost:8080", origin: "http://other.example.com" },
+    } as unknown as IncomingMessage;
+    assert.equal(validateRequestOrigin(req).ok, true);
+  });
+
+  test("POST requests with matching origin pass", () => {
+    const req = {
+      method: "POST",
+      headers: { host: "localhost:8080", origin: "http://localhost:8080" },
+    } as unknown as IncomingMessage;
+    assert.equal(validateRequestOrigin(req).ok, true);
+  });
+
+  test("POST requests with mismatched origin fail", () => {
+    const req = {
+      method: "POST",
+      headers: { host: "localhost:8080", origin: "https://evil.com" },
+    } as unknown as IncomingMessage;
+    const res = validateRequestOrigin(req);
+    assert.equal(res.ok, false);
+    assert.match(res.reason ?? "", /cross-origin/);
+  });
+
+  test("requests with untrusted Host header fail rebinding check", () => {
+    const req = {
+      method: "GET",
+      headers: { host: "attacker-controlled-dns.com:8080" },
+    } as unknown as IncomingMessage;
+    const res = validateRequestOrigin(req);
+    assert.equal(res.ok, false);
+    assert.match(res.reason ?? "", /untrusted Host/);
   });
 });

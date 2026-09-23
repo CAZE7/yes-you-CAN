@@ -76,11 +76,16 @@ import {
   VirtualVehicle,
 } from "@vdp/simulators";
 import {
+  createNodeManifestSigner,
   FileSystemSessionRepository,
+  type ManifestSigner,
   nodeIntegrityPort,
+  type RawTraceManifest,
   SessionLogger,
   type SessionRepository,
   type StoredSessionSummary,
+  signRawTraceManifest,
+  traceIdFromManifest,
   type VehicleSessionData,
 } from "@vdp/storage";
 import {
@@ -163,6 +168,8 @@ export interface BackendOptions {
   /** Where sessions are persisted (AGENTS 10, 29). Omitted disables persistence. */
   sessionDir?: string;
   repository?: SessionRepository;
+  /** Signer for export and session trace manifests (ADR 0057). */
+  manifestSigner?: ManifestSigner;
   /**
    * Adapter catalog. Defaults to the workbench catalog (simulator, replay and
    * every adapter this host can drive); tests inject their own.
@@ -222,6 +229,7 @@ export class DemoBackend {
    * platform crypto and refuses a manifest it cannot compute.
    */
   private readonly sessionLogger = new SessionLogger({ integrity: nodeIntegrityPort });
+  private readonly manifestSigner: ManifestSigner;
   private readonly listeners = new Set<(event: BackendEvent) => void>();
   private unsubscribeBus: (() => void) | undefined;
   private unsubscribeSamples: (() => void) | undefined;
@@ -258,6 +266,7 @@ export class DemoBackend {
     this.selection = options.selection ?? { id: SIMULATOR_ADAPTER_ID, config: {} };
     this.mode = modeForSelection(this.selection, this.adapters);
     this.definitions = options.definitions ?? defaultDefinitionsFor(this.mode, this.selection.id);
+    this.manifestSigner = options.manifestSigner ?? createNodeManifestSigner({ logger: this.log });
     // Persistence is opt-in so tests and ephemeral runs stay side-effect free.
     if (options.repository) this.repository = options.repository;
     else if (options.sessionDir)
@@ -334,6 +343,19 @@ export class DemoBackend {
     const data = runtime.session.data();
     if (!data) throw new Error("no session to save — call start() first");
     if (!this.repository) return { id: data.id, repository: false };
+
+    data.platformVersion = PLATFORM_VERSION;
+    if (this.lastScenario?.title && this.lastScenario.seed !== undefined) {
+      data.scenario = {
+        id: this.lastScenario.id,
+        title: this.lastScenario.title,
+        seed: this.lastScenario.seed,
+      };
+    }
+    const manifest = this.signedManifest();
+    if (manifest) {
+      data.traceId = traceIdFromManifest(manifest);
+    }
 
     await this.repository.save(data);
     const { samples } = runtime.measurements.rawExport();
@@ -1348,6 +1370,7 @@ export class DemoBackend {
     const runtime = this.requireRuntime();
     const { samples, markers } = runtime.measurements.rawExport();
     const snapshot = this.sessionLogger.snapshot();
+    const manifest = this.signedManifest();
     return SessionLogger.toJson({
       meta: {
         sessionId: this.session()?.id ?? "unknown",
@@ -1355,16 +1378,27 @@ export class DemoBackend {
         mode: this.mode,
         adapter: this.selection.id,
         adapterConfig: this.selection.config,
+        platformVersion: PLATFORM_VERSION,
+        ...(this.lastScenario ? { scenario: this.lastScenario } : {}),
+        ...(manifest ? { traceId: traceIdFromManifest(manifest) } : {}),
       },
       samples,
       markers,
       dtcs: this.allDtcRecords(),
       trace: snapshot.trace,
       log: snapshot.log,
-      // The export carries the digest of exactly the trace it carries, so a session
-      // that was edited after the fact can be told from one that was not.
-      rawTraceManifest: this.sessionLogger.rawTraceManifest(),
+      // The export carries the signed witness of exactly the trace it carries (ADR 0057).
+      ...(manifest ? { rawTraceManifest: manifest } : {}),
     });
+  }
+
+  private signedManifest(): RawTraceManifest | undefined {
+    try {
+      const unsigned = this.sessionLogger.rawTraceManifest();
+      return signRawTraceManifest(unsigned, this.manifestSigner);
+    } catch {
+      return undefined;
+    }
   }
 
   private allDtcRecords(): DtcRecord[] {
