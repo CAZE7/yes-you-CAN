@@ -1,5 +1,11 @@
 import assert from "node:assert/strict";
-import { DefinitionError, fromHex, toHex, UdsNegativeResponseError } from "@vdp/shared";
+import {
+  DefinitionError,
+  fromHex,
+  toHex,
+  UdsNegativeResponseError,
+  UdsTimeoutError,
+} from "@vdp/shared";
 import { test } from "vitest";
 import { settle, waitFor } from "../../../../tests/helpers/wait.js";
 import {
@@ -386,4 +392,147 @@ test("unknown services are answered with serviceNotSupported", async () => {
     assert.equal(error.nrc, 0x11);
     return true;
   });
+});
+
+/* ----------------------------------------------------------------------- *
+ *  NRC 0x78 stress (AGENTS 31, ISO 14229-1 §9.3.2.2)
+ *
+ *  The client's pending-response loop is small, but it is the place where a
+ *  tester decides whether the ECU is alive or not, and the place where a
+ *  regression slips through if the loop forgets to count. The tests below
+ *  drive the loop through a scripted link so they are deterministic and
+ *  independent of real timers.
+ * ----------------------------------------------------------------------- */
+
+/** A scripted `UdsLink`: replies are queued up front, in arrival order. */
+class ScriptedLink implements UdsLink {
+  private readonly replies: Uint8Array[] = [];
+  /** Every byte the client put on the wire, in order — used to count requests. */
+  readonly sentRequests: Uint8Array[] = [];
+  /** Every `receive()` call that returned a queued reply, in order. */
+  readonly receives: Uint8Array[] = [];
+  enqueue(...payloads: readonly Uint8Array[]): void {
+    for (const payload of payloads) this.replies.push(Uint8Array.from(payload));
+  }
+  async request(payload: Uint8Array): Promise<Uint8Array> {
+    this.sentRequests.push(payload);
+    const next = this.replies.shift();
+    if (!next) throw new Error(`scripted link: no reply queued for ${toHex(payload)}`);
+    return next;
+  }
+  async sendOnly(): Promise<void> {
+    // The pending loop never calls `sendOnly`; if it ever does, that is a bug
+    // worth a loud failure rather than a silent no-op.
+    throw new Error(
+      "scripted link: sendOnly was called — the pending loop must not re-send the request",
+    );
+  }
+  async receive(): Promise<Uint8Array | null> {
+    const next = this.replies.shift();
+    if (!next) return null;
+    this.receives.push(next);
+    return next;
+  }
+}
+
+function scripted(pending: number, ok: Uint8Array): ScriptedLink {
+  const link = new ScriptedLink();
+  const busy = new Uint8Array([0x7f, 0x22, 0x78]);
+  for (let i = 0; i < pending; i += 1) link.enqueue(busy);
+  link.enqueue(ok);
+  return link;
+}
+
+test("NRC 0x78: ten consecutive pending replies are followed, the final answer is delivered", async () => {
+  // ISO 14229-1 §9.3.2.2: the client keeps asking within P2* until the final
+  // response or `maxPendingResponses` iterations, whichever comes first. The
+  // default cap is 10; a tester that holds a request in pending exactly that
+  // long gets a successful final answer.
+  const link = scripted(10, new Uint8Array([0x62, 0xf1, 0x90, ...new TextEncoder().encode(VIN)]));
+  const client = new UdsClient(link, { name: "stress-ecu", timing: { p2Ms: 50, p2StarMs: 1000 } });
+  const vin = await client.readVin();
+  assert.equal(vin, VIN);
+  assert.deepEqual(client.stats, {
+    requests: 1,
+    responses: 11,
+    negativeResponses: 0,
+    pendingResponses: 10,
+    timeouts: 0,
+  });
+  // One request on the wire, ten pending receives, one final receive — the loop
+  // must not have re-sent the request at any point.
+  assert.equal(link.sentRequests.length, 1);
+  assert.equal(link.receives.length, 10);
+});
+
+test("NRC 0x78: the eleventh pending reply surfaces as UdsTimeoutError and counts as a timeout", async () => {
+  // The eleventh pending reply is the one the client refuses to extend: the
+  // loop processes it, increments the counter to 10 (= `maxPendingResponses`),
+  // and throws before asking for the twelfth. So the script queues 11 pendings
+  // — the eleventh is the one that trips the limit.
+  const link = new ScriptedLink();
+  for (let i = 0; i < 11; i += 1) link.enqueue(new Uint8Array([0x7f, 0x22, 0x78]));
+  const client = new UdsClient(link, { name: "stress-ecu", timing: { p2Ms: 50, p2StarMs: 1000 } });
+  await assert.rejects(client.readDid(0xf190), (error: unknown) => {
+    assert.ok(error instanceof UdsTimeoutError, `expected UdsTimeoutError, got ${error}`);
+    return /beyond 10 iterations/.test((error as Error).message);
+  });
+  assert.deepEqual(client.stats, {
+    requests: 1,
+    responses: 11,
+    negativeResponses: 0,
+    pendingResponses: 10,
+    timeouts: 1,
+  });
+});
+
+test("NRC 0x78: a single pending reply followed by a negative response ends the loop cleanly", async () => {
+  // The pending loop must not be exited by a non-pending negative response:
+  // one NRC 0x78 then NRC 0x31 (requestOutOfRange) is two messages, the second
+  // one is the final answer — wrong, but final. The client surfaces it as a
+  // `UdsNegativeResponseError`, not a timeout.
+  const link = new ScriptedLink();
+  link.enqueue(new Uint8Array([0x7f, 0x22, 0x78]));
+  link.enqueue(new Uint8Array([0x7f, 0x22, 0x31]));
+  const client = new UdsClient(link, { name: "stress-ecu", timing: { p2Ms: 50, p2StarMs: 1000 } });
+  await assert.rejects(client.readDid(0xf190), (error: unknown) => {
+    assert.ok(error instanceof UdsNegativeResponseError);
+    assert.equal((error as UdsNegativeResponseError).nrc, 0x31);
+    return true;
+  });
+  assert.deepEqual(client.stats, {
+    requests: 1,
+    responses: 2,
+    negativeResponses: 1,
+    pendingResponses: 1,
+    timeouts: 0,
+  });
+});
+
+test("NRC 0x78: counters are honest across five diagnoses with ten pendings each", async () => {
+  // A stress that exercises both the inner loop (every iteration counts a
+  // pending and a response) and the outer one (every diagnosis counts a
+  // request and a final answer). A counter that forgets to add on either side
+  // shows up immediately.
+  const link = new ScriptedLink();
+  const busy = new Uint8Array([0x7f, 0x22, 0x78]);
+  const ok = new Uint8Array([0x62, 0xf1, 0x90, 0x41, 0x42, 0x43]);
+  for (let i = 0; i < 5; i += 1) {
+    for (let j = 0; j < 10; j += 1) link.enqueue(busy);
+    link.enqueue(ok);
+  }
+  const client = new UdsClient(link, { name: "stress-ecu", timing: { p2Ms: 50, p2StarMs: 1000 } });
+  for (let i = 0; i < 5; i += 1) {
+    const data = await client.readDid(0xf190);
+    assert.deepEqual([...(data ?? [])], [0x41, 0x42, 0x43]);
+  }
+  assert.deepEqual(client.stats, {
+    requests: 5,
+    responses: 55,
+    negativeResponses: 0,
+    pendingResponses: 50,
+    timeouts: 0,
+  });
+  assert.equal(link.sentRequests.length, 5);
+  assert.equal(link.receives.length, 50);
 });

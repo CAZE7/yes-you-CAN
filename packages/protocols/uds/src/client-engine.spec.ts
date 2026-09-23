@@ -68,8 +68,8 @@ describe("response evaluation loop", () => {
     assert.equal(client.stats.pendingResponses, 2);
     assert.equal(
       client.stats.timeouts,
-      0,
-      "the overflow is a protocol abort, not a transport timeout",
+      1,
+      "a stuck-in-pending ECU is exactly what `timeouts` counts",
     );
   });
 
