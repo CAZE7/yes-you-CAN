@@ -46,7 +46,8 @@ interface Rules {
 
 interface RecordedPackage {
   version: string;
-  entry: string;
+  /** The type entry points the surface is measured over (a package may have subpaths). */
+  entries: string[];
   files: Record<string, string>;
   external: string[];
 }
@@ -333,6 +334,43 @@ test("a bumped version with a stale record is a violation, not a footnote", () =
   });
 });
 
+test("a subpath export is measured even when nothing re-exports it", () => {
+  withTree((base) => {
+    fixture(base);
+    // The published promise is more than `types`: a consumer may write
+    // `import … from "@vdp/alpha/deep"`, and then *that* file is the surface it compiles
+    // against. A walk from one entry would only see it if `index.d.ts` happened to
+    // re-export it — which is a coincidence, not a rule.
+    base.write(
+      "packages/alpha/package.json",
+      JSON.stringify({
+        name: "@vdp/alpha",
+        version: "1.0.0",
+        types: "./dist/src/index.d.ts",
+        exports: {
+          ".": { types: "./dist/src/index.d.ts", default: "./dist/src/index.js" },
+          "./deep": { types: "./dist/src/deep.d.ts", default: "./dist/src/deep.js" },
+        },
+      }),
+    );
+    base.write("packages/alpha/dist/src/deep.d.ts", "export declare const deep: number;\n");
+
+    const first = runTool(["--root", base.root, "--update"]);
+    assert.equal(first.status, 0, `the record must be written:\n${first.stderr}`);
+    const record = base.readJson<ApiRecord>("architecture/public-api.json");
+    assert.deepEqual(
+      record.packages["@vdp/alpha"]?.entries,
+      ["dist/src/deep.d.ts", "dist/src/index.d.ts"],
+      "every declared type entry is part of the surface, reachable or not",
+    );
+
+    base.write("packages/alpha/dist/src/deep.d.ts", "export declare const deep: string;\n");
+    const check = runTool(["--root", base.root]);
+    assert.equal(check.status, 1, "a change behind a subpath is still a contract change");
+    assert.match(check.stdout, /~ dist\/src\/deep\.d\.ts/);
+  });
+});
+
 test("a record entry for a surface that is no longer a contract is dropped, not kept", () => {
   withTree((base) => {
     fixture(base);
@@ -340,7 +378,7 @@ test("a record entry for a surface that is no longer a contract is dropped, not 
     const record = base.readJson<ApiRecord>("architecture/public-api.json");
     record.packages["@vdp/beta"] = {
       version: "1.0.0",
-      entry: "dist/src/index.d.ts",
+      entries: ["dist/src/index.d.ts"],
       files: {},
       external: [],
     };

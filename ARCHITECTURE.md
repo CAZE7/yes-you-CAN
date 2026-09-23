@@ -325,7 +325,7 @@ steht dort drin, was sie heißen *dürfen*.
 
 ## 7. Entscheidungs-Historie
 
-[`docs/adr/`](docs/adr/README.md) — 42 ADRs, nie gelöscht, nur `superseded`.
+[`docs/adr/`](docs/adr/README.md) — 59 ADRs (0001–0060 ohne die Lücke 0044), nie gelöscht, nur `superseded`.
 Die neuen ADRs tragen Pflicht-Abschnitte *Affected packages*, *Forbidden
 implementations*, *Migration*, *Tests* und *AI implementation notes*
 (vorabgebildet in [ADR 0043](docs/adr/0043-ai-context-layer.md)).

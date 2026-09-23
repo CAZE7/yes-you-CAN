@@ -15,11 +15,15 @@
 > `contracts` in `architecture/architecture.yaml`, `architecture/public-api.json`,
 > `npm run check:api`; umgesetzt als `contracts`-Abschnitt statt als neuer Layer —
 > ADR 0059, *Alternatives* 1/2; gemessen **7 Verträge / 49 Flächen-Dateien / 5 externe
-> Typquellen**), **2.3** (Verteilungsregel `private-dependency-leak` in
+> Typquellen**, Record-Format 2 misst **jeden** Typ-Einstiegspunkt inkl. Subpfad-`exports`),
+> **2.3** (Verteilungsregel `private-dependency-leak` in
 > `tools/architecture/check-package-manifests.mjs`, Biss-Test in
 > `tests/architecture/manifests.test.ts`) und **2.5** (ADR 0060: `licenses` in
 > `architecture.yaml`, `npm run check:licenses`; gemessen **108 Drittpakete — 0
-> Produktion / 108 Entwicklung**). **Weiter Vorschlag, nicht gebaut:** Phase 0, die
+> Produktion / 108 Entwicklung**). **Teilweise:** **1.4 🟡** — die Regeln stehen in
+> `CONTRIBUTING.md` („Contracts, licences and versions"), die Entscheidung über
+> Vertragsversionen nach der ersten Veröffentlichung ist offen. **Weiter Vorschlag,
+> nicht gebaut:** Phase 0, die
 > Enterprise-Pakete und die Kantenregel **2.2** (ein `layerRules`-Präfix ohne Treffer
 > ist ein Verstoß — sie kann erst mit dem ersten `@vdp/enterprise-*`-Paket landen),
 > Phase 3–6, die Native-Härtung und die Lizenzausstellung.
@@ -655,7 +659,7 @@ Artefakt und **Gate** (den Nachweis, dass sie fertig ist).
 | **1.1 ✅** | Contract-Pakete markieren (IR, domain-Ports, definitions-Schema, protocols-oem, `AnalysisProvider`, `IntegrityPort`, `SeedKeyAlgorithm`) | `architecture/architecture.yaml` (`contracts`, jeder Vertrag mit `why`; `entry` nur für Modul-Verträge), Zeilen in `ARCHITECTURE.md` („die harten Verträge") | `check:deps` grün; Schemafehler (fehlendes `why`, unbekannter Schlüssel, nicht platziertes Paket) = EXIT 2 |
 | **1.2 ✅** | Öffentliche API einfrieren und messen | `tools/architecture/check-api.mjs` + `architecture/public-api.json` | Gate fällt bei Änderung ohne Versionssprung (absichtlich provoziert) |
 | 1.3 | Vertragsdokumentation vollständig | `docs/api/*` (ein Eintrag je Naht), `docs/flows/open-core-boundary.md` | Link-Check im Testlauf |
-| 1.4 | Versionierungspolitik | `CONTRIBUTING.md` + ADR-Eintrag | Review |
+| **1.4 🟡** | Versionierungspolitik | `CONTRIBUTING.md` + ADR-Eintrag | Review |
 
 ### Phase 2 — Closed-Kandidaten benennen (Woche 4–5, 1–2 PRs)
 

@@ -10,10 +10,16 @@ below are intentional (see `AGENTS.md` and `docs/adr/`).
 npm ci            # exact lockfile, Node >=22
 npm run build     # tsc -b over all project references
 npm run typecheck # + strict noEmit over specs, configs and the frontend JS
-npx biome check . # lint + format (Biome 1.9)
+npx biome check . # lint + format (Biome 2.5.14, the version in biome.json)
 npm test          # build + 6 layers: unit · protocol · regression · replay · integration · architecture
+npm run ci        # the binding gate: build · typecheck · biome · all four check:* · tests
 npm run demo      # workbench with simulator on http://localhost:8080
 ```
+
+`npm run ci` is the gate that counts; the individual rule checks are
+`check:deps` (import graph), `check:manifests` (`package.json` ⇔ imports),
+`check:api` (the frozen contract surfaces, **after** a build) and
+`check:licenses` (the licence policy for third-party code).
 
 Tests run directly on the TypeScript sources via Vitest workspace aliases
 (`vitest.config.ts`). `npm test` still runs `npm run build` first, because the
@@ -71,7 +77,7 @@ must appear in the allowlist — a new package without an entry fails the suite.
   open, overrides may only relax test sources, and the strict TypeScript flags from
   `tsconfig.base.json` are inherited, not negotiated (ADR 26).
 - No runtime dependencies (ADR 0002) except where ADR 0010 explicitly allows them.
-  Infrastructure deps need maintenance proof, license check (MIT/Apache-2.0/BSD) and
+  Infrastructure deps need maintenance proof, a passing `npm run check:licenses` and
   a locally regenerated `package-lock.json` in the same PR.
 - Frontend JS (`apps/web/public/*.js`) is type-checked (`checkJs` with the DOM
   lib) by its own project `tsconfig.frontend.json`, which `npm run typecheck`
@@ -93,6 +99,36 @@ must appear in the allowlist — a new package without an entry fails the suite.
 
 Use simulator and `ReplayTransport` instead of a real car wherever possible
 (AGENTS 32, ADR 0005).
+
+## Contracts, licences and versions
+
+Three rules that are machine-checked, and what to do when they speak up.
+
+**The contract surface (ADR 0059).** `architecture/architecture.yaml` names the
+seven packages a *separate* repository may build against. `npm run check:api`
+hashes their emitted `.d.ts` (the `types` entry and every subpath in `exports`,
+transitively) and compares it with `architecture/public-api.json`. When it fails,
+the change is real and the diff names the file — decide what it means for a
+consumer (version, migration note) and *then* run
+`npm run check:api -- --update` and commit the record. `--update` is not a way to
+silence the gate; a silent contract change is the one thing this gate exists to
+prevent. `entry` in the YAML narrows a contract to a single module — use it when
+the promise is *smaller* than the package.
+
+**Licences (ADR 0060).** `npm run check:licenses` reads `package-lock.json` and
+applies the policy in `architecture.yaml` (`licenses`, two scopes, each with a
+`why`). A new dependency is a decision: look up its SPDX id *before* installing.
+If it is not in `allowed` for its scope, the answer is an ADR and a policy change
+— not an exception. An exception needs `why` and a dated `until`, it never
+excuses a forbidden licence, and an exception that is no longer needed is a
+finding of its own.
+
+**Versions.** The workspace moves in lockstep (`manifests.test.ts` pins every
+package to the root version), so the version a consumer pins is the release
+version, not a per-package counter. The record's `version` field is therefore the
+version of the contract as it was measured; a contract change without a version
+decision is visible in the PR diff, and that decision (version + migration note)
+is the reviewer's job, not the tool's.
 
 ## Security
 

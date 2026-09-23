@@ -1,10 +1,10 @@
 {
   "format": "vdp.public-api",
-  "version": 1,
+  "version": 2,
   "packages": {
     "@vdp/ai": {
       "version": "0.1.0",
-      "entry": "dist/src/index.d.ts",
+      "entries": ["dist/src/index.d.ts"],
       "files": {
         "dist/src/heuristic.d.ts": "ccdbfe7bc9aecc89a46c22a3eb14b9b57e5f22a0825bc1dc72fedf07ed579281",
         "dist/src/http.d.ts": "2b0289e2ec11f0f0deca14b7549e7a9bd7a796bb34865169a15ee9d895be098f",
@@ -18,7 +18,7 @@
     },
     "@vdp/core": {
       "version": "0.1.0",
-      "entry": "dist/src/logging/integrity.d.ts",
+      "entries": ["dist/src/logging/integrity.d.ts"],
       "files": {
         "dist/src/logging/integrity.d.ts": "8f8f6366715939cf25ba75cd5403abf6c9cec053eb4b8e981f2e7c02f222568e",
         "dist/src/logging/session-logger.d.ts": "654f1ba919265733832ddce0f64332a7533d58dd205d6383bb49457611efad6f",
@@ -36,7 +36,13 @@
     },
     "@vdp/definitions": {
       "version": "0.1.0",
-      "entry": "dist/src/index.d.ts",
+      "entries": [
+        "dist/src/generic/generic-package.d.ts",
+        "dist/src/index.d.ts",
+        "dist/src/mercedes/mercedes-package.d.ts",
+        "dist/src/simulator/simulator-package.d.ts",
+        "dist/src/vag/vag-package.d.ts"
+      ],
       "files": {
         "dist/src/dbc.d.ts": "182fb3c825831a0e67633ce61a793a67d3c33427d1870aee85c96ef361c1fd87",
         "dist/src/evidence.d.ts": "58f4b1576cf050003bc9196fd421b0855ff3115e1fed368854d0a00d5a238945",
@@ -59,7 +65,7 @@
     },
     "@vdp/diagnostic-ir": {
       "version": "0.1.0",
-      "entry": "dist/src/index.d.ts",
+      "entries": ["dist/src/index.d.ts"],
       "files": {
         "dist/src/dtc.d.ts": "92288b29e441eb292e76f1a2cb996cee9bed5c19500f960b97c67394ecd50108",
         "dist/src/evidence.d.ts": "547d8fcf5e2015ea5cbf5a37a6ac19bebb1eebf28dc6c8c48ed0fb5c1dc028ff",
@@ -73,7 +79,7 @@
     },
     "@vdp/domain": {
       "version": "0.1.0",
-      "entry": "dist/src/index.d.ts",
+      "entries": ["dist/src/index.d.ts"],
       "files": {
         "dist/src/capabilities.d.ts": "236c6bfc6708c86d7308708e288cf5630f4e5fc4b0bf2cc416658a354af0f760",
         "dist/src/events.d.ts": "7c7916f269c00cb491ef503f04c2e69fb3600c985218524554b10a52cded2643",
@@ -92,7 +98,7 @@
     },
     "@vdp/protocols-oem": {
       "version": "0.1.0",
-      "entry": "dist/src/index.d.ts",
+      "entries": ["dist/src/index.d.ts"],
       "files": {
         "dist/src/index.d.ts": "e9e5ac01f0612eae57f6ea21dfadaea9bd3d7c9c167bcd3947f8940107077a2f"
       },
@@ -100,7 +106,7 @@
     },
     "@vdp/protocols-uds": {
       "version": "0.1.0",
-      "entry": "dist/src/security.d.ts",
+      "entries": ["dist/src/security.d.ts"],
       "files": {
         "dist/src/security.d.ts": "71072300f67063522b0a4c0cfd77a44cb5d163562d22c9939531bd342c44c5fd"
       },

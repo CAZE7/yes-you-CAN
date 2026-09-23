@@ -43,11 +43,13 @@ sie scheitert beim Kunden statt bei uns.
    (`@vdp/core` → `dist/src/logging/integrity.d.ts`, `@vdp/protocols-uds` →
    `dist/src/security.d.ts`).
 2. **`tools/architecture/check-api.mjs`** hüllt die emittierten Deklarationen ein:
-   Ausgehend vom Einstiegspunkt des Pakets (dessen eigene Angabe aus `types`, sofern
-   `entry` nichts anderes sagt) folgt es den `from "…"`-Spezifizierern **transitiv**,
-   entfernt Kommentare, normalisiert Whitespace und hasht. Das Ergebnis steht in
-   **`architecture/public-api.json`** — eine Datei, die committet wird, weil sie das
-   Versprechen *ist*.
+   Ausgehend von **jedem Typ-Einstiegspunkt** — dem `types`-Feld *und* jedem
+   `types`-Eintrag der Subpfad-`exports` (ein explizites `entry` in der YAML ersetzt die
+   Menge und meint: „nur dieses Modul") — folgt es den `from "…"`-Spezifizierern
+   **transitiv**, entfernt Kommentare, normalisiert Whitespace und hasht. Das Ergebnis
+   steht in **`architecture/public-api.json`** (Format `vdp.public-api`, Version 2:
+   eine Fläche ist eine *Menge* von Einstiegspunkten) — eine Datei, die committet wird,
+   weil sie das Versprechen *ist*.
 3. **`check:api` fällt bei Drift** (EXIT 1) und nennt die geänderte Datei
    (`~ dist/src/config.d.ts`, `+ dist/src/deep.d.ts`). `--update` schreibt den Record neu
    und **sagt, was es geändert hat**; eine stille Aktualisierung wäre genau der
@@ -72,6 +74,12 @@ sie scheitert beim Kunden statt bei uns.
   Änderung *sichtbar*: sie erscheint als Diff in `architecture/public-api.json` in genau
   dem PR, der sie verursacht — und der Reviewer entscheidet über Version und
   Migrationshinweis, statt sie zu übersehen.
+- **Ein Subpfad ist Teil des Versprechens.** Wer
+  `import type { VagPackage } from "@vdp/definitions/vag"` schreibt, kompiliert gegen
+  *diese* Datei. Gemessen wird deshalb die Vereinigung über alle Typ-Einstiegspunkte
+  (`@vdp/definitions` deklariert fünf: `.`, `./generic`, `./vag`, `./mercedes`,
+  `./simulator`). Dass der transitive Lauf sie heute ohnehin erreicht, weil `index.d.ts`
+  alles re-exportiert, ist Zufall — und ein Gate darf sich nicht auf Zufall stützen.
 - **Der transitive Lauf ist der Punkt, nicht ein Detail.** Eine geänderte Type, die der
   Vertrag *referenziert*, bricht einen gepinnten Konsumenten genauso wie eine geänderte
   Signatur. Wer nur die Exporte des Einstiegspunkts hasht, hat ein Gate mit Loch:
@@ -131,12 +139,16 @@ sie scheitert beim Kunden statt bei uns.
   Komfort einer gemeinsamen `dependencies`-Zeile ist die Ursache, nicht die Ausnahme.
 - **Den `entry` auf eine Quelldatei zeigen lassen.** Gemessen wird die emittierte
   Fläche; alles andere wäre eine zweite Wahrheit über sie.
+- **Die Messung auf `types` verkürzen oder einen Subpfad-`types` entfernen, um einen
+  Drift loszuwerden.** Die Fläche wird nicht kleiner, indem man aufhört, sie anzusehen.
 
 ## Migration
 
 1. `contracts` in `architecture.yaml` setzen (7 Flächen, jede mit `why`).
 2. `npm run build && npm run check:api -- --update` → `architecture/public-api.json`
-   erzeugen und committen.
+   (Format 2) erzeugen und committen. Der Record ist versioniert: ein Record aus einer
+   älteren Werkzeugfassung beschreibt eine andere Messung, deshalb verweigert der Check
+   ihn mit Grund statt Drift zu erfinden — `--update` ist die Antwort.
 3. `check:api` in `npm run ci` aufnehmen (nach dem Build).
 4. Biss-Test (`tests/architecture/api.test.ts`) und Verteilungsregel-Fixtures
    (`manifests.test.ts`) sind Teil dieses ADR.
@@ -154,12 +166,14 @@ Gemessen am Stand dieses ADR (`npm run ci`, Node v22.22.3):
 - Biss-Probe von Hand: eine Zeile an `packages/domain/dist/src/capabilities.d.ts`
   angehängt → `✗ [contract-drift] @vdp/domain … ~ dist/src/capabilities.d.ts` (EXIT 1);
   zurückgesetzt → EXIT 0.
-- `tests/architecture/api.test.ts` — 12 Tests: Verdrahtung im `ci`-Pfad und **nach** dem
+- `tests/architecture/api.test.ts` — 13 Tests: Verdrahtung im `ci`-Pfad und **nach** dem
   Build, Record ⇔ Manifest-Gleichheit, Version gegen `package.json`, Fixtures für Drift
   (Datei benannt), Kommentar-Änderung (kein Drift), transitive neue Datei (`+ …`),
-  Prosa-Regression (`external` bleibt leer), `version-drift`, `stale-api-entry`,
-  fehlender Build (EXIT 2 mit Grund), leere `contracts` (EXIT 2), Tippfehler wird von
-  `--update` nicht gesegnet (EXIT 1, keine Datei geschrieben).
+  **Subpfad-Export ohne Re-Export aus `index.d.ts`** (beide Einträge im Record, Änderung
+  dahinter = `~ dist/src/deep.d.ts`), Prosa-Regression (`external` bleibt leer),
+  `version-drift`, `stale-api-entry`, fehlender Build (EXIT 2 mit Grund), leere
+  `contracts` (EXIT 2), Tippfehler wird von `--update` nicht gesegnet (EXIT 1, keine Datei
+  geschrieben).
 - `tests/architecture/manifests.test.ts` — zwei neue Tests: `private-dependency-leak`
   beißen lassen, und die beiden Formen, die **nicht** beißen (beide Seiten privat;
   nur `devDependencies`).

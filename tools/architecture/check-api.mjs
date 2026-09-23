@@ -10,6 +10,9 @@
  * The architecture carries a `contracts` section for exactly that. A contract package
  * (or, with `entry`, one module of a package) is the surface a *separate* repository may
  * build against — the closed modules, a third-party adapter, a customer integration.
+ * "Surface" is the package's `types` entry **and** the `types` of every subpath in its
+ * `exports` map: a consumer that imports `@vdp/definitions/vag` compiles against that
+ * file, and a walk that starts at one entry would measure it only by luck.
  * This tool walks the emitted declarations of that surface, hashes them comment-free and
  * whitespace-normalised, and compares the result with the record in
  * `architecture/public-api.json`.
@@ -49,7 +52,8 @@ import { loadManifest, packageDirs } from "./impact.mjs";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOT = resolve(HERE, "../..");
 const RECORD_NAME = "vdp.public-api";
-const RECORD_VERSION = 1;
+/** Format 2: a surface is a *set* of type entries (subpath exports are part of it). */
+const RECORD_VERSION = 2;
 
 /** A contract's default entry: the package's own claim about its public entry. */
 const DEFAULT_ENTRY = "dist/src/index.d.ts";
@@ -101,20 +105,44 @@ function normalizeDeclaration(source) {
 }
 
 /**
- * The surface a consumer of `entry` compiles against: every declaration file reachable
+ * The type entry points a consumer may compile against: the package's own `types` field
+ * plus the `types` of every subpath in its `exports` map.
+ *
+ * Why not just `types`: a subpath export *is* part of the published promise. A consumer
+ * writes `import type { VagPackage } from "@vdp/definitions/vag"` and compiles against
+ * that file — a single-entry walk would only measure it by luck. It happens to be luck
+ * today (`@vdp/definitions` re-exports its subpaths from `index.d.ts`); the day a subpath
+ * exists *only* as an entry, this walk has to see it on purpose (measured: `definitions`
+ * declares five type entries, and the record lists all five).
+ */
+function entriesOf(manifest) {
+  const entries = new Set();
+  if (typeof manifest.types === "string") entries.add(manifest.types);
+  for (const value of Object.values(manifest.exports ?? {})) {
+    if (value === null || typeof value !== "object") continue;
+    if (typeof value.types === "string") entries.add(value.types);
+  }
+  return [...entries].map((entry) => entry.replace(/^\.\//, "")).sort();
+}
+
+/**
+ * The surface a consumer of `entries` compiles against: every declaration file reachable
  * through `from "…"` specifiers, plus the bare specifiers the surface names.
  */
-function computeSurface(packageDir, entry) {
-  const start = join(packageDir, entry);
-  if (!existsSync(start)) {
-    fail(
-      `${relative(DEFAULT_ROOT, packageDir)}: ${entry} does not exist — a contract that is ` +
-        "not built is not measured; run `npm run build` first",
-    );
-  }
+function computeSurface(packageDir, entries) {
   const files = new Map();
   const external = new Set();
-  const queue = [start];
+  const queue = [];
+  for (const entry of entries) {
+    const start = join(packageDir, entry);
+    if (!existsSync(start)) {
+      fail(
+        `${relative(DEFAULT_ROOT, packageDir)}: ${entry} does not exist — a contract that is ` +
+          "not built is not measured; run `npm run build` first",
+      );
+    }
+    queue.push(start);
+  }
   while (queue.length > 0) {
     const file = queue.pop();
     if (files.has(file)) continue;
@@ -140,13 +168,15 @@ function computeSurface(packageDir, entry) {
   for (const file of [...files.keys()].sort()) {
     relativeFiles[relative(packageDir, file).split("\\").join("/")] = files.get(file);
   }
-  return { entry, files: relativeFiles, external: [...external].sort() };
+  return { entries, files: relativeFiles, external: [...external].sort() };
 }
 
 function surfaceOf(packageDir, manifest, contract) {
-  const entry = contract.entry ?? manifest.types ?? DEFAULT_ENTRY;
-  const normalized = entry.replace(/^\.\//, "");
-  return computeSurface(packageDir, normalized);
+  // An explicit `entry` in the YAML means "measure *this* module and nothing else" — the
+  // package may export more, and the contract is deliberately the smaller thing (ADR 0059).
+  const entries =
+    contract.entry === undefined ? entriesOf(manifest) : [contract.entry.replace(/^\.\//, "")];
+  return computeSurface(packageDir, entries.length > 0 ? entries : [DEFAULT_ENTRY]);
 }
 
 /** One line per changed file — a drift report that names the file, not just a count. */
@@ -164,8 +194,10 @@ function describeDrift(recorded, computed) {
   const before = (recorded.external ?? []).join(", ") || "(none)";
   const after = computed.external.join(", ") || "(none)";
   if (before !== after) notes.push(`external: ${before} → ${after}`);
-  if (recorded.entry !== computed.entry) {
-    notes.push(`entry: ${recorded.entry} → ${computed.entry}`);
+  const beforeEntries = (recorded.entries ?? []).join(", ");
+  const afterEntries = computed.entries.join(", ");
+  if (beforeEntries !== afterEntries) {
+    notes.push(`entries: ${beforeEntries} → ${afterEntries}`);
   }
   return notes;
 }
@@ -217,6 +249,16 @@ function evaluate(root, manifest, options) {
     if (record.format !== RECORD_NAME) {
       fail(`the record must declare format "${RECORD_NAME}", found "${record.format}"`);
     }
+    // A record from an older tool version describes a *different* measurement (format 1
+    // held one entry per contract). Comparing the two would report drift that no build
+    // caused, and `--update` is the honest answer to it — so the check refuses with a
+    // reason instead of inventing findings.
+    if (record.version !== RECORD_VERSION && !options.update) {
+      fail(
+        `the record at ${relative(root, options.manifest)} is format version ${record.version}, ` +
+          `this tool writes ${RECORD_VERSION} — run --update and commit the new record`,
+      );
+    }
     const recorded = record.packages ?? {};
     for (const { name, surface, version } of checks) {
       const entry = recorded[name];
@@ -267,8 +309,8 @@ function evaluate(root, manifest, options) {
 function writeRecord(file, computedPackages) {
   const packages = {};
   for (const name of Object.keys(computedPackages).sort()) {
-    const { version, entry, files, external } = computedPackages[name];
-    packages[name] = { version, entry, files, external };
+    const { version, entries, files, external } = computedPackages[name];
+    packages[name] = { version, entries, files, external };
   }
   const record = { format: RECORD_NAME, version: RECORD_VERSION, packages };
   writeFileSync(file, `${JSON.stringify(record, null, 2)}\n`);
@@ -353,7 +395,7 @@ function main() {
           contracts: checks.map((check) => ({
             name: check.name,
             version: check.version,
-            entry: check.surface.entry,
+            entries: check.surface.entries,
             files: Object.keys(check.surface.files).length,
             external: check.surface.external,
           })),
