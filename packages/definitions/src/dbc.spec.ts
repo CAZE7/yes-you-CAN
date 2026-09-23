@@ -29,6 +29,19 @@ CM_ BO_ 200 "Engine telemetry from primary powertrain module";
 CM_ SG_ 200 EngineSpeed "Crankshaft rotational speed";
 `;
 
+const COMPLEX_DBC = `
+BO_ 2147485696 ExtendedMsg: 8 GW
+ SG_ BigEndianSig : 7|12@0+ (1,0) [0|4095] "" 
+ SG_ SignedInt32 : 32|32@1- (1,0) [-2147483648|2147483647] "raw" Vector__XXX
+ SG_ Int16Sig : 16|16@1- (1,0) [0|0] "" 
+ SG_ BitfieldSig : 3|5@1+ (1,0) [0|31] "" 
+ SG_ Uint32Sig : 0|32@1+ (1,0) [0|4294967295] "" 
+
+CM_ BO_ 999 "Unmatched message comment";
+CM_ SG_ 999 NonExistent "Unmatched signal comment";
+CM_ SG_ 2147485696 NonExistentInMsg "Unmatched in message";
+`;
+
 describe("DBC parser", () => {
   test("parses nodes, messages and signals from DBC text", () => {
     const db = parseDbc(SAMPLE_DBC);
@@ -69,6 +82,26 @@ describe("DBC parser", () => {
     assert.deepEqual(db.nodes, []);
   });
 
+  test("parses 29-bit extended CAN IDs, big endian, and various encodings", () => {
+    const db = parseDbc(COMPLEX_DBC);
+    assert.equal(db.messages.length, 1);
+    const msg = db.messages[0];
+    assert.ok(msg);
+    assert.equal(msg.extended, true);
+    assert.equal(msg.signals.length, 5);
+
+    const bigSig = msg.signals.find((s) => s.name === "BigEndianSig");
+    assert.ok(bigSig);
+    assert.equal(bigSig.endianness, "big");
+    assert.equal(bigSig.unit, undefined);
+    assert.deepEqual(bigSig.receivers, []);
+
+    const s32 = msg.signals.find((s) => s.name === "SignedInt32");
+    assert.ok(s32);
+    assert.equal(s32.signed, true);
+    assert.equal(s32.bitLength, 32);
+  });
+
   test("dbcToDefinitionPackage produces a schema-valid DefinitionPackage", () => {
     const pkg = dbcToDefinitionPackage(SAMPLE_DBC, {
       oem: "vag-dbc",
@@ -93,5 +126,30 @@ describe("DBC parser", () => {
     assert.ok(retrieved);
     assert.equal(retrieved.signals.length, 4);
     assert.ok(retrieved.signals.some((s) => s.name === "EngineSpeed"));
+  });
+
+  test("dbcToDefinitionPackage converts complex types and handles default options", () => {
+    const pkg = dbcToDefinitionPackage(COMPLEX_DBC, {
+      oem: "generic-complex",
+      name: "Complex Test",
+    });
+
+    assert.equal(pkg.version, "1.0.0");
+    assert.equal(pkg.provenance.source, "DBC Database Import");
+    assert.equal(pkg.ecus[0]?.address.extended, true);
+
+    const validated = assertValidPackage(pkg);
+    assert.ok(validated);
+  });
+
+  test("dbcToDefinitionPackage handles empty database with fallback gateway", () => {
+    const pkg = dbcToDefinitionPackage("", {
+      oem: "empty",
+      name: "Empty DB",
+    });
+
+    assert.equal(pkg.ecus.length, 1);
+    assert.equal(pkg.ecus[0]?.id, "gateway");
+    assert.equal(pkg.signals.length, 0);
   });
 });
