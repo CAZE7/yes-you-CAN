@@ -1,0 +1,43 @@
+# multi-frame-read-data-by-identifier.log
+# Multi-Frame-ReadDataByIdentifier: VIN (0xF190) und Ersatzteilnummer (0xF187)
+#
+# Herkunft (provenance):
+#   Aufgenommen mit `scripts/record-trace-fixtures.mjs` aus dem Stack dieses
+#   Repositorys (UdsServer + zwei IsoTpConnection-Knoten auf einem virtuellen
+#   Draht); kein reales Fahrzeug. Steuergerät 'engine-gateway' mit den DIDs
+#   0xF187 (Spare Part Number, 10 ASCII-Zeichen) und 0xF190 (VIN, 17
+#   ASCII-Zeichen) — beide Antworten sind länger als 7 Byte und müssen daher
+#   segmentiert werden (ISO 15765-2 §9.5/§9.6).
+#
+# Format: candump -l (SocketCAN-Log) —
+#   "(<epoch-sekunden>.<mikrosekunden>) <interface> <can-id>#<daten als hex>"
+#   Zeilen mit '#' in Spalte 1 sind Kommentare, Leerzeilen werden übersprungen.
+#   11-bit-Identifier (CAN 2.0A), MTU 8, kein CAN FD, kein Padding.
+#   Das Log ist eine Bus-Aufnahme aus Sicht des Testers: 0x7E0 = Tester (tx),
+#   0x7E8 = Steuergerät (rx).
+#
+# Aufbau (structure):
+#   Transaktion 1 — VIN, 20 Byte Nutzlast (0x14):
+#     0x7E0  03 22 F1 90              Single Frame, ReadDataByIdentifier 0xF190
+#     0x7E8  10 14 62 F1 90 31 48 47  First Frame, FF_DL = 0x014 = 20, 6 Datenbytes
+#     0x7E0  30 00 00                 Flow Control: ContinueToSend, BS = 0, STmin = 0
+#     0x7E8  21 43 4D 38 32 36 33 33  Consecutive Frame, SN = 1
+#     0x7E8  22 41 30 30 34 33 35 32  Consecutive Frame, SN = 2 — Nachricht komplett
+#   Transaktion 2 — Ersatzteilnummer, 13 Byte Nutzlast (0x0D):
+#     0x7E0  03 22 F1 87              Single Frame, ReadDataByIdentifier 0xF187
+#     0x7E8  10 0D 62 F1 87 30 33 43  First Frame, FF_DL = 13, 6 Datenbytes
+#     0x7E0  30 00 00                 Flow Control: ContinueToSend, BS = 0, STmin = 0
+#     0x7E8  21 39 30 36 30 31 36 4B  Consecutive Frame, SN = 1 — Nachricht komplett
+#
+# Reproduzieren: npm run build && node scripts/record-trace-fixtures.mjs
+# Zeitbasis: virtuelle Uhr, 1 ms Raster, Epoche 2026-09-22T00:00:00.000Z;
+#   die Response-Pending-Lücke ist die konfigurierte pendingResponseDelayMs (25 ms).
+(1790035200.000000) vcan0 7E0#0322F190
+(1790035200.001000) vcan0 7E8#101462F190314847
+(1790035200.002000) vcan0 7E0#300000
+(1790035200.003000) vcan0 7E8#21434D3832363333
+(1790035200.004000) vcan0 7E8#2241303034333532
+(1790035200.005000) vcan0 7E0#0322F187
+(1790035200.006000) vcan0 7E8#100D62F187303343
+(1790035200.007000) vcan0 7E0#300000
+(1790035200.008000) vcan0 7E8#213930363031364B
