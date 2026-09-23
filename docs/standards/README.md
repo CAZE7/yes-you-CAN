@@ -48,4 +48,4 @@ wächst, ist eine Lücke, die niemand sieht.
   Lieber die Zeile löschen als einen Anker stehen lassen, der nicht trägt.
 
 **Zugehörig:** [ADR 0050](../adr/0050-standards-conformance-register.md),
-[`../code-map.md`](../code-map.md), [`../../AGENTS.md`](../../AGENTS.md) §0.A.
+[`../code-map.md`](../code-map.md), [`../agents/implementation-status.md`](../agents/implementation-status.md) (AGENTS §0.A).

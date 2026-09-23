@@ -15,8 +15,11 @@ Report exportieren, ohne Real-Fahrzeug testbar. Industriestandard-Toolchain: Typ
 Vitest 5, Biome, tsc-Projekt-Referenzen, Architekturtests, strikte Security-Baseline
 (ADR 0009) und deterministische Simulator/Replay-Tests statt Hardware-Abhängigkeit.
 
-Die Spezifikation liegt in [`AGENTS.md`](AGENTS.md), die Begründungen für den
-Aufbau in [`docs/adr/`](docs/adr/).
+Die Spezifikation liegt in [`AGENTS.md`](AGENTS.md) — seit Fassung 2.0 der Einstieg
+(≤ 10 KB: Layer-Regeln, Naming, Testpflicht, Seed&Key, PR-Prozess) — und wortgleich
+verschoben in [`docs/agents/`](docs/agents/README.md) (Volltexte §0–§36, Changelog,
+Stand 0.A, Backlog 0.E). Die Begründungen für den Aufbau liegen in
+[`docs/adr/`](docs/adr/).
 
 ## Architektur lesen (auch für AI-Agenten)
 
@@ -31,7 +34,7 @@ maschinengeprüft, Doku-Drift ist ein Fehler:
 | Was heißt dieser Begriff? | [`docs/glossary.md`](docs/glossary.md) — ein Begriff = eine Bedeutung |
 | Wie sieht die öffentliche API aus? | [`docs/api/`](docs/api/) — IR, UDS, Transport, Evidence, Hypothesis, Runtime |
 | Wie fließt eine Diagnose? | [`docs/flows/`](docs/flows/) — Read, Write, DTC, Recording/Replay, AI |
-| Welche Invarianten nicht brechen? | [`.ai/invariants.md`](.ai/invariants.md) + [AGENTS §0.0](AGENTS.md) (AI Engineering Contract) |
+| Welche Invarianten nicht brechen? | [`.ai/invariants.md`](.ai/invariants.md) + [AGENTS §0.0](docs/agents/ai-engineering-contract.md) (AI Engineering Contract) |
 | So benutzt man die API (ausführbar) | `tests/examples/*.example.ts` — laufen im Vitest-Projekt `integration` |
 
 Für einen Arbeitskontext zu einem Thema (UDS, Transport, IR, DTC, Simulator,
