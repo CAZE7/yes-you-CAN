@@ -3,7 +3,7 @@
 [![CI](https://github.com/CAZE7/yes-you-CAN/actions/workflows/ci.yml/badge.svg)](https://github.com/CAZE7/yes-you-CAN/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](./package.json)
-[![Tests](https://img.shields.io/badge/tests-2310%20passed-brightgreen)](#tests)
+[![Tests](https://img.shields.io/badge/tests-2367%20passed-brightgreen)](#tests)
 [![TypeScript](https://img.shields.io/badge/TypeScript-7%20%2F%20tsgo-blue)](./tsconfig.base.json)
 
 Fahrzeugdiagnose-Plattform: CAN und DoIP lesen, Steuergeräte identifizieren, das
@@ -248,8 +248,8 @@ Zeitraum aus, Doppelklick zeigt die gesamte Aufnahme.
 
 ## Tests
 
-2310 bestandene Tests (2 dokumentierte Skips) / 159 geprüfte Dateien (`npm test`
-in 79 s; `npm run test:coverage` in 92 s — gemessen 2026-09-22), Vitest 5 mit
+2367 bestandene Tests (3 dokumentierte Skips) / 165 geprüfte Dateien (`npm test`
+in 74 s; `npm run test:coverage` in 92 s — gemessen 2026-09-23), Vitest 5 mit
 Projektkonfiguration
 (ADR 0010, Schritt 1 — ersetzt ADR 0008). Seit ADR 0043 gehören dazu 17
 ausführbare Doku-Beispiele in `tests/examples/*.example.ts` (Projekt
@@ -262,8 +262,8 @@ aufrufen kann (0.E E20) — einschließlich
 tatsächlichen Importen passt (ADR 0042). Unit-Specs liegen co-lokatiert neben dem
 Code (`src/*.spec.ts`); Property-Tests laufen mit fast-check, Coverage-Gates mit
 `npm run test:coverage` (global 90 % lines / 80 % branches als
-Projekt-Durchschnitt, Ist 94,12 Statements / 86,37 Zweige / 95,93 Funktionen /
-95,51 Zeilen — gemessen am Stand vom 2026-09-22, und die letzten Stellen wandern mit
+Projekt-Durchschnitt, Ist 94,10 Statements / 86,40 Zweige / 95,94 Funktionen /
+95,48 Zeilen — gemessen am Stand vom 2026-09-23, und die letzten Stellen wandern mit
 Last und Node-Version (86,59 bis 86,71 Zweige auf demselben Baum,
 ADR 0029 §6) — seit ADR 0027 wird die ganze
 Fläche gemessen: `packages/**/src`, `apps/web/src/**` und `tools/**`, weil die
