@@ -845,3 +845,124 @@ test("knowledge that references nothing real is rejected semantically", () => {
     },
   );
 });
+
+test("observed provenance parses, and per-item provenance survives the parse (ADR 0058)", () => {
+  const pkg = parseDefinitionPackage({
+    schemaVersion: CURRENT_SCHEMA_VERSION,
+    oem: "harvested",
+    name: "harvest fixture",
+    version: "1.0.0",
+    provenance: {
+      sourceType: "observed",
+      source: "harvest 2026-09-23 of ECU 0x7e8",
+      retrievedAt: "2026-09-23",
+    },
+    ecus: [
+      {
+        id: "ecu-7e8",
+        name: "ECU at 0x7e8",
+        protocol: "uds",
+        address: { txId: 0x7e0, rxId: 0x7e8 },
+        provenance: {
+          sourceType: "observed",
+          source: "answered a functional TesterPresent",
+          retrievedAt: "2026-09-23",
+        },
+      },
+    ],
+    signals: [
+      {
+        id: "ecu-7e8.did_f190",
+        name: "DID 0xF190",
+        ecu: "ecu-7e8",
+        did: 0xf190,
+        byteOffset: 0,
+        length: 17,
+        encoding: "ascii",
+        provenance: {
+          sourceType: "observed",
+          source: "read 17 bytes from DID 0xF190",
+          retrievedAt: "2026-09-23",
+        },
+      },
+    ],
+  });
+  assert.equal(pkg.provenance.sourceType, "observed");
+  assert.equal(pkg.ecus[0]?.provenance?.sourceType, "observed");
+  assert.equal(
+    pkg.ecus[0]?.provenance?.source,
+    "answered a functional TesterPresent",
+    "the ECU-level provenance is the observation, not the package's",
+  );
+  assert.equal(pkg.signals[0]?.provenance?.retrievedAt, "2026-09-23");
+});
+
+test("an unknown source type is refused and the message names every accepted one", () => {
+  assert.throws(
+    () =>
+      parseDefinitionPackage({
+        schemaVersion: CURRENT_SCHEMA_VERSION,
+        oem: "t",
+        name: "t",
+        version: "1.0.0",
+        provenance: { sourceType: "scraped", source: "somewhere" },
+        ecus: [],
+        signals: [],
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof DefinitionError);
+      const errors = (error.details as { errors: string[] }).errors;
+      const message = errors.find((entry) => entry.includes("sourceType")) ?? "";
+      assert.ok(message.includes("observed"), message);
+      assert.ok(message.includes("reverse-engineered"), message);
+      return true;
+    },
+  );
+});
+
+test("a malformed per-item provenance is reported with its own path", () => {
+  assert.throws(
+    () =>
+      parseDefinitionPackage({
+        schemaVersion: CURRENT_SCHEMA_VERSION,
+        oem: "t",
+        name: "t",
+        version: "1.0.0",
+        provenance: { sourceType: "own", source: "x" },
+        ecus: [
+          {
+            id: "e",
+            name: "E",
+            protocol: "uds",
+            address: { txId: 0x7e0, rxId: 0x7e8 },
+            provenance: { sourceType: "observed", source: 7 },
+          },
+        ],
+        signals: [
+          {
+            id: "e.s",
+            name: "S",
+            ecu: "e",
+            did: 1,
+            byteOffset: 0,
+            length: 1,
+            encoding: "uint8",
+            provenance: "observed",
+          },
+        ],
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof DefinitionError);
+      const errors = (error.details as { errors: string[] }).errors;
+      assert.ok(
+        errors.some((entry) => entry.includes("ecus[0].provenance.source: must be a string")),
+        errors.join("\n"),
+      );
+      assert.ok(
+        errors.some((entry) => entry.includes("signals[0].provenance: must be an object")),
+        errors.join("\n"),
+      );
+      return true;
+    },
+  );
+});

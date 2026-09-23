@@ -3,7 +3,7 @@
 [![CI](https://github.com/CAZE7/yes-you-CAN/actions/workflows/ci.yml/badge.svg)](https://github.com/CAZE7/yes-you-CAN/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](./package.json)
-[![Tests](https://img.shields.io/badge/tests-2367%20passed-brightgreen)](#tests)
+[![Tests](https://img.shields.io/badge/tests-2505%20passed-brightgreen)](#tests)
 [![TypeScript](https://img.shields.io/badge/TypeScript-7%20%2F%20tsgo-blue)](./tsconfig.base.json)
 
 Fahrzeugdiagnose-Plattform: CAN und DoIP lesen, Steuergeräte identifizieren, das
@@ -128,6 +128,7 @@ Verwechslung, gegen die die Fahrzeugachse existiert.
 | `@vdp/formal-conformance` | Konformanz-Vektoren für ISO-TP und Safety-Kette: dieselbe Datei für TypeScript und Haskell-Referenz, `npm run formal:conform` (ADR 0045) |
 | `@vdp/trace-analyzer` | Offline-Trace-Analyse |
 | `@vdp/definition-importer` | DBC/CSV/JSON → validiertes Definition-Paket |
+| `@vdp/harvest` | ein Fahrzeug **read-only** auslesen und die Antworten behalten: Ernte-Datensatz, ODX-D/PDX-Beschreibung (ISO 22901-1 / ODX 2.2) und Definitions-Kandidat mit `observed`-Provenance; Gegenprüfung gegen `odxtools` (ADR 0058) |
 | `@vdp/web` | Node HTTP + SSE, Vanilla-ESM-Oberfläche |
 
 ## Schnellstart
@@ -136,6 +137,7 @@ Verwechslung, gegen die die Fahrzeugachse existiert.
 npm ci
 npm run build
 npm run demo          # Workbench auf http://localhost:8080
+npm run harvest:demo  # ein Fahrzeug read-only auslesen → harvest-local/ (Datensatz, ODX, PDX, Kandidat)
 ```
 
 `npm run demo` startet den Simulator: drei Steuergeräte, gesetzte Fehlercodes,
@@ -187,6 +189,55 @@ true` oder, ohne Token, `listening on all interfaces with NO API token`. Der
 Vergleich läuft in konstanter Zeit, der Cookie ist `HttpOnly; SameSite=Strict` und
 endet mit dem Browser. Offen bleiben TLS und ein Rate-Limit
 (`docs/standards/iso-21434-cybersecurity.md`, CY-04/CY-05).
+
+## Fahrzeug auslesen (Ernte → ODX, ADR 0058)
+
+Was ein Fahrzeug antwortet, kann diese Plattform jetzt aufnehmen — ohne Hardware zu
+besitzen und ohne etwas am Fahrzeug zu ändern:
+
+```bash
+npm run build
+node tools/harvest/dist/src/cli.js --print-plan              # was würde gefragt?
+node tools/harvest/dist/src/cli.js --simulator --out ./harvest-local --verify-odx
+node tools/harvest/dist/src/cli.js --adapter socketcan --channel can0 --out ./harvest
+```
+
+Ein Lauf schreibt vier Artefakte aus **einer** Beobachtung:
+
+| Artefakt | Inhalt |
+|---|---|
+| `harvest.json` | der Datensatz: Plan, je ECU Dienste/DIDs/Fehlerspeicher, Verweigerungen gruppiert nach NRC, `unread` (deklarierte Adressen ohne Antwort), `gaps`, `notes`, VIN maskiert |
+| `<container>.odx-d` | ODX 2.2: `BASE-VARIANT` je ECU, `DIAG-SERVICE` je beobachtetem Austausch als Byte-Rezept, `DTC-DOP`/`DTC` je Code, `ENV-DATA` je Freeze Frame, Adresse/Timing/Provenance als `SDGS` |
+| `<container>.pdx` | dasselbe Dokument als ODX-Container (ZIP mit `index.xml`-Katalog) |
+| `<oem>-definition.json` | Definitions-**Kandidat** für `@vdp/definitions`, `sourceType: "observed"`, plus `skipped[]` mit Grund |
+
+Drei Grenzen, die das Werkzeug nicht überschreitet — und die es selbst ausspricht:
+
+1. **Read-only.** Kein Schreibdienst wird gesendet (`0x14`, `0x27`, `0x28`, `0x2F`,
+   `0x34`, `0x85` erscheinen als `not-probed` mit Grund); `0x2E` nur mit
+   `--probe-writes`. Ein Test scannt die Quellen nach Schreibaufrufen.
+2. **Beobachtung, kein Wissen.** Keine Skalierung, keine Einheiten, keine erfundenen
+   Namen oder DTC-Bedeutungen; ein `asciiHint` ist ein Hinweis. Eine Bytelänge ohne
+   dokumentierte Kodierung wird *kein* Signal, sondern ein `skipped`-Eintrag.
+3. **ODX ist eine Beschreibung, kein Auszug.** Ein Auto enthält kein ODX — die Datei
+   wird aus den Antworten geschrieben. Die ODX-C-Kommunikationsparameter fehlen
+   (Abhängigkeitsentscheidung, ADR 0002/0010); die Adressierung steht als `SDG`, und
+   das Dokument sagt das.
+
+`--verify-odx` übergibt das Dokument **`odxtools`** (MIT, extern, keine Abhängigkeit
+dieses Repos) und prüft Parse plus Encode-/Decode-Rundlauf: gemessen 2026-09-23 am
+Simulator-Fahrzeug **29/29 Anfragen auf die gesendeten Bytes, 29/29 Antworten auf die
+empfangenen Bytes, 0 Abweichungen**. Ohne installierte Bibliothek meldet die CLI
+`odxtools NOT RUN` mit Grund und bleibt grün — ein Prüfer, der nicht laufen kann, ist
+nicht durchgefallen.
+
+Rechtlich (Kurzform, kein Rechtsrat): die **eigene Messung** am eigenen oder
+beauftragten Fahrzeug ist der Normalfall jeder Diagnose. **Hersteller-ODX** ist für
+unabhängige Akteure nach Art. 61 VO (EU) 2018/858 verpflichtend zugänglich und
+maschinenlesbar, nach Art. 63 aber gebührenpflichtig (EuGH C-319/22; OLG Köln
+6 U 58/24 gegen Registrierung + dauerhafte Online-Verbindung als Zugangshürde; seit
+23.06.2026 VO (EU) 2026/699 zu sicheren Zugängen) — „kostenlos" ist dieser Weg nicht,
+ein Importer dafür ist ein eigener Schritt mit Lizenz- und Provenance-Entscheidung.
 
 ## Entwicklung
 
@@ -248,10 +299,13 @@ Zeitraum aus, Doppelklick zeigt die gesamte Aufnahme.
 
 ## Tests
 
-2367 bestandene Tests (3 dokumentierte Skips) / 165 geprüfte Dateien (`npm test`
-in 74 s; `npm run test:coverage` in 92 s — gemessen 2026-09-23), Vitest 5 mit
+2505 bestandene Tests plus 8 dokumentierte Skips — davon 5 die optionale
+`odxtools`-Gegenprüfung der Ernte, die ohne installierte Bibliothek ehrlich
+überspringt (2513 insgesamt) / 175 geprüfte Dateien von 177 (2 CI-Träger
+überspringen lokal, ADR 0029 §6) (`npm test` in 85 s; `npm run test:coverage`
+in 96 s — gemessen 2026-09-23), Vitest 5 mit
 Projektkonfiguration
-(ADR 0010, Schritt 1 — ersetzt ADR 0008). Seit ADR 0043 gehören dazu 17
+(ADR 0010, Schritt 1 — ersetzt ADR 0008). Seit ADR 0043 gehören dazu 18
 ausführbare Doku-Beispiele in `tests/examples/*.example.ts` (Projekt
 `integration`) — sie zeigen die API so, wie sie benutzt wird. Der
 `architecture`-Lauf prüft die Struktur *und*
@@ -262,8 +316,8 @@ aufrufen kann (0.E E20) — einschließlich
 tatsächlichen Importen passt (ADR 0042). Unit-Specs liegen co-lokatiert neben dem
 Code (`src/*.spec.ts`); Property-Tests laufen mit fast-check, Coverage-Gates mit
 `npm run test:coverage` (global 90 % lines / 80 % branches als
-Projekt-Durchschnitt, Ist 94,10 Statements / 86,40 Zweige / 95,94 Funktionen /
-95,48 Zeilen — gemessen am Stand vom 2026-09-23, und die letzten Stellen wandern mit
+Projekt-Durchschnitt, Ist 93,64 Statements / 85,44 Zweige / 95,53 Funktionen /
+94,95 Zeilen — gemessen am Stand vom 2026-09-23 nach der Ernte (ADR 0058), und die letzten Stellen wandern mit
 Last und Node-Version (86,59 bis 86,71 Zweige auf demselben Baum,
 ADR 0029 §6) — seit ADR 0027 wird die ganze
 Fläche gemessen: `packages/**/src`, `apps/web/src/**` und `tools/**`, weil die
@@ -325,6 +379,13 @@ nicht — der laufende Test schon.
 
 Bewusst **nicht** enthalten (AGENTS 29): Complex Coding, Umgehung von
 SFD/Security Access, Cloud, Mobile, Marketplace.
+
+Eine Ernte (ADR 0058) liest, was ein Steuergerät ohne Security Access hergibt: was
+hinter `0x27` liegt, bleibt zu, und DIDs, die erst in einer erweiterten Sitzung
+antworten, erscheinen ohne `--session` als Verweigerung mit NRC statt als Wert. Die
+geschriebene ODX-Datei beschreibt Beobachtetes, nicht Dokumentiertes — wer
+Skalierung, Einheiten oder DTC-Bedeutungen braucht, braucht eine Quelle
+(`standard`/`licensed`) und nicht eine größere Ernte.
 
 Die mitgelieferten VAG- und Mercedes-Pakete sind `example-placeholder` mit
 erfundenen Werten und werden vom Validator entsprechend gekennzeichnet

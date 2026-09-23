@@ -83,7 +83,7 @@ export function validateDefinitionPackage(pkg: DefinitionPackage): ValidationRes
 
   const ecuIds = new Set<string>();
   for (const ecu of pkg.ecus ?? []) {
-    validateEcu(ecu, ecuIds, errors);
+    validateEcu(ecu, ecuIds, errors, warnings);
   }
 
   const signalIds = new Set<string>();
@@ -158,6 +158,24 @@ function validateProvenance(
       `${path}: a standard reference should name its edition (year or revision) so the citation ` +
         "can be checked (AGENTS 24)",
     );
+  }
+  if (provenance.sourceType === "observed") {
+    // An observation is a measurement at a point in time on one vehicle (ADR 0058).
+    // Without the date nothing can say whether the observation predates a repair,
+    // a software update or the sale of the car — and a harvest of unknown age is
+    // indistinguishable from a guess.
+    if (!provenance.retrievedAt) {
+      warnings.push(
+        `${path}: observed data without a retrieval date cannot be dated — an observation ` +
+          "is a measurement at a point in time (ADR 0058)",
+      );
+    }
+    if (provenance.license) {
+      warnings.push(
+        `${path}: observed data was measured, not licensed — a license field claims rights ` +
+          "over somebody else's publication (AGENTS 24)",
+      );
+    }
   }
   if (provenance.sourceType === "community") {
     warnings.push(
@@ -463,7 +481,12 @@ function validateMeasurementCheck(
   }
 }
 
-function validateEcu(ecu: EcuDefinition, ecuIds: Set<string>, errors: string[]): void {
+function validateEcu(
+  ecu: EcuDefinition,
+  ecuIds: Set<string>,
+  errors: string[],
+  warnings: string[],
+): void {
   if (!ecu.id) errors.push("ECU without id");
   if (ecuIds.has(ecu.id)) errors.push(`duplicate ECU id "${ecu.id}"`);
   ecuIds.add(ecu.id);
@@ -481,10 +504,21 @@ function validateEcu(ecu: EcuDefinition, ecuIds: Set<string>, errors: string[]):
       `ECU "${ecu.id}" identifier out of range for ${ecu.address.extended ? "29-bit" : "11-bit"} addressing`,
     );
   if (txId === rxId) errors.push(`ECU "${ecu.id}" txId and rxId must differ`);
+  if (ecu.provenance) {
+    validateProvenance(`ECU "${ecu.id}".provenance`, ecu.provenance, errors, warnings);
+  }
   for (const dtc of ecu.dtcs ?? []) {
     if (!DTC_CODE.test(dtc.code))
       errors.push(`ECU "${ecu.id}" has malformed DTC code "${dtc.code}"`);
     if (!dtc.description) errors.push(`DTC ${dtc.code} has no description`);
+    if (dtc.provenance) {
+      validateProvenance(
+        `ECU "${ecu.id}", DTC ${dtc.code}.provenance`,
+        dtc.provenance,
+        errors,
+        warnings,
+      );
+    }
   }
 }
 
@@ -535,6 +569,9 @@ function validateSignal(
     signal.encoding !== "bitmask"
   ) {
     warnings.push(`signal "${signal.id}" has no unit — reports will show raw values`);
+  }
+  if (signal.provenance) {
+    validateProvenance(`signal "${signal.id}".provenance`, signal.provenance, errors, warnings);
   }
 }
 

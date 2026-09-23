@@ -34,6 +34,20 @@ bekommt hier zuerst eine Zeile.
 | **Session** (Fahrzeug-Session) | Der komplette diagnostische Interaktions-Kontext: `VehicleSessionData` (Id, ECUs, Scans, Messungen, Marker, Roh-Trace). **Achtung:** nicht verwechseln mit der *UDS-Diagnosesession* (default/programming/extended, 0x10-Service) — die heißt hier „Diagnostic Session“ und ist ein Protokollzustand. | `packages/core/src/session/session.ts` |
 | **Marker** | Ein Zeitstempel mit Label, den ein Mensch in der Sitzung setzt (z. B. „Batterie abgeklemmt“). Sitzungsdaten, kein Messwert. | `packages/core/src/session/session.ts` |
 
+## Ernte (read-only auslesen, ADR 0058)
+
+| Begriff | Bedeutung | Definiert in |
+|---|---|---|
+| **Harvest / Ernte** | Ein read-only-Durchgang über ein Fahrzeug: Discovery, Dienste, DIDs, Fehlerspeicher. Kein Schreibdienst, keine Deutung. | `tools/harvest/src/harvest.ts` |
+| **HarvestReport** | Die Beobachtung als Datensatz: `ecus` (was antwortete) **und** `unread` (was stumm blieb), `dids` **und** `didRefusals`, `gaps`, `counts`, `notes`. Eine Quelle für alle drei Projektionen. | `tools/harvest/src/observation.ts` |
+| **HarvestPlan** | Was gefragt wird, als Daten: Bereiche, Budgets, Recordnummern, `probeWriteSupport`. Vor dem Lauf druckbar, im Datensatz mitgereist — damit eine Lücke von einem Verzicht unterscheidbar ist. | `tools/harvest/src/plan.ts` |
+| **DidRefusalGroup** | Verweigerte DIDs gruppiert nach Planbereich und NRC (`{origin, nrc, count, firstDid, lastDid}`). Eine Verweigerung ist ein Ergebnis, aber 1126 einzelne Einträge sind Rauschen. | `tools/harvest/src/observation.ts` |
+| **observed** | Provenance-Quelle für Daten, die von einem realen Fahrzeug gelesen wurden: eine Beobachtung ersten Grades, ohne Aussage über die Bedeutung. Nicht dasselbe wie `reverse-engineered` (abgeleitetes Wissen). | `packages/definitions/src/schema.ts` |
+| **asciiHint** | Druckbare ASCII-Lesart eines Bytes — ein *Hinweis*, keine Dekodierung. Fehlt, sobald ein Byte nicht druckbar ist. | `tools/harvest/src/observation.ts` |
+| **Definitions-Kandidat** | Ein aus einer Ernte gebautes `DefinitionPackage` mit `observed`-Provenance, das dieselbe Validierung durchläuft wie ein handgeschriebenes — plus `skipped[]` für Beobachtungen ohne dokumentierte Kodierung. | `tools/harvest/src/definition.ts` |
+| **ODX-Gegenprüfung** | `odxtools` (extern, MIT, optional) parst das geschriebene Dokument und führt jede beobachtete Anfrage/Antwort byte-exakt zurück. `not-run` ist nie ein Grün. | `tools/harvest/src/odx/verify.ts` |
+| **Verfügbarkeitsmaske** | DTC status availability mask (ISO 14229-1 §11.3.4.2): welche der acht Statusbits ein Steuergerät überhaupt implementiert. Reist mit jedem Code — ohne sie ist „Bit nicht gesetzt" von „Bit wird nicht gemeldet" nicht zu unterscheiden. | `packages/protocols/uds/src/dtc.ts` |
+
 ## Evidence & Hypothesen (der analytische Teil, ADR 0038)
 
 | Begriff | Bedeutung | Definiert in |

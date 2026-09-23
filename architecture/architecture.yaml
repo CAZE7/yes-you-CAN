@@ -181,6 +181,21 @@
       "mayImport": ["@vdp/shared", "@vdp/definitions", "@vdp/protocols-uds", "@vdp/transport-can"],
       "why": "Offline trace tooling decodes with the protocol layer, without the core."
     },
+    "@vdp/harvest": {
+      "layer": "tool",
+      "mayImport": [
+        "@vdp/shared",
+        "@vdp/definitions",
+        "@vdp/protocols-uds",
+        "@vdp/transport-can",
+        "@vdp/transport-iso-tp",
+        "@vdp/core",
+        "@vdp/storage",
+        "@vdp/adapter-host",
+        "@vdp/simulators"
+      ],
+      "why": "Read-only vehicle harvest: it drives discovery, the UDS read services and the fault memory through core and the transports, and writes its result as an observation, an ODX/PDX description and a definition candidate (ADR 0058). A tool, not a layer — nothing imports it. It may reach core and the transports because its whole job is to drive them, it reaches storage only for the ZIP container of a PDX, adapter-host for the CLI's bus selection, and simulators so a harvest can be run and tested without hardware (ADR 0005)."
+    },
     "@vdp/definition-importer": {
       "layer": "tool",
       "mayImport": ["@vdp/shared", "@vdp/definitions"],
@@ -213,8 +228,8 @@
   },
   "rules": {
     "nodeBuiltins": {
-      "allowedIn": ["@vdp/adapter-host", "@vdp/storage", "@vdp/web", "@vdp/golden-sessions", "@vdp/formal-conformance"],
-      "why": "Portable layers (domain, application, protocols, transports, core, runtime) must stay free of node:fs and sockets; file system and host bindings belong to storage, host adapters and apps. @vdp/golden-sessions is a tool, not a layer — nothing imports it, and its CLI is the part that reads and writes the fixture files on disk. @vdp/formal-conformance is a tool whose CLI reads the vector files and runs the Haskell toolchain — the same file-and-process boundary golden-sessions owns, for the same reason (ADR 0045)."
+      "allowedIn": ["@vdp/adapter-host", "@vdp/storage", "@vdp/web", "@vdp/golden-sessions", "@vdp/formal-conformance", "@vdp/harvest"],
+      "why": "Portable layers (domain, application, protocols, transports, core, runtime) must stay free of node:fs and sockets; file system and host bindings belong to storage, host adapters and apps. @vdp/golden-sessions is a tool, not a layer — nothing imports it, and its CLI is the part that reads and writes the fixture files on disk. @vdp/formal-conformance is a tool whose CLI reads the vector files and runs the Haskell toolchain — the same file-and-process boundary golden-sessions owns, for the same reason (ADR 0045). @vdp/harvest is a tool whose CLI writes the observation, the ODX description and the PDX container to disk and spawns the optional odxtools cross-check — the same boundary again (ADR 0058)."
     },
     "ui": {
       "package": "@vdp/web",
@@ -341,6 +356,22 @@
       "docs": ["docs/api/evidence.md", "docs/api/hypothesis.md"],
       "flows": ["docs/flows/ai-analysis.md"],
       "examples": ["tests/examples/evidence-flow.example.ts"]
+    },
+    "harvest": {
+      "title": "Harvest: read-only vehicle read-out, ODX and observed data",
+      "summary": "Reading a vehicle without changing it: the harvest plan, the DTC read order (0x19 0x01/0x03/0x02/0x04/0x06), the observation record, the ODX-D/PDX projection and its cross-check against odxtools, and the definition candidate whose provenance is \"observed\".",
+      "packages": [
+        "@vdp/harvest",
+        "@vdp/protocols-uds",
+        "@vdp/core",
+        "@vdp/definitions",
+        "@vdp/diagnostic-ir",
+        "@vdp/storage"
+      ],
+      "adrs": ["0002", "0003", "0024", "0033", "0049", "0058"],
+      "docs": ["docs/api/uds.md", "docs/glossary.md", "tools/harvest/README.md"],
+      "flows": ["docs/flows/harvest.md", "docs/flows/dtc-analysis.md"],
+      "examples": ["tests/examples/diagnostic-read.example.ts"]
     },
     "formal": {
       "title": "Formal reference and conformance vectors",

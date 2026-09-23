@@ -60,7 +60,9 @@
     "ai:context": "node tools/architecture/ai-context.mjs",
     "ai:context:changed": "node tools/architecture/ai-context.mjs --changed",
     "formal:conform": "npm run build && node tools/formal-conformance/dist/src/cli.js",
-    "golden:record": "npm run build && node tools/golden-sessions/dist/src/cli.js --out tests/fixtures/golden-sessions --verify"
+    "golden:record": "npm run build && node tools/golden-sessions/dist/src/cli.js --out tests/fixtures/golden-sessions --verify",
+    "harvest": "npm run build && node tools/harvest/dist/src/cli.js",
+    "harvest:demo": "npm run build && node tools/harvest/dist/src/cli.js --simulator --out ./harvest-local --verify-odx"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",

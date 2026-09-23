@@ -39,6 +39,9 @@ nicht diese Datei.
 | Chart-Rendering | `packages/charts/src/` | `apps/web/public/` (DOM-Teil) |
 | Bericht (PDF/HTML) | `packages/reports/src/` | `apps/web/src/backend.ts` |
 | Definition-Import / OEM-Daten | `tools/definition-importer/src/` | `packages/definitions/src/json.ts` + `validate.ts` |
+| Fahrzeug auslesen (Ernte) / ODX-/PDX-Export | `tools/harvest/src/{harvest,plan,fault-memory}.ts` | `tools/harvest/src/odx/` (ODX-D-/PDX-Schreiber + `verify.ts` Gegenprüfung), `tools/harvest/src/definition.ts` (Kandidat), `docs/flows/harvest.md`, ADR 0058 |
+| Beobachtete Daten als Quelle kennzeichnen | `packages/definitions/src/schema.ts` (`Provenance.sourceType: "observed"`, Provenance je Signal/DTC/ECU) | `packages/definitions/src/{json,validate,evidence}.ts`, `apps/web/src/vehicle-view.ts` (Label), ADR 0058 |
+| DTC-Verfügbarkeitsmaske / `0x19`-Unterfunktionen | `packages/protocols/uds/src/{client,dtc,server}.ts` | `packages/core/src/diagnostics/ecu-session.ts` (`dtcAvailabilityMask`), `packages/diagnostic-ir/src/dtc.ts`, `docs/api/uds.md` |
 | Dependency-Regel ändern | `architecture/architecture.yaml` | `npm run check:deps`, ADR (Regel 34.15) |
 | Neues Workspace-Paket | `packages/<name>/` mit `package.json` + `tsconfig.json` | `architecture.yaml` (`packages` + ggf. `topics`), Root-`tsconfig.json` (references), `tsconfig.typecheck.json` (paths), `vitest.config.ts` (falls neue Test-Ebene), `package-lock.json` (npm install) |
 | Neues Testbeispiel / ausführbare Doku | `tests/examples/` | `vitest.config.ts` (Projekt `integration` pickt `tests/examples/**/*.example.ts` auf) |

@@ -94,25 +94,33 @@ class StructuralCheck {
   }
 }
 
+/**
+ * The accepted provenance source types (AGENTS 24, ADR 0058).
+ *
+ * One list, and the parser's error message is built from it: a second list of
+ * the same words would be a second rule that can drift from the first.
+ */
+export const PROVENANCE_SOURCE_TYPES: readonly Provenance["sourceType"][] = [
+  "own",
+  "observed",
+  "standard",
+  "licensed",
+  "community",
+  "reverse-engineered",
+  "example-placeholder",
+];
+
 function coerceProvenance(value: unknown, check: StructuralCheck, path = "provenance"): Provenance {
   if (!isRecord(value)) {
     check.fail(path, "must be an object");
     return { sourceType: "own", source: "" };
   }
   const sourceType = value.sourceType;
-  const validTypes = new Set([
-    "own",
-    "standard",
-    "licensed",
-    "community",
-    "reverse-engineered",
-    "example-placeholder",
-  ]);
+  // Typed as a string set on purpose: the value under test is unknown input, and
+  // `Set<Provenance["sourceType"]>.has()` would only accept the already-narrowed type.
+  const validTypes: ReadonlySet<string> = new Set(PROVENANCE_SOURCE_TYPES);
   if (!isString(sourceType) || !validTypes.has(sourceType)) {
-    check.fail(
-      `${path}.sourceType`,
-      "must be one of own|standard|licensed|community|reverse-engineered|example-placeholder",
-    );
+    check.fail(`${path}.sourceType`, `must be one of ${PROVENANCE_SOURCE_TYPES.join("|")}`);
   }
   if (!isString(value.source)) check.fail(`${path}.source`, "must be a string");
   const provenance: Provenance = {
@@ -435,6 +443,11 @@ function coerceSignal(value: unknown, index: number, check: StructuralCheck): Si
   if (isRecord(value.enumMapping)) signal.enumMapping = value.enumMapping as Record<number, string>;
   if (isString(value.description)) signal.description = value.description;
   if (typeof value.critical === "boolean") signal.critical = value.critical;
+  // Per-item provenance (ADR 0058): a harvested signal says where its bytes were
+  // seen, and that has to survive the parse instead of being dropped as "unknown field".
+  if (value.provenance !== undefined) {
+    signal.provenance = coerceProvenance(value.provenance, check, `${path}.provenance`);
+  }
   return signal;
 }
 
@@ -476,6 +489,9 @@ function coerceEcu(value: unknown, index: number, check: StructuralCheck): EcuDe
   if (Array.isArray(value.dtcs)) ecu.dtcs = value.dtcs as NonNullable<EcuDefinition["dtcs"]>;
   if (isString(value.description)) ecu.description = value.description;
   if (isRecord(value.timing)) ecu.timing = value.timing as NonNullable<EcuDefinition["timing"]>;
+  if (value.provenance !== undefined) {
+    ecu.provenance = coerceProvenance(value.provenance, check, `${path}.provenance`);
+  }
   return ecu;
 }
 

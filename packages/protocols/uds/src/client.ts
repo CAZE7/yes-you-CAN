@@ -53,9 +53,64 @@ export interface DtcRecord {
   failureType: string;
   status: number;
   statusBits: DtcStatusBits;
+  /**
+   * Classification derived from the status bits **the ECU says it implements**
+   * (ISO 14229-1 §11.3.4.2 availability mask). A bit outside the mask is never
+   * set, so it cannot grade a code — see {@link dtcSeverity}.
+   */
   severity: DtcSeverity;
+  /**
+   * The availability mask this record was read with.
+   *
+   * It travels per record because a record without it cannot be interpreted:
+   * `statusBits.confirmedDtc === false` means "not confirmed" with the mask's bit
+   * set and "this ECU does not report confirmation" without it. Absent on records
+   * built from a response that carried no mask (a hand-built fixture), which is
+   * why the field is optional rather than defaulted to 0xff.
+   */
+  availabilityMask?: number;
   snapshot?: Uint8Array;
   extendedData?: Uint8Array;
+}
+
+/**
+ * A fault-memory list response: the records **and** the availability mask that
+ * makes their status bytes readable (ISO 14229-1 §11.3.4.2, §11.3.4.3).
+ */
+export interface DtcReport {
+  availabilityMask: number;
+  records: DtcRecord[];
+}
+
+/** `0x19 0x01` — how many codes match a status mask, plus the mask semantics. */
+export interface DtcCountReport {
+  availabilityMask: number;
+  /** DTC format identifier (ISO 14229-1 §8.1): which coding the ECU uses. */
+  formatIdentifier: number;
+  count: number;
+}
+
+/**
+ * One entry of `0x19 0x03` (`reportDTCSnapshotIdentification`, ISO 14229-1
+ * §11.3.4.4): the code, its status, and **how many** snapshot records the ECU
+ * stores for it — a count, not the record numbers, which is what the standard
+ * specifies and why reading every freeze frame means asking for each number.
+ */
+export interface DtcSnapshotIdentification {
+  code: string;
+  raw: string;
+  failureType: string;
+  status: number;
+  statusBits: DtcStatusBits;
+  severity: DtcSeverity;
+  availabilityMask?: number;
+  snapshotRecordCount: number;
+}
+
+/** `0x19 0x03` for a whole fault memory: mask plus one entry per code. */
+export interface DtcSnapshotIdentificationReport {
+  availabilityMask: number;
+  identifications: DtcSnapshotIdentification[];
 }
 
 export interface UdsStats {
@@ -214,19 +269,114 @@ export class UdsClient {
     await this.request(SID.CLEAR_DIAGNOSTIC_INFORMATION, group);
   }
 
-  async readDtcByStatusMask(statusMask: number): Promise<DtcRecord[]> {
+  /**
+   * `0x19 0x02` — the codes matching a status mask, **with** the availability
+   * mask that says which status bits they carry (ISO 14229-1 §11.3.4.3).
+   */
+  async readDtcReportByStatusMask(statusMask: number): Promise<DtcReport> {
     const response = await this.request(SID.READ_DTC_INFORMATION, [
       DTC_REPORT.REPORT_DTC_BY_STATUS_MASK,
       statusMask & 0xff,
     ]);
-    return parseDtcList(response, 3);
+    return parseDtcReport(response);
   }
 
-  async readSupportedDtc(): Promise<DtcRecord[]> {
+  /** The records of {@link readDtcReportByStatusMask} — the projection callers had before. */
+  async readDtcByStatusMask(statusMask: number): Promise<DtcRecord[]> {
+    return (await this.readDtcReportByStatusMask(statusMask)).records;
+  }
+
+  /** `0x19 0x0A` — every code the ECU supports, with its availability mask. */
+  async readSupportedDtcReport(): Promise<DtcReport> {
     const response = await this.request(SID.READ_DTC_INFORMATION, [
       DTC_REPORT.REPORT_SUPPORTED_DTC,
     ]);
-    return parseDtcList(response, 3);
+    return parseDtcReport(response);
+  }
+
+  /** The records of {@link readSupportedDtcReport}. */
+  async readSupportedDtc(): Promise<DtcRecord[]> {
+    return (await this.readSupportedDtcReport()).records;
+  }
+
+  /**
+   * `0x19 0x01` — how many codes match a status mask.
+   *
+   * Cheap enough to ask before a full list read on a slow bus, and the only way
+   * to notice that a truncated multi-frame answer lost records: a list that says
+   * "2 codes" and returns 1 is a defect, not a fault memory.
+   */
+  async readDtcCountByStatusMask(statusMask: number): Promise<DtcCountReport> {
+    const response = await this.request(SID.READ_DTC_INFORMATION, [
+      DTC_REPORT.REPORT_NUMBER_OF_DTC_BY_STATUS_MASK,
+      statusMask & 0xff,
+    ]);
+    // [0x59, 0x01, availabilityMask, dtcFormatIdentifier, countHi, countLo]
+    if (response.length < 6) {
+      throw new ProtocolError(
+        `malformed DTC count response: ${response.length} byte(s); expected 6`,
+        { response: toHex(response) },
+      );
+    }
+    return {
+      availabilityMask: response[2] ?? 0,
+      formatIdentifier: response[3] ?? 0,
+      count: ((response[4] ?? 0) << 8) | (response[5] ?? 0),
+    };
+  }
+
+  /**
+   * `0x19 0x03` — which codes have snapshot (freeze frame) records, and how many
+   * each (ISO 14229-1 §11.3.4.4).
+   *
+   * Without this a reader has to guess record numbers: `0x04` with `0xff` asks
+   * for "all records of this code", which many ECUs answer with record 0x01 only
+   * or with `requestOutOfRange`. Asking for the identification first is what
+   * turns "read the freeze frame" into "read every freeze frame the ECU has",
+   * and it is read-only like every other `0x19` sub-function.
+   *
+   * @param dtc optional code to ask about; absent means every code (the standard
+   *   allows the request with and without the DTC record).
+   */
+  async readDtcSnapshotIdentification(dtc?: string): Promise<DtcSnapshotIdentificationReport> {
+    const request: number[] = [DTC_REPORT.REPORT_DTC_SNAPSHOT_IDENTIFICATION];
+    if (dtc !== undefined) {
+      const bytes = encodeDtcToBytes(dtc);
+      // [DTC high, DTC low, DTC status of the request] — the third byte is echoed,
+      // not part of the identity (§11.3.4.4); 0xff asks regardless of status.
+      request.push(bytes[0] ?? 0, bytes[1] ?? 0, 0xff);
+    }
+    const response = await this.request(SID.READ_DTC_INFORMATION, request);
+    const availabilityMask = response[2] ?? 0;
+    // One 5-byte record per code: DTC(3) + status(1) + numberOfIdentifiedSnapshotRecords(1).
+    const body = response.length - 3;
+    if (body < 0 || body % 5 !== 0) {
+      throw new ProtocolError(
+        `malformed DTC snapshot identification: ${response.length} byte(s); expected 3 header byte(s) plus whole 5-byte records`,
+        { response: toHex(response) },
+      );
+    }
+    const identifications: DtcSnapshotIdentification[] = [];
+    for (let offset = 3; offset + 4 < response.length; offset += 5) {
+      const decoded = decodeDtc(
+        response[offset] ?? 0,
+        response[offset + 1] ?? 0,
+        response[offset + 2] ?? 0,
+      );
+      const status = response[offset + 3] ?? 0;
+      const statusBits = decodeDtcStatus(status);
+      identifications.push({
+        code: decoded.code,
+        raw: decoded.raw,
+        failureType: decoded.failureType,
+        status,
+        statusBits,
+        severity: dtcSeverity(statusBits, availabilityMask),
+        availabilityMask,
+        snapshotRecordCount: response[offset + 4] ?? 0,
+      });
+    }
+    return { availabilityMask, identifications };
   }
 
   /** Freeze frame / snapshot data (AGENTS 20 "Freeze Frame / Environment Data"). */
@@ -479,7 +629,16 @@ export class UdsClient {
 }
 
 /** [0x59, sub, availabilityMask, (DTC(3) + status(1))*] → DtcRecord[] */
-function parseDtcList(response: Uint8Array, startIndex: number): DtcRecord[] {
+/**
+ * [0x59, sub, availabilityMask, (DTC(3) + status(1))*] → {@link DtcReport}.
+ *
+ * The third byte is the DTC status availability mask (ISO 14229-1 §11.3.4.2):
+ * the ECU's own statement about which of the eight status bits it implements.
+ * It used to be skipped — `parseDtcList(response, 3)` started behind it — which
+ * made every classification a claim about bits the ECU may never set. It now
+ * travels with each record and grades the severity.
+ */
+function parseDtcReport(response: Uint8Array, startIndex = 3): DtcReport {
   // A body that does not divide into whole records is a **broken answer**, not an
   // empty fault memory: reading it as `[]` would report "no faults stored" for a
   // frame that was cut off on the bus, which is the one mistake a technician cannot
@@ -491,6 +650,7 @@ function parseDtcList(response: Uint8Array, startIndex: number): DtcRecord[] {
       { response: toHex(response), startIndex },
     );
   }
+  const availabilityMask = response[startIndex - 1] ?? 0;
   const records: DtcRecord[] = [];
   for (let offset = startIndex; offset + 3 < response.length; offset += 4) {
     const high = response[offset] ?? 0;
@@ -505,10 +665,11 @@ function parseDtcList(response: Uint8Array, startIndex: number): DtcRecord[] {
       failureType: decoded.failureType,
       status,
       statusBits,
-      severity: dtcSeverity(statusBits),
+      severity: dtcSeverity(statusBits, availabilityMask),
+      availabilityMask,
     });
   }
-  return records;
+  return { availabilityMask, records };
 }
 
 /** [0x62, DIDhi, DIDlo, ...data] → data for exactly one DID. */

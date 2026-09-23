@@ -58,6 +58,15 @@ export interface EcuSession {
   sessionType: number;
   timing: { p2Ms: number; p2StarMs: number };
   dtcs?: DtcRecord[];
+  /**
+   * DTC status availability mask as the ECU reported it (ISO 14229-1 §11.3.4.2).
+   *
+   * Session data, not per-record data, in this shape: the ECU states it once per
+   * `0x19` response, and a stored session that kept only the codes would lose the
+   * statement that makes their status bytes readable. Absent until a fault memory
+   * was read — never defaulted, because 0xff would claim all eight bits (ADR 0058).
+   */
+  dtcAvailabilityMask?: number;
   /** True once identification was read successfully. */
   reachable: boolean;
   lastError?: string;

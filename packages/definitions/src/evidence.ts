@@ -81,6 +81,11 @@ export function provenanceTrust(provenance: Provenance): number {
     case "standard":
     case "licensed":
       return 1;
+    // Read off the vehicle itself (ADR 0058): a first-hand measurement, so it
+    // outranks second-hand data — but nobody can check it against a publication
+    // and it carries no meaning for the bytes, only their existence.
+    case "observed":
+      return 0.9;
     case "community":
       return 0.8;
     case "reverse-engineered":

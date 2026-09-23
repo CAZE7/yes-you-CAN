@@ -14,7 +14,7 @@ Protokoll-Layer kennt weder `CanBus` noch Adapter.
 
 | Symbol | Zweck |
 |---|---|
-| `UdsClient` | Der Tester: `diagnosticSessionControl`, `testerPresent`, `readDid`/`readDataByIdentifier`, `readDtcByStatusMask`, `readSupportedDtc`, `readDtcSnapshotRecord`, `clearDiagnosticInformation`, `writeDataByIdentifier`, `unlockSecurityAccess`, `routineControl`/`startRoutine`, `readVin`, `updateTiming`, `startTesterPresent` |
+| `UdsClient` | Der Tester: `diagnosticSessionControl`, `testerPresent`, `readDid`/`readDataByIdentifier`, `readDtcReportByStatusMask`/`readDtcByStatusMask`, `readSupportedDtcReport`/`readSupportedDtc`, `readDtcCountByStatusMask`, `readDtcSnapshotIdentification`, `readDtcSnapshotRecord`, `readDtcExtendedDataRecord`, `clearDiagnosticInformation`, `writeDataByIdentifier`, `unlockSecurityAccess`, `routineControl`/`startRoutine`, `readVin`, `updateTiming`, `startTesterPresent` |
 | `UdsServer` | Die ECU-Seite (für den Simulator): `start`/`stop`, `registerDid`, `registerWritableDid`, `setDtc`, `registerRoutine`, `registerSecurityAccess` — **die** offizielle Simulator-API (ADR 0041) |
 | `UdsLink` | Die Seam: `send(payload: Uint8Array): Promise<Uint8Array>` — das ist alles, was ein Protokoll braucht |
 | `RequestResponseLink` / `createRequestResponseLink()` | Baut einen `UdsLink` auf einem `MessageTransport` (Request/Response + NRC-Weitergabe) |
@@ -39,6 +39,39 @@ await client.diagnosticSessionControl(0x03); // extendedDiagnosticSession
 const dtcs = await client.readDtcByStatusMask(0xff); // DtcRecord[] (Rohform)
 await client.readDtcSnapshotRecord(dtcs[0]!.code, 0x01); // Freeze Frame
 ```
+
+### Fehlerspeicher vollständig lesen (0x19, ADR 0058)
+
+Vier Unterfunktionen, in der Reihenfolge, die jede spätere billiger macht — und mit
+der Maske, die den Statusbyte erst lesbar macht:
+
+```ts
+// 0x19 0x01 — wie viele Codes, welche Statusbits implementiert das ECU, welches Format
+const count = await client.readDtcCountByStatusMask(0xff);
+// → { availabilityMask: 0x2f, formatIdentifier: 0x00, count: 2 }
+
+// 0x19 0x03 — welche Codes Freeze Frames haben und wie viele Aufzeichnungen je Code
+const identification = await client.readDtcSnapshotIdentification();
+// → { availabilityMask, identifications: [{ code: "P0420", status, snapshotRecordCount: 1 }] }
+
+// 0x19 0x02 — die Codes mit Status, Maske und maskenbewusster Severity
+const report = await client.readDtcReportByStatusMask(0xff);
+// → { availabilityMask: 0x2f, records: [{ code, status, statusBits, severity, availabilityMask }] }
+
+// 0x19 0x04 / 0x06 — die Aufzeichnungen dahinter, roh (Layout ist OEM-Wissen)
+await client.readDtcSnapshotRecord("P0420", 0xff);
+await client.readDtcExtendedDataRecord("P0420", 0x01);
+
+// Welche Bits das ECU überhaupt meldet — für den Report statt für das Raten:
+supportedStatusBits(0x2f);   // DtcStatusBits
+unsupportedStatusBits(0x2f); // ["testFailedThisOperationCycle", "testNotCompletedSinceLastClear", …]
+```
+
+**Vertrag dazu:** die Verfügbarkeitsmaske (ISO 14229-1 §11.3.4.2) reist mit jedem
+Record (`DtcRecord.availabilityMask`) und stuft die Severity
+(`dtcSeverity(bits, availabilityMask)`); ein Record ohne Maske behauptet keine.
+`readDtcByStatusMask()`/`readSupportedDtc()` bleiben als Projektionen der
+Report-Methoden — alte Aufrufer ändern nichts.
 
 ## Beispiel: Server für den Simulator
 
@@ -71,3 +104,12 @@ server.start();
    (ADR 0041).
 5. **KWP2000** teilt diese Primitive (`@vdp/protocols-kwp2000` importiert
    `@vdp/protocols-uds`); neu aufzubauen ist eine Verletzung der Doku.
+6. **Die Verfügbarkeitsmaske reist mit dem Code**: `0x19`-Listenantworten tragen sie,
+   `DtcRecord.availabilityMask`/`DtcObservation.availabilityMask` behalten sie, und
+   eine Einstufung nutzt nur Bits, die das Steuergerät implementiert
+   (`dtcSeverity(bits, mask)`). Auf 0xff zu defaulten, wenn sie fehlt, ist verboten —
+   das wäre eine erfundene Behauptung (ADR 0033/0058).
+7. **Der Simulator folgt der Norm, nicht der Bequemlichkeit**: `0x19 0x01` ist sechs
+   Bytes inklusive DTC-Formatkennung (§11.3.4.2), `0x19 0x03` liefert je Code fünf
+   Bytes mit der Zahl der Snapshot-Aufzeichnungen (§11.3.4.4). Ein Simulator, der
+   anders antwortet, trainiert Clients an, reale Fahrzeuge falsch zu lesen.

@@ -156,6 +156,78 @@ test("ReadDTCInformation returns decoded DTC records with severity", async () =>
   );
 });
 
+test("the availability mask travels with the fault memory and grades the severity", async () => {
+  // An ECU that implements only pendingDtc (bit 2) and testFailedSinceLastClear
+  // (bit 5): P0420 comes back with 0x2f, whose testFailed/confirmedDtc bits are
+  // outside the mask — silence, not a measurement (ISO 14229-1 §11.3.4.2).
+  const { client } = createPair({
+    dids: BASE_DIDS,
+    dtcAvailabilityMask: 0x24,
+    dtcs: [{ code: "P0420", status: 0x2f }],
+  });
+  const report = await client.readDtcReportByStatusMask(0xff);
+  assert.equal(report.availabilityMask, 0x24);
+  const record = report.records[0];
+  assert.ok(record);
+  assert.equal(record.availabilityMask, 0x24, "the record carries the mask it was read with");
+  assert.equal(
+    record.severity,
+    "minor",
+    "graded from pendingDtc only — testFailed/confirmedDtc are not implemented",
+  );
+  assert.equal(record.statusBits.testFailed, true, "the raw bit stays visible");
+
+  const projection = await client.readDtcByStatusMask(0xff);
+  assert.deepEqual(
+    projection.map((dtc) => dtc.code),
+    ["P0420"],
+    "the projection callers had before still returns the records",
+  );
+  const supported = await client.readSupportedDtcReport();
+  assert.equal(supported.availabilityMask, 0x24);
+});
+
+test("the DTC count response reports mask, format identifier and count", async () => {
+  const { client } = createPair({
+    dids: BASE_DIDS,
+    dtcs: [
+      { code: "P0420", status: 0x2f },
+      { code: "P0300", status: 0x24 },
+    ],
+  });
+  const count = await client.readDtcCountByStatusMask(0xff);
+  assert.equal(count.count, 2);
+  assert.equal(count.availabilityMask, 0xff);
+  assert.equal(count.formatIdentifier, 0);
+  const none = await client.readDtcCountByStatusMask(0x80);
+  assert.equal(none.count, 0, "no code has warningIndicatorRequested set");
+});
+
+test("snapshot identification says how many freeze frames each code has", async () => {
+  const { client } = createPair({
+    dids: BASE_DIDS,
+    dtcs: [
+      { code: "P0420", status: 0x2f, snapshot: fromHex("09 46 00 32") },
+      { code: "P0300", status: 0x24 },
+    ],
+  });
+  const report = await client.readDtcSnapshotIdentification();
+  assert.equal(report.availabilityMask, 0xff);
+  assert.deepEqual(
+    report.identifications.map((entry) => `${entry.code}:${entry.snapshotRecordCount}`),
+    ["P0420:1", "P0300:0"],
+    "the code with environment data reports one record, the other none",
+  );
+  const one = await client.readDtcSnapshotIdentification("P0420");
+  assert.deepEqual(
+    one.identifications.map((entry) => entry.code),
+    ["P0420"],
+    "asking for one code returns only that code",
+  );
+  const absent = await client.readDtcSnapshotIdentification("U0155");
+  assert.deepEqual(absent.identifications, [], "an unknown code identifies nothing");
+});
+
 test("freeze frame snapshot can be read per DTC", async () => {
   const { client } = createPair({
     dids: BASE_DIDS,

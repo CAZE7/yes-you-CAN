@@ -12,6 +12,7 @@ Analyse.
 | DTC-Scan, -Wissen, -Enrichment | [`../docs/flows/dtc-analysis.md`](../docs/flows/dtc-analysis.md) |
 | Recording, Replay, Golden Sessions | [`../docs/flows/recording-replay.md`](../docs/flows/recording-replay.md) |
 | Analyse, Provider, Zitate, Versionen | [`../docs/flows/ai-analysis.md`](../docs/flows/ai-analysis.md) |
+| ein Fahrzeug read-only auslesen (Ernte, ODX/PDX, Definitions-Kandidat) | [`../docs/flows/harvest.md`](../docs/flows/harvest.md) |
 
 ## Ausführung (Befehle, die funktionieren — AGENTS 0.B)
 

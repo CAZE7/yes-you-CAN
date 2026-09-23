@@ -175,6 +175,9 @@ export function dtcObservationOf(record: DtcRecordLike, timestamp?: string): Dtc
     ecuName: record.ecuName ?? "",
     ...(at !== undefined ? { at } : {}),
     ...(record.severity !== undefined ? { severity: record.severity } : {}),
+    // The mask travels with the code: without it a stored observation cannot say
+    // whether an unset status bit was measured or simply not reported (ADR 0033).
+    ...(record.availabilityMask !== undefined ? { availabilityMask: record.availabilityMask } : {}),
     ...(record.snapshot !== undefined ? { snapshot: record.snapshot } : {}),
     ...(record.extendedData !== undefined ? { extendedData: record.extendedData } : {}),
   });
