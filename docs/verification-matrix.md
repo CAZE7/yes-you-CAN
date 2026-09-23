@@ -27,6 +27,7 @@ in der Matrix fehlen, aber im Repo liegen, werden nachgereicht.
 | Replay-Aufnahme (Aufnahme selbst) | `npm run traces:record` | `scripts/record-trace-fixtures.mjs` | exit 0 | 3 Fixtures geschrieben |
 | Replay-Aufnahme (Determinismus) | `md5sum tests/fixtures/traces/*.log` | Fingerabdruck | byte-identisch zum vorherigen Lauf | die drei md5-Summen aus dem Commit-Body |
 | Doc-Beispiele lauffähig (runnable documentation, ADR 0043) | `npx vitest run --project integration tests/examples/` | `integration` | passed | die vier Standardpfade als Beispiel-Tests |
+| Markdown-Links im Repo (kein gebrochener Verweis) | `npm run check:docs` | `scripts/check-docs-links.mjs` | exit 0 | 134 Dateien, 0 gebrochen |
 | Strukturierte Diagnose-Logs in den oberen Schichten | `npm test` | `core` Suite | passed | die Diagnostics-Suite besteht, was beweist, dass die Logger-Konvention hält |
 
 ## Wie die Matrix aktuell gehalten wird
