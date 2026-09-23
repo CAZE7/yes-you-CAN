@@ -31,6 +31,10 @@ importiert deshalb nichts.
 `OemDtcInterpretation`, `OemProtocolRegistry` (+ `vagExampleProtocol` als
 Referenzbeispiel).
 
+**Eingefrorene Vertragsfläche:** `npm run check:api` misst diese Fläche gegen
+`architecture/public-api.json` (ADR 0059) — eine Änderung ist eine Entscheidung,
+kein Nebeneffekt.
+
 ## Dependencies
 
 Keine. (`mayImport: []` — Hooks dürfen nur über injizierte Primitiven sprechen.)

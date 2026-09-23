@@ -1,6 +1,6 @@
 # Konformanz-Register — Norm → Implementierung → Beleg → Lücke
 
-> Stand: 2026-09-22 · gemessen am Commit, der diese Datei einführt. Letzte Bewegung: ADR 0054.
+> Stand: 2026-09-23 · gemessen am Commit, der diese Datei einführt. Letzte Bewegung: ADR 0059/0060.
 >
 > **Leseregel:** Jede Zeile trägt einen **Beleg** (Datei, ggf. Zeile) oder das Wort
 > **fehlt**. Eine Zeile ohne Beleg ist eine Behauptung, und Behauptungen stehen hier
@@ -63,6 +63,8 @@ der Nachweis.
 |---|---|---|---|
 | **Goldene Sitzungen** | **implementiert** (seit ADR 0052) | `tools/simulators/src/virtual-vehicle.ts` (`clock`), `tools/golden-sessions/src/record.ts` (50-ms-Phasen), `virtual-vehicle-clock.spec.ts` (3, Biss gemessen) — zwei Läufe auf demselben Baum: **0 Wertzeilen Drift** (vorher 44), 3472 Zeilen nur Zeitstempel | Zeitachse des Traces bleibt Wanduhr (1782× `timestamp`, 1690× `t`) — kein Defekt, ein Trace hält fest, *wann* etwas geschah |
 | **Abhängigkeiten** | **gepflegt** | `package.json` / `package-lock.json`, `npm audit` **0** Schwachstellen, `npm outdated` **0** (Biome 2.5.14 seit ADR 0054), `biome check .` 486 Dateien grün (Biome 2.5.14) | — |
+| **Lizenzen des Fremdcodes** | **gemessen** (seit ADR 0060) | `architecture/architecture.yaml` (`licenses`, zwei Geltungsbereiche), `npm run check:licenses` → `tests/architecture/licenses.test.ts`; Messung: 108 Drittpakete, **0 Produktion / 108 Entwicklung**, alle innerhalb der Richtlinie; MPL-2.0 (12× `lightningcss`) ist im Entwicklungsbereich erlaubt, nicht im Produktionsbereich | Kein SPDX-Report/Attribution-Bündel für eine Auslieferung — heute gibt es keine Produktionsabhängigkeiten (ADR 0002) |
+| **Vertragsfläche (Open/Closed-Grenze)** | **gemessen** (seit ADR 0059) | `architecture/architecture.yaml` (`contracts`, 7 Flächen), `architecture/public-api.json` (49 Dateien, 5 externe Typquellen), `npm run check:api` nach `npm run build` → `tests/architecture/api.test.ts`; `private-dependency-leak` in `npm run check:manifests` | Der geschlossene Teil existiert noch nicht; die Grenze ist vorbereitet, nicht besiedelt |
 | **Hardware-Tests** | **Grenze dokumentiert** | `tests/hardware/vcan.test.ts`, `socketcan-conformance.test.ts` — skippen deterministisch ohne `vcan0` (ADR 0016/0017) | Kein `vcan` in dieser Umgebung — `npm run test:hardware` meldet Skip, kein Fail; Grenze, keine Lücke |
 | **Rate-Limit** | **implementiert** (seit ADR 0054) | `apps/web/src/rate-limit.ts` (100 Req/60s/IP + 10 SSE/IP → 429), `server.ts` `handle()` + `streamEvents()`, `rate-limit.spec.ts` 10 Tests (Biss: 100→429) | — |
 | **TLS** | **implementiert** (seit ADR 0054) | `apps/web/src/server.ts` (`--cert`/`--key`, `VDP_TLS_CERT`/`VDP_TLS_KEY`, `https.createServer`), `tls.spec.ts` 3 Tests, HSTS `max-age=31536000` | Zertifikat nicht im Repo, nur Pfad — Inhalt nie committen |

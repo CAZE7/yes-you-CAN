@@ -17,7 +17,7 @@
 | **Schwachstellen-Management** | Wie werden Schwachstellen gemeldet, bewertet, behoben | **Gerüst:** `npm audit` 0 Schwachstellen, `npm outdated` 1 bewusst offen (Biome Major), `SECURITY.md` fehlt |
 | **Incident Response** | Wer reagiert, in welcher Zeit, wie wird kommuniziert | **Fehlt** — keine Reaktionszeiten, keine Kontakte |
 | **Nachweis und Audit** | Wie wird nachgewiesen, dass Maßnahmen umgesetzt sind | **Teilweise:** `biome check .` 482 Dateien, `check:deps`, `check:manifests`, 2330 Tests, 28/28+44/44 formale Vektoren, `auth.spec.ts` 16, `rate-limit.spec.ts` 12, `tls.spec.ts` 3 |
-| **Supply Chain** | Wie werden Abhängigkeiten geprüft | **Teilweise:** `package-lock.json`, `npm audit`, `check:deps` 28 Pakete/83 Kanten, keine neuen Deps ohne ADR (AGENTS 0.0) |
+| **Supply Chain** | Wie werden Abhängigkeiten geprüft | **Teilweise:** `package-lock.json`, `npm audit`, `check:deps` 29 Pakete/92 Kanten, `check:manifests` (inkl. `private-dependency-leak`), **`check:licenses`** (108 Drittpakete, 0 Produktion / 108 Entwicklung, ADR 0060), keine neuen Deps ohne ADR (AGENTS 0.0) |
 
 ## 2. Schwachstellen-Prozess (Vorschlag, nicht abgenommen)
 
@@ -66,7 +66,7 @@
 | **SECURITY.md** mit Meldeweg und unterstützten Versionen | Maintainer | Klein — Datei erstellen |
 | **Rollen benennen** (Security Owner, CSO) | Organisation | Prozess |
 | **Reaktionszeiten festlegen** | Organisation + CSO | Prozess |
-| **Supply-Chain-Policy** (wie werden neue Deps geprüft, wann wird `npm audit` im CI erzwungen) | Organisation | Klein — CI-Job |
+| **Supply-Chain-Policy** (wie werden neue Deps geprüft, wann wird `npm audit` im CI erzwungen) | Organisation | **Code-Teil erledigt** (ADR 0060: Lizenzrichtlinie + Gate); offen bleibt die organisatorische Abnahme der Reaktionszeiten |
 | **Audit-Plan** (wer prüft wann TARA/CSMS) | Organisation | Prozess |
 | **Vulnerability Disclosure** (wie wird extern kommuniziert) | Organisation | Prozess |
 

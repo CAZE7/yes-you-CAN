@@ -34,6 +34,10 @@ Protokolle, keine Transporte.
 `src/index.ts` (bewusst kuratiert, §30/§31): Ids, Capabilities, Risk-Policy,
 Data Contracts, Events, Ports. Vollständig dort aufgeführt.
 
+**Eingefrorene Vertragsfläche:** `npm run check:api` misst diese Fläche gegen
+`architecture/public-api.json` (ADR 0059) — eine Änderung ist eine Entscheidung,
+kein Nebeneffekt.
+
 ## Dependencies
 
 Nur `@vdp/shared`.

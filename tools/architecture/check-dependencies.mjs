@@ -138,7 +138,16 @@ function prefixMatches(name, prefix) {
 /** Unknown keys are errors: a typo in a rule must not look like a passing rule. */
 function checkSchema(rules) {
   const problems = [];
-  const allowedTop = ["schemaVersion", "description", "layers", "packages", "rules", "topics"];
+  const allowedTop = [
+    "schemaVersion",
+    "description",
+    "layers",
+    "packages",
+    "rules",
+    "contracts",
+    "licenses",
+    "topics",
+  ];
   for (const key of Object.keys(rules)) {
     if (!allowedTop.includes(key)) problems.push(`unknown top-level key "${key}"`);
   }
@@ -190,6 +199,80 @@ function checkSchema(rules) {
     for (const key of Object.keys(rule)) {
       if (!["packages", "forbidden", "why"].includes(key))
         problems.push(`unknown key in portableLayers entry: "${key}"`);
+    }
+  }
+  // Contracts: the surfaces a *separate* repository may build against (ADR 0059). The
+  // tool that owns this file's shape owns their shape too — `check-api.mjs` reads the
+  // section and would rather find it already validated than validate it a second time.
+  for (const [name, entry] of Object.entries(rules.contracts ?? {})) {
+    for (const key of Object.keys(entry ?? {})) {
+      if (!["why", "entry"].includes(key))
+        problems.push(`unknown key in contracts.${name}: "${key}"`);
+    }
+    if (!entry?.why)
+      problems.push(`contracts.${name} has no "why" — a frozen surface needs a reason`);
+    if (entry?.entry !== undefined && typeof entry.entry !== "string")
+      problems.push(`contracts.${name}.entry must be a path (relative to the package)`);
+    if (!(name in (rules.packages ?? {})))
+      problems.push(`contracts.${name} is not a declared package — place it in "packages" first`);
+  }
+  // Licence policy: measured against the lockfile by `check-licenses.mjs` (ADR 0060).
+  const licenses = rules.licenses;
+  if (licenses !== undefined) {
+    for (const key of Object.keys(licenses)) {
+      if (!["production", "development", "exceptions"].includes(key))
+        problems.push(`unknown key in licenses: "${key}"`);
+    }
+    for (const scope of ["production", "development"]) {
+      const entry = licenses[scope];
+      if (entry === undefined) {
+        problems.push(`licenses.${scope} is missing — a policy with one scope is half a rule`);
+        continue;
+      }
+      for (const key of Object.keys(entry)) {
+        if (!["allowed", "forbidden", "why"].includes(key))
+          problems.push(`unknown key in licenses.${scope}: "${key}"`);
+      }
+      if (!Array.isArray(entry.allowed) || entry.allowed.length === 0)
+        problems.push(`licenses.${scope}.allowed must name at least one licence`);
+      if (!Array.isArray(entry.forbidden))
+        problems.push(`licenses.${scope}.forbidden must be an array (an empty one is fine)`);
+      for (const [index, exception] of (entry.exceptions ?? []).entries()) {
+        if (exception === undefined)
+          problems.push(`licenses.${scope}.exceptions[${index}] is empty`);
+      }
+      // A licence in both lists is a policy that contradicts itself; forbidden wins in
+      // the tool, so without this check the allowed entry would be a decoration nobody
+      // notices (and the next reader would believe the other one).
+      for (const allowed of entry.allowed ?? []) {
+        const clash = (entry.forbidden ?? []).find(
+          (forbidden) =>
+            String(allowed).toLowerCase().startsWith(String(forbidden).toLowerCase()) ||
+            String(forbidden).toLowerCase().startsWith(String(allowed).toLowerCase()),
+        );
+        if (clash !== undefined)
+          problems.push(
+            `licenses.${scope}: "${allowed}" is allowed and "${clash}" is forbidden — one of the two is wrong`,
+          );
+      }
+      if (!entry.why) problems.push(`licenses.${scope} has no "why"`);
+    }
+    if (licenses.exceptions !== undefined && !Array.isArray(licenses.exceptions))
+      problems.push("licenses.exceptions must be an array");
+    for (const [index, exception] of (licenses.exceptions ?? []).entries()) {
+      for (const key of Object.keys(exception ?? {})) {
+        if (!["package", "why", "until"].includes(key))
+          problems.push(`unknown key in licenses.exceptions[${index}]: "${key}"`);
+      }
+      if (!exception?.package) problems.push(`licenses.exceptions[${index}] names no package`);
+      if (!exception?.why) problems.push(`licenses.exceptions[${index}] has no "why"`);
+      if (exception?.until === undefined) {
+        problems.push(
+          `licenses.exceptions[${index}] has no "until" — an exception without an end is a policy`,
+        );
+      } else if (!/^\d{4}-\d{2}-\d{2}$/.test(String(exception.until))) {
+        problems.push(`licenses.exceptions[${index}].until must be an ISO-8601 date (YYYY-MM-DD)`);
+      }
     }
   }
   return problems;

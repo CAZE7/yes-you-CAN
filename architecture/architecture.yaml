@@ -267,6 +267,85 @@
       }
     ]
   },
+  "contracts": {
+    "@vdp/ai": {
+      "why": "The analysis seam: AnalysisProvider, AnalysisInput and the provenance every answer has to carry. A closed or third-party provider implements exactly this surface and nothing else — an analysis proposes, the write chain decides (ADR 0038/0059)."
+    },
+    "@vdp/core": {
+      "entry": "dist/src/logging/integrity.d.ts",
+      "why": "Not the engine — the integrity seam: IntegrityPort, the canonical raw-trace binding and the manifest an export carries (ADR 0047/0057). A storage layer, a cloud worker or a hardware module implements the hashing side of this module, so this module is the contract."
+    },
+    "@vdp/definitions": {
+      "why": "The data contract: schema versions, mandatory provenance and the validator every definition package must satisfy, no matter who wrote it or who licensed it (ADR 0003/0023/0024)."
+    },
+    "@vdp/diagnostic-ir": {
+      "why": "The intermediate representation between a measurement and a conclusion. Anything that reads evidence and proposes a hypothesis — open, closed or a customer integration — consumes and produces exactly these types (ADR 0034/0038)."
+    },
+    "@vdp/domain": {
+      "why": "The ports and the capability vocabulary: the only language in which a consumer may ask the platform for something (ADR 0014/0059)."
+    },
+    "@vdp/protocols-oem": {
+      "why": "The OEM hook contract (OemProtocol, the registry, the provenance a hook must name), with no imports of its own — the template a closed manufacturer module fills in (ADR 0003/0059)."
+    },
+    "@vdp/protocols-uds": {
+      "entry": "dist/src/security.d.ts",
+      "why": "Not the UDS client — the seed&key seam: SeedKeyAlgorithm and the refusal default. A workshop registers an algorithm it is entitled to use; that registration is the contract, and the default that refuses is part of it (AGENTS 26/34.12)."
+    }
+  },
+  "licenses": {
+    "production": {
+      "allowed": [
+        "MIT",
+        "Apache-2.0",
+        "BSD-2-Clause",
+        "BSD-3-Clause",
+        "ISC",
+        "0BSD",
+        "Unlicense",
+        "CC0-1.0"
+      ],
+      "forbidden": [
+        "GPL",
+        "AGPL",
+        "LGPL",
+        "MPL",
+        "EPL",
+        "CDDL",
+        "SSPL",
+        "BUSL",
+        "EUPL",
+        "CC-BY-NC",
+        "CC-BY-SA"
+      ],
+      "why": "Everything in the production closure can end up inside something we distribute — the open core is published and the closed modules ship as build artefacts. Weak copyleft (MPL/LGPL) is as unacceptable here as strong copyleft: it becomes a licence question the moment the file is distributed. This closure is empty today because ADR 0002 keeps `dependencies` empty; the scope is what keeps that true when somebody adds the first one (ADR 0060)."
+    },
+    "development": {
+      "allowed": [
+        "MIT",
+        "Apache-2.0",
+        "BSD-2-Clause",
+        "BSD-3-Clause",
+        "ISC",
+        "0BSD",
+        "Unlicense",
+        "CC0-1.0",
+        "MPL-2.0"
+      ],
+      "forbidden": [
+        "GPL",
+        "AGPL",
+        "EPL",
+        "CDDL",
+        "SSPL",
+        "BUSL",
+        "EUPL",
+        "CC-BY-NC",
+        "CC-BY-SA"
+      ],
+      "why": "Build- and test-time only; nothing here is redistributed (measured: 0 production packages). File-level copyleft is acceptable at this boundary because it does not travel into our sources — MPL-2.0 arrives with the lightningcss platform binaries under the Vite/Vitest toolchain, and that is a decision with a reason instead of a surprise on the next `npm ci`. Strong copyleft stays out: a GPL build tool raises the question of what its output is derived from, and this repository would rather not have to answer it."
+    },
+    "exceptions": []
+  },
   "topics": {
     "uds": {
       "title": "UDS / protocol layer",

@@ -422,3 +422,100 @@ test("a broken manifest is exit 2, never a clean report", () => {
     rmSync(fixture.dir, { recursive: true, force: true });
   }
 });
+
+/**
+ * The publication boundary (ADR 0059).
+ *
+ * `private` is the field that decides whether a package can be installed by somebody
+ * outside this repository. A publishable package that depends on a private one describes
+ * an installation that cannot succeed — and with an open core beside closed modules the
+ * mistake would stay invisible until a consumer tried it, which is the most expensive
+ * moment to find out. The fixtures below prove the rule bites, that it is the *field* and
+ * not the edge doing the work, and that a development-only relation stays allowed.
+ */
+test("a publishable package may not depend on a private one", () => {
+  const fixture = fixtureWorkspace({
+    "package.json": ROOT_MANIFEST,
+    "packages/secret/package.json": JSON.stringify({
+      name: "@vdp/secret",
+      version: "0.1.0",
+      private: true,
+      main: "./dist/src/index.js",
+    }),
+    "packages/secret/src/index.ts": "export const secret = 1;\n",
+    "packages/open/package.json": JSON.stringify({
+      name: "@vdp/open",
+      version: "0.1.0",
+      main: "./dist/src/index.js",
+      dependencies: { "@vdp/secret": "0.1.0" },
+    }),
+    "packages/open/src/index.ts":
+      'import { secret } from "@vdp/secret";\nexport const open = secret;\n',
+  });
+  try {
+    assert.deepEqual(
+      rulesOf(fixture),
+      ["private-dependency-leak"],
+      "a published package cannot install a private one",
+    );
+    assert.equal(
+      violationsOf(fixture)[0]?.dependency,
+      "@vdp/secret",
+      "the report names the dependency a consumer would trip over",
+    );
+  } finally {
+    rmSync(fixture.dir, { recursive: true, force: true });
+  }
+});
+
+test("the same edge is fine while both sides are private, or when only development uses it", () => {
+  const privateBoth = fixtureWorkspace({
+    "package.json": ROOT_MANIFEST,
+    "packages/secret/package.json": JSON.stringify({
+      name: "@vdp/secret",
+      version: "0.1.0",
+      private: true,
+    }),
+    "packages/host/package.json": JSON.stringify({
+      name: "@vdp/host",
+      version: "0.1.0",
+      private: true,
+      dependencies: { "@vdp/secret": "0.1.0" },
+    }),
+    "packages/host/src/index.ts": 'import "@vdp/secret";\n',
+  });
+  try {
+    assert.deepEqual(
+      rulesOf(privateBoth),
+      [],
+      "inside the organisation the edge is the point — the rule is about publication",
+    );
+  } finally {
+    rmSync(privateBoth.dir, { recursive: true, force: true });
+  }
+
+  const devOnly = fixtureWorkspace({
+    "package.json": ROOT_MANIFEST,
+    "packages/secret/package.json": JSON.stringify({
+      name: "@vdp/secret",
+      version: "0.1.0",
+      private: true,
+    }),
+    "packages/open/package.json": JSON.stringify({
+      name: "@vdp/open",
+      version: "0.1.0",
+      devDependencies: { "@vdp/secret": "0.1.0" },
+    }),
+    "packages/open/src/index.ts": "export const open = 1;\n",
+    "packages/open/src/index.spec.ts": 'import "@vdp/secret";\n',
+  });
+  try {
+    assert.deepEqual(
+      rulesOf(devOnly),
+      [],
+      "npm does not install devDependencies of a dependency — a build-time helper stays allowed (the reason is in the rule)",
+    );
+  } finally {
+    rmSync(devOnly.dir, { recursive: true, force: true });
+  }
+});

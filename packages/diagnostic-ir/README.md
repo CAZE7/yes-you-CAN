@@ -37,6 +37,10 @@ Komplett dokumentiert in [`docs/api/diagnostic-ir.md`](../../docs/api/diagnostic
 bzw. [`docs/api/evidence.md`](../../docs/api/evidence.md) /
 [`docs/api/hypothesis.md`](../../docs/api/hypothesis.md).
 
+**Eingefrorene Vertragsfläche:** `npm run check:api` misst diese Fläche gegen
+`architecture/public-api.json` (ADR 0059) — eine Änderung ist eine Entscheidung,
+kein Nebeneffekt.
+
 ## Dependencies
 
 Nur `@vdp/shared` (`mayImport` in `architecture.yaml`).

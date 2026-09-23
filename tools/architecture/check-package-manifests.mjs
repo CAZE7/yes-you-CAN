@@ -20,6 +20,9 @@
  *    package's own tests import it. The honest place for it is `devDependencies`.
  *  - `dep-version-drift` / `unknown-workspace-dependency` — the workspace moves in
  *    lockstep (ADR 0010), so a `@vdp/*` range is either the root version or a mistake.
+ *  - `private-dependency-leak` — a publishable package depends on a private one, which
+ *    describes an install nobody can perform. It is the rule that keeps the open core
+ *    and the private modules on their two sides of the boundary (ADR 0059).
  *
  * Test sources are exempt from *declaring* workspace packages deliberately: npm links
  * every workspace package into the root, so requiring a per-package devDependency on the
@@ -317,6 +320,41 @@ function evaluate(root) {
 
   for (const entry of manifests) {
     violations.push(...evaluatePackage(entry, workspaceNames, workspaceVersion));
+  }
+
+  /*
+   * The publication boundary (ADR 0059, the open/closed split).
+   *
+   * `private` is not decoration: it is the field that decides whether a package can be
+   * installed by somebody outside this repository. A package that is publishable
+   * (`private` absent or false) and depends on one that is private describes an install
+   * that cannot succeed — and with an open core next to private modules the mistake
+   * stays invisible until a consumer tries it, which is the most expensive moment.
+   *
+   * Only the sections a consumer's install walks are checked. `devDependencies` are
+   * deliberately excluded: npm does not install them for a dependency, so a public
+   * package may develop against a private helper without breaking anybody (the build
+   * does, and that is a CI question, not an installation one).
+   */
+  const isPrivate = new Map(
+    manifests.map((entry) => [entry.manifest.name, entry.manifest.private === true]),
+  );
+  for (const entry of manifests) {
+    if (entry.manifest.private === true) continue;
+    for (const section of ["dependencies", "optionalDependencies", "peerDependencies"]) {
+      for (const name of keysOf(entry.manifest, section)) {
+        if (isPrivate.get(name) !== true) continue;
+        violations.push({
+          rule: "private-dependency-leak",
+          package: entry.manifest.name,
+          dependency: name,
+          message:
+            `${entry.rel}: ${section} names ${name}, which is private — a published package ` +
+            "cannot install it; closed modules are consumed through a private registry, not " +
+            "through the public one (ADR 0059)",
+        });
+      }
+    }
   }
 
   // A package that exists but is not in any workspace glob cannot be built, linked or
