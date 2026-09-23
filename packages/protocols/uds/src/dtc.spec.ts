@@ -8,6 +8,8 @@ import {
   encodeDtc,
   encodeDtcStatus,
   encodeDtcToBytes,
+  supportedStatusBits,
+  unsupportedStatusBits,
 } from "./dtc.js";
 
 test("P0420 decodes into letter, digits and failure type", () => {
@@ -166,5 +168,50 @@ describe("DTC status byte round trips (ISO 14229-1 §8.3)", () => {
     expect(dtcSeverity(decodeDtcStatus(0x08))).toBe("major");
     expect(dtcSeverity(decodeDtcStatus(0x04))).toBe("minor");
     expect(dtcSeverity(decodeDtcStatus(0x40))).toBe("info");
+  });
+});
+
+describe("DTC status availability mask (ISO 14229-1 §11.3.4.2)", () => {
+  test("the mask says which status bits exist, in the same shape as a status byte", () => {
+    const supported = supportedStatusBits(0x28); // bits 3 and 5
+    assert.equal(supported.confirmedDtc, true, "bit 3");
+    assert.equal(supported.testFailedSinceLastClear, true, "bit 5");
+    assert.equal(supported.testFailed, false, "bit 0 is not implemented");
+    assert.equal(supported.pendingDtc, false, "bit 2 is not implemented");
+  });
+
+  test("unsupported bits are named, so a report can print the silence instead of a zero", () => {
+    assert.deepEqual(unsupportedStatusBits(0x28), [
+      "testFailed",
+      "testFailedThisOperationCycle",
+      "pendingDtc",
+      "testNotCompletedSinceLastClear",
+      "testNotCompletedThisOperationCycle",
+      "warningIndicatorRequested",
+    ]);
+    assert.deepEqual(unsupportedStatusBits(0xff), []);
+    assert.equal(unsupportedStatusBits(0x00).length, 8);
+  });
+
+  test("severity is graded only from bits the ECU implements", () => {
+    // 0x0f sets testFailed, testFailedThisOperationCycle, pendingDtc, confirmedDtc.
+    const status = decodeDtcStatus(0x0f);
+    assert.equal(dtcSeverity(status), "critical", "with the default mask nothing changed");
+    assert.equal(
+      dtcSeverity(status, 0x04),
+      "minor",
+      "an ECU reporting only pendingDtc cannot be graded critical from bits it never sets",
+    );
+    assert.equal(
+      dtcSeverity(status, 0x08),
+      "major",
+      "confirmedDtc is supported, testFailed is not",
+    );
+    assert.equal(dtcSeverity(status, 0x00), "info", "no graded bit is implemented at all");
+  });
+
+  test("a supported bit that is set still grades, whatever else the mask excludes", () => {
+    assert.equal(dtcSeverity(decodeDtcStatus(0x01), 0x01), "critical");
+    assert.equal(dtcSeverity(decodeDtcStatus(0x04), 0xff), "minor");
   });
 });

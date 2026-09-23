@@ -120,6 +120,12 @@ export interface UdsServerOptions {
   pendingResponseDelayMs?: number;
   /** DTC availability mask reported by 0x19 responses. */
   dtcAvailabilityMask?: number;
+  /**
+   * DTC format identifier reported by `0x19 0x01` (ISO 14229-1 §8.1). Defaults to
+   * 0x00, the ISO 14229-1 DTC format this server implements; a simulator modelling
+   * a legacy ECU can state another value, and a client must not assume one.
+   */
+  dtcFormatIdentifier?: number;
 }
 
 export interface UdsServerStats {
@@ -535,12 +541,39 @@ export class UdsServer {
       case DTC_REPORT.REPORT_NUMBER_OF_DTC_BY_STATUS_MASK: {
         const mask = payload[2] ?? 0xff;
         const count = this.dtcs.filter((dtc) => (dtc.status & mask) !== 0).length;
+        // Six bytes, not five: ISO 14229-1 §11.3.4.2 puts the DTC format identifier
+        // between the availability mask and the count. The byte was missing here
+        // until 2026-09-23, so the simulator answered with a layout no real ECU uses
+        // and a standard-conformant client read the count from the wrong offset.
         return new Uint8Array([
           positiveResponseSid(SID.READ_DTC_INFORMATION),
           subFunction,
           availabilityMask,
+          this.options.dtcFormatIdentifier ?? 0x00,
           (count >> 8) & 0xff,
           count & 0xff,
+        ]);
+      }
+      case DTC_REPORT.REPORT_DTC_SNAPSHOT_IDENTIFICATION: {
+        // ISO 14229-1 §11.3.4.4: one 6-byte record per code — DTC(3), status(1),
+        // numberOfIdentifiedSnapshotRecords(1) — optionally filtered by the DTC
+        // named in the request. The count is what the standard specifies; the
+        // record numbers themselves are only discoverable by asking for them.
+        const wanted = payload.length >= 4 ? payload.subarray(2, 4) : undefined;
+        const bytes: number[] = [];
+        for (const dtc of this.dtcs) {
+          const encoded = encodeDtcToBytes(dtc.code);
+          if (wanted && (encoded[0] !== wanted[0] || encoded[1] !== wanted[1])) {
+            continue;
+          }
+          const records = dtc.snapshot !== undefined && dtc.snapshot.length > 0 ? 1 : 0;
+          bytes.push(encoded[0] ?? 0, encoded[1] ?? 0, encoded[2] ?? 0, dtc.status & 0xff, records);
+        }
+        return new Uint8Array([
+          positiveResponseSid(SID.READ_DTC_INFORMATION),
+          subFunction,
+          availabilityMask,
+          ...bytes,
         ]);
       }
       case DTC_REPORT.REPORT_DTC_SNAPSHOT_RECORD_BY_DTC_NUMBER: {

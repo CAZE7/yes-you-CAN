@@ -58,6 +58,19 @@ export interface DtcObservation {
   at: string;
   /** Classification the reader derived from the response — absent when nobody classified. */
   severity?: DtcSeverity;
+  /**
+   * The DTC status availability mask the ECU sent with this code
+   * (ISO 14229-1 §11.3.4.2): which of the eight status bits it implements at all.
+   *
+   * It belongs to the observation because it changes what the status bits *mean*:
+   * a `false` bit inside the mask is a measurement, a `false` bit outside it is
+   * silence the ECU never spoke. Reports and evidence can only stay honest about
+   * "not confirmed" versus "does not report confirmation" while this travels with
+   * the code (ADR 0033: missing evidence is not a negative result). Absent on
+   * observations built before the mask was carried, and on stored sessions that
+   * predate it — never defaulted to 0xff, which would invent the claim.
+   */
+  availabilityMask?: number;
   /** Snapshot (freeze frame) bytes, when the ECU sent them (AGENTS 20). */
   snapshot?: Uint8Array;
   /** Extra records the ECU sent with the code, when it sent any. */
@@ -109,6 +122,7 @@ export interface DtcObservationInput {
   ecuName: string;
   at?: string;
   severity?: DtcSeverity;
+  availabilityMask?: number;
   snapshot?: Uint8Array;
   extendedData?: Uint8Array;
   definitionVersion?: string;
@@ -128,6 +142,7 @@ export function dtcObservation(input: DtcObservationInput): DtcObservation {
     ecuName: input.ecuName,
     at,
     ...(input.severity !== undefined ? { severity: input.severity } : {}),
+    ...(input.availabilityMask !== undefined ? { availabilityMask: input.availabilityMask } : {}),
     ...(input.snapshot !== undefined ? { snapshot: input.snapshot } : {}),
     ...(input.extendedData !== undefined ? { extendedData: input.extendedData } : {}),
     evidence: proven({

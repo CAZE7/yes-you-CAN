@@ -33,6 +33,14 @@ interface Stub {
     code: string,
     record: number,
   ): Promise<{ recordNumber: number; data: Uint8Array } | null>;
+  readDtcReportByStatusMask(mask: number): Promise<{
+    availabilityMask: number;
+    records: unknown[];
+  }>;
+  readDtcSnapshotIdentification(code?: string): Promise<{
+    availabilityMask: number;
+    identifications: unknown[];
+  }>;
 }
 
 function negative(serviceId: number, nrc: number): UdsNegativeResponseError {
@@ -59,6 +67,11 @@ function stubClient(overrides: Partial<Stub> = {}): Stub {
       calls.push({ method: "clearDiagnosticInformation", args: [group] });
     },
     readDtcSnapshotRecord: async () => null,
+    readDtcReportByStatusMask: async (mask) => {
+      calls.push({ method: "readDtcReportByStatusMask", args: [mask] });
+      return { availabilityMask: 0xff, records: [] };
+    },
+    readDtcSnapshotIdentification: async () => ({ availabilityMask: 0xff, identifications: [] }),
     ...overrides,
   };
   return stub;
@@ -470,13 +483,63 @@ describe("reads, writes and lookups", () => {
         severity: "major",
       },
     ];
-    const stub = stubClient();
-    (
-      stub as unknown as { readDtcByStatusMask: (mask: number) => Promise<unknown[]> }
-    ).readDtcByStatusMask = async () => records;
+    const stub = stubClient({
+      readDtcReportByStatusMask: async (mask) => {
+        stub.calls.push({ method: "readDtcReportByStatusMask", args: [mask] });
+        return { availabilityMask: 0x24, records };
+      },
+    });
     const ecu = session(stub);
     const read = await ecu.readDtcs(0x09);
     assert.deepEqual(read, records);
     assert.deepEqual(ecu.record.dtcs, records, "the record keeps the protocol truth (ADR 0004)");
+    assert.equal(
+      ecu.record.dtcAvailabilityMask,
+      0x24,
+      "the ECU's own statement about its status bits stays with the session (ADR 0058)",
+    );
+    assert.deepEqual(
+      stub.calls
+        .filter((call) => call.method === "readDtcReportByStatusMask")
+        .map((c) => c.args[0]),
+      [0x09],
+    );
+  });
+
+  test("snapshot identifications come back as data, and a refusal is an answer not a failure", async () => {
+    const identifications = [{ code: "P0420", snapshotRecordCount: 1 }];
+    const ecu = session(
+      stubClient({
+        readDtcSnapshotIdentification: async () => ({
+          availabilityMask: 0x2f,
+          identifications,
+        }),
+      }),
+    );
+    assert.deepEqual(await ecu.readDtcSnapshotIdentifications(), identifications);
+    assert.equal(ecu.record.dtcAvailabilityMask, 0x2f);
+
+    // An ECU that does not implement 0x19 0x03 answers with an NRC; that is a fact
+    // about the vehicle, so the read yields an empty list instead of throwing.
+    for (const nrc of [0x31, 0x12]) {
+      const refusing = session(
+        stubClient({
+          readDtcSnapshotIdentification: async () => {
+            throw negative(0x19, nrc);
+          },
+        }),
+      );
+      assert.deepEqual(await refusing.readDtcSnapshotIdentifications(), []);
+    }
+
+    // Anything else (timeout, session, security) is a real error and must surface.
+    const failing = session(
+      stubClient({
+        readDtcSnapshotIdentification: async () => {
+          throw new Error("no response within 75 ms");
+        },
+      }),
+    );
+    await assert.rejects(() => failing.readDtcSnapshotIdentifications(), /no response within/);
   });
 });

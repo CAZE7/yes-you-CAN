@@ -177,7 +177,7 @@ describe("read DTC information", () => {
     assert.equal((env.sent[1] ?? new Uint8Array()).length, 3, "mask 0x80 matches nothing");
   });
 
-  test("report number of DTCs encodes the count as a 16-bit field", async () => {
+  test("report number of DTCs carries mask, format identifier and a 16-bit count", async () => {
     const env = h();
     await env.send([
       SID.READ_DTC_INFORMATION,
@@ -185,8 +185,35 @@ describe("read DTC information", () => {
       0xff,
     ]);
     const response = env.sent[0] ?? new Uint8Array();
-    assert.equal(response[3], 0);
-    assert.equal(response[4], 2);
+    // ISO 14229-1 §11.3.4.2: [0x59, sub, availabilityMask, formatIdentifier, count].
+    assert.equal(response.length, 6);
+    assert.equal(response[2], 0xff, "availability mask");
+    assert.equal(response[3], 0x00, "DTC format identifier: ISO 14229-1 format");
+    assert.equal(response[4], 0);
+    assert.equal(response[5], 2);
+  });
+
+  test("reportDTCSnapshotIdentification lists each code with its record count", async () => {
+    const env = h();
+    await env.send([SID.READ_DTC_INFORMATION, DTC_REPORT.REPORT_DTC_SNAPSHOT_IDENTIFICATION]);
+    const response = env.sent[0] ?? new Uint8Array();
+    assert.equal(response[0], P + 0x19);
+    assert.equal(response[2], 0xff, "availability mask precedes the records");
+    // One 5-byte record per code: DTC(3) + status(1) + numberOfSnapshotRecords(1).
+    assert.equal((response.length - 3) % 5, 0);
+    assert.equal((response.length - 3) / 5, 2, "both stored codes are identified");
+    const withSnapshot = response.subarray(3, 8);
+    assert.equal(withSnapshot[4], 1, "P0420 has one snapshot record");
+
+    await env.send([
+      SID.READ_DTC_INFORMATION,
+      DTC_REPORT.REPORT_DTC_SNAPSHOT_IDENTIFICATION,
+      0x99,
+      0x99,
+      0xff,
+    ]);
+    const filtered = env.sent[1] ?? new Uint8Array();
+    assert.equal(filtered.length, 3, "an unknown code identifies no records");
   });
 
   test("snapshot records return environment data; unknown DTCs are out of range", async () => {

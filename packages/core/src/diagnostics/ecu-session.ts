@@ -17,6 +17,7 @@ import {
 import {
   DID,
   type DtcRecord,
+  type DtcSnapshotIdentification,
   NRC,
   nrcName,
   SESSION,
@@ -322,9 +323,44 @@ export class EcuDiagnosticSession {
   }
 
   async readDtcs(statusMask = 0xff): Promise<DtcRecord[]> {
-    const records = await this.client.readDtcByStatusMask(statusMask);
-    this.record.dtcs = records;
-    return records;
+    const report = await this.client.readDtcReportByStatusMask(statusMask);
+    this.record.dtcs = report.records;
+    // The mask is the ECU's statement about its own status bits; keeping it on the
+    // session is what lets a later report say "this ECU does not report
+    // confirmedDtc" instead of showing a bit nobody measured (ADR 0058).
+    this.record.dtcAvailabilityMask = report.availabilityMask;
+    return report.records;
+  }
+
+  /**
+   * Which codes of this ECU have freeze frames, and how many each
+   * (`0x19 0x03`, ISO 14229-1 §11.3.4.4).
+   *
+   * Read-only like every `0x19` sub-function. It is the step that turns "read the
+   * freeze frame" into "read every freeze frame this ECU stores": without the
+   * record count a reader has to guess record numbers, and a guess that misses is
+   * indistinguishable from "no environment data recorded" (AGENTS 20, ADR 0033).
+   *
+   * `requestOutOfRange`/`subFunctionNotSupported` mean the ECU does not implement
+   * the identification — reported as an empty list with the reason logged, because
+   * that is an answer about the vehicle, not a failure of the read.
+   */
+  async readDtcSnapshotIdentifications(): Promise<DtcSnapshotIdentification[]> {
+    try {
+      const report = await this.client.readDtcSnapshotIdentification();
+      this.record.dtcAvailabilityMask = report.availabilityMask;
+      return report.identifications;
+    } catch (error) {
+      const nrc = nrcOf(error);
+      if (nrc === NRC.REQUEST_OUT_OF_RANGE || nrc === NRC.SUB_FUNCTION_NOT_SUPPORTED) {
+        this.log.info("ECU does not report snapshot identifications", {
+          ecu: this.record.name,
+          nrc: `0x${nrc.toString(16)} (${nrcName(nrc)})`,
+        });
+        return [];
+      }
+      throw error;
+    }
   }
 
   /**
