@@ -545,6 +545,7 @@ function runTool(binary: string, args: readonly string[]): ToolResult {
       cwd: root,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
+      shell: process.platform === "win32",
     });
     return { code: 0, output };
   } catch (error) {

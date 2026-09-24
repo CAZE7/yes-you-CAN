@@ -35,7 +35,7 @@
     "build": "tsc -b tsconfig.json",
     "typecheck": "npm run build && tsc --noEmit -p tsconfig.typecheck.json && tsc --noEmit -p tsconfig.frontend.json",
     "typecheck:all": "npm run build && tsc --noEmit -p tsconfig.typecheck.json && tsc --noEmit -p tsconfig.frontend.json && tsc --noEmit -p tsconfig.json",
-    "test": "npm run build && vitest run --project unit --project protocol --project regression --project replay --project integration --project architecture",
+    "test": "npm run build && node scripts/test-runner.mjs",
     "test:unit": "vitest run --project unit",
     "test:protocol": "vitest run --project protocol",
     "test:regression": "vitest run --project regression",

@@ -109,8 +109,8 @@ describe("over a real socket — 429 when hammering", () => {
       for (let i = 0; i < 2; i++) {
         const controller = new AbortController();
         controllers.push(controller);
-        void fetch(`${base}/api/stream`, { signal: controller.signal }).catch(() => {});
-        await settle(20, "the server registers the SSE stream in its Set");
+        const res = await fetch(`${base}/api/stream`, { signal: controller.signal });
+        assert.equal(res.status, 200);
       }
       // 3rd should be blocked by stream limit
       const blocked = await fetch(`${base}/api/stream`);

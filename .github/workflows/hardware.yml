@@ -1,0 +1,39 @@
+name: Hardware Tests (vcan)
+
+on:
+  schedule:
+    - cron: '0 2 * * *' # Nightly 02:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  vcan-smoke:
+    name: Virtual CAN Smoke Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Set up virtual CAN interface (vcan0)
+        run: |
+          sudo modprobe vcan
+          sudo ip link add dev vcan0 type vcan
+          sudo ip link set up vcan0
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build project references
+        run: npm run build
+
+      - name: Run hardware test suite
+        run: npm run test:hardware

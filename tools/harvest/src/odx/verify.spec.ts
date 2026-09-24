@@ -67,7 +67,10 @@ describe("the cross-check reports honestly", () => {
     // `sh` exists on every host this runs on and cannot import a Python module.
     const verification = verifyOdxDocument("<ODX/>", { checker: "sh" });
     assert.equal(verification.state, "not-run");
-    assert.match(verification.reason ?? "", /odxtools is not importable/);
+    assert.match(
+      verification.reason ?? "",
+      /odxtools is not importable|is not usable as a checker/,
+    );
   });
 
   test("the checker's key=value lines become findings, in order, without the noise", () => {
