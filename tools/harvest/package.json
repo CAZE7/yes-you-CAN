@@ -2,7 +2,7 @@
   "name": "@vdp/harvest",
   "version": "0.1.0",
   "private": true,
-  "license": "MIT",
+  "license": "Apache-2.0",
   "type": "module",
   "description": "Read-only vehicle harvest: observes addresses, services, DIDs and fault memory and writes them as an observation, an ODX/PDX description and a definition candidate (ADR 0058).",
   "repository": {

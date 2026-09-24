@@ -410,6 +410,120 @@ export const one = served.length;
   }
 });
 
+/**
+ * What a published package contains (ADR 0059, phase 3.2 of the open/closed concept).
+ *
+ * Measured 2026-09-23 before the rule existed: `npm pack --dry-run` of `@vdp/domain`
+ * listed 17 files, all `src/` — spec files included — and no `dist/`, because `.gitignore`
+ * excludes `dist/` and npm falls back to it when a package declares no `files`. All 29
+ * packages are private, so nothing leaks today; the fixtures below are what keeps the rule
+ * from being a decoration the day one `private: true` is deleted.
+ */
+test("a publishable package must say what it ships, and it must be the build", () => {
+  const fixture = fixtureWorkspace({
+    "package.json": ROOT_MANIFEST,
+    "packages/silent/package.json": JSON.stringify({
+      name: "@vdp/silent",
+      version: "0.1.0",
+      main: "./dist/src/index.js",
+      types: "./dist/src/index.d.ts",
+    }),
+    "packages/silent/src/index.ts": "export const silent = 1;\n",
+  });
+  try {
+    assert.deepEqual(
+      rulesOf(fixture),
+      ["publishable-without-files"],
+      "without a `files` field npm falls back to .gitignore and packs src/ (measured)",
+    );
+  } finally {
+    rmSync(fixture.dir, { recursive: true, force: true });
+  }
+
+  const sources = fixtureWorkspace({
+    "package.json": ROOT_MANIFEST,
+    "packages/leaky/package.json": JSON.stringify({
+      name: "@vdp/leaky",
+      version: "0.1.0",
+      main: "./dist/src/index.js",
+      files: ["dist", "src"],
+    }),
+    "packages/leaky/src/index.ts": "export const leaky = 1;\n",
+  });
+  try {
+    assert.deepEqual(
+      rulesOf(sources),
+      ["publishable-ships-sources"],
+      "a published package ships what a consumer runs, not the implementation and its tests",
+    );
+  } finally {
+    rmSync(sources.dir, { recursive: true, force: true });
+  }
+
+  const noDist = fixtureWorkspace({
+    "package.json": ROOT_MANIFEST,
+    "packages/broken/package.json": JSON.stringify({
+      name: "@vdp/broken",
+      version: "0.1.0",
+      main: "./dist/src/index.js",
+      files: ["bin"],
+    }),
+    "packages/broken/src/index.ts": "export const broken = 1;\n",
+  });
+  try {
+    assert.deepEqual(
+      rulesOf(noDist),
+      ["publishable-without-dist"],
+      "the entry points the manifest declares are the promise; a tarball without them installs nothing",
+    );
+  } finally {
+    rmSync(noDist.dir, { recursive: true, force: true });
+  }
+});
+
+test("a package that ships exactly its build is quiet, and a private one is not asked", () => {
+  const good = fixtureWorkspace({
+    "package.json": ROOT_MANIFEST,
+    "packages/good/package.json": JSON.stringify({
+      name: "@vdp/good",
+      version: "0.1.0",
+      main: "./dist/src/index.js",
+      types: "./dist/src/index.d.ts",
+      exports: { ".": { types: "./dist/src/index.d.ts", default: "./dist/src/index.js" } },
+      files: ["dist"],
+    }),
+    "packages/good/src/index.ts": "export const good = 1;\n",
+  });
+  try {
+    assert.deepEqual(
+      rulesOf(good),
+      [],
+      "dist/ is what the entry points promise — that package is publishable as declared",
+    );
+  } finally {
+    rmSync(good.dir, { recursive: true, force: true });
+  }
+
+  // The same manifest, but private: the rules must not fire. All 29 packages in this repo
+  // are private today, so this branch is the one that keeps the tree green — and the reason
+  // the fixtures above are the actual proof of the rule.
+  const priv = fixtureWorkspace({
+    "package.json": ROOT_MANIFEST,
+    "packages/quiet/package.json": JSON.stringify({
+      name: "@vdp/quiet",
+      version: "0.1.0",
+      private: true,
+      main: "./dist/src/index.js",
+    }),
+    "packages/quiet/src/index.ts": "export const quiet = 1;\n",
+  });
+  try {
+    assert.deepEqual(rulesOf(priv), [], "a private package is not published, so it is not asked");
+  } finally {
+    rmSync(priv.dir, { recursive: true, force: true });
+  }
+});
+
 test("a broken manifest is exit 2, never a clean report", () => {
   const fixture = fixtureWorkspace({
     "package.json": ROOT_MANIFEST,
@@ -420,5 +534,105 @@ test("a broken manifest is exit 2, never a clean report", () => {
     assert.equal(run.status, 2, "an unreadable manifest must not look like a passing tree");
   } finally {
     rmSync(fixture.dir, { recursive: true, force: true });
+  }
+});
+
+/**
+ * The publication boundary (ADR 0059).
+ *
+ * `private` is the field that decides whether a package can be installed by somebody
+ * outside this repository. A publishable package that depends on a private one describes
+ * an installation that cannot succeed — and with an open core beside closed modules the
+ * mistake would stay invisible until a consumer tried it, which is the most expensive
+ * moment to find out. The fixtures below prove the rule bites, that it is the *field* and
+ * not the edge doing the work, and that a development-only relation stays allowed.
+ */
+test("a publishable package may not depend on a private one", () => {
+  const fixture = fixtureWorkspace({
+    "package.json": ROOT_MANIFEST,
+    "packages/secret/package.json": JSON.stringify({
+      name: "@vdp/secret",
+      version: "0.1.0",
+      private: true,
+      main: "./dist/src/index.js",
+    }),
+    "packages/secret/src/index.ts": "export const secret = 1;\n",
+    "packages/open/package.json": JSON.stringify({
+      name: "@vdp/open",
+      version: "0.1.0",
+      main: "./dist/src/index.js",
+      files: ["dist"],
+      dependencies: { "@vdp/secret": "0.1.0" },
+    }),
+    "packages/open/src/index.ts":
+      'import { secret } from "@vdp/secret";\nexport const open = secret;\n',
+  });
+  try {
+    assert.deepEqual(
+      rulesOf(fixture),
+      ["private-dependency-leak"],
+      "a published package cannot install a private one",
+    );
+    assert.equal(
+      violationsOf(fixture)[0]?.dependency,
+      "@vdp/secret",
+      "the report names the dependency a consumer would trip over",
+    );
+  } finally {
+    rmSync(fixture.dir, { recursive: true, force: true });
+  }
+});
+
+test("the same edge is fine while both sides are private, or when only development uses it", () => {
+  const privateBoth = fixtureWorkspace({
+    "package.json": ROOT_MANIFEST,
+    "packages/secret/package.json": JSON.stringify({
+      name: "@vdp/secret",
+      version: "0.1.0",
+      private: true,
+    }),
+    "packages/host/package.json": JSON.stringify({
+      name: "@vdp/host",
+      version: "0.1.0",
+      private: true,
+      dependencies: { "@vdp/secret": "0.1.0" },
+    }),
+    "packages/host/src/index.ts": 'import "@vdp/secret";\n',
+  });
+  try {
+    assert.deepEqual(
+      rulesOf(privateBoth),
+      [],
+      "inside the organisation the edge is the point — the rule is about publication",
+    );
+  } finally {
+    rmSync(privateBoth.dir, { recursive: true, force: true });
+  }
+
+  const devOnly = fixtureWorkspace({
+    "package.json": ROOT_MANIFEST,
+    "packages/secret/package.json": JSON.stringify({
+      name: "@vdp/secret",
+      version: "0.1.0",
+      private: true,
+    }),
+    "packages/open/package.json": JSON.stringify({
+      name: "@vdp/open",
+      version: "0.1.0",
+      main: "./dist/src/index.js",
+      files: ["dist"],
+      devDependencies: { "@vdp/secret": "0.1.0" },
+    }),
+    "packages/open/src/index.ts": "export const open = 1;\n",
+    "packages/open/src/index.spec.ts": 'import "@vdp/secret";\n',
+  });
+  try {
+    assert.deepEqual(
+      rulesOf(devOnly),
+      [],
+      "npm does not install devDependencies of a dependency — a build-time helper stays allowed (the reason is in the rule)",
+    );
+  } finally {
+    rmSync(devOnly.dir, { recursive: true, force: true });
   }
 });

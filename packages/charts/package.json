@@ -2,7 +2,7 @@
   "name": "@vdp/charts",
   "version": "0.1.0",
   "private": true,
-  "license": "MIT",
+  "license": "Apache-2.0",
   "type": "module",
   "description": "DOM-free, unit-tested chart mathematics for the measurement graphs: viewport (zoom/pan), series windowing, decimation, scales, cursors and marker placement (AGENTS 16).",
   "repository": {

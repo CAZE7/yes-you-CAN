@@ -2,7 +2,7 @@
   "name": "@vdp/trace-analyzer",
   "version": "0.1.0",
   "private": true,
-  "license": "MIT",
+  "license": "Apache-2.0",
   "type": "module",
   "description": "Offline CAN trace analyzer: decode, group and report recorded traces (AGENTS 15, 21).",
   "repository": {

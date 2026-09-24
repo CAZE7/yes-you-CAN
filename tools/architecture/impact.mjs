@@ -27,7 +27,6 @@ import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "../..");
-const MANIFEST = join(ROOT, "architecture", "architecture.yaml");
 
 /** Workspace roots, mirroring the `workspaces` field of the root manifest. */
 const WORKSPACE_ROOTS = [
@@ -38,24 +37,31 @@ const WORKSPACE_ROOTS = [
 
 /* ------------------------------------------------------------------ shared helpers (exported for ai-context --changed) */
 
-/** The one architecture source, parsed (JSON syntax, ADR 0002). Throws on a broken file. */
-export function loadManifest() {
-  if (!existsSync(MANIFEST)) throw new Error(`manifest not found: ${relative(ROOT, MANIFEST)}`);
-  return JSON.parse(readFileSync(MANIFEST, "utf8"));
+/** The one architecture source of `root`, parsed (JSON syntax, ADR 0002). Throws on a broken file. */
+export function loadManifest(root = ROOT) {
+  const file = join(root, "architecture", "architecture.yaml");
+  if (!existsSync(file)) throw new Error(`manifest not found: ${relative(ROOT, file)}`);
+  return JSON.parse(readFileSync(file, "utf8"));
 }
 
-/** Package name → workspace directory relative to the repo root. */
-export function packageDirs() {
+/**
+ * Package name → workspace directory relative to `root`.
+ *
+ * `root` is a parameter for the same reason the checkers take one: a gate is only
+ * believable once a fixture has made it fail, and a fixture is a second tree (ADR 0059
+ * uses this for the contract record; `ai-context.mjs` calls it without an argument).
+ */
+export function packageDirs(root = ROOT) {
   const dirs = new Map();
   for (const { root: base, depth } of WORKSPACE_ROOTS) {
-    const start = join(ROOT, base);
+    const start = join(root, base);
     if (!existsSync(start)) continue;
     const collect = (dir, level) => {
       const manifestPath = join(dir, "package.json");
       if (existsSync(manifestPath)) {
         try {
           const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-          if (manifest.name) dirs.set(manifest.name, relative(ROOT, dir).split(sep).join("/"));
+          if (manifest.name) dirs.set(manifest.name, relative(root, dir).split(sep).join("/"));
         } catch {
           // A broken manifest is the checker's finding, not this tool's.
         }

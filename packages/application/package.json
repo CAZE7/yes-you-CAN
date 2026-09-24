@@ -2,7 +2,7 @@
   "name": "@vdp/application",
   "version": "0.1.0",
   "private": true,
-  "license": "MIT",
+  "license": "Apache-2.0",
   "type": "module",
   "description": "Application layer: command bus, commands/queries, capability-driven diagnostic actions (target architecture ADR 0014).",
   "repository": {

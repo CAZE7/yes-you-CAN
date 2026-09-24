@@ -43,6 +43,10 @@ Evidenz-Sammlung in IR-Form. Die breiteste Schicht *unter* dem Runtime.
 „vordere Tür“ ist der Runtime): `DiagnosticEngine`, `DtcScanner`,
 `collectEvidence`, `createWritePort`, `VehicleSession` o. Ä.
 
+**Eingefrorene Vertragsfläche:** `npm run check:api` misst diese Fläche gegen
+`architecture/public-api.json` (ADR 0059) — eine Änderung ist eine Entscheidung,
+kein Nebeneffekt.
+
 ## Dependencies
 
 `shared`, `diagnostic-ir`, `definitions`, `protocols-uds`, `protocols-oem`,

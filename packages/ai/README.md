@@ -44,6 +44,10 @@ einzige Ort, an dem „Analyse“ im System existiert.
 `src/index.ts`: `types.ts`, `heuristic.ts`, `http.ts`, `service.ts`,
 `prompt.ts`, `provenance.ts` komplett.
 
+**Eingefrorene Vertragsfläche:** `npm run check:api` misst diese Fläche gegen
+`architecture/public-api.json` (ADR 0059) — eine Änderung ist eine Entscheidung,
+kein Nebeneffekt.
+
 ## Dependencies
 
 **Genau** `@vdp/shared` + `@vdp/diagnostic-ir` (maschinell, ADR 0038).

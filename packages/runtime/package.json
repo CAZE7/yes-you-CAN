@@ -2,7 +2,7 @@
   "name": "@vdp/runtime",
   "version": "0.1.0",
   "private": true,
-  "license": "MIT",
+  "license": "Apache-2.0",
   "type": "module",
   "description": "Diagnostic runtime: composes the engine, services, command bus and domain events into one headless API (target architecture ADR 0014).",
   "repository": {

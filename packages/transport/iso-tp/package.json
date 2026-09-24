@@ -2,7 +2,7 @@
   "name": "@vdp/transport-iso-tp",
   "version": "0.1.0",
   "private": true,
-  "license": "MIT",
+  "license": "Apache-2.0",
   "type": "module",
   "description": "ISO 15765-2 transport protocol: segmentation, reassembly, flow control, timeouts, retries (AGENTS 7).",
   "repository": {

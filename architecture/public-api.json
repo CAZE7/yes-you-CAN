@@ -1,0 +1,116 @@
+{
+  "format": "vdp.public-api",
+  "version": 2,
+  "packages": {
+    "@vdp/ai": {
+      "version": "0.1.0",
+      "entries": ["dist/src/index.d.ts"],
+      "files": {
+        "dist/src/heuristic.d.ts": "ccdbfe7bc9aecc89a46c22a3eb14b9b57e5f22a0825bc1dc72fedf07ed579281",
+        "dist/src/http.d.ts": "2b0289e2ec11f0f0deca14b7549e7a9bd7a796bb34865169a15ee9d895be098f",
+        "dist/src/index.d.ts": "67de46a7bc809a3eb0e2868d3e3d08c72762b911f20cd8869ff45287e58d21b6",
+        "dist/src/prompt.d.ts": "f4c8904ab7a416c00feee072233248c7319d154e4df768ba7414aa8cd43a3ba0",
+        "dist/src/provenance.d.ts": "b9b98d3d54698e886585054a5df484fe91adebb91ce3ad4006d04ebb7e87367b",
+        "dist/src/service.d.ts": "8d5bf2175ac49a07a15d54ff1529b8df522b9c2f6890116d6ab3eda1ea119442",
+        "dist/src/types.d.ts": "cc04bb8374d90eb64bcb65a253d98f605435d9b68159b789b55d9a4ab131629d"
+      },
+      "external": ["@vdp/diagnostic-ir", "@vdp/shared"]
+    },
+    "@vdp/core": {
+      "version": "0.1.0",
+      "entries": ["dist/src/logging/integrity.d.ts"],
+      "files": {
+        "dist/src/logging/integrity.d.ts": "8f8f6366715939cf25ba75cd5403abf6c9cec053eb4b8e981f2e7c02f222568e",
+        "dist/src/logging/session-logger.d.ts": "654f1ba919265733832ddce0f64332a7533d58dd205d6383bb49457611efad6f",
+        "dist/src/measurements/decoder.d.ts": "195cdb09db7ed47451aa29f3ba22741cd9372a9e01ee5347fd3e1c5bfd15269e",
+        "dist/src/measurements/recorder.d.ts": "3794d1f4bc2fdfd72104bfa87f213b0dd76f655239cda7b86cafc87caf34d04d",
+        "dist/src/measurements/types.d.ts": "fd141bc869c03701e1da8ca2488a34d1340dec169cf2dd03e5fe68480f6369c4"
+      },
+      "external": [
+        "@vdp/definitions",
+        "@vdp/diagnostic-ir",
+        "@vdp/protocols-uds",
+        "@vdp/shared",
+        "@vdp/transport-can"
+      ]
+    },
+    "@vdp/definitions": {
+      "version": "0.1.0",
+      "entries": [
+        "dist/src/generic/generic-package.d.ts",
+        "dist/src/index.d.ts",
+        "dist/src/mercedes/mercedes-package.d.ts",
+        "dist/src/simulator/simulator-package.d.ts",
+        "dist/src/vag/vag-package.d.ts"
+      ],
+      "files": {
+        "dist/src/dbc.d.ts": "182fb3c825831a0e67633ce61a793a67d3c33427d1870aee85c96ef361c1fd87",
+        "dist/src/evidence.d.ts": "58f4b1576cf050003bc9196fd421b0855ff3115e1fed368854d0a00d5a238945",
+        "dist/src/generic/generic-package.d.ts": "63e4137ed628bd73ef906be91ae46c846800108ff19bcccab4648fbcab00305c",
+        "dist/src/index.d.ts": "d53655d6cd5d746d9572e501580f981c67209fd69b820a5df96d019d88f9e79f",
+        "dist/src/json.d.ts": "35402e048b16b939828217498f6f7149627c0187554566d6079047bebe7e4f3d",
+        "dist/src/knowledge.d.ts": "ad70285d6fd7b6f96fec6f33efe9a3123c52ad432e0e1deba4a3c577c4a04c25",
+        "dist/src/mercedes/mercedes-package.d.ts": "b62b3f1497960830e9ea0a9bc0255d9aa0ad31b0e3883ded5bb7f71e32d67ff4",
+        "dist/src/migrate.d.ts": "76524424c13c30660dd7a8dacc03a5082296414d6ea127bb6f72fbddc656384c",
+        "dist/src/reference/wmi.d.ts": "96013437d9e64a6cd910744d3bf786c0c6fc496ee8718f6e7b43cc089c9b16fe",
+        "dist/src/resolve.d.ts": "fa4e2164535bab7b291a54da1d96ae572de218c3d5acfb6ad5571e45264331e1",
+        "dist/src/schema.d.ts": "08b1990b3fe7a4466c0a4635db7a283cdf137f5e5ed7411fcaf3f0a782778dc7",
+        "dist/src/simulator/high-fidelity-package.d.ts": "38b04b3dfbae378c13fec3a999e266e23163533cc06b751f1b9b2a4ed55153b9",
+        "dist/src/simulator/simulator-package.d.ts": "d6e580a00c350075d1935b1a780731ae26e10a9ccd73a1af5a9830caec83ce5a",
+        "dist/src/vag/vag-package.d.ts": "80aca65ba2e973c682b560910e93597dd94f4b6d6f223a7c4fc2264d38cec27c",
+        "dist/src/validate.d.ts": "dfb6f657ebdd263f81487688e77832537015184f706f3e7d70d85bbcacb1c9e6",
+        "dist/src/vehicles.d.ts": "5ea94a071ca1e3da01db8e44ab2a896500eefbc1dd8ce3f5fc95bbf7ce1bbb8f"
+      },
+      "external": []
+    },
+    "@vdp/diagnostic-ir": {
+      "version": "0.1.0",
+      "entries": ["dist/src/index.d.ts"],
+      "files": {
+        "dist/src/dtc.d.ts": "92288b29e441eb292e76f1a2cb996cee9bed5c19500f960b97c67394ecd50108",
+        "dist/src/evidence.d.ts": "547d8fcf5e2015ea5cbf5a37a6ac19bebb1eebf28dc6c8c48ed0fb5c1dc028ff",
+        "dist/src/index.d.ts": "d1a1d835cc7152850f00b1723d1a89a4102be848998f14a753aab436f8466c22",
+        "dist/src/provenance.d.ts": "fc1638e33d254ac8cfcf20928f8070bad6912a3468ace265dc6dfb3dde1f5821",
+        "dist/src/session.d.ts": "2d67f2aee77bcada6dee984cf0a6457b627fd2d5318220828f3ebf1de29be0c5",
+        "dist/src/signal.d.ts": "868670b0a7bb92760436edd32422241d4eda1195ffea34b3a0fd333da7ec62e2",
+        "dist/src/window.d.ts": "ac620c550ffda733b86ffeeef20a5ca191f6ad2585bcdee5d8f7933b0053b959"
+      },
+      "external": []
+    },
+    "@vdp/domain": {
+      "version": "0.1.0",
+      "entries": ["dist/src/index.d.ts"],
+      "files": {
+        "dist/src/capabilities.d.ts": "236c6bfc6708c86d7308708e288cf5630f4e5fc4b0bf2cc416658a354af0f760",
+        "dist/src/events.d.ts": "7c7916f269c00cb491ef503f04c2e69fb3600c985218524554b10a52cded2643",
+        "dist/src/ids.d.ts": "08f1b97c478842d8d941b643ee75416330c2ff73eb693985cf48e99ff18df398",
+        "dist/src/index.d.ts": "78e058890fdbee5c32ae15851f3e0f6fd87b22b8ccc7c77ec4cd37718f95ddfd",
+        "dist/src/model.d.ts": "674ccbefc33b65a2481b85c98465c33ef4c363a48f180cd098424b744f8a8cc2",
+        "dist/src/ports/clock.d.ts": "c6691e809bde25610944657f93900e5f2d56ff1499ef3a55d9e847268291cc1e",
+        "dist/src/ports/connection.d.ts": "c0b08c6d8be6293b45d10b9f294eb8094c01d37a2243e08acaa7067fa0bce2d0",
+        "dist/src/ports/definition-provider.d.ts": "67b9d25f3d27ef8420652285c790e8aad4adbb0466ee44a484199e85f4dfd582",
+        "dist/src/ports/event-bus.d.ts": "a04ccbd426a878cb2476bc0773a4466e2e832023ee54a76827c0a4fb0fecd9ec",
+        "dist/src/ports/id-generator.d.ts": "c425a549cbb80b78835fd31e8b0b9362c057a4581317ebfe3a018aeb6ba5f557",
+        "dist/src/ports/session-store.d.ts": "5f898c5a4c72afd5e4b5eca98c5d86a23d40bf4723fbfcb95127e4a645a0d540",
+        "dist/src/risk.d.ts": "a0ef4612ae31718a772376ddf89313218cdad0a2bd908b4144868bff239239e7"
+      },
+      "external": []
+    },
+    "@vdp/protocols-oem": {
+      "version": "0.1.0",
+      "entries": ["dist/src/index.d.ts"],
+      "files": {
+        "dist/src/index.d.ts": "e9e5ac01f0612eae57f6ea21dfadaea9bd3d7c9c167bcd3947f8940107077a2f"
+      },
+      "external": []
+    },
+    "@vdp/protocols-uds": {
+      "version": "0.1.0",
+      "entries": ["dist/src/security.d.ts"],
+      "files": {
+        "dist/src/security.d.ts": "71072300f67063522b0a4c0cfd77a44cb5d163562d22c9939531bd342c44c5fd"
+      },
+      "external": []
+    }
+  }
+}

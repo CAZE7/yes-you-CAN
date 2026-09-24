@@ -2,7 +2,7 @@
   "name": "@vdp/adapter-canable",
   "version": "0.1.0",
   "private": true,
-  "license": "MIT",
+  "license": "Apache-2.0",
   "type": "module",
   "description": "CANable/CANtact (slcan) adapter over a serial byte stream (AGENTS 4).",
   "repository": {

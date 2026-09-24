@@ -2,7 +2,7 @@
   "name": "@vdp/domain",
   "version": "0.1.0",
   "private": true,
-  "license": "MIT",
+  "license": "Apache-2.0",
   "type": "module",
   "description": "Domain contracts: entities, ports, capabilities, risk policy, domain events. No I/O, no protocols, no transports (target architecture ADR 0014).",
   "repository": {

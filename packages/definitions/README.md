@@ -33,6 +33,10 @@ Daten, keine Diagnose-Logik.
 `src/index.ts` (Schema, Registry, Validate, Resolve, Vehicles) + Subpath-
 Exports `./generic`, `./vag`, `./mercedes` (die Paket-Konstanten).
 
+**Eingefrorene Vertragsfläche:** `npm run check:api` misst diese Fläche gegen
+`architecture/public-api.json` (ADR 0059) — eine Änderung ist eine Entscheidung,
+kein Nebeneffekt.
+
 ## Dependencies
 
 Nur `@vdp/shared`.

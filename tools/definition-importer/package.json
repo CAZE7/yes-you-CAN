@@ -2,7 +2,7 @@
   "name": "@vdp/definition-importer",
   "version": "0.1.0",
   "private": true,
-  "license": "MIT",
+  "license": "Apache-2.0",
   "type": "module",
   "description": "Import DBC/CSV/JSON into validated definition packages (AGENTS 3, 24).",
   "repository": {

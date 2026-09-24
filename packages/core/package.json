@@ -2,7 +2,7 @@
   "name": "@vdp/core",
   "version": "0.1.0",
   "private": true,
-  "license": "MIT",
+  "license": "Apache-2.0",
   "type": "module",
   "description": "Diagnostic core: sessions, ECU explorer, measurement engine, DTC system, logging, safety layer (AGENTS 9-21, 26).",
   "repository": {

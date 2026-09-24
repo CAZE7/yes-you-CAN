@@ -2,7 +2,7 @@
   "name": "@vdp/reports",
   "version": "0.1.0",
   "private": true,
-  "license": "MIT",
+  "license": "Apache-2.0",
   "type": "module",
   "description": "Diagnostic reports as HTML and PDF (AGENTS 21). Self-contained PDF writer, no external dependency.",
   "repository": {
