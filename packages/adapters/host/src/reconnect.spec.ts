@@ -418,3 +418,85 @@ test("the supervisor names its states: recovering while reviving, error when the
     "the state reason names the end of the policy",
   );
 });
+
+test("without a policy the supervisor takes the documented default (one attempt, 2 s)", async () => {
+  // The default is part of the contract (`DEFAULT_RECONNECT_POLICY`) — and the
+  // socketcan hardening in CI has no socat, so the default must be pinned here
+  // and not only on a PTY (where the rehearsal tests skip without socat).
+  const made = factory();
+  const sink = new MemorySink();
+  const logger = createLogger("can", { level: "DEBUG" }, [sink]);
+  const bus = await superviseSerialBus({ adapterId: "elm327", open: made.open, logger });
+  await bus.open();
+  made.pairs[0]?.stream.die("usb removed");
+
+  const lost = sink
+    .all()
+    .find((record) => record.message === "adapter link lost — reconnect scheduled");
+  assert.ok(lost, "the loss is logged even without an explicit policy");
+  assert.equal(lost?.fields?.["attempts"], 1, "the default budget is one attempt");
+  assert.equal(lost?.fields?.["delayMs"], 2000, "the default delay is two seconds");
+  assert.equal(bus.getStatus().state, "recovering", "the default policy schedules a revival");
+
+  // And the scheduled timer is cancelled by close(): this test must not wait 2 s.
+  await bus.close();
+});
+
+test("a stream death reported after close() is ignored — an ended session revives nothing", async () => {
+  const made = factory();
+  const sink = new MemorySink();
+  const logger = createLogger("can", { level: "DEBUG" }, [sink]);
+  const bus = await superviseSerialBus({
+    adapterId: "elm327",
+    open: made.open,
+    policy: { attempts: 1, delayMs: 10 },
+    logger,
+  });
+  await bus.open();
+  await bus.close();
+  const loggedWhenClosed = sink.all().length;
+
+  // The device is unplugged while the session is already shutting down; the
+  // supervisor must not read that as an incident (no timer, no state flip).
+  made.pairs[0]?.stream.die("usb yanked during shutdown");
+  await settle(40, "a death after close() must not schedule a rebuild");
+  assert.equal(made.pairs.length, 1, "the session is over; nothing is rebuilt");
+  assert.equal(sink.all().length, loggedWhenClosed, "and nothing is logged as an incident");
+  assert.notEqual(bus.getStatus().state, "recovering", "no phantom recovery after close()");
+});
+
+test("double unsubscribe is harmless, and a filterless subscription is revived filterless", async () => {
+  const made = factory();
+  const bus = await superviseSerialBus({
+    adapterId: "elm327",
+    open: made.open,
+    policy: { attempts: 1, delayMs: 10 },
+  });
+  await bus.open();
+  const seen: number[] = [];
+  const off = bus.subscribe((f) => {
+    seen.push(f.id);
+  });
+  off();
+  // The second call finds the registration gone: it must neither throw nor
+  // remove somebody else's subscription (the registry is spliced by identity).
+  off();
+  bus.subscribe((f) => {
+    seen.push(f.id + 0x1000);
+  });
+
+  made.pairs[0]?.stream.die("usb removed");
+  await waitFor(() => bus.isOpen(), Boolean, {
+    timeoutMs: 500,
+    message: "the supervisor revives the link",
+  });
+  assert.equal(made.pairs[1]?.bus.subscribers.length, 1, "only the live subscription survives");
+  assert.equal(
+    made.pairs[1]?.bus.subscribers[0]?.filters,
+    undefined,
+    "a subscription without filters is re-registered without filters",
+  );
+  made.pairs[1]?.bus.emit(frame(0x10));
+  assert.deepEqual(seen, [0x1010], "the revived listener fires");
+  await bus.close();
+});

@@ -105,12 +105,12 @@ Keine Gesamtnote, nur Zahlen. Quelle jeweils in Klammern.
 
 | Kennzahl | Wert | Quelle |
 |---|---|---|
-| Tests (grün / gesamt) | **2699 / 2707** (8 skipped, 0 failed) | `node scripts/test-runner.mjs` |
+| Tests (grün / gesamt) | **2702 / 2710** (8 skipped, 0 failed) | `node scripts/test-runner.mjs` |
 | Testdateien | **191** (189 passed, 2 skipped) | ebd. |
 | TypeScript-Dateien (ohne `dist`) | **447** | `find packages tools apps tests -name '*.ts' \| grep -v dist` |
 | Test-Ebenen | 6 Vitest-Projekte (unit, protocol, regression, replay, integration, architecture) + hardware + 19 ausführbare Doku-Beispiele | `vitest.config.ts`, `tests/examples/` |
-| Neue Tests in diesem Sprint | +40 Tests gegenüber der Basis (2659 → **2699**): 12 Tracker-Zustandstests, 6 Host-DoIP-Socket-Tests, 2 ELM327-Zustandstests, 1 Supervisor-Zustandstest, 9 DoIP-Pipeline-Tests über echte Sockets, 1 Vertragstest auf 7 `CanBus`-Subjekten, 3 neue PTY-Rehearsal-Szenarien, plus Assertions in bestehenden Suiten | `git diff --stat`, `node scripts/test-runner.mjs` |
-| Coverage (global, Statements/Branches/Functions/Lines) | **93,78 / 85,56 / 94,97 / 95,28** — alle Gates grün (global 90/80/90/90; je Pfad strenger, u. a. adapters 92/78, transport 88/72) | `npm run test:coverage`, `vitest.config.ts` |
+| Neue Tests in diesem Sprint | +43 Tests gegenüber der Basis (2659 → **2702**): 12 Tracker-Zustandstests, 6 Host-DoIP-Socket-Tests, 2 ELM327-Zustandstests, 1 Supervisor-Zustandstest, 9 DoIP-Pipeline-Tests über echte Sockets, 1 Vertragstest auf 7 `CanBus`-Subjekten, 3 neue PTY-Rehearsal-Szenarien, **4 socat-freie Supervisor-Grenzfälle (Nachtrag §8)**, plus Assertions in bestehenden Suiten | `git diff --stat`, `node scripts/test-runner.mjs` |
+| Coverage (global, Statements/Branches/Functions/Lines) | **93,79 / 85,60 / 94,97 / 95,28** — alle Gates grün (global 90/80/90/90; je Pfad strenger, u. a. adapters 92/78, transport 88/72); zusätzlich im socat-freien CI-Szenario grün, siehe §8 | `npm run test:coverage`, `CI=true npm test` ohne `socat` |
 
 ### Architektur
 
@@ -177,3 +177,54 @@ npm run test:integration -- tests/integration/adapter-rehearsal.spec.ts   # brau
 Was dieser Sprint **nicht** liefert, steht in Abschnitt 3 (NOT VERIFIED) und
 Abschnitt 4 (REMAINING RISKS) — und beides ist der Ausgangspunkt für die
 NEXT-10-Liste, nicht ihr Ersatz.
+
+## 8. Nachtrag 2026-09-24 — der erste CI-Lauf war rot, ohne einen roten Test
+
+**Befund.** PR #52 öffnete sich mit zwei roten Test-Jobs (Node 22 und 24, ~1 min),
+während dieselbe Suite lokal grün war. Die Job-Annotationen nannten **keinen**
+fehlgeschlagenen Test — nur die Fixture-Beispiele des Repoters — und die
+Ergebnis-Blobs sind aus dieser Umgebung nicht abrufbar (dieselbe Grenze, die den
+Annotations-Reporter überhaupt begründet). Reproduziert wurde der Befund lokal,
+indem dem Lauf der `socat`-Binärpfad genommen wurde:
+
+```bash
+PATH=<ohne socat> CI=true npm test      # EXIT 1
+# → 187 passed | 4 skipped Dateien, 2684 passed | 23 skipped Tests
+# → ERROR: Coverage for branches (77.27%) does not meet
+#   "packages/adapters/**/src/**" threshold (78%)
+#   for packages/adapters/host/src/reconnect.ts
+```
+
+**Ursache.** Die GitHub-Runner bringen kein `socat` mit (das Ubuntu-Image listet es
+nicht; gemessen am Abbild vom 2026-09-20). Ohne `socat` skippen die PTY-Suiten
+(`adapter-rehearsal.spec.ts`, `host-serial.spec.ts`) — und die neuen
+Supervisor-Zustände aus P1 (`recovering`/`error`, Default-Policy, Tod nach
+`close()`, filterlose Subscriptions) waren **ausschließlich** dort gedeckt. Vitest
+meldet eine Schwellenverletzung als `logger.error` + `process.exitCode = 1`, also
+**ohne Testfehler und ohne Annotation** — genau das Bild des roten Jobs.
+
+**Behebung (ohne Gate-Absenkung, ohne Test-Abschwächung).**
+
+- Vier socat-freie Unit-Grenzfälle in `packages/adapters/host/src/reconnect.spec.ts`:
+  Default-Policy greift (Feldwerte 1 Versuch / 2000 ms), Stream-Tod *nach* `close()`
+  wird ignoriert (kein Rebuild, kein Log, kein `recovering`), doppeltes Unsubscribe
+  ist harmlos (Registry wird über Identität entfernt), filterlose Subscription wird
+  filterlos wiederbelebt.
+- Ein **unerreichbarer** Zweig ist entfernt: der `if (closing) return;`-Wächter am
+  Anfang von `revive()` konnte nie wahr werden (`close()` cancelt den Timer, und
+  `onStreamDeath` plant danach keinen neuen); der Fall „`close()` während des
+  Rebuilds“ bleibt über den zweiten Wächter geprüft. Der Kommentar nennt die
+  Invariante, damit ein späterer Umbau sie kennt.
+- Regel im Test-Standard ([CONTRIBUTING.md](../../CONTRIBUTING.md#testing)):
+  PTY-Suiten sind Integrationsbeweis, **nie** alleiniger Gate-Träger.
+
+**Messung nach der Behebung.**
+
+| Lauf | Ergebnis |
+|---|---|
+| `CI=true npm test` **ohne** `socat` | **EXIT 0**, keine `ERROR:`-Zeile; `packages/adapters/host/src/reconnect.ts` **95 % Branches** |
+| `node scripts/test-runner.mjs` (mit `socat`) | **2702 passed / 8 skipped** (2710), 189 passed / 2 skipped Dateien |
+| `npm run test:coverage` | global **93,79 / 85,60 / 94,97 / 95,28**; `reconnect.ts` **92,77 / 100 / 70 / 100**; alle Pfad-Gates grün |
+
+Die Lehre steht auch in [Backlog E38](backlog.md): wer einen Produktionspfad nur
+über eine Suite mit optionalem Werkzeug deckt, hat ihn in CI nicht gedeckt.

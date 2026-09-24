@@ -158,8 +158,11 @@ export async function superviseSerialBus(options: SupervisedBusOptions): Promise
     }, policy.delayMs);
   };
 
+  // `close()` cancels the pending timer (and `onStreamDeath` refuses to schedule
+  // one afterwards), so this function cannot start after the session ended —
+  // there is deliberately no "closing" guard at the top. What can happen is
+  // `close()` *during* the rebuild, and that case is handled below.
   const revive = async (reason: string): Promise<void> => {
-    if (closing) return;
     // A pair that was built but not adopted must give its descriptor back —
     // `open()` runs the init sequence and can legitimately fail on a device
     // that reappeared but does not answer yet.

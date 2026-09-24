@@ -192,6 +192,27 @@ none of it was the norm. This file is the release changelog.
 
 ### Fixed
 
+- **CI rot ohne einen einzigen roten Test: der Coverage-Gate brach ohne `socat` ([Backlog E38](docs/architecture/backlog.md)).**
+  Die GitHub-Runner bringen kein `socat` mit (gemessen am Ubuntu-Abbild vom
+  2026-09-20), also skippen die PTY-Suiten: `tests/integration/adapter-rehearsal.spec.ts`
+  (9 Tests) und `host-serial.spec.ts` (6 Tests) — 23 Skips statt 8 — und die neuen
+  Supervisor-Zweige aus P1 waren **nur** dort gedeckt. Gemessen im
+  CI-Szenario (`PATH` ohne `socat`, `CI=true npm test`): `packages/adapters/host/src/reconnect.ts`
+  fiel auf **77,27 % Branches** unter das Pfad-Gate (78 %) für
+  `packages/adapters/**/src/**`; Vitest meldet das als
+  `ERROR: Coverage for branches … does not meet threshold` und setzt `process.exitCode = 1` —
+  **ohne Testfehler**, deshalb standen im Job nur die Fixture-Annotationen des
+  Reporters, und die 1-Minuten-Laufzeit sah nach einem frühen Abbruch aus. Behoben
+  ohne Gate-Absenkung und ohne Test-Abschwächung: vier socat-**freie** Grenzfälle
+  in `reconnect.spec.ts` (Default-Policy greift wirklich, ein Stream-Tod *nach*
+  `close()` wird ignoriert, doppeltes Unsubscribe ist harmlos, filterlose
+  Subscriptions werden filterlos wiederbelebt) — dieselbe Datei misst damit
+  **95 % Branches** auch ohne `socat`, und der CI-Modus ist ohne `socat` wieder
+  Exit 0. Zusätzlich entfernt: der `if (closing) return;`-Wächter am Anfang von
+  `revive()` war **unerreichbar** (der Timer wird in `close()` gecancelt, und
+  `onStreamDeath` plant danach keinen neuen) — er kostete eine Zweigquote, die
+  kein ehrlicher Test hätte liefern können; der Kommentar nennt die Invariante,
+  der Fall „`close()` mitten im Rebuild“ bleibt geprüft.
 - **ELM327: Multi-Frame-Antworten überlebten windowed Devices nicht.** Zwei in-flight
   AT-Kommandos teilten einen `currentLines`-Collector und ISOTP's re-entrantes
   Flow-Control traf das Device mitten im Empfangsfenster — die Antwort kam als
