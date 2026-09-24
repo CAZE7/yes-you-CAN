@@ -105,7 +105,22 @@ export function parseFrameLine(
   return null;
 }
 
-/** Format a frame the way ELM327 expects it as input (data bytes only). */
+/**
+ * Format a frame the way ELM327 expects it as input: the DLC, then the data
+ * bytes — `03 02 10 01` for a three-byte payload.
+ *
+ * **The length prefix is not a bug, and removing it breaks the adapter in both
+ * directions.** It is the same field `parseFrameLine` reads back: the ELM327
+ * prints `<ID> <DLC> <data>` with headers on, and it accepts `<DLC> <data>` on
+ * the way out. Dropping it on send puts the first payload byte where the
+ * adapter expects the length (a single frame `02 10 01` becomes `02`, i.e. DLC
+ * 2, payload `10 01` — the ECU reads service id `0x10` as byte 2 and the whole
+ * request is a different request); dropping it on receive makes `06` in
+ * `7E8 06 62 F1 90 …` a payload byte, and ISO-TP then rejects the frame because
+ * `0x62 & 0xF0` is neither a Single nor a First Frame. Both halves are pinned by
+ * `elm327.spec.ts`; an 8-byte padded frame is 9 tokens, which is what the DLC
+ * says, and the adapter accepts it.
+ */
 export function formatSendPayload(frame: CanFrame): string {
   // Upper case keeps transmitted and parsed frames consistent (ELM327 accepts
   // both, but a trace should not mix styles).
