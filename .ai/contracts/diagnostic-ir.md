@@ -1,8 +1,8 @@
 # Vertrag: Diagnostic IR
 
 **Verbindliche Quellen:** `packages/diagnostic-ir/README.md` (v. a.
-„Does NOT do“), [`../docs/api/diagnostic-ir.md`](../docs/api/diagnostic-ir.md),
-ADR 0033/0034/0037/0038, [`../architecture/architecture.yaml`](../architecture/architecture.yaml)
+„Does NOT do“), [`../docs/api/diagnostic-ir.md`](../../docs/api/diagnostic-ir.md),
+ADR 0033/0034/0037/0038, [`../architecture/architecture.yaml`](../../architecture/architecture.yaml)
 (`@vdp/diagnostic-ir`, `@vdp/core`, `@vdp/reports`, `@vdp/ai`).
 
 ## Die Regeln, die du nicht brechen darfst

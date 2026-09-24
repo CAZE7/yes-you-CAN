@@ -76,3 +76,4 @@ AI-Context-Topics) steht in [`architecture/architecture.yaml`](../../architectur
 | [0056](0056-the-diagnosis-loop-is-a-state-machine-with-a-machine-readable-diff.md) | Der Diagnose-Loop ist eine Zustandsmaschine mit maschinenlesbarem Diff | accepted |
 | [0057](0057-provenance-and-replay-same-recording-same-diagnosis.md) | Provenance und Replay: dieselbe Aufnahme, dieselbe Diagnose | accepted (Implementierung läuft) |
 | [0058](0058-harvest-as-observation.md) | Eine Ernte ist eine Beobachtung: read-only auslesen, als ODX beschreiben, mit `observed` als Quelle | accepted |
+| [0059](0059-the-contract-is-readable-again.md) | Der Vertrag ist wieder lesbar: Chronik, Stand und Backlog sind nicht die Norm | accepted |

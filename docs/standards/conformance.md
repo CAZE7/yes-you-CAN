@@ -36,7 +36,7 @@ Code + Test.
 | ISO-TP-Konformanzvektoren | **28/28** | `npm run formal:conform`, `tools/formal-conformance/` | Referenzseite Haskell: `haskell NOT RUN` (keine GHC-Toolchain) — **nicht verifiziert** |
 | Write-Safety-Vektoren | **44/44** | dito, `vectors/safety.json` | dito |
 | Referenzmodelle in Haskell | syntaxgeprüft | `formal/*.hs` | Semantik nicht ausgeführt — ein Syntaxcheck ist kein Konformanzbeweis |
-| Referenzmodelle in Rust | **nicht verifiziert** | `crates/yes_you_can_core` | Kein `cargo` in der Umgebung; 5 offene Befunde in AGENTS 0.E E25 |
+| Referenzmodelle in Rust | **nicht verifiziert** | `crates/yes_you_can_core` | Kein `cargo` in der Umgebung; nachgemessen 2026-09-24: 3 der 5 Befunde geschlossen, 2 Lesen-Befunde + fehlendes `signal.rs`-Test offen — [AGENTS 0.E](../architecture/backlog.md) E25 |
 
 ## Prozess- und Sicherheitsnormen
 
@@ -79,6 +79,6 @@ Lücke dasteht.
 **Zugehörig:** [ADR 0050](../adr/0050-standards-conformance-register.md),
 [ADR 0051](../adr/0051-workbench-api-knows-its-caller.md),
 [ADR 0052](../adr/0052-the-signal-model-clock-is-a-parameter.md),
-[ADR 0053](0053-deps-hardware-and-tooling-boundary.md),
-[ADR 0054](0054-tls-rate-limit-and-csms.md),
+[ADR 0053](../adr/0053-deps-hardware-and-tooling-boundary.md),
+[ADR 0054](../adr/0054-tls-rate-limit-and-csms.md),
 [`README.md`](README.md) (Einstieg), AGENTS 34.21 (Messung vor Behauptung).

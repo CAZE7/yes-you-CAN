@@ -1,0 +1,38 @@
+# response-pending.log
+# Response-Pending-Sequenz: NRC 0x78, dann die echte positive Antwort nach P2*-Wartezeit
+#
+# Herkunft (provenance):
+#   Aufgenommen mit `scripts/record-trace-fixtures.mjs` aus dem Stack dieses
+#   Repositorys (UdsServer mit pendingResponseServices = [0x22] und
+#   pendingResponseDelayMs = 25 hinter einer IsoTpConnection, davor ein
+#   UdsClient); kein reales Fahrzeug. Das Steuergerät 'engine-gateway' meldet
+#   für ReadDataByIdentifier erst RequestCorrectlyReceivedResponsePending und
+#   antwortet dann — das ist ISO 14229-1 §9.3.2.2 mit dem P2*-Fenster aus
+#   ISO 14229-2 §7.4: zwei Nachrichten, nicht eine verspätete.
+#   Bewusst kein TesterPresent innerhalb der Pending-Lücke: ein Keep-Alive-Frame
+#   zwischen 0x78 und der echten Antwort gehört in ein eigenes Trace-Beispiel
+#   (die Lücke ist hier die des Steuergeräts, nicht die des Testers).
+#
+# Format: candump -l (SocketCAN-Log) —
+#   "(<epoch-sekunden>.<mikrosekunden>) <interface> <can-id>#<daten als hex>"
+#   Zeilen mit '#' in Spalte 1 sind Kommentare, Leerzeilen werden übersprungen.
+#   11-bit-Identifier (CAN 2.0A), MTU 8, kein CAN FD, kein Padding.
+#   Das Log ist eine Bus-Aufnahme aus Sicht des Testers: 0x7E0 = Tester (tx),
+#   0x7E8 = Steuergerät (rx).
+#
+# Aufbau (structure):
+#     0x7E0  03 22 F1 8C        Single Frame, ReadDataByIdentifier ECU Serial Number
+#     0x7E8  03 7F 22 78        Negative Response: NRC 0x78 requestCorrectlyReceived-
+#                               ResponsePending — ab hier läuft P2*Client_max, nicht P2
+#     0x7E8  07 62 F1 8C 00 11 22 33   (+25 ms) Single Frame, die echte Antwort:
+#                               62 F1 8C mit 4 Byte Seriennummer
+#   Erwartung an den Client: exakt eine Antworttransaktion, ein Pending-Zähler, und
+#   die finale Antwort innerhalb von P2* (25 ms ≪ 5000 ms) — kein Timeout, kein
+#   zweiter Request auf dem Draht.
+#
+# Reproduzieren: npm run build && node scripts/record-trace-fixtures.mjs
+# Zeitbasis: virtuelle Uhr, 1 ms Raster, Epoche 2026-09-22T00:00:00.000Z;
+#   die Response-Pending-Lücke ist die konfigurierte pendingResponseDelayMs (25 ms).
+(1790035200.000000) vcan0 7E0#0322F18C
+(1790035200.001000) vcan0 7E8#037F2278
+(1790035200.026000) vcan0 7E8#0762F18C00112233

@@ -2,12 +2,106 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version tags
 follow SemVer and match the platform version (`package.json`, `PLATFORM_VERSION`).
-The dense German milestone history of the engineering contract lives in `AGENTS.md`;
-this file is the release changelog.
+The dense German milestone history of the engineering contract lives in
+[`docs/changelog/agents-contract.md`](docs/changelog/agents-contract.md) — it was moved out
+of `AGENTS.md` on 2026-09-24 (ADR 0059), because it was 65 % of the bytes of the file and
+none of it was the norm. This file is the release changelog.
 
 ## [Unreleased]
 
+### Changed
+
+- **`AGENTS.md` ist wieder lesbar (ADR 0059).** Gemessen am 2026-09-24: 248.497 Bytes
+  auf 1.461 Zeilen, längste Zeile **7.653 Zeichen**, durchschnittlich 172 Zeichen — und
+  davon 65,3 % Chronik (162.192 B in 61 Versions-Bullets), 14.336 B Abschnitt 0.A
+  „Umsetzungsstand" und 26.684 B 0.E „Offene Verbesserungen". Die eigentliche Norm war
+  42 KB, also **17 %**. Drei Textarten mit drei Halbwertszeiten in einer Datei: die Norm
+  ändert sich bei jeder Entscheidung, Stand und Chronik bei jedem PR. **Ausgelagert,
+  ohne eine Referenz zu brechen:** Chronik →
+  [`docs/changelog/agents-contract.md`](docs/changelog/agents-contract.md), 0.A →
+  [`docs/architecture/status.md`](docs/architecture/status.md), 0.E →
+  [`docs/architecture/backlog.md`](docs/architecture/backlog.md). Die Abschnittsnummern
+  0.A/0.E **bleiben**, damit jedes „AGENTS 0.E E10" in Code-Kommentaren, ADRs und Tests
+  weiter auflösbar ist; 24 Dateien mit solchen Verweisen wurden nachgezogen.
+  **Nach dem Schnitt: 248.497 → 47.526 Bytes (1.461 → 1.298 Zeilen), längste Zeile
+  7.653 → 925.** Kein Satz der Norm wurde umformuliert; die Abschnitte 0–36 stehen
+  unverändert und in derselben Reihenfolge.
+- **Der Rust-Referenz-Crate sagt, was er ist (ADR 0059, [Backlog E25](docs/architecture/backlog.md)).**
+  Nachgemessen am 2026-09-24: drei der fünf in E25 geführten Befunde waren im Code
+  bereits geschlossen (der CAN-FD/32-bit-DL-Kopf von `isotp.rs`, und
+  `safety.rs::execute`, das das Permit-Ablaufdatum vom Aufrufer entgegennahm). Der
+  dritte — „zero-copy"/„zero-allocation" — ist in dieser Runde korrigiert, weil
+  `signal.rs` alloziert (`values.to_vec()`, zweimal `vec![0.0; n]`); `Cargo.toml`,
+  `lib.rs` und der `signal.rs`-Kopf sagen das jetzt, statt es zu behaupten. Neu:
+  `crates/yes_you_can_core/README.md` als Statuslabel (**nicht gebaut, nicht getestet,
+  nicht importiert**) und `tests/architecture/reference-crate.test.ts` als Tor — es
+  hält alle drei Tatsachen fest, scannt `.rs`/`.toml` nach ungemessenen
+  Performance-Claims (eine sich selbst negierende Zeile ist eine Korrektur, kein Claim)
+  und beißt nachweislich (ein wieder eingesetztes „High-Performance" im `lib.rs`-Kopf
+  lässt genau diesen Test fallen). Zwei Lesen-Befunde ohne Toolchain **nicht**
+  behoben, sondern an Datei und Zeile dokumentiert: `isotp.rs:57` panikt bei einer
+  Single Frame mit `SF_DL = 0` (`&data[1..=0]`), und `compute_fft` prüft nicht, dass
+  `timestamps` dieselbe Länge hat wie `values`.
+
+- **Zwei Zahlen in den Akten standen falsch, beide durch Nachmessen gefunden.**
+  (1) **Coverage:** global ist jetzt **94,07 / 85,93 / 95,81 / 95,41** (Statements /
+  Branches / Functions / Lines), nicht 93,64 / 85,44 / 95,53 / 94,95 — die alten
+  Zahlen stammen vom 2026-09-23. (2) **`flaky-reporter.ts` steht nicht bei 0 %.** ADR
+  0027 hatte die 0 % als Beweis dafür genommen, dass nichts die Datei ausführt; mit
+  dem Rebase auf `main` kam `tools/test-reporters/src/flaky-reporter.spec.ts` herein
+  (5 Tests, grün), und die Datei misst **100 % Statements / 86,66 % Zweige**. Der
+  Befund selbst steht unverändert — **keiner der vier CI-Jobs ruft den Reporter auf**
+  (`grep -rn flaky .github/workflows/` trifft nichts), also gibt es keinen einzigen
+  Flaky-Report aus der CI und `retry: isCi ? 2 : 0` bleibt unbewiesen ([Backlog
+  E9](docs/architecture/backlog.md)). Getestet ist sie, aufgerufen wird sie nicht.
+
+### Fixed
+
+- **Zehn kaputte relative Markdown-Links** — sechs in `.ai/contracts/*.md`
+  (`../docs/…` wo `../../docs/…` gemeint war) und vier in
+  `docs/standards/conformance.md` (`0053-…`/`0054-…` ohne `../adr/`). Die `.ai/`-Schicht
+  wird aus derselben Regel generiert wie `check:deps` (ADR 0043); eine Vertragsdatei,
+  die ins Nichts zeigt, ist ein Agent, der einem toten Zeiger folgt. Neu verankert als
+  Tor: [`tests/architecture/links.test.ts`](tests/architecture/links.test.ts) prüft alle
+  **443 relativen Links in 148 Markdown-Dateien** und lässt Fences sowie Inline-Code
+  aus — sonst würde das Gate das Dokumentieren der eigenen Syntax verbieten. Biss
+  nachgewiesen an einem Tempfile mit `[gone](./nowhere.md)`.
+
+- **Die Chronik der Spielregeln war zu einem Viertel doppelt.** Beim Auslagern
+  (ADR 0059) fiel auf, dass die 61 Versions-Bullets von `AGENTS.md` nur **46
+  verschiedene Versionen** trugen: 1.0–1.12 und 1.38 standen je zweimal darin. 13
+  der 14 Doppelungen sind byte-identisch und entfernt; bei 1.38 stehen zwei
+  *verschiedene* Einträge unter derselben Nummer — beides eigene Aussagen, beide
+  bleiben stehen (die Kollision ist ein eigener Befund, siehe
+  [Backlog E28](docs/architecture/backlog.md)). Kein Tor hat das bemerkt, weil die
+  Datei 45 KB groß war und niemand sie rückwärts las. Eintrag 1.48 der Chronik.
+
+### Infrastructure
+
+- **Die gehärtete CI aus ADR 0016 §3 liegt im Repository (2026-09-24).** Alle vier
+  Workflows sind auf `main`: `ci.yml` mit **Quality-Job** (`build` · `typecheck:all` ·
+  `check` · `check:deps` · `check:manifests` · `npm audit`) vor der Test-Matrix auf
+  Node 22 und 24 plus Coverage-Artefakt-Upload, dazu `codeql.yml`,
+  `dependency-review.yml` und der nächtliche `hardware.yml`-Smoke auf `vcan0`.
+- **Der Zweitträger fällt weg (ADR 0059).** Von 2026-09-14 bis 2026-09-24 lief `ci.yml`
+  nur mit `npm ci` → `build` → `npm test`, weil die GitHub-App keine Workflow-Dateien
+  schreiben durfte. In dieser Zeit führte der `architecture`-Projektlauf von `npm test`
+  `biome check .` und beide `--noEmit`-Pässe selbst aus (≈2 s auf einen 22,6-s-Lauf).
+  Da der Workflow das jetzt selbst tut, ist dieser Test auf eine reine
+  Selbstbeschreibung zurückgebaut: er liest `ci.yml` und fällt, wenn ein Tor seinen
+  Träger verliert — genau die Form, die [Backlog E20](docs/architecture/backlog.md) für den
+  Moment der Freischaltung vorgesehen hatte. `runTool`/`execFileSync` sind entfallen.
+- **Die Coverage-Gates behalten ihren Träger, und der Grund steht jetzt im Code.**
+  `ci.yml` lädt `coverage/` mit `if: always()` hoch — ein Artefakt, das kommt, ob die
+  Schwellen hielten oder nicht, ist ein Bericht, kein Tor. Getragen wird es von
+  `tests/architecture/coverage-gate.test.ts` (Kindlauf `npm run test:coverage`, nur
+  unter `CI`, Rekursionssperre, `retry: 0`). Der fehlende Workflow-Schritt ist
+  einzeilig und in [`CONTRIBUTING.md`](CONTRIBUTING.md) aufgeschrieben; er braucht
+  jemanden, der `.github/workflows/` schreiben darf — die GitHub-App-Integration kann
+  es weiterhin nicht (gemessen 2026-09-24 per `git push` und per API).
+
 ### Added
+
 
 - **Fahrzeug-Ernte: read-only auslesen, als Beobachtung behalten (ADR 0058).**
   Neues Werkzeug `tools/harvest` (`@vdp/harvest`, layer `tool`): `harvestVehicle()`

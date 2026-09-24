@@ -315,6 +315,16 @@ export class UdsServer {
     return this.session;
   }
 
+  /**
+   * Security level this ECU is unlocked at, `0` while it is locked.
+   *
+   * Session state, so it is the session machine's to keep: a transition, an S3
+   * expiry and a reset all drop it (ISO 14229-1 §10.2).
+   */
+  get securityLevel(): number {
+    return this.session.securityLevel;
+  }
+
   async handle(payload: Uint8Array): Promise<void> {
     if (payload.length === 0) return;
     this.stats.requests++;
@@ -709,6 +719,10 @@ export class UdsServer {
       );
     }
     this.securityFailures = 0;
+    // The unlock is recorded in the session machine, not here: it must not survive
+    // the next session transition, expiry or reset (ISO 14229-1 §10.2).
+    this.session.unlock(level);
+    this.log.info("security access granted", { ecu: this.name, level });
     return new Uint8Array([positiveResponseSid(SID.SECURITY_ACCESS), level]);
   }
 

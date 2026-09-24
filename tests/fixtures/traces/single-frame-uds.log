@@ -1,0 +1,37 @@
+# single-frame-uds.log
+# Single-Frame-UDS: TesterPresent, DiagnosticSessionControl, ReadDataByIdentifier
+#
+# Herkunft (provenance):
+#   Aufgenommen mit `scripts/record-trace-fixtures.mjs` aus dem Stack dieses
+#   Repositorys: `UdsServer` (Paket @vdp/protocols-uds) hinter einer
+#   `IsoTpConnection` (@vdp/transport-iso-tp), davor ein `UdsClient` über einer
+#   zweiten Verbindung, verbunden durch einen virtuellen CAN-Draht. Kein reales
+#   Fahrzeug und keine reale Hardware — die Bytes sind echte Wire-Bytes der
+#   Referenzimplementierung, nicht abgetippt (ADR 0005: Simulator statt Auto).
+#   Steuergerät: 'engine-gateway', DIDs 0xF186/0xF187/0xF18C/0xF190, Timing
+#   P2 = 50 ms, P2* = 5000 ms, S3 = 5000 ms.
+#
+# Format: candump -l (SocketCAN-Log) —
+#   "(<epoch-sekunden>.<mikrosekunden>) <interface> <can-id>#<daten als hex>"
+#   Zeilen mit '#' in Spalte 1 sind Kommentare, Leerzeilen werden übersprungen.
+#   11-bit-Identifier (CAN 2.0A), MTU 8, kein CAN FD, kein Padding.
+#   Das Log ist eine Bus-Aufnahme aus Sicht des Testers: 0x7E0 = Tester (tx),
+#   0x7E8 = Steuergerät (rx).
+#
+# Aufbau (structure):
+#   Drei Transaktionen, jede Antwort passt in einen Single Frame (SF_DL ≤ 7):
+#     1. 0x7E0  02 3E 80            TesterPresent, suppressPositiveResponse → keine Antwort
+#     2. 0x7E0  02 10 03            DiagnosticSessionControl → extendedDiagnosticSession
+#        0x7E8  06 50 03 00 32 01 F4  positive Antwort mit P2 = 0x0032 (50 ms) und
+#                                     P2* = 0x01F4 (500 × 10 ms = 5000 ms)
+#     3. 0x7E0  03 22 F1 86         ReadDataByIdentifier ActiveDiagnosticSession
+#        0x7E8  04 62 F1 86 03      Antwort: Session 0x03 ist aktiv
+#
+# Reproduzieren: npm run build && node scripts/record-trace-fixtures.mjs
+# Zeitbasis: virtuelle Uhr, 1 ms Raster, Epoche 2026-09-22T00:00:00.000Z;
+#   die Response-Pending-Lücke ist die konfigurierte pendingResponseDelayMs (25 ms).
+(1790035200.000000) vcan0 7E0#023E80
+(1790035200.001000) vcan0 7E0#021003
+(1790035200.002000) vcan0 7E8#065003003201F4
+(1790035200.003000) vcan0 7E0#0322F186
+(1790035200.004000) vcan0 7E8#0462F18603

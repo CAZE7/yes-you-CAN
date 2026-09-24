@@ -331,14 +331,19 @@ test("a device path through a regular file is reported, not thrown", () =>
     assert.equal(described.probe.available, false);
     assert.match(described.probe.detail, /not usable/);
     const hints = described.probe.hints ?? [];
-    assert.ok(
-      hints.some((hint) => hint.includes("permissions")),
-      `a failure that is not ENOENT must point at permissions, got: ${hints.join(" | ")}`,
-    );
-    assert.ok(
-      !hints.some((hint) => hint.includes("plugged in")),
-      "absence hints would send the operator looking for a cable that is plugged in",
-    );
+    if (process.platform === "win32") {
+      // Windows treats a child of a file as ERROR_PATH_NOT_FOUND (ENOENT in libuv)
+      assert.ok(hints.some((hint) => hint.includes("plugged in")));
+    } else {
+      assert.ok(
+        hints.some((hint) => hint.includes("permissions")),
+        `a failure that is not ENOENT must point at permissions, got: ${hints.join(" | ")}`,
+      );
+      assert.ok(
+        !hints.some((hint) => hint.includes("plugged in")),
+        "absence hints would send the operator looking for a cable that is plugged in",
+      );
+    }
   }));
 
 test("a device the process may not access reports permissions, not absence", () =>

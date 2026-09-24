@@ -14,9 +14,12 @@
  *    every session declares `from`, and an undeclared transition is answered with
  *    `conditionsNotCorrect` instead of happening.
  *  - **S3Server is real ECU behaviour.** After S3 expires without a request the
- *    ECU falls back to the default session (and drops the security level). A
- *    simulator that keeps a session alive forever teaches the client a state
- *    machine no vehicle has.
+ *    ECU falls back to the default session and drops the security level it had
+ *    unlocked. A simulator that keeps a session — or an unlock — alive forever
+ *    teaches the client a state machine no vehicle has.
+ *
+ * The machine therefore owns everything a transition invalidates: the active
+ * session, its timing, the S3 clock and the SecurityAccess level.
  *
  * The machine is deliberately free of I/O and of the service implementations: it
  * answers three questions — may this session be entered, is this service allowed
@@ -127,6 +130,8 @@ export class SessionStateMachine {
   private readonly now: () => number;
   private current: SessionDefinition;
   private lastActivityAt: number;
+  /** Security level unlocked by SecurityAccess; 0 while the ECU is locked. */
+  private unlockedLevel = 0;
 
   constructor(options: SessionStateOptions) {
     if (options.sessions.length === 0) {
@@ -184,6 +189,41 @@ export class SessionStateMachine {
   }
 
   /**
+   * Security level the ECU is unlocked at, `0` while it is locked
+   * (ISO 14229-1 §9.4, level values §9.4.1: odd = requestSeed, even = sendKey).
+   *
+   * The unlocked level is **session state**, which is why it lives here and not in
+   * the service handler: a session transition drops it, an S3Server expiry drops
+   * it and an ECU reset drops it (ISO 14229-1 §10.2). A handler that kept the
+   * level in its own field would survive all three and hand out an unlock nobody
+   * asked for — the classic way a simulator teaches a client a vehicle state that
+   * does not exist.
+   */
+  get securityLevel(): number {
+    return this.unlockedLevel;
+  }
+
+  /** True when SecurityAccess has unlocked any level in the active session. */
+  get isUnlocked(): boolean {
+    return this.unlockedLevel !== 0;
+  }
+
+  /**
+   * Record a successful SecurityAccess (sendKey with a verified key).
+   *
+   * The request itself is what resets S3Server — the caller reports activity, this
+   * method only records the level, so an unlock can never quietly extend a session.
+   */
+  unlock(level: number): void {
+    this.unlockedLevel = level;
+  }
+
+  /** Drop the unlocked level explicitly (a failed policy check, a test fixture). */
+  lock(): void {
+    this.unlockedLevel = 0;
+  }
+
+  /**
    * Ask for a session. A type the ECU does not define is `subFunctionNotSupported`
    * (0x12); a defined session that may not be entered from the active one is
    * `conditionsNotCorrect` (0x22) — the ECU is not broken, the sequence is.
@@ -212,6 +252,9 @@ export class SessionStateMachine {
     const at_ = at ?? this.now();
     this.current = definition;
     this.lastActivityAt = at_;
+    // Asking for the session the ECU is already in is not a transition, so the
+    // unlock survives it; every real transition starts locked again (§10.2).
+    if (switched) this.unlockedLevel = 0;
     return { ok: true, switched, sessionType: type };
   }
 
@@ -224,6 +267,7 @@ export class SessionStateMachine {
     const previous = this.current.type;
     this.current = this.require(this.defaultType);
     this.lastActivityAt = at ?? this.now();
+    this.unlockedLevel = 0;
     return previous;
   }
 

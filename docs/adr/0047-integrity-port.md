@@ -78,7 +78,7 @@ Der Defekt war nicht nur formal. Er steckte in der Entscheidung selbst:
   „no violations" sagt und der Graph als Test grün ist (ADR 0015).
 - **Ein Zeuge, der beim Namen genannt wird.** Der Aufrufer wählt den Hasher, das
   Manifest trägt den Algorithmus — nichts an dieser Kette ist ein stiller Default
-  (AGENTS 0.E: Entscheidungen auf dem Rekord, ADR 0029).
+  ([AGENTS 0.E](../architecture/backlog.md): Entscheidungen auf dem Rekord, ADR 0029).
 - **Ein Digest, überall derselbe.** Der kanonische Strom ist hostunabhängig;
   Node, Replay-Worker und Export-Pfad erzeugen für dieselbe Aufzeichnung denselben
   Wert — Voraussetzung dafür, dass ein goldenes Manifest über Zeit und Hosts hinweg

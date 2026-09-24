@@ -1,6 +1,6 @@
 # 0022 — Coverage-Gates für Export-Pfad und Analyse, storage nachgezogen
 
-Status: accepted · Datum: 2026-09-12 · Bezug: ADR 0016 §2, 0017, 0020, 0021; AGENTS 0.E (E13), 34.21
+Status: accepted · Datum: 2026-09-12 · Bezug: ADR 0016 §2, 0017, 0020, 0021; [AGENTS 0.E](../architecture/backlog.md) (E13), 34.21
 
 ## Kontext
 

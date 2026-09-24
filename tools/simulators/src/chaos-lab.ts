@@ -31,7 +31,7 @@ export type CanChaosRule =
    * the next N frames of this bus, whatever they address. The second form is what a
    * "drop a burst of N frames" switch on a whole connection means: aimed at one id,
    * the burst silently takes nothing on a vehicle that does not talk on that id
-   * (AGENTS 0.E E24 measured exactly that silence).
+   * (AGENTS 0.E → docs/architecture/backlog.md E24 measured exactly that silence).
    */
   | { kind: "drop-count"; id?: number; count: number }
   /** Corrupts payload of matching frames. */

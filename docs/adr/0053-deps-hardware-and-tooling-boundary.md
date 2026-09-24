@@ -2,7 +2,7 @@
 
 - Status: akzeptiert (2026-09-22)
 - Kontext: ADR 0050 (Konformanz-Register), ADR 0052 (goldene Sitzungen),
-  AGENTS 0.E (offene Befunde), `npm outdated`, `npm audit`, `tests/hardware/`,
+  [AGENTS 0.E](../architecture/backlog.md) (offene Befunde), `npm outdated`, `npm audit`, `tests/hardware/`,
   `biome.json`
 - Betrifft: `package.json`, `package-lock.json`, `docs/standards/conformance.md`,
   `docs/standards/README.md`, `docs/adr/README.md`,

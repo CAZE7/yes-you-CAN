@@ -2,7 +2,7 @@
 
 Thanks for working on the Vehicle Diagnostics Platform. This project trades
 feature speed for correctness and architecture discipline — the constraints
-below are intentional (see `AGENTS.md` and `docs/adr/`).
+below are intentional (see [`AGENTS.md`](AGENTS.md) and [`docs/adr/`](docs/adr/)).
 
 ## Quick start
 
@@ -29,6 +29,43 @@ workbench integration tests serve the compiled chart core from `/lib`
 4. CI must be green on Node 22 **and** 24. No merge on red.
 5. Architecture or toolchain decisions get an ADR in `docs/adr/` (AGENTS 34.15).
    Superseded ADRs are marked, never deleted.
+6. Read the contract in `AGENTS.md`; read *history* in
+   `docs/changelog/agents-contract.md`, *status* in `docs/architecture/status.md`
+   and *open work* in `docs/architecture/backlog.md` (ADR 0059). A rule lives in
+   `AGENTS.md` — never in a changelog bullet.
+
+## Workflow files and the `workflows` permission
+
+**State 2026-09-24: the four hardened workflows are in the repository.** `ci.yml`
+(quality job + test matrix + coverage artifact), `codeql.yml`,
+`dependency-review.yml` and `hardware.yml` (nightly `vcan0` smoke) are on `main`
+— pushed by the repository's owner, not by the GitHub App.
+
+The App still cannot write that directory. Measured 2026-09-24, twice: `git push`
+→ `refusing to allow a GitHub App to create or update workflow
+'.github/workflows/ci.yml' without 'workflows' permission`; the contents API →
+`403 Resource not accessible by integration`. A push that touches nothing under
+`.github/workflows/` succeeds — the refusal is scoped to that directory, not to
+the branch. Consequence for an agent: **do not plan a CI change you cannot
+push.** Either the owner commits it, or the permission is granted.
+
+**To unblock:** GitHub → *Settings → Applications → Arena (GitHub App) →
+Repository Permissions → **Workflows: Read & write***.
+
+**What is still missing, and what it costs.** `ci.yml` uploads `coverage/` as an
+artifact with `if: always()` — an artifact is uploaded whether or not the
+thresholds held, so it is a report, not a gate. The coverage thresholds are
+carried by `tests/architecture/coverage-gate.test.ts`, which spawns
+`npm run test:coverage` as a child *inside* `npm test` (CI only, recursion-guarded,
+`retry: 0`; measured 65 s per leg). The honest form is a step in the workflow:
+
+```yaml
+      - name: Run the suite under coverage (the thresholds are the gate)
+        run: npm run test:coverage
+```
+
+That one step needs someone who can write `.github/workflows/`. Until it exists,
+`npm run ci` plus the carrier is what keeps the floors real.
 
 ## Project structure
 

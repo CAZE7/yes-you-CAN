@@ -3,7 +3,7 @@
  *
  * Turns what a live session knows into the query the definitions layer resolves
  * against. Kept out of the services so the mapping rules are testable on their
- * own and so `services.ts` stays inside its size budget (AGENTS 0.E E15):
+ * own and so `services.ts` stays inside its size budget (AGENTS 0.E → docs/architecture/backlog.md E15):
  *
  *  - the VIN comes from the vehicle identity unless the caller overrides it,
  *  - identification values are attributed to the package that produced them,

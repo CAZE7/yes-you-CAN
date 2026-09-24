@@ -3,7 +3,7 @@
  * to the live engine that exists now — and to every later one.
  *
  * Split out of `MeasurementService` when the service crossed the 800-line module
- * budget (AGENTS 0.E E15): the service answers "what was measured", while the
+ * budget (AGENTS 0.E → docs/architecture/backlog.md E15): the service answers "what was measured", while the
  * subscription lifecycle is a separate question with its own failure mode. Two
  * rules live here and are the reason this is not a `Set` in the service:
  *

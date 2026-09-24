@@ -3,7 +3,8 @@ name = "yes-you-can-core"
 version = "0.1.0"
 edition = "2021"
 authors = ["CAZE7 <info@arena.ai>"]
-description = "High-performance zero-copy ISO-TP, Signal Processing, and Safety State core for yes-you-CAN"
+description = "Reference ISO-TP framing, signal statistics and write-safety typestate for yes-you-CAN "
+  "(reference/experimental: not built, not tested and not imported by the platform — see README.md)"
 license = "MIT"
 
 [dependencies]

@@ -1,5 +1,5 @@
 /**
- * Unit tests for the chaos proxy (AGENTS 0.A: tests where the code lives).
+ * Unit tests for the chaos proxy (AGENTS 0.A → docs/architecture/status.md: tests where the code lives).
  *
  * What injected chaos does to a real diagnostic run is covered by
  * `tests/protocol/chaos-lab.test.ts`. This file covers the rules themselves, because a
@@ -260,7 +260,7 @@ describe("CanChaosBus", () => {
   });
 
   test("a burst without an id is the next N frames of this bus, whatever they address", async () => {
-    // The form a connection-wide switch needs (AGENTS 0.E E24): aimed at one arbitration id,
+    // The form a connection-wide switch needs (AGENTS 0.E → docs/architecture/backlog.md E24): aimed at one arbitration id,
     // a burst is a no-op on a vehicle that does not talk on it — and reports itself active.
     const { lab } = chaos();
     ChaosLab.injectBurstFrameDrop(lab, undefined, 2);

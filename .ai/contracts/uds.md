@@ -1,9 +1,9 @@
 # Vertrag: UDS / Protokoll-Layer
 
 **Verbindliche Quellen:** `packages/protocols/uds/README.md`,
-[`../docs/api/uds.md`](../docs/api/uds.md),
-[`../docs/flows/diagnostic-read.md`](../docs/flows/diagnostic-read.md),
-ADR 0013/0039/0041, [`../architecture/architecture.yaml`](../architecture/architecture.yaml)
+[`../docs/api/uds.md`](../../docs/api/uds.md),
+[`../docs/flows/diagnostic-read.md`](../../docs/flows/diagnostic-read.md),
+ADR 0013/0039/0041, [`../architecture/architecture.yaml`](../../architecture/architecture.yaml)
 (`@vdp/protocols-*`).
 
 ## Die Regeln, die du nicht brechen darfst

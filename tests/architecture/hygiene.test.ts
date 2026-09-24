@@ -312,7 +312,7 @@ test("no debugger statements and no unresolved work markers", () => {
     },
   ];
   assertGate(
-    "work markers must be tracked in AGENTS 0.E, not left in the source",
+    "work markers must be tracked in AGENTS 0.E → docs/architecture/backlog.md, not left in the source",
     findViolations(/\b(?:TODO|FIXME|HACK)\b/g, () => true, selfReference, "raw"),
     selfReference,
   );
@@ -459,7 +459,7 @@ test("modules stay reviewable: no production file above the size budget", () => 
     {
       file: "apps/web/src/backend.ts",
       reason:
-        "1571 lines — split tracked as AGENTS 0.E E15; the wire contract moved to views.ts in " +
+        "1571 lines — split tracked as AGENTS 0.E → docs/architecture/backlog.md E15; the wire contract moved to views.ts in " +
         "E19 (1326 → 1117), `get canBus()` (which nothing had used since the replay suites " +
         "moved to injected buses) is gone (1427 → 1419), and E24's chaos-in-the-path added the " +
         "wrapper in `start()`, the burst target and the refusal before a connection: 1419 → " +
@@ -520,7 +520,7 @@ test("modules stay reviewable: no production file above the size budget", () => 
 
   // A reason that states a size has to state the *measured* one. Both numbers in
   // this list were prose nobody checked, and they rotted by ~300 and ~550 lines
-  // while the files grew — until one of them was copied into AGENTS 0.E and an ADR
+  // while the files grew — until one of them was copied into AGENTS 0.E → docs/architecture/backlog.md and an ADR
   // (measured 2026-09-16: `backend.ts` claimed 1117 and ran 1420, `app.js` claimed
   // 1097 and ran 1642). An exemption whose evidence is stale is a description of a
   // file that does not exist, and it stops being a reason to allow anything.

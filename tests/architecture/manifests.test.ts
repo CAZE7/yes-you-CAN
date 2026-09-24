@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, relative } from "node:path";
+import { dirname, join, relative, sep } from "node:path";
 import { test } from "vitest";
 import { discoverWorkspaceDirs, repoRoot } from "./workspace.js";
 
@@ -36,7 +36,7 @@ const rootManifest = read(join(repoRoot, "package.json"));
 
 const packages = discoverWorkspaceDirs().map((dir) => ({
   dir,
-  rel: relative(repoRoot, dir),
+  rel: relative(repoRoot, dir).split(sep).join("/"),
   manifest: read(join(dir, "package.json")),
 }));
 

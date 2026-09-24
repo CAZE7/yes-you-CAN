@@ -44,7 +44,12 @@ pub enum IsoTpError {
     PayloadTooLarge(usize),
 }
 
-/// Zero-allocation ISO-TP Frame Decoder.
+/// Decode one CAN frame into an `IsoTpFrame`.
+///
+/// Allocates nothing: every variant borrows a slice of `data`, so the
+/// decoded message is only as long-lived as the buffer it points into.
+/// That is a statement about the signature, not a benchmark — no
+/// allocation measurement exists for this crate (AGENTS 0.E E25, finding 2).
 pub fn parse_frame(data: &[u8]) -> Result<IsoTpFrame<'_>, IsoTpError> {
     if data.is_empty() {
         return Err(IsoTpError::InvalidPduType(0xFF));

@@ -27,7 +27,7 @@ Gleichzeitig warteten vier Tests der Workbench mit festen `setTimeout`-Werten
 (300–400 ms) auf Live-Samples, die der 60-ms-Poll-Loop normalerweise nach
 ~70 ms liefert: auf einer schnellen Maschine verschenkte Zeit, auf einem
 beladenen CI-Runner ein Rennen — genau die Klasse von Instabilität, die
-AGENTS 0.E (E9) mit „explizite Waits statt Sleeps“ adressiert.
+[AGENTS 0.E](../architecture/backlog.md) (E9) mit „explizite Waits statt Sleeps“ adressiert.
 
 ## Entscheidung
 
@@ -68,7 +68,7 @@ AGENTS 0.E (E9) mit „explizite Waits statt Sleeps“ adressiert.
   einer Sekunde, CSV- und PDF-Export jeweils HTTP 200.
 - Kürzere, deterministischere Läufe senken die Wahrscheinlichkeit, dass die CI
   Retries braucht; sie sind die Voraussetzung, um `retry: 2` in
-  `vitest.config.ts` irgendwann zu senken (AGENTS 0.E, E9).
+  `vitest.config.ts` irgendwann zu senken ([AGENTS 0.E](../architecture/backlog.md), E9).
 - `windowMs` allein begrenzt die Discovery weiterhin nicht — wer ein hartes
   Zeitbudget braucht, setzt beide Werte. Das ist jetzt dokumentiert statt
   überraschend.

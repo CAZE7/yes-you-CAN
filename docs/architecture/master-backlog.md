@@ -1,7 +1,7 @@
 # Master-Backlog: von der Plattform zur nutzbaren Diagnosepraxis
 
 Stand: 2026-09-14 (zweite Etappe Diagnostic IR, ADR 0037) · Bezug: ADR 0029/0034/0037,
-`docs/architecture/migration-roadmap.md`, AGENTS 0.A (Stand), 0.E (offene Verbesserungen)
+`docs/architecture/migration-roadmap.md`, [AGENTS 0.A](status.md) (Stand), 0.E (offene Verbesserungen)
 
 ## Leitsatz
 
@@ -103,7 +103,7 @@ Suche fand sich **kein** Beleg im Baum — dieselbe Beweislast wie überall sons
 
 | # | Thema | Stand | Nächster Schritt |
 |---|---|---|---|
-| 31–32 | Coding · Adaptation | ❌ bewusst nicht begonnen (AGENTS 0.A). Die Risiko-Policy nennt beide Operationen bereits (`domain/risk.ts`) | Erst nach #3/#4/#5 — Schreiben ohne Transaktion ist der teuerste Fehler dieser Plattform |
+| 31–32 | Coding · Adaptation | ❌ bewusst nicht begonnen ([AGENTS 0.A](status.md)). Die Risiko-Policy nennt beide Operationen bereits (`domain/risk.ts`) | Erst nach #3/#4/#5 — Schreiben ohne Transaktion ist der teuerste Fehler dieser Plattform |
 | 33 | Security-Access-Framework operationalisieren | 🟡 UDS-Security-Grundlagen (`protocols/uds/src/security.ts`), SFD/Security-Access-Umgehung ist verboten (AGENTS 0.D) | Zugriffsstufen, Freigaben und Audit als Domänenbegriff; nie als Umgehung |
 | 34 | Routine Framework | ⏳ Routinen sind als Operationstyp bekannt, nicht implementiert | Nach #7, weil Routinen Transaktionen sind |
 | 35 | DoIP produktionsfest | 🟡 `transport/doip/src/transport.ts` 98,5 % Zeilen / 91,4 % Zweige, Discovery getestet; **TLS ist angekündigt, nicht implementiert** (Dateikopf) | TLS (ISO 13400-2, Port 3496) und Mehrfach-Verbindungen; heute ist der TLS-Zweig nur eine Vorbedingung im Safety-Check |

@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -14,9 +15,45 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-test:
-    name: Build and test (Node ${{ matrix.node-version }})
+  quality:
+    name: Quality & Security Baseline
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies exactly as locked
+        run: npm ci
+
+      - name: Build project references
+        run: npm run build
+
+      - name: Strict typecheck across all targets
+        run: npm run typecheck:all
+
+      - name: Biome linter and format check
+        run: npm run check
+
+      - name: Architectural dependency rules
+        run: npm run check:deps
+
+      - name: Package manifest consistency
+        run: npm run check:manifests
+
+      - name: Audit dependency vulnerabilities
+        run: npm run audit
+
+  test:
+    name: Test & Conformance (Node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -39,3 +76,11 @@ jobs:
 
       - name: Run the full test suite
         run: npm test
+
+      - name: Upload coverage artifact (Node 22)
+        if: matrix.node-version == 22 && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 14

@@ -1,6 +1,6 @@
 # 0017 — Coverage-Gates neu kalibriert: Ist-Zustand statt Aspirationswerte
 
-Status: accepted · Datum: 2026-09-11 · Bezug: ADR 0010, ADR 0016 (korrigiert §2); AGENTS 0.A, 0.E
+Status: accepted · Datum: 2026-09-11 · Bezug: ADR 0010, ADR 0016 (korrigiert §2); [AGENTS 0.A](../architecture/status.md), 0.E
 
 ## Kontext
 
@@ -30,7 +30,7 @@ nachgezogen wurde. Gemessen am 2026-09-11 galt:
   `protocols` 90/75, `adapters` 65/45, `transport` 75/50, `storage` 90/55
   (nach Nachtesten am selben Tag von 70/45 angehoben), `charts` 75/70.
 - **Gates werden nur in eine Richtung bewegt:** Erst hebt gezieltes Nachtesten
-  die Coverage (AGENTS 0.E, E4), dann darf der Gate-Wert steigen. Gates
+  die Coverage ([AGENTS 0.E](../architecture/backlog.md), E4), dann darf der Gate-Wert steigen. Gates
   senken, um rote Coverage durchzuwinken, ist unzulässig — eine Lockerung
   braucht wie hier einen eigenen ADR mit Begründung.
 - ADR 0016 §2 gilt damit in seinen Zahlen als korrigiert; die dortige
@@ -43,8 +43,8 @@ nachgezogen wurde. Gemessen am 2026-09-11 galt:
 - `storage/src/repository.ts` wurde am 2026-09-11 von 70 %/46 % auf
   97 %/84 % nachgetestet (Crash-Toleranz der Streams, Migrations-Persistenz,
   Listen-Resilienz); das storage-Gate stieg entsprechend auf 90/55.
-  `transport/doip/src/transport.ts` bleibt ein Nachtest-Kandidat (AGENTS 0.E).
-- Dasselbe Muster ein drittes Mal angewandt (2026-09-16, AGENTS 0.E E17): die
+  `transport/doip/src/transport.ts` bleibt ein Nachtest-Kandidat ([AGENTS 0.E](../architecture/backlog.md)).
+- Dasselbe Muster ein drittes Mal angewandt (2026-09-16, [AGENTS 0.E](../architecture/backlog.md) E17): die
   Bodenschwelle `apps/web/src/**` stand auf 69/54, während `server.ts` 69,63/65,53
   und `adapters.ts` 73,68/54,54 meldeten. Erst die Tests (`server-paths.spec.ts` für
   Freeze-Frame-Lesung bis aufs Rohbyte, die Absagen, das Body-Limit und die Marker;
@@ -54,7 +54,7 @@ nachgezogen wurde. Gemessen am 2026-09-11 galt:
   ausdrücklich *nicht* vortäuscht: der CLI-Block am Fuß von `server.ts` bleibt
   ungeprüft, weil die v8-Deckung eines Kindprozesses nicht in die Zählung des Vaters
   fällt — ihn zu spawnen bringt Verhalten, keine Coverage.
-- Noch einmal dasselbe Muster, einen Tag später (AGENTS 0.E E17, zweiter
+- Noch einmal dasselbe Muster, einen Tag später ([AGENTS 0.E](../architecture/backlog.md) E17, zweiter
   Schnitt): `backend.ts` meldete 67,87 Zweige, und die Zeile in 0.E nannte die
   Export- und Session-Zweige, die denselben Nachlauf verdienten. Getan:
   `apps/web/test/backend-paths.spec.ts` (8 Tests) geht Replay-Quellen,

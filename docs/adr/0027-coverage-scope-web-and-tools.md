@@ -24,8 +24,16 @@ die Schichten wohnen, die ein Ergebnis ansprechen und Daten importieren. Gemesse
 
 Ein Finding, das die Ausweitung sofort zeigt: `flaky-reporter.ts` misst **0 %**. Es
 hat keinen Test, weil nichts es ausführt — die gehärteten CI-Workflows, die es
-auftreten ließen, sind nicht pushbar (E10). Die Zahl ist die Wahrheit über E10, nicht
-über die Datei.
+auftreten ließen, waren damals nicht pushbar (E10). Die Zahl ist die Wahrheit über
+E10, nicht über die Datei.
+
+> **Nachtrag 2026-09-24:** die Workflows liegen inzwischen auf `main` (`f6abf86`), und
+> der Aufruf fehlt weiter — keiner der vier Jobs ruft den Reporter auf (gemessen:
+> `grep -rn flaky .github/workflows/` trifft nichts). **Die 0 % sind damit Geschichte, und
+> zwar durch diesen Commit-Vergleich:** mit dem Rebase auf `main` kam
+> `tools/test-reporters/src/flaky-reporter.spec.ts` herein (5 Tests, grün); die Datei
+> misst jetzt 100 % Statements / 86,66 % Zweige / 100 % Funktionen / 100 % Zeilen. Der
+> Punkt — *nichts führt ihn aus* — steht unverändert, nur die Zahl war eine andere: E9.
 
 ## Entscheidung
 
