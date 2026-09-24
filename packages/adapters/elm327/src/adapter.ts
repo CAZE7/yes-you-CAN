@@ -10,6 +10,7 @@ import {
   asError,
   createLogger,
   type Logger,
+  messageOf,
   TransportError,
 } from "@vdp/shared";
 import type {
@@ -24,6 +25,7 @@ import {
   DEFAULT_INIT_SEQUENCE,
   formatIdentifier,
   formatSendPayload,
+  initSequenceFor,
   isElmError,
   parseFrameLine,
 } from "./protocol.js";
@@ -33,8 +35,19 @@ export interface Elm327Options {
   stream: ByteStream;
   /** Channel label used in traces. */
   channel?: string;
-  /** Override the AT init sequence. */
+  /** Override the whole AT init sequence. */
   initSequence?: readonly string[];
+  /**
+   * ISO 15765-4 protocol number for the `ATSP` command (default 6 = 11-bit,
+   * 500 kBaud). A 29-bit vehicle needs 7, a 250 kBaud bus 8 or 9 — see
+   * `ELM_CAN_PROTOCOLS`. The identifier width in `formatIdentifier` already
+   * follows the frame; this makes the bus the adapter listens on follow too.
+   *
+   * Named `canProtocol` rather than `protocol` because `Elm327Status.protocol`
+   * already means something else: the string the adapter reports for `ATDP`,
+   * i.e. what it ended up speaking, not what was asked for.
+   */
+  canProtocol?: number;
   /** Timeout per AT command in ms. */
   commandTimeoutMs?: number;
   logger?: Logger;
@@ -81,6 +94,7 @@ export class Elm327Adapter implements CanBus {
   private listeners: Array<{ listener: FrameListener; filters?: readonly CanFilter[] }> = [];
   private buffer = "";
   private unsubscribeStream: (() => void) | null = null;
+  private unsubscribeError: (() => void) | null = null;
   private opened = false;
   private currentTxId: number | null = null;
   private pending: Array<{
@@ -96,7 +110,11 @@ export class Elm327Adapter implements CanBus {
   constructor(private readonly options: Elm327Options) {
     this.channel = options.channel ?? "elm0";
     this.log = (options.logger ?? createLogger("can", { level: "INFO" })).child("can");
-    this.initSequence = options.initSequence ?? DEFAULT_INIT_SEQUENCE;
+    this.initSequence =
+      options.initSequence ??
+      (options.canProtocol === undefined
+        ? DEFAULT_INIT_SEQUENCE
+        : initSequenceFor(options.canProtocol));
     this.commandTimeoutMs = options.commandTimeoutMs ?? 3000;
     this.info = {
       id: "elm327",
@@ -109,6 +127,13 @@ export class Elm327Adapter implements CanBus {
   async open(): Promise<void> {
     if (this.opened) return;
     this.unsubscribeStream = this.options.stream.onData((chunk) => this.onChunk(chunk));
+    // A stream that reports its own death must not leave this adapter claiming
+    // to be open: the host catalog owns the stream, so without this the UI says
+    // `connected: true` until the next request times out — a pulled USB cable
+    // or a dropped Bluetooth link reads as a silent vehicle, not a dead link.
+    if (this.options.stream.onError) {
+      this.unsubscribeError = this.options.stream.onError((error) => this.onStreamError(error));
+    }
     this.opened = true;
 
     for (const command of this.initSequence) {
@@ -127,6 +152,8 @@ export class Elm327Adapter implements CanBus {
   async close(): Promise<void> {
     this.unsubscribeStream?.();
     this.unsubscribeStream = null;
+    this.unsubscribeError?.();
+    this.unsubscribeError = null;
     this.opened = false;
     this.listeners = [];
     for (const entry of this.pending) {
@@ -134,6 +161,24 @@ export class Elm327Adapter implements CanBus {
       entry.reject(new TransportError("adapter closed"));
     }
     this.pending = [];
+  }
+
+  /**
+   * The stream underneath is gone. Record it, fail what is in flight instead of
+   * letting it run into its own timeout, and stop claiming to be open — an
+   * adapter whose device left is not an adapter.
+   */
+  private onStreamError(error: Error): void {
+    this.status.errors.push(messageOf(error));
+    this.log.warn("the byte stream reported an error", { error: messageOf(error) });
+    this.opened = false;
+    this.currentTxId = null;
+    for (const entry of this.pending) {
+      clearTimeout(entry.timer);
+      entry.reject(new TransportError(`byte stream failed: ${messageOf(error)}`));
+    }
+    this.pending = [];
+    this.buffer = "";
   }
 
   isOpen(): boolean {
@@ -156,6 +201,15 @@ export class Elm327Adapter implements CanBus {
       if (error) {
         this.status.errors.push(error);
         this.log.warn("ELM327 reported an error", { error, command: payload });
+        // `CAN ERROR`, `BUFFER FULL` and `STOPPED` mean the frame never reached
+        // the bus. Returning normally here tells ISO-TP the opposite, and it
+        // waits for an answer that was never asked for — a timeout that reads
+        // as "the ECU is silent" instead of "the adapter refused". An
+        // unproven outcome is a failure (AGENTS 34.21, ADR 0033).
+        throw new TransportError(`ELM327 refused the frame: ${error}`, {
+          command: payload,
+          frameId: frame.id,
+        });
       }
     }
   }
@@ -205,12 +259,18 @@ export class Elm327Adapter implements CanBus {
 
   private onChunk(chunk: string): void {
     this.buffer += chunk;
-    let newlineIndex = this.buffer.indexOf("\n");
-    while (newlineIndex >= 0) {
-      const line = this.buffer.slice(0, newlineIndex).replace(/\r$/, "");
-      this.buffer = this.buffer.slice(newlineIndex + 1);
+    // Three line endings, because three exist on real hardware: `\n` (ATL1,
+    // what this adapter asks for), `\r\n` (ATL1 plus a clone that appends its
+    // own CR), and a bare `\r` — what an ELM327 with `ATL0` emits, and what a
+    // Bluetooth SPP link often delivers when the peer buffers by carriage
+    // return. Splitting only on `\n` parks a bare-`\r` stream in the buffer
+    // forever, which looks exactly like a silent vehicle.
+    let match = /\r\n|\n|\r/.exec(this.buffer);
+    while (match) {
+      const line = this.buffer.slice(0, match.index);
+      this.buffer = this.buffer.slice(match.index + match[0].length);
       this.handleLine(line);
-      newlineIndex = this.buffer.indexOf("\n");
+      match = /\r\n|\n|\r/.exec(this.buffer);
     }
     // A prompt can arrive without a trailing newline.
     if (this.buffer.includes(">")) {

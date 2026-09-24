@@ -3,7 +3,7 @@
 [![CI](https://github.com/CAZE7/yes-you-CAN/actions/workflows/ci.yml/badge.svg)](https://github.com/CAZE7/yes-you-CAN/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](./package.json)
-[![Tests](https://img.shields.io/badge/tests-2517%20passed-brightgreen)](#tests)
+[![Tests](https://img.shields.io/badge/tests-2567%20passed-brightgreen)](#tests)
 [![TypeScript](https://img.shields.io/badge/TypeScript-7%20%2F%20tsgo-blue)](./tsconfig.base.json)
 
 Fahrzeugdiagnose-Plattform: CAN und DoIP lesen, Steuergeräte identifizieren, das
@@ -324,10 +324,10 @@ Zeitraum aus, Doppelklick zeigt die gesamte Aufnahme.
 
 ## Tests
 
-2517 bestandene Tests plus 8 dokumentierte Skips — davon 5 die optionale
+2567 bestandene Tests plus 8 dokumentierte Skips — davon 5 die optionale
 `odxtools`-Gegenprüfung der Ernte, die ohne installierte Bibliothek ehrlich
-überspringt (2525 insgesamt) / 178 geprüfte Dateien von 180 (2 CI-Träger
-überspringen lokal, ADR 0029 §6) (`npm test` in 92 s; `npm run test:coverage`
+überspringt (2575 insgesamt) / 181 geprüfte Dateien von 183 (2 CI-Träger
+überspringen lokal, ADR 0029 §6) (`npm test` in 94 s; `npm run test:coverage`
 in 107 s — gemessen 2026-09-24), Vitest 5 mit
 Projektkonfiguration
 (ADR 0010, Schritt 1 — ersetzt ADR 0008). Seit ADR 0043 gehören dazu 18
@@ -341,8 +341,8 @@ aufrufen kann ([Backlog E20](docs/architecture/backlog.md)) — einschließlich
 tatsächlichen Importen passt (ADR 0042). Unit-Specs liegen co-lokatiert neben dem
 Code (`src/*.spec.ts`); Property-Tests laufen mit fast-check, Coverage-Gates mit
 `npm run test:coverage` (global 90 % lines / 80 % branches als
-Projekt-Durchschnitt, Ist 94,07 Statements / 85,93 Zweige / 95,81 Funktionen /
-95,41 Zeilen — gemessen am Stand vom 2026-09-24 nach der Ernte (ADR 0058), und die letzten Stellen wandern mit
+Projekt-Durchschnitt, Ist 94,04 Statements / 85,88 Zweige / 95,83 Funktionen /
+95,39 Zeilen — gemessen am Stand vom 2026-09-24 nach der Ernte (ADR 0058), und die letzten Stellen wandern mit
 Last und Node-Version (86,59 bis 86,71 Zweige auf demselben Baum,
 ADR 0029 §6) — seit ADR 0027 wird die ganze
 Fläche gemessen: `packages/**/src`, `apps/web/src/**` und `tools/**`, weil die

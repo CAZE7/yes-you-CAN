@@ -60,6 +60,12 @@ export interface AdapterConfig {
   bitrate?: string;
   /** Serial line speed in bit/s. */
   baudRate?: number;
+  /**
+   * ISO 15765-4 protocol number for the ELM327's `ATSP` command (6 = 11-bit
+   * 500 kBaud, 7 = 29-bit, 8/9 = 250 kBaud). Only the serial ELM327 uses it;
+   * every other adapter learns the bus from its own configuration.
+   */
+  protocol?: number;
   /** Trace file for the replay adapter. */
   trace?: string;
   /** slcan listen-only mode — useful to observe a bus without influencing it. */
@@ -256,12 +262,62 @@ function pruneUndefined(config: AdapterConfig): AdapterConfig {
 export const ELM327_DEFAULT_BAUD = 38_400;
 export const SLCAN_DEFAULT_BAUD = 115_200;
 
+/** The Win32 device-path prefix: the four characters \\, `.`, \. */
+const WIN32_COM_PREFIX = "\\\\.\\";
+
+/**
+ * A Windows COM-port name, with or without the Win32 device-path prefix:
+ * `COM3`, `com12`, `\\.\COM3`.
+ *
+ * Recognised so the bare form can be *answered*, not so it can be used.
+ * `fs.stat("COM3")` on Windows throws ENOENT for every port that exists, and the
+ * probe used to translate that into "is the adapter plugged in?" — a hint that
+ * sends an operator looking for a cable that is plugged in. Measured 2026-09-24
+ * on Node 22 / Windows: `stat`, `access` and `open` all return ENOENT for `COM3`
+ * while the same three succeed for `\\.\COM3`.
+ */
+export function isWindowsComPortName(device: string): boolean {
+  const trimmed = device.trim().toUpperCase();
+  const bare = trimmed.startsWith(WIN32_COM_PREFIX)
+    ? trimmed.slice(WIN32_COM_PREFIX.length)
+    : trimmed;
+  return /^COM[0-9]+$/.test(bare);
+}
+
+/**
+ * True only for the *bare* form — the one `node:fs` cannot resolve on Windows.
+ * The prefixed form is left to the filesystem, which handles it.
+ */
+export function isWindowsBareComPort(
+  device: string,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  return (
+    platform === "win32" &&
+    isWindowsComPortName(device) &&
+    !device.trim().startsWith(WIN32_COM_PREFIX)
+  );
+}
+
 /**
  * Check whether a character device exists and is usable by this process.
  * `character device` is asserted because pointing the tool at a regular file
  * would otherwise fail much later with a confusing protocol error.
  */
 async function probeSerialDevice(device: string): Promise<AdapterProbe> {
+  // Windows first, and before the filesystem is touched: a DOS device name is
+  // not a file, so `stat` cannot say anything useful about it.
+  if (isWindowsBareComPort(device)) {
+    return {
+      available: false,
+      detail: `${device.trim()} is a Windows port name, and this host opens devices through node:fs`,
+      hints: [
+        `use the Win32 device path instead: ${WIN32_COM_PREFIX}${device.trim()}`,
+        "Bluetooth RFCOMM needs no baud rate — the radio sets the real one, so leave 38400",
+        'line settings need "stty", which Windows does not ship: pass configure: false and set them in the device manager',
+      ],
+    };
+  }
   try {
     const info = await stat(device);
     if (info.isDirectory()) {
@@ -383,6 +439,7 @@ export function createHostAdapterCatalog(): AdapterCatalog {
           new Elm327Adapter({
             stream,
             ...(config.channel ? { channel: config.channel } : {}),
+            ...(config.protocol === undefined ? {} : { canProtocol: config.protocol }),
             ...(context.logger ? { logger: context.logger } : {}),
           }),
           stream,
@@ -517,6 +574,7 @@ export function describeAdapterConfig(entry: AdapterEntry, config: AdapterConfig
   if (config.device) parts.push(config.device);
   if (config.channel) parts.push(`channel ${config.channel}`);
   if (config.baudRate) parts.push(`${config.baudRate} baud`);
+  if (config.protocol !== undefined) parts.push(`ISO 15765-4 protocol ${config.protocol}`);
   if (config.bitrate) parts.push(config.bitrate);
   if (config.trace) parts.push(config.trace);
   if (config.listenOnly) parts.push("listen-only");

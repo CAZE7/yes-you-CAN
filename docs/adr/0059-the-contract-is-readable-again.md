@@ -42,7 +42,7 @@ verschiedener Halbwertszeit** in einer Datei:
 | Textart | Halbwertszeit | Beispiel |
 |---|---|---|
 | Norm | Jahre | „Abhängigkeiten zeigen nur nach unten" |
-| Stand | ein PR | „0.A: DoIP 🚧, Coverage 94,07/85,93" |
+| Stand | ein PR | „0.A: DoIP 🚧, Coverage 94,04/85,88" |
 | Chronik | für immer, aber nur rückwärts gelesen | „1.46: Der Weg von einem realen Fahrzeug …" |
 
 ## Entscheidung

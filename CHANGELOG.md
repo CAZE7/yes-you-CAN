@@ -44,9 +44,12 @@ none of it was the norm. This file is the release changelog.
   `timestamps` dieselbe Länge hat wie `values`.
 
 - **Zwei Zahlen in den Akten standen falsch, beide durch Nachmessen gefunden.**
-  (1) **Coverage:** global ist jetzt **94,07 / 85,93 / 95,81 / 95,41** (Statements /
+  (1) **Coverage:** global ist **94,04 / 85,88 / 95,83 / 95,39** (Statements /
   Branches / Functions / Lines), nicht 93,64 / 85,44 / 95,53 / 94,95 — die alten
-  Zahlen stammen vom 2026-09-23. (2) **`flaky-reporter.ts` steht nicht bei 0 %.** ADR
+  Zahlen stammen vom 2026-09-23. Der Sprung kommt vom Rebase auf `main`
+  (`flaky-reporter.spec.ts`, 5 Tests) plus den geborgenen Suites aus #36/#37; die
+  letzten beiden Hundertstel darunter sind der neue ELM327-Code, dessen
+  Windows-Zweige auf Linux nicht laufen. (2) **`flaky-reporter.ts` steht nicht bei 0 %.** ADR
   0027 hatte die 0 % als Beweis dafür genommen, dass nichts die Datei ausführt; mit
   dem Rebase auf `main` kam `tools/test-reporters/src/flaky-reporter.spec.ts` herein
   (5 Tests, grün), und die Datei misst **100 % Statements / 86,66 % Zweige**. Der
@@ -54,6 +57,33 @@ none of it was the norm. This file is the release changelog.
   (`grep -rn flaky .github/workflows/` trifft nichts), also gibt es keinen einzigen
   Flaky-Report aus der CI und `retry: isCi ? 2 : 0` bleibt unbewiesen ([Backlog
   E9](docs/architecture/backlog.md)). Getestet ist sie, aufgerufen wird sie nicht.
+
+- **Der ELM327-Pfad lief gegen einen Bluetooth-Adapter, auf vier Ebenen gleichzeitig
+  ([Backlog E29](docs/architecture/backlog.md)).** (1) Die Init-Sequenz schickte
+  `ATS0` — Leerzeichen aus — während `parseFrameLine` auf Leerzeichen splittet und
+  ein Ein-Token-Dokument verwirft: mit `ATS0` wird **jeder** empfangene Frame
+  verworfen. Jetzt `ATS1`. (2) `ATCAF0` fehlte, obwohl der Katalog den Adapter als
+  „raw CAN mode (ATH1/ATCAF0)" beschreibt: mit `CAF1` baut die Adapter-Firmware
+  eigene Flow-Control-Frames und beantwortet die des TypeScript-Stacks. Jetzt
+  dabei. (3) `send()` schluckte `CAN ERROR`/`BUFFER FULL`/`STOPPED` — ISO-TP hielt
+  den Frame für gesendet und wartete auf eine Antwort, die nie angefordert wurde.
+  Jetzt wirft `send()` mit Befehl und Frame-ID. (4) `ATSP6` war eine Konstante,
+  obwohl `formatIdentifier` 29-Bit schon kann: jetzt über `canProtocol`,
+  `--protocol=<6..9>` und ein Feld im Adapter-Panel, durchgereicht bis
+  `selectionFromPayload` (als Zahl, nie als Wort). Dazu: Zeilen enden an `\r\n`,
+  `\n` **und** bare `\r`; `ByteStream.onError?` ist optionaler Vertragsteil, den der
+  Adapter abonniert, damit ein Gerät, das weg ist, nicht weiter `connected: true`
+  meldet; und `SLOW_LINK_TIMING` (N_Bs/N_Cr 2000 ms, sendTimeout 3000 ms, 2 Retries)
+  als benanntes Profil für Bluetooth SPP — `DEFAULT_TIMING` bleibt 1000/0, denn ein
+  Default, der lockerer wird, lässt jedes Timeout-Gate leichter bestehen.
+- **Windows-COM-Ports wurden mit dem falschen Hinweis beantwortet.**
+  `fs.stat("COM3")` wirft unter Windows für jeden existierenden Port ENOENT, und
+  der Probe übersetzte das in „is the adapter plugged in?" — ein Operator sucht
+  nach einem Kabel, das steckt. Neu: `isWindowsComPortName` /
+  `isWindowsBareComPort` (Plattform injizierbar, damit der Zweig von Linux aus
+  testbar ist) und eine Antwort, die den echten Weg nennt — `\\.\COM3`. Die
+  Doku von `SerialStreamOptions.device` versprach vorher `COM3` als Beispiel; sie
+  sagt jetzt die Wahrheit über `node:fs` und über `stty`, das Windows nicht mitbringt.
 
 ### Fixed
 
