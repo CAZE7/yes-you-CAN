@@ -27,7 +27,16 @@
 > `docs/flows/open-core-boundary.md`, bewacht von `tests/architecture/docs.test.ts`
 > (tote Links **und** Anker, ADR-Register, `docs` je Vertrag, jede Naht-Seite verlinkt;
 > Fund beim ersten Lauf: zwei tote Links in `docs/standards/conformance.md`, behoben).
-> **Weiter Vorschlag, nicht gebaut:** Phase 0, die
+> **Phase 0 vorgelegt (🟡 = zur Unterschrift, nicht entschieden):** 0.1 Rechte,
+> 0.2 Lizenzwahl und 0.3 Beitragsinstrument stehen in
+> [`docs/architecture/open-core-phase-0-rights.md`](open-core-phase-0-rights.md)
+> (Empfehlung Apache-2.0 + CLA als Nutzungsrechteeinräumung, CLA-Entwurf in Anhang A,
+> Fragenliste für die Juristin), 0.4 Registry in
+> [`docs/operations/registry.md`](../operations/registry.md) — dessen Trockenlauf
+> bereits einen Fund gemacht hat: ohne `files` hätte `npm pack` Quelltext samt Tests
+> und **keinen** Build ausgeliefert, jetzt als drei Regeln in
+> `check-package-manifests.mjs` mit Biss-Fixtures (0.E E29). 0.5 ✅ (`npm run ci`
+> EXIT 0, 2537 Tests am Stand `dc4d7d7`). **Weiter Vorschlag, nicht gebaut:** die
 > Enterprise-Pakete und die Kantenregel **2.2** (ein `layerRules`-Präfix ohne Treffer
 > ist ein Verstoß — sie kann erst mit dem ersten `@vdp/enterprise-*`-Paket landen),
 > Phase 3–6, die Native-Härtung und die Lizenzausstellung.
@@ -646,10 +655,10 @@ Artefakt und **Gate** (den Nachweis, dass sie fertig ist).
 
 | # | Aufgabe | Artefakt | Gate |
 |---|---|---|---|
-| 0.1 | Autorenliste + Rechtekette erheben (voller Klon) | `docs/architecture/authorship-audit.md` (intern oder privat) | Liste vollständig, Lücken benannt |
-| 0.2 | CLA/DCO-Entscheidung + Text (juristisch geprüft) | `CONTRIBUTING.md`, CLA-Assistent aktiv | Neue PRs verlangen Signatur |
-| 0.3 | Lizenzwahl bestätigen (Apache-2.0 Kern / proprietär Module / AGPL Dienst) | `LICENSE`, `NOTICE`, `TRADEMARK.md`, alle 29 `package.json` | `check:manifests` grün; `grep -c '"license": "MIT"'` → 0 im Kern |
-| 0.4 | Registry-Zugang einrichten (Scopes, OIDC, 2FA-Pflicht) | Runbook `docs/operations/registry.md` | Trockenlauf: `npm pack` eines Pakets, Publish in ein Test-Scope |
+| **0.1 🟡** | Autorenliste + Rechtekette erheben (voller Klon) | `docs/architecture/authorship-audit.md` (intern oder privat) | Liste vollständig, Lücken benannt |
+| **0.2 🟡** | CLA/DCO-Entscheidung + Text (juristisch geprüft) | `CONTRIBUTING.md`, CLA-Assistent aktiv | Neue PRs verlangen Signatur |
+| **0.3 🟡** | Lizenzwahl bestätigen (Apache-2.0 Kern / proprietär Module / AGPL Dienst) | `LICENSE`, `NOTICE`, `TRADEMARK.md`, alle 29 `package.json` | `check:manifests` grün; `grep -c '"license": "MIT"'` → 0 im Kern |
+| **0.4 🟡** | Registry-Zugang einrichten (Scopes, OIDC, 2FA-Pflicht) | Runbook `docs/operations/registry.md` | Trockenlauf: `npm pack` eines Pakets, Publish in ein Test-Scope |
 | 0.5 | **Ist-Baseline messen** (Regel 34.21) | `npm run ci` + Coverage-Ausgabe als Referenz im PR | EXIT 0, Zahlen im PR-Body |
 
 > Ohne 0.1–0.3 ist jede weitere Phase eine Investition in eine Struktur, die

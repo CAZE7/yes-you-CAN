@@ -23,6 +23,11 @@
  *  - `private-dependency-leak` — a publishable package depends on a private one, which
  *    describes an install nobody can perform. It is the rule that keeps the open core
  *    and the private modules on their two sides of the boundary (ADR 0059).
+ *  - `publishable-without-files` / `publishable-ships-sources` / `publishable-without-dist`
+ *    — a publishable package has to say what it ships, has to ship the build (`dist/`) its
+ *    entry points point at, and must not ship `src/`. Measured 2026-09-23: with no `files`
+ *    field, `npm pack` of `@vdp/domain` would have shipped 17 `src/` files (specs included)
+ *    and no `dist/` at all, because `.gitignore` excludes `dist/` and npm falls back to it.
  *
  * Test sources are exempt from *declaring* workspace packages deliberately: npm links
  * every workspace package into the root, so requiring a per-package devDependency on the
@@ -354,6 +359,65 @@ function evaluate(root) {
             "through the public one (ADR 0059)",
         });
       }
+    }
+  }
+
+  /*
+   * What a published package *contains* (ADR 0059, phase 3.2 of the open/closed concept).
+   *
+   * Measured on 2026-09-23: `npm pack --dry-run` of `@vdp/domain` would ship 17 files —
+   * all of them `src/`, including the spec files — and **no** `dist/`, because the repo's
+   * `.gitignore` excludes `dist/` and npm falls back to it when no `files` field exists.
+   * Nobody can install that package, and everybody can read its tests. Nothing leaks
+   * today (all 29 packages are private), which is exactly why the rule has to exist
+   * *before* the first `private: false`: the flip is one word, and this is what it costs.
+   *
+   * The rules read the package's own claim instead of restating a policy: a package whose
+   * entry points live in `dist/` has to ship `dist/`; `src` is never shipped.
+   */
+  for (const entry of manifests) {
+    if (entry.manifest.private === true) continue;
+    const files = entry.manifest.files;
+    if (!Array.isArray(files) || files.length === 0) {
+      violations.push({
+        rule: "publishable-without-files",
+        package: entry.manifest.name,
+        message:
+          `${entry.rel}: this package is publishable and declares no "files" — what npm packs ` +
+          "then depends on .gitignore and includes `src/` with the specs (measured 2026-09-23); " +
+          "name what ships (ADR 0059)",
+      });
+      continue;
+    }
+    const named = files.map((item) => String(item).replace(/^\.\//, "").replace(/\/+$/, ""));
+    const shipsSources = named.some(
+      (item) => item === "src" || item.startsWith("src/") || ["*", "**", "."].includes(item),
+    );
+    if (shipsSources) {
+      violations.push({
+        rule: "publishable-ships-sources",
+        package: entry.manifest.name,
+        message: `${entry.rel}: "files" ships source (${files.join(", ")}) — a published package ships the build, not the implementation and its tests (ADR 0059)`,
+      });
+    }
+    const entryPoints = [
+      entry.manifest.main,
+      entry.manifest.types,
+      entry.manifest.typesVersions,
+      ...Object.values(entry.manifest.exports ?? {}).flatMap((value) =>
+        value !== null && typeof value === "object"
+          ? Object.values(value).filter((item) => typeof item === "string")
+          : [],
+      ),
+    ].filter((item) => typeof item === "string");
+    const pointsIntoDist = entryPoints.some((item) => String(item).includes("/dist/"));
+    const shipsDist = named.some((item) => item === "dist" || item.startsWith("dist/"));
+    if (pointsIntoDist && !shipsDist) {
+      violations.push({
+        rule: "publishable-without-dist",
+        package: entry.manifest.name,
+        message: `${entry.rel}: the entry points (${entryPoints.filter((item) => String(item).includes("/dist/")).join(", ")}) live in dist/, but "files" does not ship it — the installed package would resolve to nothing`,
+      });
     }
   }
 

@@ -46,6 +46,7 @@ nicht diese Datei.
 | Vertrag (Open/Closed-Grenze) markieren oder ändern | `architecture/architecture.yaml` → `contracts` (`why`, `entry` für Modul-Verträge, `docs` für die Seite) | `architecture/public-api.json` neu messen (`npm run check:api -- --update`, **nach** `npm run build`), `docs/api/<naht>.md`, `docs/flows/open-core-boundary.md`, ADR 0059 |
 | Fremdcode-Lizenzrichtlinie ändern | `architecture/architecture.yaml` → `licenses` (zwei Geltungsbereiche, je `why`) | `npm run check:licenses`, ADR 0060, `docs/standards/csms.md` |
 | Doku-Link oder Naht-Seite anfassen | die betroffene `.md` selbst | `tests/architecture/docs.test.ts` (tote Links, Anker, ADR-Register, `docs` je Vertrag) |
+| Veröffentlichen (Scope, Trockenlauf, Provenance) | `docs/operations/registry.md` | `check-package-manifests.mjs` (`publishable-*`-Regeln), `docs/architecture/open-core-phase-0-rights.md` (Rechte sind die Voraussetzung, nicht der Nachtrag) |
 | Neues Workspace-Paket | `packages/<name>/` mit `package.json` + `tsconfig.json` | `architecture.yaml` (`packages` + ggf. `topics`), Root-`tsconfig.json` (references), `tsconfig.typecheck.json` (paths), `vitest.config.ts` (falls neue Test-Ebene), `package-lock.json` (npm install) |
 | Neues Testbeispiel / ausführbare Doku | `tests/examples/` | `vitest.config.ts` (Projekt `integration` pickt `tests/examples/**/*.example.ts` auf) |
 | AI-Kontext-Bundle anpassen | `architecture/architecture.yaml` → `topics` | `tools/architecture/ai-context.mjs`, `tests/architecture/ai-context.test.ts` |
