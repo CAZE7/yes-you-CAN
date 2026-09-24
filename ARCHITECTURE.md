@@ -296,9 +296,15 @@ Die zulässigen Kanten pro Paket stehen dort unter `packages.*.mayImport` —
 | Verteilungsgrenze (veröffentlichbar ⇒ keine private Dependency) | dito | `private-dependency-leak` = FAIL (ADR 0059) |
 | Vertragsfläche (`contracts`) ⇔ emittierte Deklarationen | `npm run check:api` (nach `npm run build`) → `tests/architecture/api.test.ts` | Drift ohne `--update` = FAIL, fehlender Build = EXIT 2 (ADR 0059) |
 | Lizenz-Richtlinie des Fremdcodes (`licenses`) | `npm run check:licenses` → `tests/architecture/licenses.test.ts` | Unbekanntes/verbotenes SPDX oder abgelaufene Ausnahme = FAIL (ADR 0060) |
+| Dokumentation der Verträge (`docs` je Vertrag) + alle relativen Links | `tests/architecture/docs.test.ts` | Toter Link/Anker, fehlende Naht-Seite oder ein ADR außerhalb des Registers = FAIL (ADR 0059) |
 | Hygiene (kein `any`, keine fixen Sleeps, Zeilen-Budgets) | `tests/architecture/hygiene.test.ts` | Violation = FAIL |
 | Coverage-Gates (global 90/80/90/90 + per-file) | `npm run test:coverage` (+ CI-Träger ADR 0029) | Schwelle unter = FAIL |
 | Lint + Format + Typecheck | `npm run check`, `npm run typecheck` (im `architecture`-Projekt mitlaufen) | — |
+
+**Zu jedem Vertrag gehört eine Seite.** `contracts` in der YAML nennt sie (`docs`), die
+Seiten liegen in [`docs/api/`](docs/api/) und sind von
+[`docs/flows/open-core-boundary.md`](docs/flows/open-core-boundary.md) aus verlinkt — ein
+Konsument außerhalb dieses Repos liest sie, nicht unseren Quelltext (ADR 0059).
 
 ## 4. Wo ändere ich was?
 

@@ -43,6 +43,9 @@ nicht diese Datei.
 | Beobachtete Daten als Quelle kennzeichnen | `packages/definitions/src/schema.ts` (`Provenance.sourceType: "observed"`, Provenance je Signal/DTC/ECU) | `packages/definitions/src/{json,validate,evidence}.ts`, `apps/web/src/vehicle-view.ts` (Label), ADR 0058 |
 | DTC-Verfügbarkeitsmaske / `0x19`-Unterfunktionen | `packages/protocols/uds/src/{client,dtc,server}.ts` | `packages/core/src/diagnostics/ecu-session.ts` (`dtcAvailabilityMask`), `packages/diagnostic-ir/src/dtc.ts`, `docs/api/uds.md` |
 | Dependency-Regel ändern | `architecture/architecture.yaml` | `npm run check:deps`, ADR (Regel 34.15) |
+| Vertrag (Open/Closed-Grenze) markieren oder ändern | `architecture/architecture.yaml` → `contracts` (`why`, `entry` für Modul-Verträge, `docs` für die Seite) | `architecture/public-api.json` neu messen (`npm run check:api -- --update`, **nach** `npm run build`), `docs/api/<naht>.md`, `docs/flows/open-core-boundary.md`, ADR 0059 |
+| Fremdcode-Lizenzrichtlinie ändern | `architecture/architecture.yaml` → `licenses` (zwei Geltungsbereiche, je `why`) | `npm run check:licenses`, ADR 0060, `docs/standards/csms.md` |
+| Doku-Link oder Naht-Seite anfassen | die betroffene `.md` selbst | `tests/architecture/docs.test.ts` (tote Links, Anker, ADR-Register, `docs` je Vertrag) |
 | Neues Workspace-Paket | `packages/<name>/` mit `package.json` + `tsconfig.json` | `architecture.yaml` (`packages` + ggf. `topics`), Root-`tsconfig.json` (references), `tsconfig.typecheck.json` (paths), `vitest.config.ts` (falls neue Test-Ebene), `package-lock.json` (npm install) |
 | Neues Testbeispiel / ausführbare Doku | `tests/examples/` | `vitest.config.ts` (Projekt `integration` pickt `tests/examples/**/*.example.ts` auf) |
 | AI-Kontext-Bundle anpassen | `architecture/architecture.yaml` → `topics` | `tools/architecture/ai-context.mjs`, `tests/architecture/ai-context.test.ts` |

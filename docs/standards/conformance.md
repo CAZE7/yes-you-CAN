@@ -81,6 +81,6 @@ Lücke dasteht.
 **Zugehörig:** [ADR 0050](../adr/0050-standards-conformance-register.md),
 [ADR 0051](../adr/0051-workbench-api-knows-its-caller.md),
 [ADR 0052](../adr/0052-the-signal-model-clock-is-a-parameter.md),
-[ADR 0053](0053-deps-hardware-and-tooling-boundary.md),
-[ADR 0054](0054-tls-rate-limit-and-csms.md),
+[ADR 0053](../adr/0053-deps-hardware-and-tooling-boundary.md),
+[ADR 0054](../adr/0054-tls-rate-limit-and-csms.md),
 [`README.md`](README.md) (Einstieg), AGENTS 34.21 (Messung vor Behauptung).

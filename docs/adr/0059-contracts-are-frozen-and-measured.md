@@ -38,8 +38,9 @@ sie scheitert beim Kunden statt bei uns.
 ## Entscheidung
 
 1. **`architecture.yaml` bekommt einen Abschnitt `contracts`.** Er benennt die Flächen,
-   gegen die ein *anderes* Repository bauen darf — mit `why`, und mit optionalem `entry`,
-   wenn der Vertrag ein **Modul** ist und nicht das Paket
+   gegen die ein *anderes* Repository bauen darf — mit `why`, mit `docs` (die Seite, die
+   den Vertrag erklärt: wer von außen dagegen baut, liest unsere Quellen nicht) und mit
+   optionalem `entry`, wenn der Vertrag ein **Modul** ist und nicht das Paket
    (`@vdp/core` → `dist/src/logging/integrity.d.ts`, `@vdp/protocols-uds` →
    `dist/src/security.d.ts`).
 2. **`tools/architecture/check-api.mjs`** hüllt die emittierten Deklarationen ein:
@@ -152,7 +153,10 @@ sie scheitert beim Kunden statt bei uns.
 3. `check:api` in `npm run ci` aufnehmen (nach dem Build).
 4. Biss-Test (`tests/architecture/api.test.ts`) und Verteilungsregel-Fixtures
    (`manifests.test.ts`) sind Teil dieses ADR.
-5. Beim ersten Paket des geschlossenen Teils (`@vdp/enterprise-*`, Phase 2/3 des
+5. Je Vertrag eine Seite in `docs/api/` (`docs` im Manifest) und der Link-Check
+   (`tests/architecture/docs.test.ts`) — damit ein Konsument außerhalb des Repos die
+   Fläche lesen kann, ohne unsere Quellen zu lesen.
+6. Beim ersten Paket des geschlossenen Teils (`@vdp/enterprise-*`, Phase 2/3 des
    Konzepts) kommt die YAML-Kantenregel **in denselben PR**: `layerRules`-Präfixe
    müssen ein Paket treffen (`blind-prefix`), deshalb darf die Regel nicht vor den
    Paketen entstehen.
@@ -177,6 +181,14 @@ Gemessen am Stand dieses ADR (`npm run ci`, Node v22.22.3):
 - `tests/architecture/manifests.test.ts` — zwei neue Tests: `private-dependency-leak`
   beißen lassen, und die beiden Formen, die **nicht** beißen (beide Seiten privat;
   nur `devDependencies`).
+- `tests/architecture/docs.test.ts` — 5 Tests: **kein relativer Link im Repo ist tot**
+  (Dateien *und* Anker; Biss-Nachweis an einem Fixture-Baum mit genau zwei Defekten —
+  ein toter Link und ein verschobener Anker, während ein eigener Anker, eine externe URL
+  und ein Beispiel im Codeblock **nicht** gemeldet werden), der ADR-Register-Abgleich
+  (59 Dateien ⇔ 59 Einträge), `docs` je Vertrag existiert und nennt den Vertrag, und jede
+  Naht-Seite ist von `docs/flows/open-core-boundary.md` aus verlinkt. **Fund beim ersten
+  Lauf:** zwei tote Links in `docs/standards/conformance.md` (ADR 0053/0054 ohne
+  `../adr/`-Präfix) — im selben PR behoben.
 - `node tools/architecture/check-dependencies.mjs` → `29 packages placed, 92 edges,
   6 rules` / `no violations.` (EXIT 0) — die Schema-Erweiterung validiert `contracts`
   mit (unbekannte Schlüssel, fehlendes `why`, `entry`-Typ, nicht platziertes Paket).

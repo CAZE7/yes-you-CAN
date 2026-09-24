@@ -206,13 +206,24 @@ function checkSchema(rules) {
   // section and would rather find it already validated than validate it a second time.
   for (const [name, entry] of Object.entries(rules.contracts ?? {})) {
     for (const key of Object.keys(entry ?? {})) {
-      if (!["why", "entry"].includes(key))
+      if (!["why", "entry", "docs"].includes(key))
         problems.push(`unknown key in contracts.${name}: "${key}"`);
     }
     if (!entry?.why)
       problems.push(`contracts.${name} has no "why" — a frozen surface needs a reason`);
     if (entry?.entry !== undefined && typeof entry.entry !== "string")
       problems.push(`contracts.${name}.entry must be a path (relative to the package)`);
+    // A surface somebody *outside* this repository builds against needs a page they can
+    // read: the shape is checked here, that the file exists and really documents this
+    // contract is `tests/architecture/docs.test.ts` (one owner per question).
+    if (entry?.docs !== undefined) {
+      if (typeof entry.docs !== "string" || !entry.docs.endsWith(".md"))
+        problems.push(`contracts.${name}.docs must be a markdown path, found "${entry.docs}"`);
+      else if (!entry.docs.startsWith("docs/") || entry.docs.includes(".."))
+        problems.push(
+          `contracts.${name}.docs must stay below docs/ of this repository, found "${entry.docs}"`,
+        );
+    }
     if (!(name in (rules.packages ?? {})))
       problems.push(`contracts.${name} is not a declared package — place it in "packages" first`);
   }
