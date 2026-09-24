@@ -71,6 +71,16 @@ export const fetchAdapters = () => request("/api/adapters");
 export const selectAdapter = (selection) => request("/api/adapter/select", post(selection));
 
 /**
+ * The adapter doctor for a selection: the pre-flight checklist
+ * (settings → availability → open/handshake → vehicle side) as a report —
+ * the same checklist the CLI doctor walks through.
+ *
+ * @param {import("../src/views.js").AdapterSelection} selection
+ * @returns {Promise<import("../src/views.js").AdapterDoctorView>}
+ */
+export const runAdapterDoctor = (selection) => request("/api/adapter/doctor", post(selection));
+
+/**
  * Start (or restart) the session on the selected adapter.
  *
  * @returns {Promise<import("../src/views.js").AppState>}

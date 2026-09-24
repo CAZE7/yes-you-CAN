@@ -11,7 +11,6 @@ import {
   type AdapterSelection,
   formatAdapterHelp,
   parseAdapterArgv,
-  selectionFromPayload,
   validateSelection,
 } from "@vdp/adapter-host";
 import { buildReport, renderHtml, renderPdf } from "@vdp/reports";
@@ -28,6 +27,7 @@ import {
   TransportClosedError,
   UnknownEcuError,
 } from "@vdp/shared";
+import { handleAdapterApi } from "./adapter-routes.js";
 import { createWebAdapterCatalog, SIMULATOR_ADAPTER_ID } from "./adapters.js";
 import {
   AUTH_REFUSAL,
@@ -331,24 +331,13 @@ export class WebServer {
     if (path === "/api/start" && method === "POST")
       return sendJson(response, 200, await this.backend.start());
 
-    // Adapter management (AGENTS 4, 29). Listing probes the host but never opens
-    // a bus, so it is safe while a vehicle is connected.
-    if (path === "/api/adapters" && method === "GET") {
-      return sendJson(response, 200, {
-        selected: this.backend.adapterSelection,
-        mode: this.backend.currentMode,
-        adapters: await this.backend.listAdapters(),
-      });
-    }
-    if (path === "/api/adapter/select" && method === "POST") {
-      const body = await this.readBody<Record<string, unknown>>(request);
-      const selection = selectionFromPayload(body);
-      const result = await this.backend.selectAdapter(selection);
-      return sendJson(response, 200, {
-        adapter: result.description,
-        reconnectRequired: result.reconnectRequired,
-        connected: this.backend.state().connected,
-      });
+    // Adapter management (AGENTS 4, 29): listing, selecting and doctoring are
+    // one seam — `adapter-routes.ts` owns their dispatch (ADR 0014, E33).
+    if (path === "/api/adapters" || path.startsWith("/api/adapter/")) {
+      const handled = await handleAdapterApi(request, response, path, method, this.backend, (req) =>
+        this.readBody<Record<string, unknown>>(req),
+      );
+      if (handled) return;
     }
     if (path === "/api/identify" && method === "POST")
       return sendJson(response, 200, { ecus: await this.backend.identify() });

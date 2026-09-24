@@ -19,7 +19,12 @@
  * `backend.ts` re-exports all of it, so existing imports keep working.
  */
 
-import type { AdapterDescription, AdapterProbe, AdapterSelection } from "@vdp/adapter-host";
+import type {
+  AdapterDescription,
+  AdapterDoctorReport,
+  AdapterProbe,
+  AdapterSelection,
+} from "@vdp/adapter-host";
 import type { AnalysisResult } from "@vdp/ai";
 import type { DtcView, UnreadEcuView } from "./dtc-view.js";
 import type { EcuView } from "./ecu-view.js";
@@ -364,6 +369,16 @@ export interface AdapterSelectView {
   /** True when the running connection was dropped by the change. */
   reconnectRequired: boolean;
   connected: boolean;
+}
+
+/**
+ * Payload of `POST /api/adapter/doctor` (E33): the pre-flight checklist as a
+ * report. A verdict is data — `blocked` and `needs-attention` are answers the
+ * operator asked for, not errors — and the first failing step carries the
+ * cause and its hints (`docs/adapter-checkliste.md`).
+ */
+export interface AdapterDoctorView {
+  doctor: AdapterDoctorReport;
 }
 
 /**

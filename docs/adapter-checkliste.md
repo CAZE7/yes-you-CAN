@@ -21,6 +21,15 @@ würde — Einstellungen → Gerät → Handshake/Identität → Fahrzeugseite �
 und der **erste** Punkt, der klemmt, nennt Ursache und Hinweise. Exit-Codes:
 `0` bereit · `2` Einstellungsfehler · `3` Adapter braucht Aufmerksamkeit.
 
+Dasselbe gibt es **im Arbeitsplatz** (E33): das Adapter-Panel hat einen
+„Adapter prüfen“-Knopf, der die im Formular stehende Auswahl prüft, ohne sie
+anzuwenden (erst prüfen, dann übernehmen). Die Route
+`POST /api/adapter/doctor` antwortet immer mit dem Bericht —
+ready / „braucht Aufmerksamkeit“ / blockiert ist ein Befund, kein Fehler; nur
+die laufende Sitzung auf genau diesem Adapter wird abgewiesen (409, „erst
+stoppen, dann prüfen“). Am Fahrzeug heißt das: der Browser reicht, die Console
+ist nur noch für den Fall da, dass gar kein Browser läuft.
+
 ## 1. Schnellstart je Adapter
 
 ### ELM327 / OBDLink (seriell) — der normale Adapter

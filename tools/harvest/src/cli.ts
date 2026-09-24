@@ -52,6 +52,7 @@ import { containerShortNameOf, expectationsOf, renderOdxHarvest } from "./odx/di
 import { createPdx } from "./odx/pdx.js";
 import { verificationCounts, verifyOdxDocument } from "./odx/verify.js";
 import { describeHarvestPlan, resolveHarvestPlan } from "./plan.js";
+import { replayAdapterEntry } from "./replay-adapter.js";
 
 /** Exit codes of this CLI. */
 export const EXIT = {
@@ -302,6 +303,7 @@ export function usage(): string {
     "Aufruf:",
     "  harvest --adapter <id> [--device <pfad>] [--channel <name>] --out <verzeichnis>",
     "  harvest --simulator --out <verzeichnis> [--verify-odx]",
+    "  harvest --adapter replay --trace <sitzungs-export.json> --out <verzeichnis>",
     "  harvest --print-plan",
     "",
     "Flaggen:",
@@ -513,6 +515,11 @@ async function openAdapterBus(
   logger: ReturnType<typeof createLogger>,
 ): Promise<{ bus: CanBus; release: () => Promise<void>; error?: string }> {
   const catalog: AdapterCatalog = createHostAdapterCatalog();
+  // The replay entry is this tool's own registration above the adapter layer
+  // (AGENTS 34.2): `--adapter replay --trace=<file>` stands a recorded session
+  // in for the vehicle, so the adapter branch is runnable without hardware
+  // (E27.2, ADR 0005).
+  catalog.register(replayAdapterEntry());
   const parsedAdapter = parseAdapterArgv(argv, "socketcan");
   if (parsedAdapter.errors.length > 0) {
     return {

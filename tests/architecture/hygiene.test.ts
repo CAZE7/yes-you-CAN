@@ -459,7 +459,7 @@ test("modules stay reviewable: no production file above the size budget", () => 
     {
       file: "apps/web/src/backend.ts",
       reason:
-        "1571 lines — split tracked as AGENTS 0.E → docs/architecture/backlog.md E15; the wire contract moved to views.ts in " +
+        "1590 lines — split tracked as AGENTS 0.E → docs/architecture/backlog.md E15; the wire contract moved to views.ts in " +
         "E19 (1326 → 1117), `get canBus()` (which nothing had used since the replay suites " +
         "moved to injected buses) is gone (1427 → 1419), and E24's chaos-in-the-path added the " +
         "wrapper in `start()`, the burst target and the refusal before a connection: 1419 → " +
@@ -473,7 +473,9 @@ test("modules stay reviewable: no production file above the size budget", () => 
         "through `advanceDiagnosis`, loop state in `analyze()`, the for/against mapping in the " +
         "view) added 29: 1510 → 1539; the unused `_MAX_TRACE` constant is gone: 1539 → 1537; " +
         "ADR-0057 Migration 5 (Process-Signer wiring, manifest signature, session provenance " +
-        "fields platformVersion/scenario/traceId) added 34: 1537 → 1571. " +
+        "fields platformVersion/scenario/traceId) added 34: 1537 → 1571; the adapter doctor " +
+        "(E33: `doctorAdapter()` running the CLI's own checklist over the catalog, plus its " +
+        "report imports) added 19: 1571 → 1590. " +
         "The budget only keeps the *rest* from growing unnoticed",
     },
     {
