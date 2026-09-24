@@ -248,6 +248,8 @@ const ADAPTER_FLAGS = new Set([
   "listen-only",
   "can-fd",
   "configure-port",
+  "reconnect-attempts",
+  "reconnect-delay-ms",
 ]);
 
 /** The adapter flags that consume the following argument as their value. */
@@ -259,6 +261,8 @@ const ADAPTER_FLAGS_WITH_VALUE = new Set([
   "baud",
   "protocol",
   "trace",
+  "reconnect-attempts",
+  "reconnect-delay-ms",
 ]);
 
 function isAdapterFlag(name: string): boolean {

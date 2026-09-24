@@ -30,6 +30,14 @@ die laufende Sitzung auf genau diesem Adapter wird abgewiesen (409, „erst
 stoppen, dann prüfen“). Am Fahrzeug heißt das: der Browser reicht, die Console
 ist nur noch für den Fall da, dass gar kein Browser läuft.
 
+**Verlorene Verbindung (E34):** stirbt eine Seriell-Verbindung (Bluetooth
+abgebrochen, USB gezogen), versucht die Workbench sie **einmal nach 2 s**
+wieder aufzunehmen — Gerät neu öffnen, Adapter-Init erneut, Sitzung läuft
+weiter, jede Wiederbelebung steht als Log-Eintrag mit Grund da. Klemmt es
+bleibend, bleibt der Endzustand wie vorher: Status zeigt den Fehler, die
+Sitzung wird von Hand neu gestartet. Abschaltbar für Messfahrten:
+`--reconnect-attempts=0` bzw. `reconnectAttempts: 0` im Body.
+
 ## 1. Schnellstart je Adapter
 
 ### ELM327 / OBDLink (seriell) — der normale Adapter

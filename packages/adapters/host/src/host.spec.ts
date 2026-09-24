@@ -79,6 +79,66 @@ test("a non-numeric baud rate is rejected instead of silently ignored", () => {
   assert.match(parsed.errors[0] ?? "", /--baud must be a positive integer/);
 });
 
+test("the reconnect policy is a bounded pair of flags (E34)", () => {
+  const parsed = parseAdapterArgv([
+    "--adapter=elm327",
+    "--device=/dev/ttyUSB0",
+    "--reconnect-attempts=3",
+    "--reconnect-delay-ms=500",
+  ]);
+  assert.deepEqual(parsed.errors, []);
+  assert.equal(parsed.selection.config.reconnectAttempts, 3);
+  assert.equal(parsed.selection.config.reconnectDelayMs, 500);
+
+  // Fail closed, like --baud: an unbounded or fractional policy is a usage
+  // error, never a silently ignored number that turns into a loop.
+  const tooMany = parseAdapterArgv(["--reconnect-attempts=99"]);
+  assert.match(tooMany.errors[0] ?? "", /--reconnect-attempts must be an integer between 0 and 10/);
+  assert.equal(tooMany.selection.config.reconnectAttempts, undefined);
+  const fractional = parseAdapterArgv(["--reconnect-delay-ms=1.5"]);
+  assert.match(fractional.errors[0] ?? "", /--reconnect-delay-ms must be an integer/);
+  const word = parseAdapterArgv(["--reconnect-delay-ms=soon"]);
+  assert.match(word.errors[0] ?? "", /--reconnect-delay-ms must be an integer/);
+
+  // Zero is legitimate: it restores the old final state on purpose.
+  const off = parseAdapterArgv(["--reconnect-attempts=0"]);
+  assert.deepEqual(off.errors, []);
+  assert.equal(off.selection.config.reconnectAttempts, 0);
+});
+
+test("an HTTP body carries the reconnect policy only as a bounded integer", () => {
+  const selection = selectionFromPayload({
+    id: "elm327",
+    device: "/dev/ttyUSB0",
+    reconnectAttempts: 2,
+    reconnectDelayMs: "300",
+  });
+  assert.equal(selection.config.reconnectAttempts, 2);
+  assert.equal(selection.config.reconnectDelayMs, 300);
+  // Unbounded, fractional or wordy input does not cross the trust boundary.
+  const lied = selectionFromPayload({
+    id: "elm327",
+    reconnectAttempts: 99,
+    reconnectDelayMs: "forever",
+  });
+  assert.equal(lied.config.reconnectAttempts, undefined);
+  assert.equal(lied.config.reconnectDelayMs, undefined);
+});
+
+test("the adapter description names a configured reconnect policy", () => {
+  const entry = createHostAdapterCatalog().require("elm327");
+  const described = describeAdapterConfig(entry, {
+    device: "/dev/ttyUSB0",
+    reconnectAttempts: 2,
+    reconnectDelayMs: 500,
+  });
+  assert.match(described, /reconnect 2×\/500 ms/);
+  // The default policy stays out of the one-liner: a decision not made is not
+  // a fact worth a line.
+  const silent = describeAdapterConfig(entry, { device: "/dev/ttyUSB0" });
+  assert.doesNotMatch(silent, /reconnect/);
+});
+
 test("unrelated arguments stay untouched by the adapter parser", () => {
   const parsed = parseAdapterArgv(["--sessions=./x", "--interval=100"]);
   assert.deepEqual(parsed.errors, []);

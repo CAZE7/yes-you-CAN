@@ -16,6 +16,7 @@ import {
   type AdapterEntry,
   missingRequiredSettings,
 } from "./catalog.js";
+import { MAX_RECONNECT_ATTEMPTS, MAX_RECONNECT_DELAY_MS } from "./reconnect.js";
 
 export interface AdapterSelection {
   /** Catalog entry id, e.g. `elm327`, `slcan`, `socketcan`, `simulator`. */
@@ -51,6 +52,8 @@ const ADAPTER_FLAGS = [
   "listen-only",
   "can-fd",
   "configure-port",
+  "reconnect-attempts",
+  "reconnect-delay-ms",
 ] as const;
 
 /**
@@ -119,6 +122,35 @@ export function parseAdapterArgv(
       if (!Number.isFinite(protocol) || protocol < 0 || protocol > 9)
         errors.push(`--protocol must be an ISO 15765-4 number 0-9, got "${value}"`);
       else config.protocol = protocol;
+    } else if (name === "reconnect-attempts") {
+      // Fail closed, and strictly: `1.5` attempts is a typo, not 1 — a policy
+      // that is bounded by contract must not accept a rounded value on the way
+      // in (E34).
+      if (!/^\d+$/.test(value))
+        errors.push(
+          `--reconnect-attempts must be an integer between 0 and ${MAX_RECONNECT_ATTEMPTS}, got "${value}"`,
+        );
+      else {
+        const attempts = Number.parseInt(value, 10);
+        if (attempts > MAX_RECONNECT_ATTEMPTS)
+          errors.push(
+            `--reconnect-attempts must be an integer between 0 and ${MAX_RECONNECT_ATTEMPTS}, got "${value}"`,
+          );
+        else config.reconnectAttempts = attempts;
+      }
+    } else if (name === "reconnect-delay-ms") {
+      if (!/^\d+$/.test(value))
+        errors.push(
+          `--reconnect-delay-ms must be an integer between 0 and ${MAX_RECONNECT_DELAY_MS}, got "${value}"`,
+        );
+      else {
+        const delay = Number.parseInt(value, 10);
+        if (delay > MAX_RECONNECT_DELAY_MS)
+          errors.push(
+            `--reconnect-delay-ms must be an integer between 0 and ${MAX_RECONNECT_DELAY_MS}, got "${value}"`,
+          );
+        else config.reconnectDelayMs = delay;
+      }
     }
   }
 
@@ -204,6 +236,22 @@ export function selectionFromPayload(
     config.protocol = protocol;
   else if (typeof protocol === "string" && /^\d$/.test(protocol.trim()))
     config.protocol = Number.parseInt(protocol.trim(), 10);
+  // The reconnect policy crosses this trust boundary as a bounded integer or
+  // not at all (E34): an untrusted body never gets to define an endless loop.
+  const boundedInteger = (key: string, max: number): number | undefined => {
+    const value = record[key];
+    if (typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= max)
+      return value;
+    if (typeof value === "string" && /^\d+$/.test(value.trim())) {
+      const parsed = Number.parseInt(value.trim(), 10);
+      if (parsed <= max) return parsed;
+    }
+    return undefined;
+  };
+  const reconnectAttempts = boundedInteger("reconnectAttempts", MAX_RECONNECT_ATTEMPTS);
+  if (reconnectAttempts !== undefined) config.reconnectAttempts = reconnectAttempts;
+  const reconnectDelayMs = boundedInteger("reconnectDelayMs", MAX_RECONNECT_DELAY_MS);
+  if (reconnectDelayMs !== undefined) config.reconnectDelayMs = reconnectDelayMs;
   return { id: text("id") ?? defaultId, config };
 }
 

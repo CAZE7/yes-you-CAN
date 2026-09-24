@@ -22,15 +22,17 @@
 
 import assert from "node:assert/strict";
 import { constants } from "node:fs";
-import { type FileHandle, open as openFile } from "node:fs/promises";
+import { type FileHandle, mkdtemp, open as openFile, rm, symlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { CanableAdapter } from "@vdp/adapter-canable";
 import { Elm327Adapter } from "@vdp/adapter-elm327";
-import { openSerialStream } from "@vdp/adapter-host";
-import { createLogger, TransportError } from "@vdp/shared";
+import { createHostAdapterCatalog, openSerialStream } from "@vdp/adapter-host";
+import { createLogger, MemorySink, TransportError } from "@vdp/shared";
 import { IsoTpConnection } from "@vdp/transport-iso-tp";
 import { test } from "vitest";
 import { createPtyPair, hasSocat, type PtyPair } from "../helpers/pty.js";
-import { tick } from "../helpers/wait.js";
+import { tick, waitFor } from "../helpers/wait.js";
 
 /* --------------------------------------------------------- shared plumbing */
 
@@ -486,6 +488,110 @@ test.skipIf(!hasSocat())(
       await adapter.close().catch(() => undefined);
       await stream.close().catch(() => undefined);
       pair.dispose();
+    }
+  },
+);
+
+/* ---------------------------------------------------- the bounded reconnect (E34) */
+
+test.skipIf(!hasSocat())(
+  "a lost serial link is revived once under the same device path — the same bus and connection answer again",
+  { timeout: 30_000 },
+  async () => {
+    // The scenario is the P2 edge of backlog E34: the "USB adapter" (socat)
+    // disappears, the device path with it, and the operator replugs — a new
+    // adapter under the same path. The catalog's supervisor must rebuild the
+    // link, re-run the init, and hand the session the *same* bus object, so
+    // the layer above (here: an open ISO-TP connection) simply continues.
+    const dir = await mkdtemp(join(tmpdir(), "vdp-reconnect-"));
+    const link = join(dir, "ttyUSB0");
+    const sink = new MemorySink();
+    const logger = createLogger("rehearsal", { level: "DEBUG" }, [sink]);
+    const pair = await createPtyPair();
+    const device = new Elm327Device(pair.b, "A");
+    await device.start();
+    await symlink(pair.a, link);
+    const bus = await createHostAdapterCatalog()
+      .require("elm327")
+      .create({ device: link, reconnectAttempts: 2, reconnectDelayMs: 600 }, { logger });
+    let secondPair: PtyPair | null = null;
+    try {
+      await bus.open();
+      const connection = new IsoTpConnection(bus, { txId: 0x7e0, rxId: 0x7e8 });
+      connection.open();
+      try {
+        const before = await connection.request(Uint8Array.from(TESTER_PRESENT), 5000);
+        assert.deepEqual(Array.from(before), [0x7e, 0x00], `wire:\n${device.wireLog()}`);
+
+        // The link dies: the adapter disappears, the device path with it.
+        // (Noticing is asynchronous by nature — the read loop learns of the
+        // dead descriptor on its next poll — so the test waits for the honest
+        // state instead of racing the poll interval.)
+        await device.stop();
+        pair.dispose();
+        const goneDeadline = Date.now() + 3000;
+        while (bus.isOpen() && Date.now() < goneDeadline) await tick(25);
+        assert.equal(bus.isOpen(), false, "a dead link must not claim to be open");
+        await assert.rejects(
+          () => connection.request(Uint8Array.from(TESTER_PRESENT), 1000),
+          /not open|byte stream/,
+          "a request during the dead window fails with the adapter's own refusal",
+        );
+
+        // The operator replugs: a fresh adapter appears under the same path.
+        secondPair = await createPtyPair();
+        const device2 = new Elm327Device(secondPair.b, "A");
+        await device2.start();
+        await rm(link, { force: true });
+        await symlink(secondPair.a, link);
+
+        const deadline = Date.now() + 8000;
+        while (!bus.isOpen() && Date.now() < deadline) await tick(50);
+        assert.ok(bus.isOpen(), "the supervisor must revive the link within the budget");
+        const after = await connection.request(Uint8Array.from(TESTER_PRESENT), 5000);
+        assert.deepEqual(
+          Array.from(after),
+          [0x7e, 0x00],
+          "the same connection object survived the revival — the runtime above never noticed",
+        );
+        assert.ok(
+          device2.wire.some((entry) => entry.text.includes("ATZ")),
+          "the revival re-ran the adapter init on the new device",
+        );
+        assert.ok(
+          sink.all().some((record) => record.message === "adapter link restored"),
+          "the revival is a log entry, not silence",
+        );
+
+        // Second incident, and this time nobody replugs: the two attempts are
+        // spent, then the clear final state of today — no loop, no silence.
+        await device2.stop();
+        secondPair.dispose();
+        secondPair = null;
+        await rm(link, { force: true });
+        await waitFor(
+          () =>
+            sink
+              .all()
+              .some(
+                (record) => record.message === "adapter link is down — no reconnect attempt left",
+              ),
+          Boolean,
+          { timeoutMs: 6000, message: "the two reconnect attempts must be spent and named" },
+        );
+        assert.equal(bus.isOpen(), false, "the final state is a closed bus");
+        assert.equal(
+          sink.all().filter((record) => record.message === "adapter link restored").length,
+          1,
+          "exactly one revival — the policy is bounded, not a heartbeat",
+        );
+      } finally {
+        connection.close();
+      }
+    } finally {
+      await bus.close().catch(() => undefined);
+      secondPair?.dispose();
+      await rm(dir, { recursive: true, force: true });
     }
   },
 );

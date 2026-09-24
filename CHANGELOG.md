@@ -11,6 +11,8 @@ none of it was the norm. This file is the release changelog.
 
 ### Added
 
+- **Verlorene Seriell-Verbindungen werden begrenzt wieder aufgenommen ([Backlog E34](docs/architecture/backlog.md), 2026-09-24).**
+  Elm327 und slcan (CANable) laufen jetzt in einem Supervisor: stirbt der Stream (Bluetooth-Abbruch, gezogener USB-Stecker), wird nach 2 s **einmal** (Default; `reconnectAttempts`, `reconnectDelayMs` konfigurierbar, `0` schaltet ab) das Gerät neu geöffnet und die Adapter-Init erneut gefahren. Die Sitzung merkt es nicht — dasselbe Bus-Objekt, Subscriptions werden neu registriert, die offene ISO-TP-Verbindung antwortet weiter; Live-Werte laufen einfach weiter. Jeder Übergang ist ein Log-Eintrag mit Grund; nach den Versuchen bleibt der klare Endzustand von heute. Eine Wiederbelebung ist ein Verbindungsaufbau, kein Write — die Permit-Kette bleibt unberührt (AGENTS 26). Auf echten PTYs gemessen (Rehearsal-Suite), inklusive des zweiten Vorfalls ohne Wiedereinstecken: zwei Versuche, dann Ende.
 - **Der Adapter-Doctor ist im Arbeitsplatz ([Backlog E33](docs/architecture/backlog.md), 2026-09-24).**
   `POST /api/adapter/doctor` prüft die aktuelle Auswahl (`{}`) oder eine benannte (`{id, …}`) mit derselben Checkliste wie die CLI (`runAdapterDoctor` aus `@vdp/adapter-host`). Die Antwort ist immer 200 mit dem Bericht — ready/„braucht Aufmerksamkeit“/blockiert ist Daten, kein Fehler; nur die laufende Sitzung auf genau diesem Adapter wird mit 409 abgewiesen („erst stoppen, dann prüfen“). Das Adapter-Panel hat einen „prüfen“-Knopf, der die Formular-Auswahl prüft, ohne sie anzuwenden, plus CAN-FD- und Listen-only-Kästchen; der Bericht wird wortgetreu projiziert (die Projektion interpretiert nie) und bei jedem Auswahlwechsel geräumt. Die Adapter-Routen liegen dafür in `apps/web/src/adapter-routes.ts` (server.ts dispatcht per Präfix; weiterhin ein einziges 404 am Ende).
 - **Die Ernte-CLI fährt gegen eine aufgezeichnete Sitzung: `--adapter replay --trace <Datei|inline-JSON>` ([Backlog E27.2](docs/architecture/backlog.md), 2026-09-24).**
@@ -31,6 +33,7 @@ none of it was the norm. This file is the release changelog.
 
 ### Changed
 
+- **Der Katalog-Supervisor ersetzt `withOwnedStream`** (Elm327/slcan): dieselbe Deskriptor-Disziplin — jeder gebaute Stream wird geschlossen, auch die einer gescheiterten Wiederbelebung — plus die begrenzte Reconnect-Policy aus E34; `wrappedByCatalog` folgt dabei dem jeweils aktuellen Adapter, damit der Doctor das Gerät prüft, das wirklich offen ist.
 - **Ein Filter-Vokabular für alle Adapter ([Backlog E32](docs/architecture/backlog.md)).** Vier lokale
   Kopien derselben Masken-Logik (elm327, canable, socketcan, generic-can) ignorierten das
   `extended`-Flag eines Filters — `0x18DA10F1 & 0x7FF === 0x0F1` lieferte das 29-Bit-Frame an

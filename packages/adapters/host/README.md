@@ -29,6 +29,14 @@ die Adapter-Auswahl (`selection.ts`). Die Workbench fragt dieses Paket:
   Klassisches CAN **und** CAN-FD reisen (`#`/`##`-Form, BRS = Bit 0 der
   Flags-Ziffer nach `linux/can.h`); CAN-FD am SocketCAN-Adapter wird mit
   `--can-fd` opt-in geschaltet, nie vermutet.
+- **Begrenzter Reconnect** (`reconnect.ts`, E34): Elm327 und slcan laufen im
+  Supervisor `superviseSerialBus` — stirbt der Stream, wird nach
+  `reconnectDelayMs` (Default 2000 ms) `reconnectAttempts`-mal (Default 1,
+  `0` = aus) neu aufgebaut, Adapter-Init inklusive; Subscriptions werden bei
+  der Wiederbelebung neu registriert, `wrappedByCatalog` folgt dem aktuellen
+  Adapter. Begrenzt pro Vorfall, jede Wiederbelebung ein Log-Eintrag mit
+  Grund, danach der klare Endzustand. Ein Reconnect ist ein
+  Verbindungsaufbau, kein Write (AGENTS 26).
 
 ## Does NOT do
 
