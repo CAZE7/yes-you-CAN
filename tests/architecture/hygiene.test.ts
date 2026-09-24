@@ -459,7 +459,7 @@ test("modules stay reviewable: no production file above the size budget", () => 
     {
       file: "apps/web/src/backend.ts",
       reason:
-        "1571 lines — split tracked as AGENTS 0.E → docs/architecture/backlog.md E15; the wire contract moved to views.ts in " +
+        "1590 lines — split tracked as AGENTS 0.E → docs/architecture/backlog.md E15; the wire contract moved to views.ts in " +
         "E19 (1326 → 1117), `get canBus()` (which nothing had used since the replay suites " +
         "moved to injected buses) is gone (1427 → 1419), and E24's chaos-in-the-path added the " +
         "wrapper in `start()`, the burst target and the refusal before a connection: 1419 → " +
@@ -473,20 +473,25 @@ test("modules stay reviewable: no production file above the size budget", () => 
         "through `advanceDiagnosis`, loop state in `analyze()`, the for/against mapping in the " +
         "view) added 29: 1510 → 1539; the unused `_MAX_TRACE` constant is gone: 1539 → 1537; " +
         "ADR-0057 Migration 5 (Process-Signer wiring, manifest signature, session provenance " +
-        "fields platformVersion/scenario/traceId) added 34: 1537 → 1571. " +
+        "fields platformVersion/scenario/traceId) added 34: 1537 → 1571; the adapter doctor " +
+        "(E33: `doctorAdapter()` running the CLI's own checklist over the catalog, plus its " +
+        "report imports) added 19: 1571 → 1590. " +
         "The budget only keeps the *rest* from growing unnoticed",
     },
     {
       file: "packages/transport/iso-tp/src/connection.ts",
       reason:
-        "861 lines — the production N_Cr timer (AGENTS 1.45, tracked as 0.E E26) added " +
+        "888 lines — the production N_Cr timer (AGENTS 1.45, tracked as 0.E E26) added " +
         "60 on 2026-09-23: the `crTimer` field and its doc block, `armCrTimeout()`/`clearCrTimeout()` " +
         "with the timeout callback, the arm points in the First-Frame and Consecutive-Frame branches, " +
         "the disarms in the Single-Frame/completion/sequence-error paths and in `close()`, and the " +
         "`checkCrTimeout()` doc block: 785 → 845. The retry classification (0.E E30) added 16 on " +
         "2026-09-24: the `VdpError` import, the second half of `isRetryable()` that accepts an " +
         "adapter-declared transient, and `transmit()` spreading the caught error's `details` instead " +
-        "of flattening them into a string — 845 → 861. The split candidate is the timeout machinery " +
+        "of flattening them into a string — 845 → 861. The receiver buffer bound (0.E E32) added 27 " +
+        "on 2026-09-24: the `maxReceiveBytes` field, its constructor wiring and the Flow-Control-" +
+        "Overflow branch in the First-Frame handler with the doc block that names ISO 15765-2 " +
+        "Table 14 — 861 → 888. The split candidate is the timeout machinery " +
         "as a small collaborator module (rx-state timers); until then the budget only keeps the *rest* " +
         "from growing unnoticed",
     },

@@ -46,6 +46,11 @@ vcan0/can0 (Linux) → SocketCanBinding (injectierbar) → SocketCanAdapter → 
   npm-`createChannel` (`wrapNpmSocketCanModule` in `binding.ts`) — der
   Installationshinweis `npm i socketcan` muss liefern dürfen, was der Lader
   akzeptiert. RTR-Frames werden wie slcan-remote verworfen.
+- **CAN-FD reist mit dem Frame** (`SocketCanFrameData.fd/brs`): der Adapter
+  behält `fd`/`brs` in beide Richtungen bei und wirbt nur mit `canFd`, wenn
+  die Auswahl es verlangt (`--can-fd` über den Host-Katalog). Ein Contract,
+  der FD nicht ausdrücken kann, verwandelt jede 64-Byte-ISO-TP-Segmentierung
+  still in klassische Frames, die der Kernel verweigert (ISO 11898-1).
 - **Hardware-Tests sind manual:** `tests/hardware/vcan.test.ts`
   (`npm run test:hardware`), nie Teil des normalen `npm test`.
 

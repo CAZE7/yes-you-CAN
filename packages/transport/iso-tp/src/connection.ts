@@ -17,6 +17,7 @@ import {
 } from "@vdp/shared";
 import { type CanBus, type CanFrame, createFrame } from "@vdp/transport-can";
 import {
+  DEFAULT_MAX_RECEIVE_BYTES,
   DEFAULT_TIMING,
   encodeStMin,
   FLOW_STATUS,
@@ -92,6 +93,8 @@ export class IsoTpConnection {
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly now: () => number;
   private readonly mtu: number;
+  /** Receive buffer bound — see `IsoTpOptions.maxReceiveBytes`. */
+  private readonly maxReceiveBytes: number;
   private rxState: RxState | null = null;
   /**
    * The live N_Cr timer of the active reception.
@@ -117,6 +120,7 @@ export class IsoTpConnection {
     this.now = options.now ?? (() => Date.now());
     this.log = (logger ?? createLogger("isotp", { level: "INFO" })).child("isotp");
     this.mtu = options.fd && bus.capabilities.canFd ? 64 : 8;
+    this.maxReceiveBytes = options.maxReceiveBytes ?? DEFAULT_MAX_RECEIVE_BYTES;
   }
 
   /** Effective payload of one frame after PCI/address-extension bytes. */
@@ -702,6 +706,29 @@ export class IsoTpConnection {
         return;
       }
       const first = body.subarray(headerLength);
+      // A First Frame that claims more than this receiver will buffer gets the
+      // protocol's own refusal, not a silent drop: Flow Control with
+      // flowStatus OVERFLOW (ISO 15765-2 Table 14) tells a conformant sender to
+      // stop before it fills a buffer nobody can hold. Without the bound, the
+      // CAN-FD escape form of FF_DL is a 32-bit length and a corrupt frame
+      // allocates chunks for up to 4 GiB until N_Cr notices a second later.
+      if (length > this.maxReceiveBytes) {
+        this.log.warn(
+          "First Frame exceeds the receiver buffer — announcing Flow Control overflow",
+          {
+            declaredLength: length,
+            maxReceiveBytes: this.maxReceiveBytes,
+          },
+        );
+        void this.sendFlowControl(FLOW_STATUS.OVERFLOW);
+        this.failPending(
+          new IsoTpError(
+            `First Frame declares ${length} bytes, this receiver accepts ${this.maxReceiveBytes} — Flow Control overflow sent`,
+            { flowControl: "overflow", declaredLength: length, limit: this.maxReceiveBytes },
+          ),
+        );
+        return;
+      }
       this.rxState = {
         expectedLength: length,
         chunks: [first.slice()],

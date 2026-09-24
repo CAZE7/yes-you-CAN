@@ -11,6 +11,16 @@ none of it was the norm. This file is the release changelog.
 
 ### Added
 
+- **Verlorene Seriell-Verbindungen werden begrenzt wieder aufgenommen ([Backlog E34](docs/architecture/backlog.md), 2026-09-24).**
+  Elm327 und slcan (CANable) laufen jetzt in einem Supervisor: stirbt der Stream (Bluetooth-Abbruch, gezogener USB-Stecker), wird nach 2 s **einmal** (Default; `reconnectAttempts`, `reconnectDelayMs` konfigurierbar, `0` schaltet ab) das Gerät neu geöffnet und die Adapter-Init erneut gefahren. Die Sitzung merkt es nicht — dasselbe Bus-Objekt, Subscriptions werden neu registriert, die offene ISO-TP-Verbindung antwortet weiter; Live-Werte laufen einfach weiter. Jeder Übergang ist ein Log-Eintrag mit Grund; nach den Versuchen bleibt der klare Endzustand von heute. Eine Wiederbelebung ist ein Verbindungsaufbau, kein Write — die Permit-Kette bleibt unberührt (AGENTS 26). Auf echten PTYs gemessen (Rehearsal-Suite), inklusive des zweiten Vorfalls ohne Wiedereinstecken: zwei Versuche, dann Ende.
+- **Der Adapter-Doctor ist im Arbeitsplatz ([Backlog E33](docs/architecture/backlog.md), 2026-09-24).**
+  `POST /api/adapter/doctor` prüft die aktuelle Auswahl (`{}`) oder eine benannte (`{id, …}`) mit derselben Checkliste wie die CLI (`runAdapterDoctor` aus `@vdp/adapter-host`). Die Antwort ist immer 200 mit dem Bericht — ready/„braucht Aufmerksamkeit“/blockiert ist Daten, kein Fehler; nur die laufende Sitzung auf genau diesem Adapter wird mit 409 abgewiesen („erst stoppen, dann prüfen“). Das Adapter-Panel hat einen „prüfen“-Knopf, der die Formular-Auswahl prüft, ohne sie anzuwenden, plus CAN-FD- und Listen-only-Kästchen; der Bericht wird wortgetreu projiziert (die Projektion interpretiert nie) und bei jedem Auswahlwechsel geräumt. Die Adapter-Routen liegen dafür in `apps/web/src/adapter-routes.ts` (server.ts dispatcht per Präfix; weiterhin ein einziges 404 am Ende).
+- **Die Ernte-CLI fährt gegen eine aufgezeichnete Sitzung: `--adapter replay --trace <Datei|inline-JSON>` ([Backlog E27.2](docs/architecture/backlog.md), 2026-09-24).**
+  ADR 0005 (Simulator/Replay statt Fahrzeug) auf die Ernte angewendet: der Replay-Eintrag wird oberhalb der Adapterschicht registriert, die Probe antwortet aus der Referenz allein (kein Datei-I/O), `create` lädt die Aufzeichnung im `vdp.session`-Format über `recordingFromSessionJson` (kein zweiter Parser) und verweigert leere Traces. Der Paritätstest erntet den Simulator einmal mit, spielt die Aufzeichnung dann der CLI vor und erreicht dieselbe ECU-Zahl — der Adapter-Erfolgszweig der CLI ist damit ohne Hardware testbar und getestet.
+- **CAN-FD reist jetzt durch SocketCAN — Vertrag, Adapter, npm-Wrapper und can-utils-Fallback ([Backlog E32](docs/architecture/backlog.md), 2026-09-24).**
+  Gemessen am Code: `SocketCanFrameData` konnte FD nicht ausdrücken, `handleFrame` hardcodierte `fd: false`, `send()` warf das Flag weg, und der can-utils-Fallback lehnte `##`-Zeilen ab — ein FD-fähiger Adapter hätte 64-Byte-ISO-TP-Segmente als klassische Frames verschickt und jedes FD-Empfangsframe als klassisch deklariert. Neu: `fd`/`brs` im Bindungsvertrag, Passthrough in beide Richtungen, die `##`-Form von `cansend`/`candump -L` in beide Richtungen (Format gegen can-utils `lib.c` verifiziert; BRS = Bit 0, ESI = Bit 1 nach `linux/can.h`) und `--can-fd` durch die ganze Auswahlkette (CLI, HTTP-Body, Katalog — die Capability wird verhandelt, nie vermutet).
+- **ISO-TP beantwortet überlange First Frames mit Flow Control Overflow (ISO 15765-2 Table 14).**
+  Die FD-Fluchtform von FF_DL ist ein 32-Bit-Feld; vorher wurde jede deklarierte Länge übernommen (`chunks` bis 4 GiB, bemerkt erst vom N_Cr-Timer). Neu: `maxReceiveBytes` (Default `DEFAULT_MAX_RECEIVE_BYTES` = 64 KiB, konfigurierbar) — ein First Frame darüber erhält `30 02 …` als Flow Control, die laufende Anfrage scheitert mit benanntem Grund statt still mitzulaufen; klassisches CAN ist unverändert (12-Bit-FF_DL ≤ 4095).
 - **Adapter-Audit für den Hardware-Tag abgeschlossen — neuer Adapter-Doctor, PTY-Rehearsal und Härtung aller fünf Adapter ([Backlog E31](docs/architecture/backlog.md), 2026-09-24).**
   Alle Befunde gemessen am Code bzw. über **PTY-Geräte-Emulatoren auf der echten Seriell-Strecke** (`socat`), nicht an Behauptungen; die neue
   Rehearsal-Suite `tests/integration/adapter-rehearsal.spec.ts` (6 Szenarien) fährt
@@ -23,6 +33,19 @@ none of it was the norm. This file is the release changelog.
 
 ### Changed
 
+- **Der Katalog-Supervisor ersetzt `withOwnedStream`** (Elm327/slcan): dieselbe Deskriptor-Disziplin — jeder gebaute Stream wird geschlossen, auch die einer gescheiterten Wiederbelebung — plus die begrenzte Reconnect-Policy aus E34; `wrappedByCatalog` folgt dabei dem jeweils aktuellen Adapter, damit der Doctor das Gerät prüft, das wirklich offen ist.
+- **Ein Filter-Vokabular für alle Adapter ([Backlog E32](docs/architecture/backlog.md)).** Vier lokale
+  Kopien derselben Masken-Logik (elm327, canable, socketcan, generic-can) ignorierten das
+  `extended`-Flag eines Filters — `0x18DA10F1 & 0x7FF === 0x0F1` lieferte das 29-Bit-Frame an
+  einen Subscriber mit 11-Bit-Filter. Alle vier rufen jetzt die geteilte `frameMatchesFilters`,
+  die das Flag prüft; ein Pin-Test je Adapter hält die Semantik fest.
+- **Die nächtliche Hardware-CI misst wieder etwas.** `hardware.yml` legte vcan0 an, installierte
+  aber keinen SocketCAN-Transport — die Conformance-Suite skippte jeden Lauf, der Job testete nur
+  den Simulator. Jetzt installiert der Job can-utils (vorgebaut, kein node-gyp), und
+  `tests/hardware/socketcan-conformance.test.ts` nutzt die Host-Auflösungskette
+  (natives Modul → can-utils), statt nur des npm-Moduls. Die Ernte-CLI kennt zusätzlich
+  `--protocol` und `--can-fd` als Adapter-Flags (29-Bit-Fahrzeug war dort vorher ein
+  „unbekanntes Flag“).
 - **`AGENTS.md` ist wieder lesbar (ADR 0059).** Gemessen am 2026-09-24: 248.497 Bytes
   auf 1.461 Zeilen, längste Zeile **7.653 Zeichen**, durchschnittlich 172 Zeichen — und
   davon 65,3 % Chronik (162.192 B in 61 Versions-Bullets), 14.336 B Abschnitt 0.A

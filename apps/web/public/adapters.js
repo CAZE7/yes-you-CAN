@@ -49,7 +49,14 @@ export function renderAdapters(payload) {
   input("#adapter-trace").value = payload.selected.config.trace ?? "";
   const protocol = input("#adapter-protocol");
   if (protocol) protocol.value = String(payload.selected.config.protocol ?? "");
+  const canFd = input("#adapter-canfd");
+  if (canFd) canFd.checked = payload.selected.config.canFd === true;
+  const listenOnly = input("#adapter-listenonly");
+  if (listenOnly) listenOnly.checked = payload.selected.config.listenOnly === true;
   device.placeholder = selected?.requires.channel ? "can0" : "/dev/ttyUSB0";
+  // A fresh selection invalidates a doctor report: the checklist below the
+  // probe belongs to *this* state, not to the one before the change.
+  must("#adapter-doctor").replaceChildren();
 
   const probe = must("#adapter-probe");
   probe.textContent = `${payload.mode} · ${selected?.probe.detail ?? ""}`;
@@ -115,7 +122,49 @@ export function selectionFromForm() {
   if (trace) config.trace = trace;
   if (entry?.id === "elm327" && /^[0-9]$/.test(protocol))
     config.protocol = Number.parseInt(protocol, 10);
+  // CAN-FD belongs to SocketCAN, listen-only to slcan; the checkboxes stay
+  // visible for every adapter because the catalog ignores what does not apply —
+  // same honesty as the protocol field above.
+  if (input("#adapter-canfd")?.checked) config.canFd = true;
+  if (input("#adapter-listenonly")?.checked) config.listenOnly = true;
   return { id, config };
+}
+
+/** Status glyphs of the doctor checklist — the CLI prints the same vocabulary. */
+const DOCTOR_GLYPHS = { ok: "✓", warn: "⚠", fail: "✗", skip: "–" };
+
+const DOCTOR_VERDICTS = {
+  ready: "bereit",
+  "needs-attention": "braucht Aufmerksamkeit",
+  blocked: "blockiert",
+};
+
+/**
+ * The doctor report as a checklist: verdict first, then every step with its
+ * status, detail and hints — the order a technician works through
+ * (docs/adapter-checkliste.md). The report is rendered, never interpreted: the
+ * front end does not decide which step matters (AGENTS 5).
+ *
+ * @param {import("../src/views.js").AdapterDoctorView} payload
+ */
+export function renderDoctorReport(payload) {
+  const list = must("#adapter-doctor");
+  list.replaceChildren();
+  list.append(
+    el(
+      "li",
+      { class: `doctor-verdict doctor-${payload.doctor.verdict}` },
+      `Urteil: ${DOCTOR_VERDICTS[payload.doctor.verdict] ?? payload.doctor.verdict}`,
+    ),
+  );
+  for (const step of payload.doctor.steps) {
+    list.append(
+      el("li", { class: `doctor-${step.status}` }, [
+        `${DOCTOR_GLYPHS[step.status] ?? "·"} ${step.label}: ${step.detail}`,
+        ...(step.hints ?? []).map((hint) => el("div", { class: "hint", text: `→ ${hint}` })),
+      ]),
+    );
+  }
 }
 
 /**
@@ -140,6 +189,18 @@ export function mountAdaptersPanel(onError, onApplyState) {
       await loadAdapters(onError);
       if (result.reconnectRequired) onApplyState(await api.startSession());
       else onApplyState(await api.fetchState());
+    } catch (error) {
+      onError(error);
+    }
+  });
+
+  // The doctor checks what the form shows — it does not apply the selection
+  // first: "prüfen" is a question, not a change (E33). The server refuses with
+  // 409 when the running session already owns that adapter, and that refusal
+  // lands here as an error line, not as a silent no-op.
+  button("#btn-adapter-doctor").addEventListener("click", async () => {
+    try {
+      renderDoctorReport(await api.runAdapterDoctor(selectionFromForm()));
     } catch (error) {
       onError(error);
     }

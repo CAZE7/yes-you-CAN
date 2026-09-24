@@ -22,7 +22,7 @@
 
 | Fläche | Wert | Quelle |
 |---|---|---|
-| API-Routen | **37** Pfade unter `/api/` | `apps/web/src/server.ts` |
+| API-Routen | **37** Pfade unter `/api/` (36 literale + `/api/session/:id/package`; gemessen 2026-09-24) | `apps/web/src/server.ts`, `apps/web/src/adapter-routes.ts` |
 | Body-Limit | **1 000 000 Byte**, beim Einlesen geprüft, `413` darüber | `server.ts:79`, `:520-521` |
 | Pfad-Eindämmung | Segment-Vergleich statt Präfix-Test, `..` und NUL abgewiesen | `apps/web/src/paths.ts`, `static-assets.ts` |
 | Rate-Limiting | **100 Req/60s/IP** für API, **10 SSE/IP** concurrent, **429** mit Retry-After | `apps/web/src/rate-limit.ts`, `server.ts:handle()` + `streamEvents()` |

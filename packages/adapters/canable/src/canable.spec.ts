@@ -149,6 +149,24 @@ test("BEL responses increment the error counter", async () => {
   assert.equal(adapter.counters.errors, 1);
 });
 
+test("a filter that states extended means it — no low-bit accidental match", async () => {
+  // T7E8… is a 29-bit frame whose low 11 bits are 0x7E8: without honouring the
+  // filter's `extended` flag, a subscriber asking for the 11-bit 0x7E8 would
+  // also receive it. One filter vocabulary (`frameMatchesFilters`) for every
+  // adapter is what guarantees that.
+  const stream = answeringSlcan();
+  const adapter = new CanableAdapter({ stream, commandTimeoutMs: 100 });
+  await adapter.open();
+  const received: number[] = [];
+  adapter.subscribe(
+    (frame) => received.push(frame.id),
+    [{ id: 0x7e8, mask: 0x7ff, extended: false }],
+  );
+  stream.emit("T000007E837F2231\r");
+  stream.emit("t7E837F2231\r");
+  assert.deepEqual(received, [0x7e8]);
+});
+
 test("CAN-FD frames are rejected", async () => {
   const stream = answeringSlcan();
   const adapter = new CanableAdapter({ stream, commandTimeoutMs: 100 });

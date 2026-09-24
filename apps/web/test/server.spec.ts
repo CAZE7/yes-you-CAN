@@ -727,3 +727,81 @@ test("the scenario endpoints answer by what is missing: nothing, an id, or a mod
     assert.match(String((unknown.body as { error: string }).error), /known: /);
   });
 });
+
+/**
+ * The doctor route (E33): the CLI checklist as a wire contract.
+ *
+ * A verdict is data, not an error — "blocked" answers 200 with the first
+ * failing step, because the report is what the operator asked for. The one
+ * refusal is the live session: the doctor opens the adapter to prove it, and
+ * two openers on one wire garble each other's conversation (an ELM327
+ * serialises commands per adapter, not per opener).
+ */
+test("the doctor route answers reports, and refuses only the session's own adapter", async () => {
+  await withServer(async (base) => {
+    const report = await json(base, "/api/adapter/doctor", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    assert.equal(report.status, 200, JSON.stringify(report.body));
+    const first = report.body as {
+      doctor: { verdict: string; steps: { id: string; status: string }[] };
+    };
+    assert.equal(first.doctor.verdict, "ready");
+    assert.ok(
+      first.doctor.steps.some((step) => step.id === "managed" && step.status === "skip"),
+      "the simulator is application-managed — no hardware check, said as a skip",
+    );
+
+    // An explicit selection that misses its required setting: the report is
+    // the answer (blocked), and the first failing step names the cause.
+    const blocked = await json(base, "/api/adapter/doctor", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "elm327" }),
+    });
+    assert.equal(blocked.status, 200, JSON.stringify(blocked.body));
+    const second = blocked.body as {
+      doctor: { verdict: string; steps: { id: string; status: string; detail: string }[] };
+    };
+    assert.equal(second.doctor.verdict, "blocked");
+    const settings = second.doctor.steps.find((step) => step.id === "settings");
+    assert.equal(settings?.status, "fail");
+    assert.match(settings?.detail ?? "", /--device/);
+
+    // A body that is not JSON is the caller's mistake, like everywhere else.
+    const garbage = await json(base, "/api/adapter/doctor", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "not json",
+    });
+    assert.equal(garbage.status, 400);
+
+    // While the session runs, its own adapter is off limits — the doctor
+    // would open the same wire a second time.
+    const started = await json(base, "/api/start", { method: "POST" });
+    assert.equal(started.status, 200, JSON.stringify(started.body));
+    const live = await json(base, "/api/adapter/doctor", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    assert.equal(live.status, 409);
+    assert.match(String((live.body as { error: string }).error), /stop the session/);
+
+    // A different adapter is a different wire: the check runs and reports.
+    const other = await json(base, "/api/adapter/doctor", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "slcan" }),
+    });
+    assert.equal(other.status, 200, JSON.stringify(other.body));
+    const third = other.body as { doctor: { verdict: string } };
+    assert.equal(
+      third.doctor.verdict,
+      "blocked",
+      "slcan without a device is blocked, not an error",
+    );
+  });
+});

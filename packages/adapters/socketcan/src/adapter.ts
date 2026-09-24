@@ -14,7 +14,8 @@ import type {
   CanFrame,
   FrameListener,
 } from "@vdp/transport-can";
-import type { SocketCanBinding, SocketCanChannel } from "./binding.js";
+import { frameMatchesFilters } from "@vdp/transport-can";
+import type { SocketCanBinding, SocketCanChannel, SocketCanFrameData } from "./binding.js";
 
 export interface SocketCanOptions {
   binding: SocketCanBinding;
@@ -99,7 +100,16 @@ export class SocketCanAdapter implements CanBus {
     if (frame.fd && !this.capabilities.canFd)
       throw new TransportError("CAN-FD frame sent to a CAN-FD incapable interface");
     this.txCount++;
-    await this.channel.send({ id: frame.id, extended: frame.extended, data: frame.payload });
+    // fd/brs travel with the frame: a binding that supports CAN-FD needs them,
+    // and silently dropping them is how a 64-byte ISO-TP FD segment ends up on
+    // the wire as a classic frame the kernel has to refuse (ISO 11898-1).
+    await this.channel.send({
+      id: frame.id,
+      extended: frame.extended,
+      data: frame.payload,
+      fd: frame.fd,
+      ...(frame.brs === undefined ? {} : { brs: frame.brs }),
+    });
   }
 
   subscribe(listener: FrameListener, filters?: readonly CanFilter[]): () => void {
@@ -114,29 +124,29 @@ export class SocketCanAdapter implements CanBus {
     return { tx: this.txCount, rx: this.rxCount };
   }
 
-  private handleFrame(frame: { id: number; extended: boolean; data: Uint8Array }): void {
+  private handleFrame(frame: SocketCanFrameData): void {
     this.rxCount++;
     const canFrame: CanFrame = {
       timestamp: Date.now(),
       id: frame.id,
       extended: frame.extended,
-      fd: false,
+      // A binding that reports CAN-FD gets FD frames; one that cannot stays
+      // classic. `fd: false` hardcoded here used to flatten every FD frame on
+      // the receive side, even when the binding and the interface could carry it.
+      fd: frame.fd === true,
       dlc: frame.data.length,
       payload: frame.data,
       channel: this.iface,
       direction: "rx",
+      ...(frame.brs === true ? { brs: true } : {}),
     };
     this.log.raw("socketcan rx", {
       id: `0x${canFrame.id.toString(16)}`,
       payload: canFrame.payload,
     });
+    // One filter vocabulary for every adapter (`frameMatchesFilters`).
     for (const entry of this.listeners) {
-      if (entry.filters && entry.filters.length > 0) {
-        const matches = entry.filters.some(
-          (filter) => (canFrame.id & filter.mask) === (filter.id & filter.mask),
-        );
-        if (!matches) continue;
-      }
+      if (entry.filters && !frameMatchesFilters(canFrame, entry.filters)) continue;
       entry.listener(canFrame);
     }
   }

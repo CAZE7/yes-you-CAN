@@ -21,8 +21,10 @@ import { readFile } from "node:fs/promises";
 import {
   type AdapterCatalog,
   type AdapterDescription,
+  type AdapterDoctorReport,
   type AdapterProbe,
   type AdapterSelection,
+  runAdapterDoctor,
   validateSelection,
 } from "@vdp/adapter-host";
 import {
@@ -335,6 +337,23 @@ export class DemoBackend {
       available: description.probe.available,
     });
     return { description, reconnectRequired: wasConnected };
+  }
+
+  /**
+   * Run the adapter doctor for a selection (E33): the pre-flight checklist in
+   * technician order — settings → availability → open/handshake → vehicle
+   * voltage → functional TesterPresent ping. Read-only by construction (the
+   * only frame it ever sends is the functional TesterPresent, ISO 14229-1
+   * §9.4) and it closes the adapter again: a check, not a connection.
+   *
+   * The caller guards the one conflict this has with a running session (same
+   * adapter, same wire); everything else the report says as steps.
+   */
+  async doctorAdapter(selection: AdapterSelection): Promise<AdapterDoctorReport> {
+    return runAdapterDoctor(selection, {
+      catalog: this.adapters,
+      context: { logger: this.log },
+    });
   }
 
   /** Persist the current session, its samples and its raw trace (AGENTS 10, 29). */

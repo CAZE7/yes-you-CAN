@@ -68,10 +68,20 @@
         <label class="field">Aufzeichnung (Replay)
           <input id="adapter-trace" type="text" placeholder="Session-ID oder Export-Datei" autocomplete="off" spellcheck="false" />
         </label>
+        <label class="field checkbox" title="SocketCAN: den Adapter für CAN-FD öffnen (Interface muss fd on haben)">
+          CAN-FD
+          <input id="adapter-canfd" type="checkbox" />
+        </label>
+        <label class="field checkbox" title="slcan: nur zuhören — kein Frame wird bestätigt oder gesendet">
+          Listen-only
+          <input id="adapter-listenonly" type="checkbox" />
+        </label>
         <button type="button" id="btn-adapter-apply" class="primary">Adapter übernehmen</button>
+        <button type="button" id="btn-adapter-doctor" title="Vorab-Checkliste: Einstellungen → Gerät → Handshake → Fahrzeugseite">Adapter prüfen</button>
       </div>
       <p id="adapter-probe" class="hint"></p>
       <ul id="adapter-hints" class="plain hints"></ul>
+      <ol id="adapter-doctor" class="plain hints"></ol>
       <table class="grid">
         <thead><tr><th>Adapter</th><th>Art</th><th>Verfügbar</th><th>Details</th><th>Capabilities</th></tr></thead>
         <tbody id="adapter-rows"></tbody>

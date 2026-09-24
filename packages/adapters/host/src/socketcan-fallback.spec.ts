@@ -185,6 +185,25 @@ test("formatCansendFrame formats standard and extended frames", () => {
   assert.equal(formatCansendFrame(extended), "18DAF100#023E00");
 });
 
+test("formatCansendFrame writes CAN-FD frames in the ## form cansend parses", () => {
+  const fd: SocketCanFrameData = {
+    id: 0x7e8,
+    extended: false,
+    data: Uint8Array.from([2, 0x3e, 0x80]),
+    fd: true,
+  };
+  assert.equal(formatCansendFrame(fd), "7E8##0023E80");
+
+  const fdBrs: SocketCanFrameData = {
+    id: 0x18daf110,
+    extended: true,
+    data: Uint8Array.from([10, 0x62, 0xf1, 0x90]),
+    fd: true,
+    brs: true,
+  };
+  assert.equal(formatCansendFrame(fdBrs), "18DAF110##10A62F190");
+});
+
 test("parseCandumpLine parses logcompact lines and refuses what it cannot prove", () => {
   const frame = parseCandumpLine("(1718534567.890123) can0 7E8#023E80");
   assert.ok(frame);
@@ -196,16 +215,43 @@ test("parseCandumpLine parses logcompact lines and refuses what it cannot prove"
   assert.ok(extended);
   assert.equal(extended.extended, true);
 
-  // What must never become a frame: remote requests, CAN-FD (## marker),
-  // malformed hex, a byte cut in half, candump's own chatter.
+  // What must never become a frame: remote requests, malformed hex, a byte
+  // cut in half, candump's own chatter.
   assert.equal(parseCandumpLine("(1.5) can0 7E8#R"), null, "remote frames carry no payload");
-  assert.equal(parseCandumpLine("(1.5) can0 7E8##1023E80"), null, "FD frames are not classic CAN");
   assert.equal(parseCandumpLine("(1.5) can0 7E8#023E8"), null, "half a byte is not a byte");
   assert.equal(parseCandumpLine("(1.5) can0 7E8#023E80" + "1".repeat(18)), null);
   assert.equal(parseCandumpLine("candump: interface can0 is down"), null);
   assert.equal(parseCandumpLine(""), null);
   // Data longer than classic CAN (16 hex chars) is refused at the gate.
   assert.equal(parseCandumpLine(`(1.5) can0 7E8#${"00".repeat(9)}`), null);
+});
+
+test("CAN-FD logcompact lines decode with fd/brs, both spellings of the flags separator", () => {
+  // `snprintf_canframe` with sep=0 (what `candump -L` runs) prints no dot;
+  // `cansend` accepts one — a parser that could not read its own output's
+  // form would lose every FD frame on a recording round trip.
+  const withoutDot = parseCandumpLine("(1718534567.890123) can0 7E8##1023E80");
+  assert.ok(withoutDot);
+  assert.equal(withoutDot.fd, true);
+  assert.equal(withoutDot.brs, true, "flags digit 1 = CANFD_BRS (linux/can.h)");
+  assert.equal(withoutDot.id, 0x7e8);
+  assert.deepEqual(Array.from(withoutDot.data), [0x02, 0x3e, 0x80]);
+
+  const withDot = parseCandumpLine("(1.5) can0 7E8##3.023E80");
+  assert.ok(withDot);
+  assert.equal(withDot.fd, true);
+  assert.equal(withDot.brs, true, "flags digit 3 = BRS|ESI, and BRS is bit 0");
+
+  const noBrs = parseCandumpLine("(1.5) can0 18DAF100##20222");
+  assert.ok(noBrs);
+  assert.equal(noBrs.extended, true);
+  assert.equal(noBrs.fd, true);
+  assert.equal(noBrs.brs, undefined, "flags digit 2 = ESI only, no bitrate switch");
+  assert.deepEqual(Array.from(noBrs.data), [0x02, 0x22]);
+
+  // Refusals stay refusals: half a byte and more than 64 payload bytes.
+  assert.equal(parseCandumpLine("(1.5) can0 7E8##1023E8"), null);
+  assert.equal(parseCandumpLine(`(1.5) can0 7E8##1${"00".repeat(65)}`), null);
 });
 
 /* ------------------------------------------------------------ the binding */

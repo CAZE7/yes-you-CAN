@@ -284,6 +284,70 @@ test("sequence error aborts the request with an ISO-TP error", async () => {
   assert.equal(tester.stats.sequenceErrors, 1);
 });
 
+test("a First Frame beyond the receive buffer announces Flow Control overflow", async () => {
+  const wire = createWire();
+  const testerBus = new VirtualBus(wire);
+  testerBus.capabilities = {
+    can: true,
+    canFd: true,
+    doip: false,
+    isoTpOffload: false,
+    channels: 1,
+  };
+  const tester = new IsoTpConnection(testerBus, {
+    txId: 0x7e0,
+    rxId: 0x7e8,
+    fd: true,
+    sleep: async () => undefined,
+  });
+  tester.open();
+  const promise = tester.request(fromHex("22 F1 90"));
+  await tick();
+  // FD escape form (FF_DL = 0, ISO 15765-2 §9.5.2): a 32-bit length follows,
+  // and 0x00010001 = 65537 is past the default 64 KiB receive bound. The
+  // protocol answer is Flow Control with flowStatus 0x02 — the sender stops
+  // instead of filling a buffer nobody can hold (Table 14).
+  testerBus.inject(0x7e8, fromHex("10 00 00 01 00 01 62 F1"));
+  await assert.rejects(promise, /overflow/i);
+  const flowControl = wire.frames.find((frame) => frame.payload[0] === 0x32);
+  assert.ok(flowControl, "the overflow was announced, not silently dropped");
+  // 0x30|0x02 = FlowStatus Overflow (ISO 15765-2 Table 14), blockSize 0, STmin 0.
+  assert.equal(toHex(flowControl.payload), "32 00 00");
+});
+
+test("a First Frame within a raised receive bound starts the reception as before", async () => {
+  const wire = createWire();
+  const testerBus = new VirtualBus(wire);
+  testerBus.capabilities = {
+    can: true,
+    canFd: true,
+    doip: false,
+    isoTpOffload: false,
+    channels: 1,
+  };
+  const tester = new IsoTpConnection(testerBus, {
+    txId: 0x7e0,
+    rxId: 0x7e8,
+    fd: true,
+    sleep: async () => undefined,
+    maxReceiveBytes: 8192,
+  });
+  tester.open();
+  const promise = tester.request(fromHex("22 F1 90"));
+  await tick();
+  // 0x00001388 = 5000 bytes — inside the configured bound, so the answer is
+  // Continue To Send and the reception is armed: the next Consecutive Frame's
+  // sequence is checked, which only a started reception does.
+  testerBus.inject(0x7e8, fromHex("10 00 00 00 13 88 62 F1"));
+  await until(() => wire.frames.some((frame) => frame.payload[0] === 0x30));
+  const flowControl = wire.frames.find((frame) => frame.payload[0] === 0x30);
+  assert.ok(flowControl, "the reception started — a Flow Control went out");
+  // Continue To Send (0x30), blockSize 0, STmin 0 — not the Overflow answer.
+  assert.equal(toHex(flowControl.payload), "30 00 00");
+  testerBus.inject(0x7e8, fromHex("25 AA AA AA AA AA AA"));
+  await assert.rejects(promise, /sequence error/i);
+});
+
 test("response timeout surfaces as ISO-TP timeout error", async () => {
   const pair = createPair({ timing: { nBsMs: 20, nCrMs: 20 } });
   await assert.rejects(pair.tester.request(fromHex("22 F1 90"), 25), /timeout/i);

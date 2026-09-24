@@ -9,6 +9,7 @@
 
 export * from "./catalog.js";
 export * from "./doctor.js";
+export * from "./reconnect.js";
 export * from "./selection.js";
 export * from "./serial.js";
 export * from "./socketcan-fallback.js";

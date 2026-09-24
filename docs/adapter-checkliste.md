@@ -21,6 +21,23 @@ würde — Einstellungen → Gerät → Handshake/Identität → Fahrzeugseite �
 und der **erste** Punkt, der klemmt, nennt Ursache und Hinweise. Exit-Codes:
 `0` bereit · `2` Einstellungsfehler · `3` Adapter braucht Aufmerksamkeit.
 
+Dasselbe gibt es **im Arbeitsplatz** (E33): das Adapter-Panel hat einen
+„Adapter prüfen“-Knopf, der die im Formular stehende Auswahl prüft, ohne sie
+anzuwenden (erst prüfen, dann übernehmen). Die Route
+`POST /api/adapter/doctor` antwortet immer mit dem Bericht —
+ready / „braucht Aufmerksamkeit“ / blockiert ist ein Befund, kein Fehler; nur
+die laufende Sitzung auf genau diesem Adapter wird abgewiesen (409, „erst
+stoppen, dann prüfen“). Am Fahrzeug heißt das: der Browser reicht, die Console
+ist nur noch für den Fall da, dass gar kein Browser läuft.
+
+**Verlorene Verbindung (E34):** stirbt eine Seriell-Verbindung (Bluetooth
+abgebrochen, USB gezogen), versucht die Workbench sie **einmal nach 2 s**
+wieder aufzunehmen — Gerät neu öffnen, Adapter-Init erneut, Sitzung läuft
+weiter, jede Wiederbelebung steht als Log-Eintrag mit Grund da. Klemmt es
+bleibend, bleibt der Endzustand wie vorher: Status zeigt den Fehler, die
+Sitzung wird von Hand neu gestartet. Abschaltbar für Messfahrten:
+`--reconnect-attempts=0` bzw. `reconnectAttempts: 0` im Body.
+
 ## 1. Schnellstart je Adapter
 
 ### ELM327 / OBDLink (seriell) — der normale Adapter
@@ -68,6 +85,15 @@ npm run adapter:doctor -- --adapter socketcan --channel can0
 # Trockenübung ohne Hardware:
 sudo modprobe vcan && sudo ip link add dev vcan0 type vcan && sudo ip link set up vcan0
 ```
+
+**CAN-FD** (z. B. `ip link set can0 type can bitrate 500000 dbitrate 2000000
+fd on`): `--can-fd` schaltet den Adapter auf FD — erst dann wirbt er mit der
+Fähigkeit und ISO-TP segmentiert in 64-Byte-Frames. Ohne das Flag bleibt der
+Adapter klassisch, auch wenn die Hardware mehr könnte: eine Fähigkeit, die
+nicht verhandelt wurde, wird nicht angenommen (AGENTS 4). Die Flags (`fd`,
+`brs`) reisen seit 2026-09-24 durch Bindung und can-utils-Fallback in beide
+Richtungen — davor wurde jedes FD-Frame auf dem RX-Weg zu einem klassischen
+flachgedrückt.
 
 Probe und Öffnen lesen `/sys/class/net` (Existenz, ARPHRD_CAN, operstate) —
 **„Interface down” ist der häufigste echte SocketCAN-Fehler** und wird jetzt

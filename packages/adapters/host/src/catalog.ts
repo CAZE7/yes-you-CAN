@@ -32,13 +32,8 @@ import {
   messageOf,
   TransportError,
 } from "@vdp/shared";
-import type {
-  AdapterCapabilities,
-  CanBus,
-  CanFilter,
-  CanFrame,
-  FrameListener,
-} from "@vdp/transport-can";
+import type { AdapterCapabilities, CanBus } from "@vdp/transport-can";
+import { DEFAULT_RECONNECT_POLICY, reconnectPolicyOf, superviseSerialBus } from "./reconnect.js";
 import { configureSerialPort, openSerialStream, type SerialByteStream } from "./serial.js";
 import {
   canInterfaceState,
@@ -72,8 +67,23 @@ export interface AdapterConfig {
   trace?: string;
   /** slcan listen-only mode — useful to observe a bus without influencing it. */
   listenOnly?: boolean;
+  /**
+   * Open the interface for CAN-FD (SocketCAN only): the adapter then advertises
+   * `canFd` and ISO-TP segments into 64-byte frames. The interface itself must
+   * be brought up FD-capable first (`ip link set … type can bitrate 500000
+   * dbitrate 2000000 fd on`) — a classic-only interface still rejects FD frames.
+   */
+  canFd?: boolean;
   /** Apply line settings with `stty` before opening (default false). */
   configurePort?: boolean;
+  /**
+   * Reconnect attempts per link loss for the serial adapters (E34). Default
+   * `1`; `0` restores the old final state (a dead link stays dead). Bounded:
+   * the catalog refuses values above `MAX_RECONNECT_ATTEMPTS`.
+   */
+  reconnectAttempts?: number;
+  /** Wait before each reconnect attempt (E34). Default 2000 ms. */
+  reconnectDelayMs?: number;
 }
 
 export interface AdapterProbe {
@@ -388,7 +398,8 @@ async function openConfiguredStream(
 }
 
 /**
- * A bus whose `close()` also releases the serial stream the catalog opened.
+ * A bus whose `close()` also releases the serial stream the catalog opened —
+ * and whose link, when it dies, is tried again under a bounded policy (E34).
  *
  * The adapters receive their stream injected and deliberately do not own it, so
  * without this wrapper nothing ever closes it: measured 2026-09-12 on Node 22,
@@ -398,34 +409,25 @@ async function openConfiguredStream(
  * the operator had already disconnected. Reconnecting is an ordinary operation,
  * so both accumulate until the process hits its descriptor limit.
  *
- * Delegating instead of subclassing keeps the adapter contract untouched: the
- * wrapper owns nothing but the lifecycle of the stream it was handed.
+ * The supervisor (see `reconnect.ts`) keeps the descriptor discipline — it
+ * closes every stream it built, including the ones a failed revival leaves
+ * behind — and adds the bounded reconnect: same `CanBus` object across a
+ * revival, subscriptions re-registered, `wrappedByCatalog` following the
+ * current adapter. The wrapper owns nothing but the lifecycle of the stream it
+ * was handed.
  */
-function withOwnedStream(bus: CanBus, stream: SerialByteStream): CanBus {
-  const wrapper: CanBus & { wrappedByCatalog?: CanBus } = {
-    info: bus.info,
-    capabilities: bus.capabilities,
-    // The wrapper hides the adapter beneath the CanBus contract on purpose —
-    // but the doctor and probe paths legitimately need *who* this bus is
-    // (firmware, voltage, counters). It stays a marked passthrough, not part
-    // of the contract: only the host package creates it, only the host reads it.
-    wrappedByCatalog: bus,
-    open: () => bus.open(),
-    isOpen: () => bus.isOpen(),
-    send: (frame: CanFrame) => bus.send(frame),
-    subscribe: (listener: FrameListener, filters?: readonly CanFilter[]) =>
-      bus.subscribe(listener, filters),
-    close: async () => {
-      try {
-        await bus.close();
-      } finally {
-        // The adapter has dropped its subscription; descriptor and read loop
-        // belong to the stream, which only the catalog holds a reference to.
-        await stream.close();
-      }
-    },
-  };
-  return wrapper;
+async function supervisedSerialBus(
+  adapterId: string,
+  config: AdapterConfig,
+  context: HostContext,
+  build: () => Promise<{ bus: CanBus; stream: SerialByteStream }>,
+): Promise<CanBus> {
+  return superviseSerialBus({
+    adapterId,
+    open: build,
+    policy: reconnectPolicyOf(config),
+    ...(context.logger ? { logger: context.logger } : {}),
+  });
 }
 
 export const ELM327_BITRATES: readonly string[] = Object.keys(BITRATES);
@@ -448,20 +450,22 @@ export function createHostAdapterCatalog(): AdapterCatalog {
           ? probeSerialDevice(config.device)
           : { available: false, detail: "no --device given" },
       create: async (config, context) => {
-        const stream = await openConfiguredStream(
-          config,
-          { baudRate: ELM327_DEFAULT_BAUD, label: "ELM327" },
-          context.logger,
-        );
-        return withOwnedStream(
-          new Elm327Adapter({
+        return supervisedSerialBus("elm327", config, context, async () => {
+          const stream = await openConfiguredStream(
+            config,
+            { baudRate: ELM327_DEFAULT_BAUD, label: "ELM327" },
+            context.logger,
+          );
+          return {
+            bus: new Elm327Adapter({
+              stream,
+              ...(config.channel ? { channel: config.channel } : {}),
+              ...(config.protocol === undefined ? {} : { canProtocol: config.protocol }),
+              ...(context.logger ? { logger: context.logger } : {}),
+            }),
             stream,
-            ...(config.channel ? { channel: config.channel } : {}),
-            ...(config.protocol === undefined ? {} : { canProtocol: config.protocol }),
-            ...(context.logger ? { logger: context.logger } : {}),
-          }),
-          stream,
-        );
+          };
+        });
       },
     },
     {
@@ -497,26 +501,28 @@ export function createHostAdapterCatalog(): AdapterCatalog {
             { supported: ELM327_BITRATES },
           );
         }
-        const stream = await openConfiguredStream(
-          config,
-          { baudRate: SLCAN_DEFAULT_BAUD, label: "slcan" },
-          context.logger,
-        );
-        return withOwnedStream(
-          new CanableAdapter({
+        return supervisedSerialBus("slcan", config, context, async () => {
+          const stream = await openConfiguredStream(
+            config,
+            { baudRate: SLCAN_DEFAULT_BAUD, label: "slcan" },
+            context.logger,
+          );
+          return {
+            bus: new CanableAdapter({
+              stream,
+              bitrate,
+              // Listen-only belongs to the adapter's open() sequence: writing
+              // "L" here and letting open() send its own "O" afterwards undoes
+              // it — Lawicel treats `O` as the normal-mode open, so the override
+              // order decides, not the intent (measured against the CANable
+              // slcan state machine: `O` after `L` re-opens in normal mode).
+              ...(config.listenOnly ? { listenOnly: true } : {}),
+              ...(config.channel ? { channel: config.channel } : {}),
+              ...(context.logger ? { logger: context.logger } : {}),
+            }),
             stream,
-            bitrate,
-            // Listen-only belongs to the adapter's open() sequence: writing
-            // "L" here and letting open() send its own "O" afterwards undoes
-            // it — Lawicel treats `O` as the normal-mode open, so the override
-            // order decides, not the intent (measured against the CANable
-            // slcan state machine: `O` after `L` re-opens in normal mode).
-            ...(config.listenOnly ? { listenOnly: true } : {}),
-            ...(config.channel ? { channel: config.channel } : {}),
-            ...(context.logger ? { logger: context.logger } : {}),
-          }),
-          stream,
-        );
+          };
+        });
       },
     },
     {
@@ -631,6 +637,9 @@ export function createHostAdapterCatalog(): AdapterCatalog {
         return new SocketCanAdapter({
           binding: resolution.binding,
           iface: config.channel,
+          // CAN-FD is opt-in: advertising it without an FD-capable interface
+          // would make the engine send frames the bus cannot carry.
+          ...(config.canFd === true ? { canFd: true } : {}),
           ...(context.logger ? { logger: context.logger } : {}),
         });
       },
@@ -658,6 +667,12 @@ export function describeAdapterConfig(entry: AdapterEntry, config: AdapterConfig
   if (config.bitrate) parts.push(config.bitrate);
   if (config.trace) parts.push(config.trace);
   if (config.listenOnly) parts.push("listen-only");
+  if (config.canFd) parts.push("CAN-FD");
+  if (config.reconnectAttempts !== undefined || config.reconnectDelayMs !== undefined) {
+    parts.push(
+      `reconnect ${config.reconnectAttempts ?? DEFAULT_RECONNECT_POLICY.attempts}×/${config.reconnectDelayMs ?? DEFAULT_RECONNECT_POLICY.delayMs} ms`,
+    );
+  }
   return parts.join(" · ");
 }
 

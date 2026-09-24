@@ -188,7 +188,12 @@ async function defaultRunCansend(iface: string, frame: string, binary: string): 
   });
 }
 
-/** Format one frame the way `cansend` expects it: `7E0#023E80`, 8 digits for extended. */
+/**
+ * Format one frame the way `cansend` expects it: `7E0#023E80` for classic CAN,
+ * 8 digits for extended. CAN-FD frames use the `##` escape with a one-digit
+ * flags field (CANFD_BRS = 0x1, CANFD_ESI = 0x2 — `linux/can.h`), exactly the
+ * form `parse_canframe` in can-utils reads: `123##1DEADBEEF`.
+ */
 export function formatCansendFrame(frame: SocketCanFrameData): string {
   const id = (
     frame.extended ? frame.id.toString(16).padStart(8, "0") : frame.id.toString(16).padStart(3, "0")
@@ -197,32 +202,65 @@ export function formatCansendFrame(frame: SocketCanFrameData): string {
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("")
     .toUpperCase();
+  if (frame.fd === true) {
+    const flags = frame.brs === true ? 1 : 0;
+    return `${id}##${flags.toString(16).toUpperCase()}${data}`;
+  }
   return `${id}#${data}`;
 }
 
 /**
  * Parse one `candump -L` (logcompact) line: `(timestamp) iface ID#DATA`.
- * Returns null for remote frames (`ID#R`), CAN-FD frames (`ID##...` — this
- * binding is classic-CAN-only) and anything else that is not a classic frame —
- * a line the parser cannot prove is never guessed into a frame.
+ * Returns null for remote frames (`ID#R`) and anything else that is not a
+ * frame this binding can prove — a line the parser cannot prove is never
+ * guessed into a frame. CAN-FD lines (`ID##<flags><data>`, the `##` escape of
+ * `snprintf_canframe` with `sep=0`) decode with `fd: true` and `brs` from the
+ * flags digit; a dot after the flags digit is tolerated because `cansend`
+ * accepts the same spelling.
  */
 export function parseCandumpLine(line: string): SocketCanFrameData | null {
-  const match = /^\(\d+(?:\.\d+)?\)\s+(\S+)\s+([0-9A-Fa-f]{1,8})#([0-9A-Fa-f]*)$/.exec(line.trim());
-  if (!match) return null;
-  const idHex = match[2] as string;
-  const dataHex = match[3] ?? "";
-  if (dataHex.length % 2 !== 0 || dataHex.length > 16) return null;
-  const data = new Uint8Array(dataHex.length / 2);
-  for (let i = 0; i < data.length; i++) {
-    data[i] = Number.parseInt(dataHex.slice(i * 2, i * 2 + 2), 16);
+  const trimmed = line.trim();
+  const classic = /^\(\d+(?:\.\d+)?\)\s+(\S+)\s+([0-9A-Fa-f]{1,8})#([0-9A-Fa-f]*)$/.exec(trimmed);
+  if (classic) {
+    const idHex = classic[2] as string;
+    const dataHex = classic[3] ?? "";
+    if (dataHex.length % 2 !== 0 || dataHex.length > 16) return null;
+    const data = new Uint8Array(dataHex.length / 2);
+    for (let i = 0; i < data.length; i++) {
+      data[i] = Number.parseInt(dataHex.slice(i * 2, i * 2 + 2), 16);
+    }
+    return { id: Number.parseInt(idHex, 16), extended: idHex.length > 3, data };
   }
-  return { id: Number.parseInt(idHex, 16), extended: idHex.length > 3, data };
+  const fd =
+    /^\(\d+(?:\.\d+)?\)\s+(\S+)\s+([0-9A-Fa-f]{1,8})##([0-9A-Fa-f])\.?([0-9A-Fa-f]*)$/.exec(
+      trimmed,
+    );
+  if (fd) {
+    const idHex = fd[2] as string;
+    const flags = Number.parseInt(fd[3] as string, 16);
+    const dataHex = fd[4] ?? "";
+    if (dataHex.length % 2 !== 0 || dataHex.length > 128) return null;
+    const data = new Uint8Array(dataHex.length / 2);
+    for (let i = 0; i < data.length; i++) {
+      data[i] = Number.parseInt(dataHex.slice(i * 2, i * 2 + 2), 16);
+    }
+    return {
+      id: Number.parseInt(idHex, 16),
+      extended: idHex.length > 3,
+      data,
+      fd: true,
+      // CANFD_BRS = 0x1 (linux/can.h); ESI (0x2) carries no payload meaning here.
+      ...(flags & 0x1 ? { brs: true } : {}),
+    };
+  }
+  return null;
 }
 
 /**
  * A SocketCanBinding over `candump`/`cansend` — the zero-native-build path.
  *
- * Honest about its limits: classic CAN only, and every `cansend` spawns a
+ * Honest about its limits: classic CAN and CAN-FD frames both travel (the
+ * `##` form of `cansend`/`candump -L`), but every `cansend` spawns a
  * process (~1–5 ms on a typical laptop), so a traffic-heavy bus belongs to
  * the native binding. What it *guarantees* is a transport that works on a
  * fresh Linux box with can-utils installed.

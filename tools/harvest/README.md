@@ -20,6 +20,13 @@ simuliert (`tools/simulators`).
 # ohne Hardware — dasselbe Programm, dieselben Artefakte
 node tools/harvest/dist/src/cli.js --simulator --out ./harvest-local --verify-odx
 
+# gegen eine aufgezeichnete Sitzung — derselbe Adapter-Zweig, kein Gerät
+# (E27.2, ADR 0005: die Aufzeichnung steht als Fahrzeug da; `--definitions`
+# gehört dazu, sonst fragt die Discovery nicht die Adressen, die die
+# Aufzeichnung beantwortet)
+node tools/harvest/dist/src/cli.js --adapter replay --trace ./session.json \
+  --definitions ./definitions.json --out ./harvest-replay
+
 # am Fahrzeug (SocketCAN, vcan0/can0)
 node tools/harvest/dist/src/cli.js --adapter socketcan --channel can0 --out ./harvest
 

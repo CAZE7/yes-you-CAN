@@ -57,6 +57,58 @@ test("CAN-FD frames are rejected unless the interface advertises CAN-FD", async 
   assert.equal(binding.sent.length, 1);
 });
 
+test("CAN-FD frames keep fd and brs on the way to the binding", async () => {
+  // Dropping the flags here is how a 64-byte ISO-TP FD segment ends up on the
+  // wire as a classic frame the kernel has to refuse — the adapter is the last
+  // place the frame is still whole (ISO 11898-1).
+  const binding = new FakeSocketCanBinding();
+  const adapter = new SocketCanAdapter({ binding, canFd: true });
+  await adapter.open();
+  await adapter.send(createFrame(0x7e0, new Uint8Array(12).fill(1), { fd: true, brs: true }));
+  assert.equal(binding.sent[0]?.fd, true);
+  assert.equal(binding.sent[0]?.brs, true);
+
+  await adapter.send(createFrame(0x7e0, fromHex("02 3E 80")));
+  assert.equal(binding.sent[1]?.fd, false, "classic frames stay classic");
+  assert.equal(binding.sent[1]?.brs, undefined);
+});
+
+test("received CAN-FD frames reach subscribers with fd and brs intact", async () => {
+  const binding = new FakeSocketCanBinding();
+  const adapter = new SocketCanAdapter({ binding, canFd: true });
+  await adapter.open();
+  const received: Array<{ fd: boolean; brs: boolean | undefined }> = [];
+  adapter.subscribe((frame) => received.push({ fd: frame.fd, brs: frame.brs }));
+  binding.emit({
+    id: 0x7e8,
+    extended: false,
+    data: new Uint8Array(24).fill(2),
+    fd: true,
+    brs: true,
+  });
+  binding.emit({ id: 0x7e8, extended: false, data: fromHex("02 50 03") });
+  assert.deepEqual(received, [
+    { fd: true, brs: true },
+    { fd: false, brs: undefined },
+  ]);
+});
+
+test("a filter that states extended means it — no low-bit accidental match", async () => {
+  // 0x18DA10F1 & 0x7FF === 0x0F1: without the extended check, a subscriber
+  // asking for the 11-bit id 0x0F1 would also receive the 29-bit frame.
+  const binding = new FakeSocketCanBinding();
+  const adapter = new SocketCanAdapter({ binding });
+  await adapter.open();
+  const received: number[] = [];
+  adapter.subscribe(
+    (frame) => received.push(frame.id),
+    [{ id: 0x0f1, mask: 0x7ff, extended: false }],
+  );
+  binding.emit({ id: 0x18da10f1, extended: true, data: fromHex("02 50 03") });
+  binding.emit({ id: 0x0f1, extended: false, data: fromHex("02 50 03") });
+  assert.deepEqual(received, [0x0f1]);
+});
+
 test("close() releases the channel", async () => {
   const binding = new FakeSocketCanBinding();
   const adapter = new SocketCanAdapter({ binding });
@@ -141,6 +193,48 @@ test("an npm socketcan-shaped module is wrapped into the binding contract", asyn
 
   await channel.close();
   assert.equal(started, false, "stop() is part of the close contract");
+});
+
+test("the npm-channel wrapper passes CAN-FD flags through in both directions", async () => {
+  const messageListeners: Array<(message: Record<string, unknown>) => void> = [];
+  const sent: Array<Record<string, unknown>> = [];
+  const npmModule = {
+    createChannel() {
+      return {
+        start() {},
+        stop() {},
+        addListener(_event: string, listener: (message: Record<string, unknown>) => void) {
+          messageListeners.push(listener);
+        },
+        removeListener() {},
+        send(frame: Record<string, unknown>) {
+          sent.push(frame);
+        },
+      };
+    },
+  };
+  const binding = await tryLoadSocketCanBinding("npm-socketcan", async () => npmModule);
+  const channel = await binding.open("can0");
+
+  await channel.send({
+    id: 0x7e0,
+    extended: false,
+    data: new Uint8Array(12).fill(1),
+    fd: true,
+    brs: true,
+  });
+  assert.equal(sent[0]?.fd, true, "fd survives the hop to the native module");
+  assert.equal(sent[0]?.brs, true);
+
+  const seen: Array<{ fd: boolean; brs: boolean | undefined }> = [];
+  channel.onData((frame) => seen.push({ fd: frame.fd === true, brs: frame.brs }));
+  messageListeners[0]?.({ id: 0x7e8, ext: false, data: new Uint8Array(24), fd: true, brs: true });
+  messageListeners[0]?.({ id: 0x7e9, ext: false, data: new Uint8Array(4) });
+  assert.deepEqual(seen, [
+    { fd: true, brs: true },
+    { fd: false, brs: undefined },
+  ]);
+  await channel.close();
 });
 
 test("the npm-channel wrapper drops RTR frames instead of attributing empty payloads", async () => {

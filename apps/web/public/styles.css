@@ -273,12 +273,14 @@ table.grid td.mono {
   font-size: 0.8rem;
   max-width: 70ch;
 }
-ul.plain {
+ul.plain,
+ol.plain {
   list-style: none;
   padding: 0;
   margin: 0.5rem 0;
 }
-ul.plain li {
+ul.plain li,
+ol.plain li {
   padding: 0.25rem 0;
   border-bottom: 1px solid var(--border);
   font-size: 0.85rem;
@@ -457,6 +459,28 @@ canvas.chart {
 }
 .adapter-picker ul.hints {
   margin: 0.2rem 0 0.6rem;
+}
+/* The doctor checklist (E33): status colours follow the verdict vocabulary —
+   ok/warn/fail/skip — the same words the CLI prints. */
+.adapter-picker ol.hints {
+  margin: 0.2rem 0 0.6rem;
+}
+.adapter-picker ol.hints li .hint {
+  color: var(--warn);
+  margin: 0;
+}
+.doctor-verdict {
+  font-weight: 600;
+}
+.doctor-ok {
+  color: var(--ok);
+}
+.doctor-warn {
+  color: var(--warn);
+}
+.doctor-fail {
+  color: var(--err);
+  font-weight: 600;
 }
 .ok-row td:nth-child(3) {
   color: var(--ok);

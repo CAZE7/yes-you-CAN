@@ -16,7 +16,8 @@ nicht diese Datei.
 | NRC / Negativ-Antwort verhalten | `packages/protocols/uds/src/nrc.ts` | `client-engine.ts` (Retry-Logik), `tests/protocol/` |
 | ECU-Session-Verhalten (Timing, S3, TesterPresent) | `packages/protocols/uds/src/session-state.ts` + `timing.ts` | `client.ts` |
 | CAN-Adapter hinzufügen | `packages/adapters/<neuer>/` (neues Workspace-Paket) | `packages/adapters/host/src/catalog.ts` (Probe), `CanAdapterFactory` aus `@vdp/transport-can`, `architecture/architecture.yaml` (Package platzieren!), `package.json` (workspaces) |
-| Adapter-Verbindung vorab prüfen (Hardware-Tag) | `packages/adapters/host/src/doctor.ts` (+ `apps/web/src/doctor-cli.ts`, `npm run adapter:doctor`) | `packages/adapters/host/src/{catalog,serial,socketcan-fallback}.ts`, `docs/adapter-checkliste.md`, `tests/integration/adapter-rehearsal.spec.ts` |
+| Seriell-Verbindung begrenzt wieder aufnehmen (E34) | `packages/adapters/host/src/reconnect.ts` (`superviseSerialBus`, Policy `reconnectAttempts`/`reconnectDelayMs`) | `packages/adapters/host/src/catalog.ts` (elm327/slcan create), `packages/adapters/host/src/selection.ts` (Flags), `tests/integration/adapter-rehearsal.spec.ts` (PTY-Beweis) |
+| Adapter-Verbindung vorab prüfen (Hardware-Tag) | `packages/adapters/host/src/doctor.ts` (+ `apps/web/src/doctor-cli.ts`, `npm run adapter:doctor`; im Arbeitsplatz: `apps/web/src/adapter-routes.ts` `POST /api/adapter/doctor`) | `packages/adapters/host/src/{catalog,serial,socketcan-fallback}.ts`, `docs/adapter-checkliste.md`, `tests/integration/adapter-rehearsal.spec.ts` |
 | Bus-Vertrag ändern | `packages/transport/can/src/bus.ts` | alle Adapter, `packages/core/src/diagnostics/ecu-links.ts`, `architecture.yaml` |
 | ISO-TP-Parameter / Segmentierung | `packages/transport/iso-tp/src/{connection,params}.ts` | `tests/protocol/` |
 | DoIP-Verhalten | `packages/transport/doip/src/` | `packages/runtime/src/transport.ts` (`DoipEcuLinkFactory`), `tests/integration/doip-engine.test.ts` |
@@ -28,7 +29,7 @@ nicht diese Datei.
 | AI-Analyse / Provider | `packages/ai/src/` | `apps/web/src/analysis-input.ts` (Input-Bau inkl. `recordingId`/`scenario`), ADR 0038/0046 (Kontrakt) |
 | Write-Operation hinzufügen | `packages/core/src/writes/` (neues `WriteOperation`-Modul) | `createWritePort`-Wiring in `packages/runtime/src/runtime.ts`, `SafetyManager`-Policy in `packages/domain/src/risk.ts`, ADR 0032/AGENTS 26 |
 | UI-View / -Panel | `apps/web/src/views.ts` (Wire-Contract) + `apps/web/public/` | `apps/web/src/backend.ts`, `apps/web/test/`, ADR 0030 |
-| Neue HTTP-Route | `apps/web/src/server.ts` | `apps/web/src/route-input.ts` (Grammatik-Prüfung), `apps/web/src/backend.ts` |
+| Neue HTTP-Route | `apps/web/src/server.ts` (Adapter-Routen: `apps/web/src/adapter-routes.ts`, per Präfix dispatcht) | `apps/web/src/route-input.ts` (Grammatik-Prüfung), `apps/web/src/backend.ts` |
 | Statische Dateien, MIME, Sicherheits-Header | `apps/web/src/static-assets.ts` (ADR 0049 aus `server.ts` geteilt) | `apps/web/src/paths.ts` (Containment, ADR 0009), `apps/web/test/static-assets.spec.ts` |
 | Was der Prozess auf stdout schreibt | `packages/shared/src/logger.ts` (`createLogger`, `ConsoleSink`) | `apps/web/src/server.ts` (`createServerLogger`, `VDP_LOG_LEVEL`) — der Sink hängt am Einstieg, nie in einem Konstruktor |
 | Simulator-Verhalten (Fahrzeug-Modell) | `tools/simulators/src/vehicle-model.ts` + `vehicle-state.ts` | `vehicle-wiring.ts`, `vehicle-monitors.ts`, `tests/integration/scenario-chain.test.ts` |
@@ -40,7 +41,7 @@ nicht diese Datei.
 | Chart-Rendering | `packages/charts/src/` | `apps/web/public/` (DOM-Teil) |
 | Bericht (PDF/HTML) | `packages/reports/src/` | `apps/web/src/backend.ts` |
 | Definition-Import / OEM-Daten | `tools/definition-importer/src/` | `packages/definitions/src/json.ts` + `validate.ts` |
-| Fahrzeug auslesen (Ernte) / ODX-/PDX-Export | `tools/harvest/src/{harvest,plan,fault-memory}.ts` | `tools/harvest/src/odx/` (ODX-D-/PDX-Schreiber + `verify.ts` Gegenprüfung), `tools/harvest/src/definition.ts` (Kandidat), `docs/flows/harvest.md`, ADR 0058 |
+| Fahrzeug auslesen (Ernte) / ODX-/PDX-Export | `tools/harvest/src/{harvest,plan,fault-memory}.ts` | `tools/harvest/src/odx/` (ODX-D-/PDX-Schreiber + `verify.ts` Gegenprüfung), `tools/harvest/src/definition.ts` (Kandidat), `tools/harvest/src/replay-adapter.ts` (Ernte gegen eine Aufzeichnung, E27.2), `docs/flows/harvest.md`, ADR 0058 |
 | Beobachtete Daten als Quelle kennzeichnen | `packages/definitions/src/schema.ts` (`Provenance.sourceType: "observed"`, Provenance je Signal/DTC/ECU) | `packages/definitions/src/{json,validate,evidence}.ts`, `apps/web/src/vehicle-view.ts` (Label), ADR 0058 |
 | DTC-Verfügbarkeitsmaske / `0x19`-Unterfunktionen | `packages/protocols/uds/src/{client,dtc,server}.ts` | `packages/core/src/diagnostics/ecu-session.ts` (`dtcAvailabilityMask`), `packages/diagnostic-ir/src/dtc.ts`, `docs/api/uds.md` |
 | Dependency-Regel ändern | `architecture/architecture.yaml` | `npm run check:deps`, ADR (Regel 34.15) |

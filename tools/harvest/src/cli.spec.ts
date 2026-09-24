@@ -10,11 +10,15 @@
  */
 
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createLogger, toHex } from "@vdp/shared";
+import { VirtualVehicle } from "@vdp/simulators";
+import type { CanBus } from "@vdp/transport-can";
 import { afterAll, describe, test } from "vitest";
 import { type CliIo, EXIT, parseCli, parseSession, runCli, usage, writeArtifacts } from "./cli.js";
+import { harvestVehicle } from "./harvest.js";
 
 /** Captures what the CLI says, so a test can assert on the operator's view. */
 function capture(): CliIo & { out: string[]; err: string[] } {
@@ -357,4 +361,167 @@ test("the usage text names every flag the parser knows", () => {
   ]) {
     assert.ok(text.includes(flag), `the help must document ${flag}`);
   }
+  // The replay arm is part of the contract, not a hidden mode (E27.2).
+  assert.ok(text.includes("--adapter replay --trace"), "the help shows the replay invocation");
 });
+
+/* ------------------------------------------------------- the replay adapter
+ *
+ * ADR 0005 applied to the harvest (E27.2): a recorded conversation stands in
+ * for the vehicle, so the adapter branch of this CLI runs — and is tested —
+ * without hardware. The recording below is produced by the *same* library the
+ * CLI harvests with, over the *same* virtual wire, which is what makes the
+ * parity assertion honest: same recording, same diagnosis (ADR 0057).
+ */
+
+/** One recorded frame in the `vdp.session` trace format. */
+interface RecordedFrame {
+  t: number;
+  canId: number;
+  direction: "tx" | "rx";
+  payload: string;
+}
+
+/**
+ * Harvest the simulator once while recording the wire, and return the report's
+ * ECU count, the conversation as a session export, and the definition package
+ * the vehicle was built with.
+ *
+ * The package matters as much as the trace: discovery asks the addresses a
+ * definition declares (the same reason the CLI's simulator arm feeds the
+ * vehicle's own package back into the sweep), so the replay must be given it
+ * too or it would not ask the questions the recording answers.
+ */
+async function recordSimulatorHarvest(): Promise<{
+  ecus: number;
+  sessionJson: string;
+  definitionsJson: string;
+}> {
+  const logger = createLogger("harvest-record", { level: "ERROR" });
+  const vehicle = new VirtualVehicle({ logger });
+  await vehicle.start();
+  const definitions = vehicle.definitionPackage;
+  const inner = vehicle.testerBus;
+  const started = Date.now();
+  const frames: RecordedFrame[] = [];
+  inner.subscribe((frame) => {
+    frames.push({
+      t: Date.now() - started,
+      canId: frame.id,
+      direction: "rx",
+      payload: toHex(frame.payload),
+    });
+  });
+  const bus: CanBus = {
+    info: inner.info,
+    capabilities: inner.capabilities,
+    open: () => inner.open(),
+    close: () => inner.close(),
+    isOpen: () => inner.isOpen(),
+    send: async (frame) => {
+      frames.push({
+        t: Date.now() - started,
+        canId: frame.id,
+        direction: "tx",
+        payload: toHex(frame.payload),
+      });
+      await inner.send(frame);
+    },
+    subscribe: (listener, filters) => inner.subscribe(listener, filters),
+  };
+  const report = await harvestVehicle({
+    bus,
+    logger,
+    definitions: [definitions],
+    identity: { source: "simulator", platformVersion: "0.1.0" },
+    plan: { requestGapMs: 0 },
+  });
+  await vehicle.stop();
+  return {
+    ecus: report.ecus.length,
+    sessionJson: JSON.stringify({ format: "vdp.session", trace: frames }),
+    definitionsJson: JSON.stringify(definitions),
+  };
+}
+
+test("a recorded harvest answers the same harvest again — no adapter, no vehicle", async () => {
+  const recorded = await recordSimulatorHarvest();
+  assert.ok(recorded.ecus > 0, "the simulator harvest reached at least one ECU");
+
+  const traceFile = join(tempDir(), "session.json");
+  writeFileSync(traceFile, recorded.sessionJson);
+  // The replay asks the questions the definitions declare — the same package
+  // the recorded vehicle was built with, or discovery would sweep nothing.
+  const definitionsFile = join(tempDir(), "definitions.json");
+  writeFileSync(definitionsFile, recorded.definitionsJson);
+  const out = tempDir();
+  const io = capture();
+  const code = await runCli(
+    [
+      "--adapter",
+      "replay",
+      "--trace",
+      traceFile,
+      "--definitions",
+      definitionsFile,
+      "--out",
+      out,
+      "--gap",
+      "0",
+      "--format",
+      "json",
+      "--log-level",
+      "ERROR",
+    ],
+    io,
+  );
+  assert.equal(code, EXIT.ok, io.err.join("\n"));
+  assert.ok(existsSync(join(out, "harvest.json")));
+
+  const record = JSON.parse(readFileSync(join(out, "harvest.json"), "utf8")) as {
+    identity: { source: string };
+    ecus: unknown[];
+  };
+  assert.match(record.identity.source, /adapter:replay/);
+  // Same recording, same diagnosis (ADR 0057): the replay must reach exactly
+  // as many ECUs as the live run did — not more, not fewer.
+  assert.equal(record.ecus.length, recorded.ecus);
+}, 60_000);
+
+test("replay without a trace is a refusal that names the missing setting", async () => {
+  const io = capture();
+  const code = await runCli(["--adapter", "replay", "--out", tempDir(), "--gap", "0"], io);
+  assert.equal(code, EXIT.noBus);
+  assert.match(io.err.join("\n"), /replay needs a recording/i);
+}, 60_000);
+
+test("a trace that is not a session export is refused with what it is", async () => {
+  const file = join(tempDir(), "not-a-session.json");
+  writeFileSync(file, JSON.stringify({ format: "something-else", trace: [] }));
+  const io = capture();
+  const code = await runCli(
+    ["--adapter", "replay", "--trace", file, "--out", tempDir(), "--gap", "0"],
+    io,
+  );
+  assert.equal(code, EXIT.noBus);
+  assert.match(io.err.join("\n"), /vdp\.session|recording/i);
+}, 60_000);
+
+test("a trace file that does not exist is a readable refusal, not a stack trace", async () => {
+  const io = capture();
+  const code = await runCli(
+    [
+      "--adapter",
+      "replay",
+      "--trace",
+      "/definitely/not/a/session-vdp.json",
+      "--out",
+      tempDir(),
+      "--gap",
+      "0",
+    ],
+    io,
+  );
+  assert.equal(code, EXIT.noBus);
+  assert.match(io.err.join("\n"), /recording cannot be read/i);
+}, 60_000);

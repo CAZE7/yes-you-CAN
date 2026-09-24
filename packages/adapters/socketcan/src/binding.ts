@@ -12,6 +12,14 @@ export interface SocketCanFrameData {
   id: number;
   extended: boolean;
   data: Uint8Array;
+  /**
+   * CAN-FD frame (ISO 11898-1). Optional because a binding that cannot report
+   * the difference must not be forced to guess — absent means classic CAN, the
+   * same convention `CanFrame.fd` uses for adapters that never see FD.
+   */
+  fd?: boolean;
+  /** Bitrate switch (CAN-FD BRS). Only meaningful together with `fd`. */
+  brs?: boolean;
 }
 
 export interface SocketCanBinding {
@@ -40,6 +48,10 @@ interface NpmSocketCanMessage {
   ext?: boolean;
   rtr?: boolean;
   data: Uint8Array;
+  /** CAN-FD marker, when the native module reports it (duck-typed, optional). */
+  fd?: boolean;
+  /** Bitrate switch, when the native module reports it. */
+  brs?: boolean;
 }
 
 interface NpmSocketCanChannel {
@@ -81,9 +93,14 @@ export function wrapNpmSocketCanModule(
         async send(frame: SocketCanFrameData): Promise<void> {
           // The native addon copies from its Buffer; any byte array carries
           // the same eight octets, and our adapter never mutates after send.
+          // fd/brs are forwarded explicitly: an addon that knows CAN-FD needs
+          // them, one that does not ignores unknown properties — dropping them
+          // here is what turned a declared FD frame into a classic one.
           channel.send({
             id: frame.id,
             ext: frame.extended,
+            ...(frame.fd === true ? { fd: true } : {}),
+            ...(frame.brs === true ? { brs: true } : {}),
             data: frame.data,
           });
         },
@@ -94,6 +111,8 @@ export function wrapNpmSocketCanModule(
               id: message.id,
               extended: message.ext ?? message.id > 0x7ff,
               data: new Uint8Array(message.data),
+              ...(message.fd === true ? { fd: true } : {}),
+              ...(message.brs === true ? { brs: true } : {}),
             });
           };
           listeners.set(listener, wrapped);
