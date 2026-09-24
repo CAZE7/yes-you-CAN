@@ -2,7 +2,7 @@
   "name": "@vdp/diagnostic-ir",
   "version": "0.1.0",
   "private": true,
-  "license": "MIT",
+  "license": "Apache-2.0",
   "type": "module",
   "description": "Diagnostic intermediate representation: observations with provenance (signal, DTC, ECU, session, window) between raw protocol form and domain projections (master backlog P0 #6).",
   "repository": {

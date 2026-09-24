@@ -2,7 +2,7 @@
   "name": "@vdp/web",
   "version": "0.1.0",
   "private": true,
-  "license": "MIT",
+  "license": "Apache-2.0",
   "type": "module",
   "description": "Diagnostic workbench UI: Node HTTP + SSE server and a vanilla ESM front end (AGENTS 16).",
   "repository": {

@@ -10,3 +10,9 @@
 /packages/protocols/ @CAZE7
 /packages/transport/ @CAZE7
 /docs/adr/ @CAZE7
+
+# Licence, contribution agreement and marks — owner decisions, never delegated.
+/LICENSE @CAZE7
+/NOTICE @CAZE7
+/TRADEMARK.md @CAZE7
+/docs/legal/ @CAZE7

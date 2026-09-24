@@ -1,6 +1,6 @@
 # Konformanz-Register — Norm → Implementierung → Beleg → Lücke
 
-> Stand: 2026-09-23 · gemessen am Commit, der diese Datei einführt. Letzte Bewegung: ADR 0059/0060.
+> Stand: 2026-09-23 · gemessen am Commit, der diese Datei einführt. Letzte Bewegung: ADR 0061/0062.
 >
 > **Leseregel:** Jede Zeile trägt einen **Beleg** (Datei, ggf. Zeile) oder das Wort
 > **fehlt**. Eine Zeile ohne Beleg ist eine Behauptung, und Behauptungen stehen hier
@@ -53,6 +53,7 @@ der Nachweis.
 | **ISO 26262** (Funktionale Sicherheit) | **fehlt** | Item-Definition, HARA, Sicherheitsziele mit ASIL, technische Sicherheitsanforderungen, Nachweis je Anforderung, Bestätigung review | Sicherheitsverantwortlicher + Abnahme durch OEM | Prozess, nicht PR |
 | **ASPICE** (Prozessreifegrad) | **fehlt** | Basispraktiken je Prozessgebiet, Bidirektionale Rückverfolgbarkeit als *Pflege*regel, Assessment | Prozessorganisation | Assessment extern |
 | **ISO 21434 / UNECE R155** (Cybersecurity) | **teilweise** (seit ADR 0051+0054) | **Umgesetzt:** Token-Tor (37 Routen, 16 Tests, 100% Coverage), Rate-Limit (100/60s + 10 SSE/IP → 429, 10 Tests), TLS-Option (`--cert`/`--key`, 3 Tests), HSTS + 5 Security-Header, Body-Limit 1 MB, Pfad-Eindämmung, SHA-256 Sitzungs-Integrität. **Entwurf vorhanden:** TARA-Bewertung (6 Gefährdungen mit Risiko), CSMS-Gerüst, SECURITY.md. **Fehlt:** Formale Abnahme durch CSO, Rollen, Reaktionszeiten (Organisation) | CSO (Abnahme) | Code-Teil erledigt, Prozess offen |
+| **Lizenz und Rechte** (wer darf was mit diesem Code) | **teilweise umgesetzt** (seit ADR 0061/0062) | **Code-Teil:** `LICENSE` (vollständiger Apache-2.0-Text), `NOTICE`, `TRADEMARK.md` (Lizenz ≠ Marke, § 6), `"license"` in 30 Manifesten, CLA Fassung 1.0 in `docs/legal/cla.md` + Register `docs/legal/contributors.md`, geprüft von `tests/architecture/legal.test.ts` | **Prozess offen:** anwaltliche Prüfung des CLA (Fragenliste in `docs/architecture/open-core-phase-0-rights.md` §6), Signaturwerkzeug/Bot für Zustimmungen (0.E E28), Markenanmeldung. Registriert ist heute keine Fremdzustimmung, weil es keinen Fremdbeitrag gibt (gemessen: 1 Commit, 1 Autor). Je OEM-Datenpaket ist die Abgrenzung Software/Datenbank (Art. 61/63 VO (EU) 2018/858) eine eigene Entscheidung |
 | **IEC 61508** | nicht anwendbar | Fahrzeugseitig gilt 26262; 61508 wäre nur für Industrieanlagen relevant | — | — |
 | **MISRA** | nicht anwendbar | MISRA C/C++ — dieses Repository ist TypeScript. Das Äquivalent ist maschinell getornt: kein `any`, kein `@ts-ignore`, kein leeres `catch`, kein `process.exit` außerhalb des Einstiegs, keine Datei über 800 Zeilen — `tests/architecture/hygiene.test.ts` | — | — |
 | **AUTOSAR** | nicht anwendbar | Kein AUTOSAR-Stack; die Plattform ist ein Diagnose-Werkzeug, keine Steuergeräte-Software | — | — |

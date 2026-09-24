@@ -7,6 +7,20 @@ this file is the release changelog.
 
 ## [Unreleased]
 
+### Changed
+
+- **Der Kern steht jetzt unter Apache-2.0, und Beiträge laufen über eine
+  Beitragsvereinbarung (ADR 0061/0062).** `LICENSE` trägt den vollständigen
+  Apache-2.0-Text (MIT → Apache-2.0), `NOTICE` und `TRADEMARK.md` sind neu, `"license"`
+  steht in allen 30 Manifesten auf `Apache-2.0`, und `docs/legal/cla.md` (Fassung 1.0)
+  regelt Beiträge als **Nutzungsrechteeinräumung** — nicht als Copyright-Übertragung, die
+  nach § 29 Abs. 1 UrhG nicht möglich wäre. Grund: Patentgrant, Änderungskennzeichnung und
+  eine klare Markenabgrenzung sind nicht nachrüstbar, und die Umstellung ist nur so lange
+  ohne Fremdzustimmung möglich, wie es keine Fremdbeiträge gibt (gemessen: 1 Commit,
+  1 Autor). **Was unter MIT verbreitet wurde, bleibt unter MIT nutzbar** — die Umstellung
+  gilt für neue Fassungen. Offen: anwaltliche Prüfung des CLA und ein Signaturwerkzeug
+  (0.E E28).
+
 ### Added
 
 - **Fahrzeug-Ernte: read-only auslesen, als Beobachtung behalten (ADR 0058).**

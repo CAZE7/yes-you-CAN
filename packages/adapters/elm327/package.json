@@ -2,7 +2,7 @@
   "name": "@vdp/adapter-elm327",
   "version": "0.1.0",
   "private": true,
-  "license": "MIT",
+  "license": "Apache-2.0",
   "type": "module",
   "description": "ELM327/OBDLink adapter over a serial byte stream (AGENTS 4, 29).",
   "repository": {

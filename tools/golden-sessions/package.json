@@ -2,7 +2,7 @@
   "name": "@vdp/golden-sessions",
   "version": "0.1.0",
   "private": true,
-  "license": "MIT",
+  "license": "Apache-2.0",
   "type": "module",
   "description": "Golden vehicle sessions: a recorded session plus its expected outcome, replayable as a regression (master backlog P0 #10).",
   "repository": {

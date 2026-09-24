@@ -1,12 +1,14 @@
 # Phase 0 — Rechte, Lizenz, Beitragsinstrument: die Entscheidungen vor der ersten Veröffentlichung
 
-> **Status: Entscheidungsvorlage (2026-09-23). Nicht normativ, keine Rechtsberatung.**
-> Dieses Dokument entscheidet nichts. Es legt die Wahl mit Folgen vor, damit Inhaber und
-> Juristin in einer Sitzung entscheiden können, statt sie über Monate zu schieben — und
-> es nennt die Stellen, an denen die Entscheidung dann im Repo landet (Regel 34.24).
-> Mit der Unterschrift wird daraus **ADR 0061** (Lizenz des Kerns) und **ADR 0062**
-> (Beitragsinstrument); bis dahin ist der Zustand hier der gemessene Ist-Zustand plus
-> Empfehlung. Kontext und Zielbild:
+> **Status: entschieden und umgesetzt am 2026-09-23** — **E1: Apache-2.0** (ADR
+> [0061](../adr/0061-license-apache-2-0.md)), **E2: CLA als Nutzungsrechteeinräumung
+> plus DCO** (ADR [0062](../adr/0062-contributions-need-a-cla.md)). Der Text dieser Datei
+> bleibt als **Begründung und Abwägung** stehen (die Alternativen und ihre Kosten sind
+> der Prüfpfad für die Juristin), nicht als Vorlage. **Offen bleibt:** die anwaltliche
+> Prüfung des CLA-Entwurfs (Fragenliste §6), das Signaturwerkzeug/Bot und der
+> Registry-Zugang — siehe 0.E E28.
+> **Keine Rechtsberatung:** die Umsetzung folgt der dokumentierten Empfehlung; geprüft
+> ist der Text nicht. Kontext und Zielbild:
 > [`docs/architecture/open-core-dual-licensing.md`](open-core-dual-licensing.md), §3 und §5.
 
 ---
@@ -47,8 +49,9 @@ Zwei Dinge daran sind für die Entscheidung entscheidend:
 
 ## 2. Entscheidung E1 — die Lizenz des Kerns
 
-**Empfehlung: Apache-2.0** (Umstellung von MIT), **vor** der ersten Veröffentlichung.
-Alternative: MIT behalten und die Grenze nur über die private Registry ziehen.
+**Entschieden: Apache-2.0** (umgesetzt, ADR [0061](../adr/0061-license-apache-2-0.md)).
+Die Abwägung darunter bleibt als Begründung stehen — sie ist der Text, an dem die
+Juristin prüfen kann, warum nicht MIT und nicht AGPL-3.0.
 
 ### Was die drei realistischen Optionen konkret bedeuten
 
@@ -100,9 +103,11 @@ Idee.
 
 ## 3. Entscheidung E2 — das Beitragsinstrument
 
-**Empfehlung: CLA mit breiter Lizenzgewährung (nicht „Assignment“), dazu DCO als
-Herkunftssignal.** Beides freiwillig erst ab dem ersten externen Beitrag; ab Inkraftsetzung
-verbindlich für alle Beiträge.
+**Entschieden: CLA mit breiter Lizenzgewährung (Nutzungsrechte, kein „Assignment“),
+dazu DCO als Herkunftssignal** — umgesetzt als [`docs/legal/cla.md`](../legal/cla.md),
+Fassung 1.0, ADR [0062](../adr/0062-contributions-need-a-cla.md). Verbindlich für jeden
+Fremdbeitrag ab diesem Datum; die erste Zustimmung ist die erste Zeile in
+[`docs/legal/contributors.md`](../legal/contributors.md).
 
 ### Warum ein CLA, obwohl das Projekt MIT/Apache-2.0 ist
 
@@ -188,9 +193,9 @@ und die Regel prüft das Ergebnis.
 
 | # | Aufgabe | Stand | Artefakt |
 |---|---|---|---|
-| 0.1 | Rechte klären (dieses Dokument) | 🟡 vorgelegt, Entscheidung offen | diese Datei + §6 |
-| 0.2 | Lizenzwahl E1 | 🟡 Empfehlung Apache-2.0 | §2, ADR 0061 nach Unterschrift |
-| 0.3 | Beitragsinstrument E2 | 🟡 Entwurf in Anhang A | ADR 0062 nach Unterschrift |
+| 0.1 | Rechte klären (dieses Dokument) | ✅ entschieden (E1/E2) | diese Datei + §6 |
+| 0.2 | Lizenzwahl E1 | ✅ Apache-2.0 umgesetzt | ADR [0061](../adr/0061-license-apache-2-0.md), `LICENSE`, `NOTICE`, 30 Manifeste |
+| 0.3 | Beitragsinstrument E2 | ✅ CLA Fassung 1.0 in Kraft; 🟡 anwaltliche Prüfung + Bot offen | [`docs/legal/cla.md`](../legal/cla.md), ADR [0062](../adr/0062-contributions-need-a-cla.md), 0.E E28 |
 | 0.4 | Registry-Zugang (Scopes, OIDC, 2FA) + Trockenlauf | 🟡 **Trockenlauf gemessen** (§4), Zugang offen | [`docs/operations/registry.md`](../operations/registry.md) |
 | 0.5 | Ist-Baseline messen (Regel 34.21) | ✅ `npm run ci` EXIT 0, 2537 Tests grün | Commit-Message `dc4d7d7` |
 

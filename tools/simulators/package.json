@@ -2,7 +2,7 @@
   "name": "@vdp/simulators",
   "version": "0.1.0",
   "private": true,
-  "license": "MIT",
+  "license": "Apache-2.0",
   "type": "module",
   "description": "Virtual CAN network and virtual vehicle/ECU simulator (AGENTS 32) — no hardware needed for tests or development.",
   "repository": {

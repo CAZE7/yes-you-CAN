@@ -4,6 +4,10 @@ Thanks for working on the Vehicle Diagnostics Platform. This project trades
 feature speed for correctness and architecture discipline — the constraints
 below are intentional (see `AGENTS.md` and `docs/adr/`).
 
+**Licence and contributions:** the code is Apache-2.0 ([`LICENSE`](LICENSE),
+[`NOTICE`](NOTICE)) — see *Contributions and rights* below before your first pull
+request, and [`TRADEMARK.md`](TRADEMARK.md) for what the licence does **not** cover.
+
 ## Quick start
 
 ```bash
@@ -129,6 +133,28 @@ version, not a per-package counter. The record's `version` field is therefore th
 version of the contract as it was measured; a contract change without a version
 decision is visible in the PR diff, and that decision (version + migration note)
 is the reviewer's job, not the tool's.
+
+## Contributions and rights
+
+The project is Apache-2.0. The licence grants everyone the right to use, modify and
+distribute the code; it does **not** cover the name or the marks
+([`TRADEMARK.md`](TRADEMARK.md)).
+
+Contributions go through a **Contributor License Agreement**: read
+[`docs/legal/cla.md`](docs/legal/cla.md) (version 1.0) and leave the consent sentence from
+its last section in your pull request. It grants the project the rights it needs to keep
+its own licensing decisions open — it does **not** take your copyright (that is not
+transferable under German law, § 29 Abs. 1 UrhG), it is **not** exclusive, and your own
+use of your code stays unaffected. Additionally, sign your commits with `git commit -s`
+(Developer Certificate of Origin) — provenance per commit, which is *not* a substitute for
+the agreement.
+
+Why a CLA and not only the DCO: with `inbound = outbound` alone, a contribution is licensed
+under the project licence and nothing else, so every later decision about the project's
+licence (or about a commercial offering) would need the consent of every single
+contributor. The whole reasoning, the rejected alternatives and the open legal review are
+in [`docs/architecture/open-core-phase-0-rights.md`](docs/architecture/open-core-phase-0-rights.md)
+and ADR [0062](docs/adr/0062-contributions-need-a-cla.md).
 
 ## Security
 

@@ -2,7 +2,7 @@
   "name": "@vdp/protocols-uds",
   "version": "0.1.0",
   "private": true,
-  "license": "MIT",
+  "license": "Apache-2.0",
   "type": "module",
   "description": "UDS (ISO 14229-1 services, ISO 14229-2 session/timing) client + ECU-side server. Transport agnostic by design (AGENTS 5, 9).",
   "repository": {

@@ -2,7 +2,7 @@
   "name": "@vdp/ai",
   "version": "0.1.0",
   "private": true,
-  "license": "MIT",
+  "license": "Apache-2.0",
   "type": "module",
   "description": "AI analysis layer with swappable providers (AGENTS 22). Ships a local heuristic provider.",
   "repository": {

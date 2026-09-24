@@ -2,7 +2,7 @@
   "name": "yes-you-can",
   "version": "0.1.0",
   "private": true,
-  "license": "MIT",
+  "license": "Apache-2.0",
   "description": "Modular, manufacturer-agnostic vehicle diagnostics platform (CAN / ISO-TP / UDS / DoIP). See AGENTS.md.",
   "type": "module",
   "engines": {

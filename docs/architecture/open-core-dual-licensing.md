@@ -27,7 +27,12 @@
 > `docs/flows/open-core-boundary.md`, bewacht von `tests/architecture/docs.test.ts`
 > (tote Links **und** Anker, ADR-Register, `docs` je Vertrag, jede Naht-Seite verlinkt;
 > Fund beim ersten Lauf: zwei tote Links in `docs/standards/conformance.md`, behoben).
-> **Phase 0 vorgelegt (🟡 = zur Unterschrift, nicht entschieden):** 0.1 Rechte,
+> **Phase 0 entschieden und umgesetzt (2026-09-23):** E1 = **Apache-2.0**
+> (`LICENSE` + `NOTICE` + `TRADEMARK.md` + 30 Manifeste, ADR 0061), E2 = **CLA mit
+> Nutzungsrechteeinräumung** (`docs/legal/cla.md` Fassung 1.0, Register
+> `docs/legal/contributors.md`, ADR 0062), geprüft von
+> `tests/architecture/legal.test.ts`. Offen: anwaltliche Prüfung, Signatur-Bot,
+> Registry-Zugang (0.E E28). Der Vorlage-Text mit der Abwägung:
 > 0.2 Lizenzwahl und 0.3 Beitragsinstrument stehen in
 > [`docs/architecture/open-core-phase-0-rights.md`](open-core-phase-0-rights.md)
 > (Empfehlung Apache-2.0 + CLA als Nutzungsrechteeinräumung, CLA-Entwurf in Anhang A,

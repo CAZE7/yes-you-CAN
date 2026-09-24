@@ -1,0 +1,14 @@
+yes-you-CAN — Vehicle Diagnostics Platform
+Copyright 2026 yes-you-CAN Contributors
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This product includes software developed by third parties. Their licences and
+notices live with the packages themselves (node_modules/, package-lock.json);
+the policy they are checked against is the "licenses" section of
+architecture/architecture.yaml, enforced by "npm run check:licenses" (ADR 0060).
+The production scope of that policy is empty by design (ADR 0002: no runtime
+dependencies), so nothing third-party is shipped in a distributable artefact today.
+
+The licence does not grant rights to the name or the marks of this project
+(Apache-2.0, section 6) — see TRADEMARK.md.

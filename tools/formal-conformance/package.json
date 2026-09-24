@@ -2,7 +2,7 @@
   "name": "@vdp/formal-conformance",
   "version": "0.1.0",
   "private": true,
-  "license": "MIT",
+  "license": "Apache-2.0",
   "type": "module",
   "description": "Shared test vectors driving the production TypeScript implementation and the Haskell formal reference of ISO-TP and write safety against each other (ADR 0045).",
   "repository": {

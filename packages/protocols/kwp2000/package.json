@@ -2,7 +2,7 @@
   "name": "@vdp/protocols-kwp2000",
   "version": "0.1.0",
   "private": true,
-  "license": "MIT",
+  "license": "Apache-2.0",
   "type": "module",
   "description": "KWP2000 (ISO 14230) client for legacy ECUs (AGENTS 3/5).",
   "repository": {

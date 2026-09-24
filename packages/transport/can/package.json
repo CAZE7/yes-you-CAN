@@ -2,7 +2,7 @@
   "name": "@vdp/transport-can",
   "version": "0.1.0",
   "private": true,
-  "license": "MIT",
+  "license": "Apache-2.0",
   "type": "module",
   "description": "CAN frame layer + transport/adapter contracts (AGENTS 4, 5, 6). No UDS or OEM logic here.",
   "repository": {

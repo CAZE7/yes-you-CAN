@@ -2,7 +2,7 @@
   "name": "@vdp/adapter-host",
   "version": "0.1.0",
   "private": true,
-  "license": "MIT",
+  "license": "Apache-2.0",
   "type": "module",
   "description": "Host integration for CAN adapters: serial byte streams, device catalog and selection (AGENTS 4, 29).",
   "repository": {

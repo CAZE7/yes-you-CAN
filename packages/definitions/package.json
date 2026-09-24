@@ -2,7 +2,7 @@
   "name": "@vdp/definitions",
   "version": "0.1.0",
   "private": true,
-  "license": "MIT",
+  "license": "Apache-2.0",
   "type": "module",
   "description": "Normalized diagnostic definition model + schema validation + starter packages (AGENTS 13, 23, 24).",
   "repository": {

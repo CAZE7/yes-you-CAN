@@ -2,7 +2,7 @@
   "name": "@vdp/storage",
   "version": "0.1.0",
   "private": true,
-  "license": "MIT",
+  "license": "Apache-2.0",
   "type": "module",
   "description": "Session persistence, schema migrations and session package export (AGENTS 10, 17, 34.13/14).",
   "repository": {

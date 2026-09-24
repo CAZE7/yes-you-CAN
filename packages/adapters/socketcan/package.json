@@ -2,7 +2,7 @@
   "name": "@vdp/adapter-socketcan",
   "version": "0.1.0",
   "private": true,
-  "license": "MIT",
+  "license": "Apache-2.0",
   "type": "module",
   "description": "SocketCAN adapter for Linux with a pluggable native binding (AGENTS 4).",
   "repository": {
