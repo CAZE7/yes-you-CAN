@@ -72,6 +72,13 @@ export interface AdapterConfig {
   trace?: string;
   /** slcan listen-only mode — useful to observe a bus without influencing it. */
   listenOnly?: boolean;
+  /**
+   * Open the interface for CAN-FD (SocketCAN only): the adapter then advertises
+   * `canFd` and ISO-TP segments into 64-byte frames. The interface itself must
+   * be brought up FD-capable first (`ip link set … type can bitrate 500000
+   * dbitrate 2000000 fd on`) — a classic-only interface still rejects FD frames.
+   */
+  canFd?: boolean;
   /** Apply line settings with `stty` before opening (default false). */
   configurePort?: boolean;
 }
@@ -631,6 +638,9 @@ export function createHostAdapterCatalog(): AdapterCatalog {
         return new SocketCanAdapter({
           binding: resolution.binding,
           iface: config.channel,
+          // CAN-FD is opt-in: advertising it without an FD-capable interface
+          // would make the engine send frames the bus cannot carry.
+          ...(config.canFd === true ? { canFd: true } : {}),
           ...(context.logger ? { logger: context.logger } : {}),
         });
       },
@@ -658,6 +668,7 @@ export function describeAdapterConfig(entry: AdapterEntry, config: AdapterConfig
   if (config.bitrate) parts.push(config.bitrate);
   if (config.trace) parts.push(config.trace);
   if (config.listenOnly) parts.push("listen-only");
+  if (config.canFd) parts.push("CAN-FD");
   return parts.join(" · ");
 }
 

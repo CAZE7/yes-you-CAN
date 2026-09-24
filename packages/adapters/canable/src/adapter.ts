@@ -13,6 +13,7 @@ import type {
   CanFrame,
   FrameListener,
 } from "@vdp/transport-can";
+import { frameMatchesFilters } from "@vdp/transport-can";
 import {
   BITRATES,
   formatSlcanFrame,
@@ -338,11 +339,10 @@ export class CanableAdapter implements CanBus {
     if (!frame) return;
     this.rxCount++;
     this.log.raw("slcan rx", { id: `0x${frame.id.toString(16)}`, payload: frame.payload });
+    // One filter vocabulary for every adapter (`frameMatchesFilters`), so a
+    // filter that states `extended` means it on this adapter too.
     for (const entry of this.listeners) {
-      if (entry.filters && entry.filters.length > 0) {
-        const matches = entry.filters.some((f) => (frame.id & f.mask) === (f.id & f.mask));
-        if (!matches) continue;
-      }
+      if (entry.filters && !frameMatchesFilters(frame, entry.filters)) continue;
       entry.listener(frame);
     }
   }

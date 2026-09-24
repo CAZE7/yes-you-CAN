@@ -49,6 +49,7 @@ const ADAPTER_FLAGS = [
   "protocol",
   "trace",
   "listen-only",
+  "can-fd",
   "configure-port",
 ] as const;
 
@@ -83,13 +84,14 @@ export function parseAdapterArgv(
       (nextValue !== undefined && !nextValue.startsWith("--") ? nextValue : undefined);
     if (inlineValue === undefined && value !== undefined) index++;
 
-    if (name === "listen-only" || name === "configure-port") {
+    if (name === "listen-only" || name === "configure-port" || name === "can-fd") {
       if (value !== undefined) {
         // Fail closed: a rejected argument must not silently take effect.
         errors.push(`--${name} does not take a value`);
         continue;
       }
       if (name === "listen-only") config.listenOnly = true;
+      else if (name === "can-fd") config.canFd = true;
       else config.configurePort = true;
       continue;
     }
@@ -189,6 +191,7 @@ export function selectionFromPayload(
   if (bitrate) config.bitrate = bitrate;
   if (trace) config.trace = trace;
   if (record["listenOnly"] === true) config.listenOnly = true;
+  if (record["canFd"] === true) config.canFd = true;
   if (record["configurePort"] === true) config.configurePort = true;
   const baud = record["baudRate"];
   if (typeof baud === "number" && Number.isFinite(baud)) config.baudRate = Math.trunc(baud);
@@ -231,6 +234,6 @@ export function formatAdapterHelp(catalog: AdapterCatalog): string {
   lines.push(
     "Common settings: --device=<path> --channel=<iface> --bitrate=<500k|250k|...> --baud=<bits/s>",
   );
-  lines.push("                 --trace=<file> --listen-only --configure-port");
+  lines.push("                 --trace=<file> --listen-only --can-fd --configure-port");
   return lines.join("\n");
 }

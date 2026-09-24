@@ -479,14 +479,17 @@ test("modules stay reviewable: no production file above the size budget", () => 
     {
       file: "packages/transport/iso-tp/src/connection.ts",
       reason:
-        "861 lines — the production N_Cr timer (AGENTS 1.45, tracked as 0.E E26) added " +
+        "888 lines — the production N_Cr timer (AGENTS 1.45, tracked as 0.E E26) added " +
         "60 on 2026-09-23: the `crTimer` field and its doc block, `armCrTimeout()`/`clearCrTimeout()` " +
         "with the timeout callback, the arm points in the First-Frame and Consecutive-Frame branches, " +
         "the disarms in the Single-Frame/completion/sequence-error paths and in `close()`, and the " +
         "`checkCrTimeout()` doc block: 785 → 845. The retry classification (0.E E30) added 16 on " +
         "2026-09-24: the `VdpError` import, the second half of `isRetryable()` that accepts an " +
         "adapter-declared transient, and `transmit()` spreading the caught error's `details` instead " +
-        "of flattening them into a string — 845 → 861. The split candidate is the timeout machinery " +
+        "of flattening them into a string — 845 → 861. The receiver buffer bound (0.E E32) added 27 " +
+        "on 2026-09-24: the `maxReceiveBytes` field, its constructor wiring and the Flow-Control-" +
+        "Overflow branch in the First-Frame handler with the doc block that names ISO 15765-2 " +
+        "Table 14 — 861 → 888. The split candidate is the timeout machinery " +
         "as a small collaborator module (rx-state timers); until then the budget only keeps the *rest* " +
         "from growing unnoticed",
     },

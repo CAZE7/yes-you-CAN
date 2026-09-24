@@ -4,13 +4,17 @@
  *
  * The conformance vectors are expressed over the `CanBus` contract; this file
  * is the *hardware* arm of the same harness: with a vcan0 interface (or a real
- * SocketCAN device) and a SocketCAN binding installed, the ISO-TP round trips
- * run through the production adapter. Without either, the suite is skipped
+ * SocketCAN device) and a SocketCAN transport installed, the ISO-TP round trips
+ * run through the production adapter. Two transports qualify: the optional
+ * native `socketcan` module, and the host's can-utils fallback
+ * (`candump`/`cansend` — the zero-native-build path a fresh Linux box gets
+ * with `sudo apt install can-utils`). Without either, the suite is skipped
  * with the missing precondition in its message — a skip that names its reason
  * is a finding, an unrun test dressed as green is not (AGENTS 34.21).
  *
  * Run:  npm run test:hardware        (with `modprobe vcan && ip link add dev
- * vcan0 type vcan && ip link set up vcan0` and `npm i socketcan`)
+ * vcan0 type vcan && ip link set up vcan0` and `npm i socketcan` or
+ * `sudo apt install can-utils`)
  *
  * CANable and ELM327 sit on the same `CanBus` contract (proven by their own
  * specs); PCAN has no adapter package in this repository yet — preparing it is
@@ -50,7 +54,18 @@ async function loadSocketCanBinding(): Promise<unknown | null> {
   try {
     return await dynamicImport("socketcan");
   } catch {
-    return null;
+    // The native module is absent — the host's own fallback chain is the next
+    // authority (native → can-utils candump/cansend), so a CI that installs
+    // can-utils instead of a node-gyp toolchain still exercises the kernel
+    // socket path. Reusing that chain here instead of restating it is the
+    // point of the seam (ADR 0031).
+    try {
+      const { resolveSocketCanBinding } = await import("@vdp/adapter-host");
+      const resolution = await resolveSocketCanBinding();
+      return resolution.binding ?? null;
+    } catch {
+      return null;
+    }
   }
 }
 
@@ -129,7 +144,10 @@ test("socketcan conformance: the ISO-TP vectors survive a real SocketCAN interfa
   assert.ok(parsed.ok, JSON.stringify("errors" in parsed ? parsed.errors : []));
   if (!parsed.ok) return;
   const pair = await SocketCanPair.open("vcan0");
-  assert.ok(pair !== null, "no SocketCAN binding installed (`npm i socketcan`) — skipped");
+  assert.ok(
+    pair !== null,
+    "no SocketCAN transport installed (`npm i socketcan` or `sudo apt install can-utils`) — skipped",
+  );
   if (pair === null) return;
   // Yielding sleep only: the runner’s settle loop carries the deadline, so
   // real time is consumed there, not in fixed waits (ADR 0019).

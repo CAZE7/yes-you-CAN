@@ -25,7 +25,10 @@ die Adapter-Auswahl (`selection.ts`). Die Workbench fragt dieses Paket:
   `npm run adapter:doctor` (apps/web `doctor-cli.ts`), Exit 0/2/3
 - **SocketCAN-Fallback** (`socketcan-fallback.ts`): `/sys/class/net`-Wahrheit
   (Existenz, ARPHRD_CAN = 280, `operstate`) plus die Auflösungskette
-  natives Modul → can-utils (candump/cansend, ein Prozess pro Frame — benannt)
+  natives Modul → can-utils (candump/cansend, ein Prozess pro Frame — benannt).
+  Klassisches CAN **und** CAN-FD reisen (`#`/`##`-Form, BRS = Bit 0 der
+  Flags-Ziffer nach `linux/can.h`); CAN-FD am SocketCAN-Adapter wird mit
+  `--can-fd` opt-in geschaltet, nie vermutet.
 
 ## Does NOT do
 

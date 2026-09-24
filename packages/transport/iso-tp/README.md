@@ -25,6 +25,12 @@ Antworten (ADR 0039).
   `sequenceError`, `overflow`) statt Prosa; die Vektoren dazu sind der
   gemeinsame Maßstab mit der Haskell-Referenz (`@vdp/formal-conformance`,
   ADR 0045)
+- **Empfangs-Puffergrenze** (`maxReceiveBytes`, Default `DEFAULT_MAX_RECEIVE_BYTES`
+  = 64 KiB): ein First Frame, der mehr deklariert, als dieser Empfänger hält,
+  wird mit Flow Control flowStatus **Overflow** (ISO 15765-2 Table 14)
+  beantwortet statt einer Rezeption, die niemand fertigstellen kann — die
+  CAN-FD-Fluchtform von FF_DL ist ein 32-Bit-Feld (§9.5.2), und ohne Grenze
+  allokieren korrupte Frames `chunks` bis die N_Cr-Timer es merkt
 
 ## Does NOT do
 

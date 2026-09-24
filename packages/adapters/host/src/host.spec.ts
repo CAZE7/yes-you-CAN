@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FakeSocketCanBinding, type SocketCanBinding } from "@vdp/adapter-socketcan";
 import { AdapterUnsupportedError, createLogger, MemorySink, TransportError } from "@vdp/shared";
+import { createFrame } from "@vdp/transport-can";
 import { test } from "vitest";
 import {
   AdapterCatalog,
@@ -53,6 +54,17 @@ test("a following flag is not swallowed as a value", () => {
   assert.deepEqual(parsed.errors, []);
   assert.equal(parsed.selection.config.listenOnly, true);
   assert.equal(parsed.selection.config.channel, "can0");
+});
+
+test("--can-fd is a SocketCAN flag without a value, refused with one", () => {
+  const parsed = parseAdapterArgv(["--adapter=socketcan", "--channel=can0", "--can-fd"]);
+  assert.deepEqual(parsed.errors, []);
+  assert.equal(parsed.selection.config.canFd, true);
+
+  const refused = parseAdapterArgv(["--can-fd=please"]);
+  assert.equal(refused.errors.length, 1);
+  assert.match(refused.errors[0] ?? "", /does not take a value/);
+  assert.equal(refused.selection.config.canFd, undefined);
 });
 
 test("a flag that takes no value rejects one", () => {
@@ -188,6 +200,15 @@ test("a selection from an HTTP body ignores unknown fields and coerces a numeric
   });
 });
 
+test("an HTTP body can ask for CAN-FD, and only as the boolean true", () => {
+  const enabled = selectionFromPayload({ id: "socketcan", channel: "can0", canFd: true });
+  assert.equal(enabled.config.canFd, true);
+  // A string is not a promise: `canFd: "yes"` stays off, like every other
+  // boolean in this trust boundary.
+  const lied = selectionFromPayload({ id: "socketcan", channel: "can0", canFd: "yes" });
+  assert.equal(lied.config.canFd, undefined);
+});
+
 test("a non-object body falls back to the default adapter instead of crashing", () => {
   const selection = selectionFromPayload(null, "simulator");
   assert.deepEqual(selection, { id: "simulator", config: {} });
@@ -205,6 +226,7 @@ test("the help text lists every registered adapter", () => {
   const catalog = createHostAdapterCatalog();
   const help = formatAdapterHelp(catalog);
   for (const id of catalog.ids()) assert.match(help, new RegExp(id));
+  assert.match(help, /--can-fd/, "the FD opt-in is part of the common settings line");
 });
 
 test("opening a device that does not exist produces an actionable error", async () => {
@@ -688,6 +710,26 @@ test("socketcan creation needs a channel and uses the injected binding", async (
   assert.equal(binding.closed, true);
 });
 
+test("--can-fd reaches the created adapter and its advertised capabilities", async () => {
+  // FD is opt-in at the catalog seam: without the flag the adapter must not
+  // advertise it (an interface that cannot carry FD would then receive frames
+  // it has to refuse), with the flag ISO-TP may segment into 64-byte frames.
+  const catalog = createHostAdapterCatalog();
+  const binding = new FakeSocketCanBinding();
+  const context = {
+    loadSocketCanBinding: () => Promise.resolve<SocketCanBinding>(binding),
+    logger: createLogger("can", { level: "ERROR" }),
+  };
+  const classic = await catalog.require("socketcan").create({ channel: "can0" }, context);
+  assert.equal(classic.capabilities.canFd, false);
+  const fd = await catalog.require("socketcan").create({ channel: "can0", canFd: true }, context);
+  assert.equal(fd.capabilities.canFd, true);
+  await fd.open();
+  await fd.send(createFrame(0x7e0, new Uint8Array(12).fill(1), { fd: true }));
+  assert.equal(binding.sent[0]?.fd, true, "the flag survives the hop into the binding");
+  await fd.close();
+});
+
 test("describeAdapterConfig prints what is set and nothing else", () => {
   const catalog = createHostAdapterCatalog();
   const slcan = catalog.require("slcan");
@@ -702,6 +744,10 @@ test("describeAdapterConfig prints what is set and nothing else", () => {
       listenOnly: true,
     }),
     "CANable / CANtact / USBtin (slcan) · /dev/ttyUSB0 · channel slcan0 · 115200 baud · 500k · trace.json · listen-only",
+  );
+  assert.equal(
+    describeAdapterConfig(catalog.require("socketcan"), { channel: "can0", canFd: true }),
+    "SocketCAN (Linux) · channel can0 · CAN-FD",
   );
 });
 

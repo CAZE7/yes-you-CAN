@@ -131,6 +131,29 @@ test("received frames reach subscribers and honour filters", async () => {
   assert.equal(adapter.counters.rx, 1);
 });
 
+test("a filter that states extended means it — no low-bit accidental match", async () => {
+  // 18DAF1EF is a 29-bit frame whose low 11 bits are 0x1EF; a subscriber that
+  // asks for the 11-bit id 0x1EF must not receive it. The shared filter
+  // vocabulary (`frameMatchesFilters`) is what makes the flag count here too.
+  const { stream } = createFakeElm({ response: "18DAF1EF 03 7F 22 31" });
+  const adapter = new Elm327Adapter({ stream, commandTimeoutMs: 500 });
+  await adapter.open();
+  const received: number[] = [];
+  adapter.subscribe(
+    (frame) => received.push(frame.id),
+    [{ id: 0x1ef, mask: 0x7ff, extended: false }],
+  );
+  const extended: number[] = [];
+  adapter.subscribe(
+    (frame) => extended.push(frame.id),
+    [{ id: 0x1ef, mask: 0x7ff, extended: true }],
+  );
+
+  await adapter.send(createFrame(0x7e0, fromHex("22 F1 90")));
+  assert.deepEqual(received, [], "the 29-bit frame is not an 11-bit answer");
+  assert.deepEqual(extended, [0x18daf1ef]);
+});
+
 test("echo frames from cheap clones are suppressed and not dispatched as rx", async () => {
   const stream = new MemoryByteStream();
   stream.open();

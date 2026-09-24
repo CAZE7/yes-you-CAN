@@ -21,6 +21,7 @@ import type {
   CanFrame,
   FrameListener,
 } from "@vdp/transport-can";
+import { frameMatchesFilters } from "@vdp/transport-can";
 import {
   DEFAULT_INIT_SEQUENCE,
   formatIdentifier,
@@ -351,13 +352,12 @@ export class Elm327Adapter implements CanBus {
   }
 
   private dispatch(frame: CanFrame): void {
+    // One filter vocabulary for every adapter (see `frameMatchesFilters`): a
+    // subscriber that states `extended` in its filter means it — matching only
+    // the low bits of an identifier would deliver an extended frame to a
+    // listener that asked for the 11-bit one (AGENTS 6, one rule per word).
     for (const entry of this.listeners) {
-      if (entry.filters && entry.filters.length > 0) {
-        const matches = entry.filters.some(
-          (filter) => (frame.id & filter.mask) === (filter.id & filter.mask),
-        );
-        if (!matches) continue;
-      }
+      if (entry.filters && !frameMatchesFilters(frame, entry.filters)) continue;
       entry.listener(frame);
     }
   }

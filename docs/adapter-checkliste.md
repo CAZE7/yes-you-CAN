@@ -69,6 +69,15 @@ npm run adapter:doctor -- --adapter socketcan --channel can0
 sudo modprobe vcan && sudo ip link add dev vcan0 type vcan && sudo ip link set up vcan0
 ```
 
+**CAN-FD** (z. B. `ip link set can0 type can bitrate 500000 dbitrate 2000000
+fd on`): `--can-fd` schaltet den Adapter auf FD — erst dann wirbt er mit der
+Fähigkeit und ISO-TP segmentiert in 64-Byte-Frames. Ohne das Flag bleibt der
+Adapter klassisch, auch wenn die Hardware mehr könnte: eine Fähigkeit, die
+nicht verhandelt wurde, wird nicht angenommen (AGENTS 4). Die Flags (`fd`,
+`brs`) reisen seit 2026-09-24 durch Bindung und can-utils-Fallback in beide
+Richtungen — davor wurde jedes FD-Frame auf dem RX-Weg zu einem klassischen
+flachgedrückt.
+
 Probe und Öffnen lesen `/sys/class/net` (Existenz, ARPHRD_CAN, operstate) —
 **„Interface down” ist der häufigste echte SocketCAN-Fehler** und wird jetzt
 mit dem Aufruf-Kommando benannt, nicht mit einem I/O-Error aus der Tiefe.

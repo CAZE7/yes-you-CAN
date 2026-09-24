@@ -16,6 +16,7 @@ import {
   type CanFilter,
   type CanFrame,
   type FrameListener,
+  frameMatchesFilters,
 } from "@vdp/transport-can";
 
 export interface GenericCanOptions {
@@ -94,11 +95,11 @@ export class GenericCanAdapter implements CanBus {
 
   private dispatch(frame: CanFrame): void {
     this.rxCount++;
+    // One filter vocabulary for every adapter (`frameMatchesFilters`): this
+    // wrapper used to carry its own copy of the mask comparison — the fourth in
+    // the tree — which ignored a filter's `extended` flag like the other three.
     for (const entry of this.listeners) {
-      if (entry.filters && entry.filters.length > 0) {
-        const matches = entry.filters.some((f) => (frame.id & f.mask) === (f.id & f.mask));
-        if (!matches) continue;
-      }
+      if (entry.filters && !frameMatchesFilters(frame, entry.filters)) continue;
       entry.listener(frame);
     }
   }

@@ -242,8 +242,10 @@ const ADAPTER_FLAGS = new Set([
   "channel",
   "bitrate",
   "baud",
+  "protocol",
   "trace",
   "listen-only",
+  "can-fd",
   "configure-port",
 ]);
 
@@ -254,6 +256,7 @@ const ADAPTER_FLAGS_WITH_VALUE = new Set([
   "channel",
   "bitrate",
   "baud",
+  "protocol",
   "trace",
 ]);
 

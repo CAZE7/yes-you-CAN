@@ -71,6 +71,14 @@ export const SLOW_LINK_TIMING: IsoTpTiming = {
   maxRetries: 2,
 };
 
+/**
+ * Default receive buffer bound, see `IsoTpOptions.maxReceiveBytes`. 64 KiB:
+ * the largest diagnostic answers are 4 KiB DID reads, the largest practical
+ * UDS transfers stay below 64 KiB, and a bound has to exist somewhere because
+ * the CAN-FD escape form of FF_DL is a 32-bit field (ISO 15765-2 §9.5.2).
+ */
+export const DEFAULT_MAX_RECEIVE_BYTES = 65_535;
+
 export interface IsoTpOptions {
   txId: number;
   rxId: number;
@@ -85,6 +93,20 @@ export interface IsoTpOptions {
   fd?: boolean;
   channel?: string;
   timing?: Partial<IsoTpTiming>;
+  /**
+   * How many bytes a *received* message may claim before this receiver
+   * announces a buffer overflow in its Flow Control (flowStatus 0x02,
+   * ISO 15765-2 Table 14) instead of starting a reception it cannot finish.
+   *
+   * Without a bound, the CAN-FD escape form of FF_DL — a 32-bit field — lets a
+   * corrupt or hostile First Frame claim up to 4 GiB of `chunks`, and the only
+   * thing that stops it is the N_Cr timer a second later. Classic CAN is
+   * bounded by construction (12-bit FF_DL = 4095), so this guard concerns the
+   * FD path; 64 KiB is comfortably above every diagnostic answer a vehicle
+   * gives (the largest standard responses are 4 KiB DID reads) and far below
+   * anything that could pressure a Node heap.
+   */
+  maxReceiveBytes?: number;
   /** Injectable for deterministic tests. */
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
