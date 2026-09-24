@@ -262,7 +262,7 @@ function pruneUndefined(config: AdapterConfig): AdapterConfig {
 export const ELM327_DEFAULT_BAUD = 38_400;
 export const SLCAN_DEFAULT_BAUD = 115_200;
 
-/** The Win32 device-path prefix: the four characters \\, `.`, \. */
+/** The Win32 device-path prefix: the four characters `\`, `.`, `\`. */
 const WIN32_COM_PREFIX = "\\\\.\\";
 
 /**
@@ -270,11 +270,16 @@ const WIN32_COM_PREFIX = "\\\\.\\";
  * `COM3`, `com12`, `\\.\COM3`.
  *
  * Recognised so the bare form can be *answered*, not so it can be used.
- * `fs.stat("COM3")` on Windows throws ENOENT for every port that exists, and the
- * probe used to translate that into "is the adapter plugged in?" — a hint that
- * sends an operator looking for a cable that is plugged in. Measured 2026-09-24
- * on Node 22 / Windows: `stat`, `access` and `open` all return ENOENT for `COM3`
- * while the same three succeed for `\\.\COM3`.
+ * Win32 resolves `\\.\COM3` and refuses the bare `COM3`, so
+ * `fs.stat("COM3")` throws ENOENT for ports that exist, and the probe used to
+ * translate that into "is the adapter plugged in?" — a hint that sends an
+ * operator looking for a cable that is plugged in.
+ *
+ * Not measured here: this workspace is Linux and has never run `stat`, `access`
+ * or `open` against a Windows COM port. The ENOENT behaviour is Win32 and
+ * `node:fs` documentation, not a result of this workspace. What *is* measured
+ * from Linux is the shape `isWindowsComPortName` recognises, pinned by
+ * `host.spec.ts` through the injectable `platform` argument (AGENTS 34.21).
  */
 export function isWindowsComPortName(device: string): boolean {
   const trimmed = device.trim().toUpperCase();

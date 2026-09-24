@@ -27,6 +27,7 @@ import {
   formatSendPayload,
   initSequenceFor,
   isElmError,
+  isTransientElmError,
   parseFrameLine,
 } from "./protocol.js";
 import type { ByteStream } from "./stream.js";
@@ -209,6 +210,12 @@ export class Elm327Adapter implements CanBus {
         throw new TransportError(`ELM327 refused the frame: ${error}`, {
           command: payload,
           frameId: frame.id,
+          // Carry the classification upwards. The adapter knows what its own
+          // error text means; ISO-TP knows whether a retry is affordable. This
+          // flag is the only thing that has to survive the hop — if a wrapper
+          // re-throws with `cause: messageOf(...)` the flag dies and the retry
+          // decision falls back to "no" (see transmit() in connection.ts).
+          retryable: isTransientElmError(error),
         });
       }
     }

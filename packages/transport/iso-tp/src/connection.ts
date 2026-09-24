@@ -13,6 +13,7 @@ import {
   type Logger,
   messageOf,
   TransportError,
+  VdpError,
 } from "@vdp/shared";
 import { type CanBus, type CanFrame, createFrame } from "@vdp/transport-can";
 import {
@@ -606,7 +607,15 @@ export class IsoTpConnection {
       });
       await Promise.race([write, aborted]);
     } catch (error) {
+      // Spread the original details before adding our own. This used to build
+      // the error with `cause: messageOf(error)` alone, which flattened a
+      // `TransportError` from the adapter into prose — its `retryable` flag
+      // reached nobody, and a transient bus error killed the whole request
+      // instead of buying a retry.
+      const details: Record<string, unknown> =
+        error instanceof VdpError ? { ...error.details } : {};
       throw new TransportError(`ISO-TP transmit failed: ${messageOf(error)}`, {
+        ...details,
         cause: messageOf(error),
       });
     } finally {
@@ -834,10 +843,17 @@ export class IsoTpConnection {
 }
 
 function isRetryable(error: unknown): boolean {
-  return (
+  // Our own timeouts: the peer was slow or silent, both buy another attempt.
+  if (
     error instanceof IsoTpError &&
     (error.details["timeout"] === "N_Bs" || error.details["timeout"] === "N_Cr")
-  );
+  ) {
+    return true;
+  }
+  // An adapter that classified its own failure as transient. Only an explicit
+  // `true` counts: an adapter that says nothing keeps the old behaviour, so a
+  // new adapter cannot accidentally widen the retry window.
+  return error instanceof TransportError && error.details["retryable"] === true;
 }
 
 function hex(id: number): string {

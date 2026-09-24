@@ -393,3 +393,44 @@ describe("MemoryByteStream edges", () => {
     assert.equal(stream.isOpen(), false);
   });
 });
+
+test("a transient ELM error asks for a retry, a permanent one does not", async () => {
+  // The classification lives here, the decision lives in ISO-TP (`isRetryable`
+  // in connection.ts). This pins the contract between them: an adapter error
+  // that the adapter itself calls transient must carry `retryable: true` into
+  // the details, because that flag is the only channel between the two layers.
+  // Without it a single `BUS BUSY` on a Bluetooth SPP link kills the whole
+  // request instead of buying one more attempt.
+  const transient = [
+    "NO DATA",
+    "BUFFER FULL",
+    "BUS BUSY",
+    "BUS ERROR",
+    "CAN ERROR",
+    "UNABLE TO CONNECT",
+    "FB ERROR",
+    "STOPPED",
+  ];
+  for (const error of transient) {
+    const { stream } = createFakeElm({ error });
+    const adapter = new Elm327Adapter({ stream, commandTimeoutMs: 500 });
+    await adapter.open();
+    await assert.rejects(
+      adapter.send(createFrame(0x7e0, fromHex("22 F1 90"))),
+      (thrown: unknown) => thrown instanceof TransportError && thrown.details?.retryable === true,
+      `${error} must be classified transient`,
+    );
+  }
+
+  const permanent = ["DATA ERROR", "<DATA ERROR", "ERR", "?"];
+  for (const error of permanent) {
+    const { stream } = createFakeElm({ error });
+    const adapter = new Elm327Adapter({ stream, commandTimeoutMs: 500 });
+    await adapter.open();
+    await assert.rejects(
+      adapter.send(createFrame(0x7e0, fromHex("22 F1 90"))),
+      (thrown: unknown) => thrown instanceof TransportError && thrown.details?.retryable === false,
+      `${error} must be classified permanent`,
+    );
+  }
+});

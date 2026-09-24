@@ -58,6 +58,27 @@ none of it was the norm. This file is the release changelog.
   Flaky-Report aus der CI und `retry: isCi ? 2 : 0` bleibt unbewiesen ([Backlog
   E9](docs/architecture/backlog.md)). Getestet ist sie, aufgerufen wird sie nicht.
 
+- **Ein transienter Bus-Fehler beendete die ganze Anfrage, statt einen Retry zu kaufen
+  ([Backlog E30](docs/architecture/backlog.md)).** Nachdem `send()` ELM-Fehler wirft
+  (E29 Punkt 3), erkannte `isRetryable()` nur noch `IsoTpError` mit `timeout: N_Bs`
+  oder `N_Cr`. `BUS BUSY` und `CAN ERROR` gingen als nicht-retrybar durch — auf
+  Bluetooth SPP mit 50–150 ms Funkverzögerung und Jitter routine, nicht Ausnahme.
+  `SLOW_LINK_TIMING.maxRetries: 2` war für genau diese Fehlerklasse nie wirksam.
+  Behoben in drei Teilen, weil der Fehler an einer Naht lag: `protocol.ts` führt
+  `ELM_TRANSIENT_ERRORS`/`isTransientElmError()` (transient: `NO DATA`, `BUFFER FULL`,
+  `BUS BUSY`, `BUS ERROR`, `CAN ERROR`, `UNABLE TO CONNECT`, `FB ERROR`, `STOPPED`;
+  permanent: `DATA ERROR`, `<DATA ERROR`, `ERR`, `?`); `adapter.ts` gibt
+  `retryable: isTransientElmError(error)` in die `TransportError`-Details; und
+  `isRetryable()` akzeptiert eine `TransportError` mit `details.retryable === true`,
+  wobei `transmit()` die Details des gefangenen Fehlers **verbreitet**, statt sie mit
+  `cause: messageOf(error)` in einen String zu platten — ohne diesen dritten Teil
+  starb das Flag auf dem Weg nach draußen und die ersten beiden Teile waren
+  wirkungslos. Die Aufteilung bleibt Absicht: der Adapter *klassifiziert*, ISO-TP
+  *entscheidet*. Drei Biss-Nachweise: `transmit()`-Verbreitung entfernt → rot,
+  `isRetryable` auf `return false` gezwungen → rot, `"BUS BUSY"` aus der Menge
+  genommen → rot. Zwei neue Tests, 78 grün in `iso-tp` + `elm327`, die Suite
+  insgesamt bei **2569 passed / 8 skipped**.
+
 - **Der ELM327-Pfad lief gegen einen Bluetooth-Adapter, auf vier Ebenen gleichzeitig
   ([Backlog E29](docs/architecture/backlog.md)).** (1) Die Init-Sequenz schickte
   `ATS0` — Leerzeichen aus — während `parseFrameLine` auf Leerzeichen splittet und
@@ -77,8 +98,9 @@ none of it was the norm. This file is the release changelog.
   als benanntes Profil für Bluetooth SPP — `DEFAULT_TIMING` bleibt 1000/0, denn ein
   Default, der lockerer wird, lässt jedes Timeout-Gate leichter bestehen.
 - **Windows-COM-Ports wurden mit dem falschen Hinweis beantwortet.**
-  `fs.stat("COM3")` wirft unter Windows für jeden existierenden Port ENOENT, und
-  der Probe übersetzte das in „is the adapter plugged in?" — ein Operator sucht
+  `fs.stat("COM3")` wirft unter Windows für jeden existierenden Port ENOENT — das
+  ist dokumentiertes Win32-/`node:fs`-Verhalten, **nicht** in dieser Arbeitsumgebung
+  gemessen (die ist Linux, AGENTS 34.21). Der Probe übersetzte das in „is the adapter plugged in?" — ein Operator sucht
   nach einem Kabel, das steckt. Neu: `isWindowsComPortName` /
   `isWindowsBareComPort` (Plattform injizierbar, damit der Zweig von Linux aus
   testbar ist) und eine Antwort, die den echten Weg nennt — `\\.\COM3`. Die

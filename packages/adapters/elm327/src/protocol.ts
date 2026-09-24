@@ -42,6 +42,39 @@ export function isElmError(line: string): string | null {
   return null;
 }
 
+/**
+ * ELM327 errors that describe the *link or the bus*, not the frame: sending the
+ * same bytes again has a real chance of getting through.
+ *
+ * `NO DATA` is a P2 timeout in disguise. `BUS BUSY`/`BUS ERROR`/`CAN ERROR` are
+ * arbitration and error frames on the bus — on a Bluetooth SPP link, where the
+ * radio adds 50–150 ms and jitter, they are routine. `BUFFER FULL` is the
+ * adapter's own TX queue. `STOPPED` is the adapter aborting a command it could
+ * not finish. `UNABLE TO CONNECT` and `FB ERROR` belong to the setup phase.
+ *
+ * The complement — `DATA ERROR`, `<DATA ERROR`, `ERR`, `?` — means the adapter
+ * did not understand what it was given. Sending identical bytes again produces
+ * the identical refusal, so a retry only spends the timeout twice.
+ *
+ * This is a *classification*, not a decision: the adapter says "transient" and
+ * the ISO-TP layer decides whether that is worth an attempt (`isRetryable` in
+ * `connection.ts`).
+ */
+const ELM_TRANSIENT_ERRORS: ReadonlySet<string> = new Set([
+  "NO DATA",
+  "BUFFER FULL",
+  "BUS BUSY",
+  "BUS ERROR",
+  "CAN ERROR",
+  "UNABLE TO CONNECT",
+  "FB ERROR",
+  "STOPPED",
+]);
+
+export function isTransientElmError(error: string): boolean {
+  return ELM_TRANSIENT_ERRORS.has(error.trim().toUpperCase());
+}
+
 /** Parse one response line into a CAN frame, or null if it is not a frame line. */
 export function parseFrameLine(
   line: string,
