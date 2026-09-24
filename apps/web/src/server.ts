@@ -38,6 +38,7 @@ import {
   validateRequestOrigin,
 } from "./auth.js";
 import { DemoBackend } from "./backend.js";
+import { runDoctorCli } from "./doctor-cli.js";
 import { RateLimiter } from "./rate-limit.js";
 import {
   HttpError,
@@ -738,6 +739,13 @@ if (invokedDirectly) {
       for (const hint of entry.probe.hints ?? []) process.stdout.write(`             → ${hint}\n`);
     }
     process.exit(0);
+  }
+
+  if (argv.includes("--doctor")) {
+    // Pre-flight check for the hardware day (owned by doctor-cli.ts):
+    // exit 0 ready · 2 usage · 3 adapter needs attention — the same codes the
+    // harvest CLI uses, so an automation can branch on one scheme.
+    process.exit(await runDoctorCli(argv, { catalog, logger: log }));
   }
 
   let options: ServerOptions;

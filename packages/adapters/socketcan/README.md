@@ -42,6 +42,10 @@ vcan0/can0 (Linux) → SocketCanBinding (injectierbar) → SocketCanAdapter → 
 
 - **Binding injizierbar** (ADR 0016 §2): `binding.ts` ist Coverage-exkludiert,
   weil der Socket nicht testbar ist — alles drumherum ist es (Gate 92/78).
+- **Zwei Modul-Formen werden geladen:** der `open()`-Vertrag **und** das
+  npm-`createChannel` (`wrapNpmSocketCanModule` in `binding.ts`) — der
+  Installationshinweis `npm i socketcan` muss liefern dürfen, was der Lader
+  akzeptiert. RTR-Frames werden wie slcan-remote verworfen.
 - **Hardware-Tests sind manual:** `tests/hardware/vcan.test.ts`
   (`npm run test:hardware`), nie Teil des normalen `npm test`.
 

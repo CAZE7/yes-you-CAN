@@ -19,6 +19,13 @@ die Adapter-Auswahl (`selection.ts`). Die Workbench fragt dieses Paket:
 - Adapter-Auswahl: `parseAdapterArgv`, `validateSelection`,
   `selectionFromPayload`, `DEFAULT_ADAPTER_ID = "simulator"` (`selection.ts`)
 - Bitrate-Wissen: `ELM327_DEFAULT_BAUD`, `SLCAN_DEFAULT_BAUD`, `supportedBitrates()`
+- **Adapter-Doctor** (`doctor.ts`): die Vorab-Checkliste für den Hardware-Tag —
+  Einstellungen → Verfügbarkeit → Öffnen/Handshake (Firmware) →
+  Fahrzeugspannung → funktionaler, read-only TesterPresent-Ping; CLI
+  `npm run adapter:doctor` (apps/web `doctor-cli.ts`), Exit 0/2/3
+- **SocketCAN-Fallback** (`socketcan-fallback.ts`): `/sys/class/net`-Wahrheit
+  (Existenz, ARPHRD_CAN = 280, `operstate`) plus die Auflösungskette
+  natives Modul → can-utils (candump/cansend, ein Prozess pro Frame — benannt)
 
 ## Does NOT do
 

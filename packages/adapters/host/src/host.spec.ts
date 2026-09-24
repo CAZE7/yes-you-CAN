@@ -486,18 +486,25 @@ test("slcan creation rejects an unsupported bitrate before writing to the device
     assert.equal(await readFile(file, "utf8"), "", "a rejected setting must not reach the wire");
   }));
 
-test("slcan listen-only is on the wire before the channel is opened", () =>
+test("slcan listen-only stays an option until open(), which owns the wire sequence", () =>
   withDeviceFile(async (file) => {
     const catalog = createHostAdapterCatalog();
     const bus = await catalog
       .require("slcan")
       .create({ device: file, bitrate: "500k", listenOnly: true }, {});
     try {
-      // The promise of the implementation: listen-only is applied *before* open,
-      // so the adapter cannot acknowledge a single frame. On a regular file the
-      // wire is the file itself, which makes the order observable.
-      assert.equal(await readFile(file, "utf8"), "L\r");
-      assert.equal(bus.isOpen(), false, "listen-only must not open the channel by itself");
+      // Symptom before this contract: the catalog wrote "L" to the raw stream
+      // at create-time and open() sent its own "O" afterwards — Lawicel reads
+      // `O` as the normal-mode open, so the override order silently undid
+      // listen-only. Now create() touches nothing and the adapter's open()
+      // owns the sequence (the L-instead-of-O order is pinned in
+      // canable.spec.ts, where a scripted device answers).
+      assert.equal(
+        await readFile(file, "utf8"),
+        "",
+        "creating the bus must not write a single byte (probe-and-create stay side-effect free)",
+      );
+      assert.equal(bus.isOpen(), false);
       assert.equal(bus.info.id, "canable");
     } finally {
       await bus.close();
@@ -613,10 +620,10 @@ test("a binding that cannot load is reported with the reason as a hint", async (
     },
   );
   assert.equal(described.probe.available, false);
-  assert.match(described.probe.detail, /no SocketCAN binding installed/);
+  assert.match(described.probe.detail, /no SocketCAN transport available/);
   const hints = described.probe.hints ?? [];
   assert.equal(hints.length, 2, "the hint must carry the loader's reason");
-  assert.match(hints[1] ?? "", /not installed/);
+  assert.match(hints[0] ?? "", /not installed/);
 });
 
 test("a failing interface listing does not decide availability, and is logged", async () => {

@@ -9,6 +9,18 @@ none of it was the norm. This file is the release changelog.
 
 ## [Unreleased]
 
+### Added
+
+- **Adapter-Audit für den Hardware-Tag abgeschlossen — neuer Adapter-Doctor, PTY-Rehearsal und Härtung aller fünf Adapter ([Backlog E31](docs/architecture/backlog.md), 2026-09-24).**
+  Alle Befunde gemessen am Code bzw. über **PTY-Geräte-Emulatoren auf der echten Seriell-Strecke** (`socat`), nicht an Behauptungen; die neue
+  Rehearsal-Suite `tests/integration/adapter-rehearsal.spec.ts` (6 Szenarien) fährt
+  die Hardware-Tag-Pfade ohne Hardware grün. Neu dazu: **Adapter-Doctor**
+  (`packages/adapters/host/src/doctor.ts`) — CLI `npm run adapter:doctor -- --adapter <id> --device <pfad>`
+  (Exit 0/2/3), der die Checkliste in Techniker-Reihenfolge abläuft (Einstellungen →
+  Verfügbarkeit → Öffnen/Handshake mit Firmware → Fahrzeugspannung → funktionaler,
+  read-only TesterPresent-Ping) und der erste ✗ Punkt Ursache + Hinweise nennt;
+  Betriebsdoku: [`docs/adapter-checkliste.md`](docs/adapter-checkliste.md).
+
 ### Changed
 
 - **`AGENTS.md` ist wieder lesbar (ADR 0059).** Gemessen am 2026-09-24: 248.497 Bytes
@@ -108,6 +120,35 @@ none of it was the norm. This file is the release changelog.
   sagt jetzt die Wahrheit über `node:fs` und über `stty`, das Windows nicht mitbringt.
 
 ### Fixed
+
+- **ELM327: Multi-Frame-Antworten überlebten windowed Devices nicht.** Zwei in-flight
+  AT-Kommandos teilten einen `currentLines`-Collector und ISOTP's re-entrantes
+  Flow-Control traf das Device mitten im Empfangsfenster — die Antwort kam als
+  `ELM327 refused the frame: STOPPED` zurück, messbar über den PTY-Emulator der
+  PIC18F25K80-Timings. `Elm327Adapter.command()` ist jetzt serialisiert (Queue,
+  Halt bei Close/Stream-Fehler, Timeouts in `status.errors`); beide
+  Prompt-Timings (sofort / Fenster+STOPPED) fahren die volle Kette wieder grün.
+- **CANable meldete `connected` auf einem stillen Kabel.** `open()` wartete nirgends
+  die Lawicel-Antwort (CR/BEL) ab — eine verworfene Bitrate oder kein Gerät las sich
+  wie ein schweigendes Fahrzeug. `open()` beweist das Gerät jetzt (`V`-Handshake,
+  Acks mit `commandTimeoutMs`, endlich genutzt; `Z1`-Ablehnung tolerant für USBtin),
+  und ein fehlgeschlagenes `open()` setzt den Zustand sauber zurück (kein Halb-Offen).
+  Zusätzlich: `onError` des Byte-Streams verdrahtet (Kabel ab → `isOpen() false`
+  statt stiller Leiche), und **Listen-only sendet `L` statt `O`** — der Katalog hatte
+  `L` beim Erstellen geschrieben, `open()` überschrieb es mit dem Normalmodus.
+- **SocketCAN: der Install-Hinweis zeigte in eine Sackgasse.** `tryLoadSocketCanBinding`
+  akzeptierte nur die `open()`-Form, während das empfohlene npm-Modul `createChannel`
+  bringt; beide Formen werden nun geladen (`wrapNpmSocketCanModule`). Neu: **Fallback
+  über can-utils** (`candump`/`cansend`, kein nativer Build; ein Prozess pro Frame —
+  benannt), Auflösungskette native → can-utils → klare Absage mit beiden
+  Installationswegen, und die Probe liest `/sys/class/net` (Existenz, ARPHRD_CAN,
+  `operstate`) — „Interface down” heißt jetzt genau so, nicht mehr „I/O error”.
+- **`generic-can` zählte rx pro Subscriber statt pro Bus-Frame** (zwei Hörer = doppelte
+  Frames): eine wrapped Subscription mit lokalem Filtern zählt jetzt Frames.
+- **Hygiene-Nachzüge aus demselben Audit:** `server.ts` wieder unter dem
+  800-Zeilen-Budget (Doctor-CLI ausgelagert nach `apps/web/src/doctor-cli.ts`), ein
+  leeres `catch {}` im can-utils-Fallback beseitigt (AGENTS 34.25), Rehearsal nutzt
+  `tests/helpers/wait.ts::tick()` statt eigenem Sleep (ADR 0019).
 
 - **Zehn kaputte relative Markdown-Links** — sechs in `.ai/contracts/*.md`
   (`../docs/…` wo `../../docs/…` gemeint war) und vier in

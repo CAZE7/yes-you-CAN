@@ -41,6 +41,15 @@ Serial-Stream (aus elm327: ByteStream) → slcan-Erweiterung → CanableAdapter 
 - **Geteilter Stream:** `elm327` ist die gemeinsame Basis — eine zweite
   Parsing-Kopie hier ist ein Defekt (Regel in `architecture.yaml`).
 - **Adapter-Kette:** Hardware-Spezifika nur hier.
+- **`open()` beweist das Gerät:** `V`-Handshake + Acks (CR/BEL) mit
+  `commandTimeoutMs`; Schweigen oder BEL scheitern mit benannter Ursache
+  (Port/Baudrate/Adaptertyp) statt als „stilles Fahrzeug“. `Z1`-Ablehnung ist
+  tolerant (USBtin hat keinen Zeitstempel-Modus).
+- **Listen-only gehört in die Open-Sequenz:** `listenOnly: true` sendet `L`
+  *statt* `O` — ein vorab geschriebenes `L` plus `O` danach hebt sich
+  Lawicel-seitig selbst auf (Katalog schreibt nichts mehr selbst).
+- **Stream-Tod ist Adapter-Tod:** `onError` des Byte-Streams setzt
+  `isOpen() = false` und wirft die laufende Config mit Grund ab.
 
 ## Tests
 

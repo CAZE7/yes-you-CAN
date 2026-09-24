@@ -24,11 +24,7 @@ import { constants } from "node:fs";
 import { access, stat } from "node:fs/promises";
 import { BITRATES, CanableAdapter } from "@vdp/adapter-canable";
 import { Elm327Adapter } from "@vdp/adapter-elm327";
-import {
-  SocketCanAdapter,
-  type SocketCanBinding,
-  tryLoadSocketCanBinding,
-} from "@vdp/adapter-socketcan";
+import { SocketCanAdapter, type SocketCanBinding } from "@vdp/adapter-socketcan";
 import {
   AdapterUnsupportedError,
   createLogger,
@@ -44,6 +40,12 @@ import type {
   FrameListener,
 } from "@vdp/transport-can";
 import { configureSerialPort, openSerialStream, type SerialByteStream } from "./serial.js";
+import {
+  canInterfaceState,
+  listCanInterfaces,
+  resolveSocketCanBinding,
+  type SocketCanBindingResolution,
+} from "./socketcan-fallback.js";
 
 /**
  * Where an adapter sits physically. The UI groups by this: serial devices need a
@@ -88,17 +90,22 @@ export interface HostContext {
    * Where the optional SocketCAN binding comes from.
    *
    * The native module must not become a hard dependency of the platform, so the
-   * catalog asks the host for it instead of importing it. The default is
-   * `tryLoadSocketCanBinding()`; a test — or an application that ships its own
-   * binding — injects a loader, which is the only way to exercise interface
-   * listing and channel creation without a kernel CAN device.
+   * catalog asks the host for it instead of importing it. The default is the
+   * fallback chain in `socketcan-fallback.ts` (native module, then can-utils);
+   * a test — or an application that ships its own binding — injects a loader,
+   * which is the only way to exercise interface listing and channel creation
+   * without a kernel CAN device.
    */
   loadSocketCanBinding?: () => Promise<SocketCanBinding>;
 }
 
-/** Binding loader of the SocketCAN entry: the host's loader wins. */
-function socketCanBindingOf(context: HostContext): Promise<SocketCanBinding> {
-  return context.loadSocketCanBinding ? context.loadSocketCanBinding() : tryLoadSocketCanBinding();
+/** Resolve the SocketCAN binding for this host: the injected loader wins, else the fallback chain. */
+async function socketCanBindingOf(context: HostContext): Promise<SocketCanBindingResolution> {
+  if (context.loadSocketCanBinding) {
+    const binding = await context.loadSocketCanBinding();
+    return { binding, source: "native" };
+  }
+  return resolveSocketCanBinding({ ...(context.logger ? { logger: context.logger } : {}) });
 }
 
 export interface AdapterEntry {
@@ -395,9 +402,14 @@ async function openConfiguredStream(
  * wrapper owns nothing but the lifecycle of the stream it was handed.
  */
 function withOwnedStream(bus: CanBus, stream: SerialByteStream): CanBus {
-  return {
+  const wrapper: CanBus & { wrappedByCatalog?: CanBus } = {
     info: bus.info,
     capabilities: bus.capabilities,
+    // The wrapper hides the adapter beneath the CanBus contract on purpose —
+    // but the doctor and probe paths legitimately need *who* this bus is
+    // (firmware, voltage, counters). It stays a marked passthrough, not part
+    // of the contract: only the host package creates it, only the host reads it.
+    wrappedByCatalog: bus,
     open: () => bus.open(),
     isOpen: () => bus.isOpen(),
     send: (frame: CanFrame) => bus.send(frame),
@@ -413,6 +425,7 @@ function withOwnedStream(bus: CanBus, stream: SerialByteStream): CanBus {
       }
     },
   };
+  return wrapper;
 }
 
 export const ELM327_BITRATES: readonly string[] = Object.keys(BITRATES);
@@ -489,15 +502,16 @@ export function createHostAdapterCatalog(): AdapterCatalog {
           { baudRate: SLCAN_DEFAULT_BAUD, label: "slcan" },
           context.logger,
         );
-        if (config.listenOnly) {
-          // Listen-only is applied before the channel is opened (BITRATES/open
-          // below), so the adapter cannot acknowledge a single frame.
-          await stream.write("L\r");
-        }
         return withOwnedStream(
           new CanableAdapter({
             stream,
             bitrate,
+            // Listen-only belongs to the adapter's open() sequence: writing
+            // "L" here and letting open() send its own "O" afterwards undoes
+            // it — Lawicel treats `O` as the normal-mode open, so the override
+            // order decides, not the intent (measured against the CANable
+            // slcan state machine: `O` after `L` re-opens in normal mode).
+            ...(config.listenOnly ? { listenOnly: true } : {}),
             ...(config.channel ? { channel: config.channel } : {}),
             ...(context.logger ? { logger: context.logger } : {}),
           }),
@@ -516,35 +530,90 @@ export function createHostAdapterCatalog(): AdapterCatalog {
       requires: { channel: true },
       defaults: { channel: "can0" },
       probe: async (config, context) => {
-        let binding: SocketCanBinding;
+        if (!config.channel) return { available: false, detail: "no --channel given" };
+        let resolution: SocketCanBindingResolution;
         try {
-          binding = await socketCanBindingOf(context);
+          resolution = await socketCanBindingOf(context);
         } catch (error) {
+          // A loader that rejects — even with something that is not an Error —
+          // must surface its reason as a hint, never as "[object Object]".
           return {
             available: false,
-            detail: "no SocketCAN binding installed",
+            detail: "no SocketCAN transport available on this host",
+            hints: [messageOf(error), "or use a serial adapter (elm327 / slcan) instead"],
+          };
+        }
+        if (!resolution.binding) {
+          return {
+            available: false,
+            detail: "no SocketCAN transport available on this host",
             hints: [
-              'install a SocketCAN binding (e.g. "npm i socketcan") or use a serial adapter',
-              messageOf(error),
+              resolution.reason ?? "no binding found",
+              "or use a serial adapter (elm327 / slcan) instead",
             ],
           };
         }
-        if (!config.channel) return { available: false, detail: "no --channel given" };
-        try {
-          const interfaces = (await binding.listInterfaces?.()) ?? [];
-          if (interfaces.length > 0 && !interfaces.includes(config.channel)) {
+        const binding = resolution.binding;
+        const channel = config.channel;
+        // The kernel's word on the interface beats every binding list: /sys
+        // knows whether it exists, whether it is CAN and whether it is up —
+        // the three states that name day-1 failures before any frame flows.
+        const state = canInterfaceState(channel);
+        if (state.present) {
+          if (!state.isCan) {
             return {
               available: false,
-              detail: `interface ${config.channel} not found`,
-              hints: [`available: ${interfaces.join(", ")}`],
+              detail: `${channel} exists but is not a CAN interface`,
+              hints: [`CAN interfaces on this host: ${listCanInterfaces().join(", ") || "none"}`],
             };
           }
-        } catch (error) {
-          context.logger?.debug("interface listing failed", { error: String(error) });
+          if (!state.up) {
+            return {
+              available: false,
+              detail: `interface ${channel} is down (${state.operstate})`,
+              hints: [
+                `bring it up: sudo ip link set dev ${channel} up`,
+                `with a bitrate first if needed: sudo ip link set dev ${channel} type can bitrate 500000`,
+              ],
+            };
+          }
+        } else if (typeof binding.listInterfaces === "function") {
+          // /sys knows nothing (namespace, container): the binding's own
+          // interface list is the next best authority. No listInterfaces
+          // means "no information", not "no interfaces" — the probe stays
+          // usable and the real open produces the authoritative error.
+          try {
+            const interfaces = await binding.listInterfaces();
+            if (interfaces.length > 0 && !interfaces.includes(channel)) {
+              const hostCan = listCanInterfaces();
+              return {
+                available: false,
+                detail: `interface ${channel} not found`,
+                hints: [
+                  `available via binding: ${interfaces.join(", ")}`,
+                  ...(hostCan.length > 0
+                    ? [`CAN interfaces on this host: ${hostCan.join(", ")}`]
+                    : []),
+                ],
+              };
+            }
+            if (interfaces.length === 0) {
+              return {
+                available: false,
+                detail: `interface ${channel} not found (the host reports no CAN interfaces)`,
+                hints: [
+                  "check: ip -details link show",
+                  "dry run without hardware: sudo modprobe vcan && sudo ip link add dev vcan0 type vcan && sudo ip link set up vcan0",
+                ],
+              };
+            }
+          } catch (error) {
+            context.logger?.debug("interface listing failed", { error: String(error) });
+          }
         }
         return {
           available: true,
-          detail: `binding "${binding.name}" loaded, interface ${config.channel}`,
+          detail: `${resolution.source === "can-utils" ? "can-utils fallback" : "binding"} "${binding.name}" loaded, interface ${channel}`,
         };
       },
       create: async (config, context) => {
@@ -552,9 +621,15 @@ export function createHostAdapterCatalog(): AdapterCatalog {
           throw new AdapterUnsupportedError(
             "a SocketCAN interface is required (e.g. --channel=can0)",
           );
-        const binding = await socketCanBindingOf(context);
+        const resolution = await socketCanBindingOf(context);
+        if (!resolution.binding) {
+          throw new AdapterUnsupportedError(
+            `SocketCAN adapter unavailable: ${resolution.reason ?? "no binding found"}`,
+            { source: resolution.source },
+          );
+        }
         return new SocketCanAdapter({
-          binding,
+          binding: resolution.binding,
           iface: config.channel,
           ...(context.logger ? { logger: context.logger } : {}),
         });

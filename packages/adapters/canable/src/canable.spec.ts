@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { MemoryByteStream } from "@vdp/adapter-elm327";
-import { createLogger, fromHex, MemorySink, toHex } from "@vdp/shared";
+import { createLogger, fromHex, MemorySink, TransportError, toHex } from "@vdp/shared";
 import { createFrame } from "@vdp/transport-can";
 import { test } from "vitest";
 import {
@@ -10,6 +10,24 @@ import {
   isSlcanError,
   parseSlcanLine,
 } from "./index.js";
+
+/**
+ * A scripted Lawicel device on the memory stream: every command is answered —
+ * `V` with a version line by default (every real slcan firmware answers it),
+ * every other command with the empty-CR ack. Overrides can replace one
+ * command's answer (BEL `\u0007` for refused, `null` for silence).
+ */
+function answeringSlcan(overrides: Record<string, string | null> = {}): MemoryByteStream {
+  const stream = new MemoryByteStream();
+  stream.open();
+  stream.responder = (command) => {
+    const trimmed = command.replace(/\r$/, "");
+    if (trimmed in overrides) return overrides[trimmed] ?? null;
+    if (trimmed === "V") return "V0101\r";
+    return "\r";
+  };
+  return stream;
+}
 
 test("standard and extended frames are formatted in slcan syntax", () => {
   assert.equal(formatSlcanFrame(createFrame(0x7e0, fromHex("02 3E 80"))), "t7E03023E80\r");
@@ -95,18 +113,19 @@ test("BEL answers are counted as errors", () => {
   assert.equal(isSlcanError("\r"), false);
 });
 
-test("open() configures bitrate, timestamps and opens the channel", async () => {
-  const stream = new MemoryByteStream();
-  stream.open();
+test("open() proves the device, then configures bitrate, timestamps and opens the channel", async () => {
+  const stream = answeringSlcan();
   const adapter = new CanableAdapter({ stream, bitrate: "500k", commandTimeoutMs: 100 });
   await adapter.open();
   assert.equal(adapter.isOpen(), true);
-  assert.deepEqual(stream.written, [`${BITRATES["500k"]}\r`, "Z1\r", "O\r"]);
+  // Order matters: the V handshake comes first — it is what separates a slcan
+  // firmware at this baud rate from any other silent thing on the wire.
+  assert.deepEqual(stream.written, ["V\r", `${BITRATES["500k"]}\r`, "Z1\r", "O\r"]);
+  assert.equal(adapter.version, "0101");
 });
 
 test("sent frames reach the stream and received frames reach subscribers", async () => {
-  const stream = new MemoryByteStream();
-  stream.open();
+  const stream = answeringSlcan();
   const adapter = new CanableAdapter({ stream, commandTimeoutMs: 100 });
   await adapter.open();
   const received: string[] = [];
@@ -123,8 +142,7 @@ test("sent frames reach the stream and received frames reach subscribers", async
 });
 
 test("BEL responses increment the error counter", async () => {
-  const stream = new MemoryByteStream();
-  stream.open();
+  const stream = answeringSlcan();
   const adapter = new CanableAdapter({ stream, commandTimeoutMs: 100 });
   await adapter.open();
   stream.emit("\u0007");
@@ -132,8 +150,7 @@ test("BEL responses increment the error counter", async () => {
 });
 
 test("CAN-FD frames are rejected", async () => {
-  const stream = new MemoryByteStream();
-  stream.open();
+  const stream = answeringSlcan();
   const adapter = new CanableAdapter({ stream, commandTimeoutMs: 100 });
   await adapter.open();
   await assert.rejects(
@@ -143,8 +160,7 @@ test("CAN-FD frames are rejected", async () => {
 });
 
 test("close() sends the close command and stops delivery", async () => {
-  const stream = new MemoryByteStream();
-  stream.open();
+  const stream = answeringSlcan();
   const adapter = new CanableAdapter({ stream, commandTimeoutMs: 100 });
   await adapter.open();
   await adapter.close();
@@ -156,8 +172,7 @@ test("closing a broken channel reports the reason instead of swallowing it", asy
   // Symptom before the fix: `close()` caught the failing "C" command in an
   // empty `catch {}` (AGENTS 34.25 forbids that). Closing must still succeed —
   // the caller is on its way out — but the reason has to leave a trace.
-  const stream = new MemoryByteStream();
-  stream.open();
+  const stream = answeringSlcan();
   const sink = new MemorySink();
   const adapter = new CanableAdapter({
     stream,
@@ -180,4 +195,120 @@ test("closing a broken channel reports the reason instead of swallowing it", asy
   );
   assert.equal(reported?.level, "DEBUG");
   assert.match(String(reported?.fields?.error ?? ""), /slcan write failed/);
+});
+
+/* ------------------------------------------------ the open() handshake
+ *
+ * Symptom that motivated it: a CANable that never configures successfully
+ * looked exactly like a silent vehicle — the bitrate command was written once
+ * and nothing checked whether the device behind the wire even was a slcan
+ * adapter. Every day-1 failure (wrong path, wrong baud, an ELM327 selected as
+ * slcan, the bitrate refused with BEL) ended in "no frames" instead of an
+ * error naming the cause. Lawicel answers every command (CR ack / BEL), so
+ * open() now waits for those answers.
+ */
+
+test("open() fails on a silent wire with the cause, not with a fake connected state", async () => {
+  const stream = answeringSlcan({ V: null }); // the device never says a word
+  const adapter = new CanableAdapter({ stream, bitrate: "500k", commandTimeoutMs: 30 });
+  await assert.rejects(
+    adapter.open(),
+    (error: unknown) =>
+      error instanceof TransportError &&
+      error.message.includes("version query") &&
+      error.message.includes("30 ms") &&
+      error.message.includes("wrong baud rate") &&
+      error.message.includes("do not answer each other's hello"),
+    "the error must say what was not answered and name the usual causes",
+  );
+  assert.equal(adapter.isOpen(), false, "and the adapter does not pretend to be open");
+});
+
+test("a BEL on the version query fails open() with the refused purpose in the message", async () => {
+  const stream = answeringSlcan({ V: "" });
+  const adapter = new CanableAdapter({ stream, bitrate: "500k", commandTimeoutMs: 30 });
+  await assert.rejects(
+    adapter.open(),
+    (error: unknown) =>
+      error instanceof TransportError &&
+      error.message.includes("slcan refused") &&
+      error.message.includes("version query") &&
+      error.message.includes("BEL"),
+  );
+  assert.equal(adapter.counters.errors, 1, "the refusal is counted");
+});
+
+test("a BEL on the bitrate command fails open() naming the bitrate", async () => {
+  const stream = answeringSlcan({ S6: "" });
+  const adapter = new CanableAdapter({ stream, bitrate: "500k", commandTimeoutMs: 30 });
+  await assert.rejects(
+    adapter.open(),
+    (error: unknown) =>
+      error instanceof TransportError &&
+      error.message.includes("bitrate command") &&
+      error.message.includes("500k"),
+  );
+});
+
+test("a firmware without timestamp mode opens anyway — warned, not failed", async () => {
+  const stream = answeringSlcan({ Z1: "" });
+  const sink = new MemorySink();
+  const adapter = new CanableAdapter({
+    stream,
+    bitrate: "500k",
+    commandTimeoutMs: 100,
+    logger: createLogger("can", { level: "DEBUG" }, [sink]),
+  });
+  await adapter.open();
+  assert.equal(adapter.isOpen(), true);
+  assert.ok(
+    sink.all().some((record) => record.message.includes("no timestamp mode")),
+    `expected the downgrade warning, got ${sink
+      .all()
+      .map((record) => record.message)
+      .join(" | ")}`,
+  );
+});
+
+test("listen-only opens with L and never writes O", async () => {
+  const stream = answeringSlcan();
+  const adapter = new CanableAdapter({
+    stream,
+    bitrate: "500k",
+    commandTimeoutMs: 100,
+    listenOnly: true,
+  });
+  await adapter.open();
+  assert.equal(adapter.isOpen(), true);
+  assert.deepEqual(stream.written, ["V\r", `${BITRATES["500k"]}\r`, "Z1\r", "L\r"]);
+  assert.equal(
+    stream.written.some((line) => line.trim() === "O"),
+    false,
+    "Lawicel reads O as the normal-mode open — writing both silently undoes listen-only",
+  );
+});
+
+test("a dying stream fails the in-flight handshake and stops the adapter", async () => {
+  const stream = answeringSlcan({ V: null }); // silent until …
+  const adapter = new CanableAdapter({ stream, bitrate: "500k", commandTimeoutMs: 5000 });
+  const opening = adapter.open();
+  stream.emitError(new Error("device removed"));
+  await assert.rejects(opening, (error: unknown) =>
+    error instanceof TransportError ? error.message.includes("slcan link failed") : false,
+  );
+  assert.equal(
+    adapter.isOpen(),
+    false,
+    "an adapter whose device left is not an adapter — silence here is the silent-vehicle bug",
+  );
+});
+
+test("a dying stream while idle reports closed instead of pretending connected", async () => {
+  const stream = answeringSlcan();
+  const adapter = new CanableAdapter({ stream, bitrate: "500k", commandTimeoutMs: 100 });
+  await adapter.open();
+  assert.equal(adapter.isOpen(), true);
+  stream.emitError(new Error("device removed"));
+  assert.equal(adapter.isOpen(), false);
+  assert.equal(adapter.counters.errors > 0, true);
 });

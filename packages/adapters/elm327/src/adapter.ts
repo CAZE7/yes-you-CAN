@@ -127,6 +127,7 @@ export class Elm327Adapter implements CanBus {
 
   async open(): Promise<void> {
     if (this.opened) return;
+    this.haltedReason = null;
     this.unsubscribeStream = this.options.stream.onData((chunk) => this.onChunk(chunk));
     // A stream that reports its own death must not leave this adapter claiming
     // to be open: the host catalog owns the stream, so without this the UI says
@@ -157,6 +158,7 @@ export class Elm327Adapter implements CanBus {
     this.unsubscribeError = null;
     this.opened = false;
     this.listeners = [];
+    this.haltedReason = "adapter closed";
     for (const entry of this.pending) {
       clearTimeout(entry.timer);
       entry.reject(new TransportError("adapter closed"));
@@ -174,6 +176,7 @@ export class Elm327Adapter implements CanBus {
     this.log.warn("the byte stream reported an error", { error: messageOf(error) });
     this.opened = false;
     this.currentTxId = null;
+    this.haltedReason = `byte stream failed: ${messageOf(error)}`;
     for (const entry of this.pending) {
       clearTimeout(entry.timer);
       entry.reject(new TransportError(`byte stream failed: ${messageOf(error)}`));
@@ -242,19 +245,51 @@ export class Elm327Adapter implements CanBus {
     return { tx: this.txCount, rx: this.rxCount };
   }
 
-  /** Run one AT command and collect the response lines up to the prompt. */
+  /**
+   * Run one AT command and collect the response lines up to the prompt.
+   *
+   * Commands are serialised: a new command goes on the wire only after the
+   * previous one saw its prompt (or timed out). An ELM327 is half-duplex —
+   * input while a command's receive window is open aborts it with `STOPPED`
+   * (PIC18F25K80), and two in-flight commands share exactly one `currentLines`
+   * collector, so "parallel" here means "corrupted". The concrete failure this
+   * serialises away: ISO-TP sends Flow Control from inside the frame listener,
+   * i.e. re-entrantly while the triggering frame's TX command is still waiting
+   * for its prompt. Reproduced over a PTY with a windowed device emulator in
+   * `tests/integration/adapter-rehearsal.spec.ts` — before this guard, every
+   * multi-frame answer ended as `ISO-TP transmit failed: ELM327 refused the
+   * frame: STOPPED`, which reads as "the ECU is silent" when it is the
+   * adapter. The delay that buys correctness (FC leaves when the device is
+   * idle again) sits well inside the peer's N_As window (ISO 15765-2 §7.3,
+   * default 1000 ms).
+   */
   async command(command: string): Promise<string[]> {
+    const run = (): Promise<string[]> => this.issueCommand(command);
+    const next = this.commandChain.then(run, run);
+    // A rejected command must not poison the queue behind it.
+    this.commandChain = next.then(
+      () => undefined,
+      () => undefined,
+    );
+    return next;
+  }
+
+  private commandChain: Promise<void> = Promise.resolve();
+  /** Set when the adapter is closed or the stream dies: queued commands fail fast. */
+  private haltedReason: string | null = null;
+
+  private issueCommand(command: string): Promise<string[]> {
     this.status.commandsRun++;
+    const halted = this.haltedReason;
+    if (halted !== null) return Promise.reject(new TransportError(halted));
     this.currentLines = [];
     this.lastCommand = command.trim();
     return new Promise<string[]>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending = this.pending.filter((entry) => entry.resolve !== resolve);
-        reject(
-          new TransportError(
-            `ELM327 command "${command}" timed out after ${this.commandTimeoutMs} ms`,
-          ),
-        );
+        const reason = `ELM327 command "${command}" timed out after ${this.commandTimeoutMs} ms`;
+        this.status.errors.push(reason);
+        reject(new TransportError(reason));
       }, this.commandTimeoutMs);
       this.pending.push({ resolve, reject, timer });
       void this.options.stream.write(`${command}\r`).catch((error) => {
