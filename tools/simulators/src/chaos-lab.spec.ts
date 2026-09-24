@@ -9,7 +9,14 @@
  */
 
 import assert from "node:assert/strict";
-import type { AdapterCapabilities, AdapterInfo, CanBus, CanFrame } from "@vdp/transport-can";
+import {
+  type AdapterCapabilities,
+  type AdapterInfo,
+  type CanBus,
+  type CanFrame,
+  type ConnectionStatus,
+  connectionStatusOf,
+} from "@vdp/transport-can";
 import { describe, test } from "vitest";
 import { CanChaosBus, ChaosLab } from "./chaos-lab.js";
 
@@ -55,6 +62,10 @@ class FakeBus implements CanBus {
 
   async close(): Promise<void> {
     this.opened = false;
+  }
+
+  getStatus(): ConnectionStatus {
+    return connectionStatusOf(this.opened, "fake");
   }
 
   isOpen(): boolean {

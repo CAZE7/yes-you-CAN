@@ -7,13 +7,15 @@
 
 import assert from "node:assert/strict";
 import { fromHex } from "@vdp/shared";
-import type {
-  AdapterCapabilities,
-  AdapterInfo,
-  CanBus,
-  CanFilter,
-  CanFrame,
-  FrameListener,
+import {
+  type AdapterCapabilities,
+  type AdapterInfo,
+  type CanBus,
+  type CanFilter,
+  type CanFrame,
+  type ConnectionStatus,
+  connectionStatusOf,
+  type FrameListener,
 } from "@vdp/transport-can";
 import { test } from "vitest";
 import { DEFAULT_PROBE_DELAY_MS, deriveTxId, EcuDiscovery } from "./discovery.js";
@@ -36,6 +38,9 @@ class StubBus implements CanBus {
 
   async open(): Promise<void> {}
   async close(): Promise<void> {}
+  getStatus(): ConnectionStatus {
+    return connectionStatusOf(true, "stub");
+  }
   isOpen(): boolean {
     return true;
   }

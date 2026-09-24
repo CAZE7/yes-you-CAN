@@ -10,7 +10,7 @@
 
 import { UdsClient, type UdsLink } from "@vdp/protocols-uds";
 import type { Logger } from "@vdp/shared";
-import type { CanBus } from "@vdp/transport-can";
+import type { AdapterInfo, CanBus, TransportInfo } from "@vdp/transport-can";
 import { IsoTpConnection, type IsoTpOptions } from "@vdp/transport-iso-tp";
 
 /**
@@ -36,6 +36,18 @@ export interface EcuLinkFactory {
     rxId: number;
     extended?: boolean;
   }): Promise<OpenedEcuLink> | OpenedEcuLink;
+  /**
+   * What this factory carries frames on — the transport half of a session record
+   * (master prompt P2, ADR 0061).
+   *
+   * A CAN session gets its adapter and transport from the bus it opened. A DoIP
+   * session has no bus, so without this the session opened for explicitly
+   * attached ECUs could not say *how* it was measured, and a report built from
+   * it would have to leave the transport blank. Optional: a factory that cannot
+   * describe itself (a test double, a scripted link) attaches without a session
+   * record instead of inventing one (AGENTS 34.21).
+   */
+  describe?(): { adapter: AdapterInfo; transport: TransportInfo };
 }
 
 /** One ECU as it is addressed on the bus. */
@@ -87,6 +99,16 @@ export class EcuLinks {
     }
     const isoTp = this.createIsoTp(ecu.txId, ecu.rxId, ecu.extended);
     return { link: isoTp, close: () => isoTp.close() };
+  }
+
+  /**
+   * What the transport seam carries, when it can say (ADR 0061).
+   *
+   * `undefined` for the CAN fallback — there the bus is the description, and the
+   * session opener reads it directly.
+   */
+  describeTransport(): { adapter: AdapterInfo; transport: TransportInfo } | undefined {
+    return this.linkFactory?.describe?.();
   }
 
   /**

@@ -11,6 +11,43 @@ none of it was the norm. This file is the release changelog.
 
 ### Added
 
+- **DoIP ist durchgehend fahrbar: Discovery → Routing Activation → UDS → IR → Evidence ([Backlog E36](docs/architecture/backlog.md), ADR 0061, Master-Prompt P2).**
+  Gemessen am Code war DoIP ein Codec mit Fake-Sockets: niemand im Produkt öffnete
+  eine Verbindung, ein schlafendes Fahrzeug las sich als schweigendes Steuergerät
+  (kein `onClose` am Socket-Vertrag), es gab keinen Reconnect, und ein per
+  `attach()` angebundenes ECU erzeugte ein Handle **ohne Sitzung** — damit endeten
+  IR, Evidence, Bericht und Aufzeichnung für die DoIP-Strecke am Handle. Neu:
+  reale TCP-/UDP-Bindings (`createDoipTcpSocket` mit `onClose`/`onError` und
+  begrenztem Connect-Timeout, `createDoipUdpSocket`), ein Verbindungsverlust ist
+  ein `error`-Zustand mit Grund (wartende Anfragen scheitern mit der Ursache
+  statt im eigenen Timeout), eine begrenzte Reconnect-Policy pro Vorfall über der
+  einen Regel aus `@vdp/shared` (Socket öffnen **und** Routing Activation), und
+  `EcuLinkFactory.describe()` lässt die Engine beim expliziten Anbinden den
+  Sitzungsdatensatz anlegen — die DoIP-Sitzung hat jetzt IR-Sicht und
+  Evidence-Menge. Dazu eine **virtuelle DoIP-Entity** (`@vdp/simulators`) auf
+  echtem UDP/TCP, die gezielt falsch sein kann (Aktivierung verweigern oder
+  schweigen, Zieladresse nicht routen, Verbindung killen). Belege:
+  `tests/integration/doip-pipeline.test.ts`, 9 Szenarien über echte Sockets,
+  inklusive der ehrlichen „unproven“-Evidenz für einen Code, den keine Definition
+  erklärt; `check:deps` und `check:manifests` grün mit den zwei neuen,
+  begründeten Architekturkanten.
+- **Der Adapter sagt, wie es ihm geht: sechs Zustände statt eines Booleans (ADR 0060, Master-Prompt P1).**
+  `AdapterConnectionState` — `disconnected`, `connecting`, `connected`, `degraded`,
+  `recovering`, `error` — und `ConnectionTracker` als die eine Zustandsmaschine
+  (`packages/transport/can/src/connection.ts`) ersetzen die Aussage „`isOpen()`
+  ist false“ durch den Grund, den Zeitpunkt und eine begrenzte Historie.
+  `CanBus.getStatus(): ConnectionStatus` ist Teil des Ports (Pflicht, nicht
+  optional), `ConnectionState` wird überall dieselbe Obermenge — DoIP und
+  Frame-Schicht antworten mit denselben Worten — und der Arbeitsplatz zeigt
+  `<Zustand> · <Grund>`. Dabei repariert: ein **fehlgeschlagenes `open()`
+  hinterließ einen Adapter, der sich für offen hielt** (ELM327 setzte `opened`
+  vor der Init-Sequenz) — jetzt `error` mit der Ursache, `isOpen()` false;
+  verweigerte Frames sind `degraded` und heilen beim nächsten beantworteten
+  Kommando; der Reconnect-Supervisor sagt `recovering`, solange er Budget hat,
+  und `error`, wenn es aufgebraucht ist. Belege: 12 Tracker-Tests, neue
+  ELM327-Zustandstests, drei neue PTY-Rehearsals (stilles Gerät, BEL auf die
+  Bitrate-Folge, Verlust → `recovering` → `connected` → `error`) und der
+  Vertragstest auf allen sieben `CanBus`-Subjekten.
 - **Verlorene Seriell-Verbindungen werden begrenzt wieder aufgenommen ([Backlog E34](docs/architecture/backlog.md), 2026-09-24).**
   Elm327 und slcan (CANable) laufen jetzt in einem Supervisor: stirbt der Stream (Bluetooth-Abbruch, gezogener USB-Stecker), wird nach 2 s **einmal** (Default; `reconnectAttempts`, `reconnectDelayMs` konfigurierbar, `0` schaltet ab) das Gerät neu geöffnet und die Adapter-Init erneut gefahren. Die Sitzung merkt es nicht — dasselbe Bus-Objekt, Subscriptions werden neu registriert, die offene ISO-TP-Verbindung antwortet weiter; Live-Werte laufen einfach weiter. Jeder Übergang ist ein Log-Eintrag mit Grund; nach den Versuchen bleibt der klare Endzustand von heute. Eine Wiederbelebung ist ein Verbindungsaufbau, kein Write — die Permit-Kette bleibt unberührt (AGENTS 26). Auf echten PTYs gemessen (Rehearsal-Suite), inklusive des zweiten Vorfalls ohne Wiedereinstecken: zwei Versuche, dann Ende.
 - **Der Adapter-Doctor ist im Arbeitsplatz ([Backlog E33](docs/architecture/backlog.md), 2026-09-24).**
@@ -30,6 +67,17 @@ none of it was the norm. This file is the release changelog.
   Verfügbarkeit → Öffnen/Handshake mit Firmware → Fahrzeugspannung → funktionaler,
   read-only TesterPresent-Ping) und der erste ✗ Punkt Ursache + Hinweise nennt;
   Betriebsdoku: [`docs/adapter-checkliste.md`](docs/adapter-checkliste.md).
+
+### Documentation
+
+- **Abschluss-Audit des Production-Readiness-Sprints (2026-09-24).**
+  [`docs/architecture/production-readiness-sprint-2026-09-24.md`](docs/architecture/production-readiness-sprint-2026-09-24.md)
+  trennt, was umgesetzt ist (P1 Adapter-Zustand, P2 DoIP Ende-zu-Ende, ADR
+  0060/0061), was durch Tests bewiesen ist, was **nicht** bewiesen ist (keine
+  echte Hardware, keine OEM-Daten, kein TLS, kein Langlauf) und was als nächste
+  zehn Aufgaben mit gemessenem Ausgangspunkt ansteht. Enthält einen objektiven
+  Architecture-Scorecard (Tests, Coverage, Gates, Abhängigkeitsverstöße, TODOs,
+  Szenarien, Protokolle, OEM-Abdeckung) statt einer Note.
 
 ### Changed
 

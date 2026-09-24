@@ -102,11 +102,12 @@
       "mayImport": [
         "@vdp/shared",
         "@vdp/transport-can",
+        "@vdp/transport-doip",
         "@vdp/adapter-canable",
         "@vdp/adapter-elm327",
         "@vdp/adapter-socketcan"
       ],
-      "why": "Host bindings (tty, bindings loader) and the side-effect-free probe catalog."
+      "why": "Host bindings (tty, TCP/UDP sockets, bindings loader) and the side-effect-free probe catalog. It may reach @vdp/transport-doip for the same reason it reaches @vdp/transport-can: the socket contracts (DoipSocket, DoipDatagramSocket) are interfaces this package implements with node:net/node:dgram, and the interface has to be importable where the implementation lives (ADR 0061)."
     },
     "@vdp/core": {
       "layer": "core",
@@ -159,9 +160,10 @@
         "@vdp/definitions",
         "@vdp/protocols-uds",
         "@vdp/transport-can",
-        "@vdp/transport-iso-tp"
+        "@vdp/transport-iso-tp",
+        "@vdp/transport-doip"
       ],
-      "why": "Virtual vehicle answers like a real ECU stack."
+      "why": "Virtual vehicle answers like a real ECU stack — over CAN/ISO-TP and, since ADR 0061, over DoIP too: the virtual DoIP entity in this package is an entity, so it speaks the DoIP codec rather than a second copy of the framing. It is a tool, nothing imports it."
     },
     "@vdp/golden-sessions": {
       "layer": "tool",
@@ -228,8 +230,8 @@
   },
   "rules": {
     "nodeBuiltins": {
-      "allowedIn": ["@vdp/adapter-host", "@vdp/storage", "@vdp/web", "@vdp/golden-sessions", "@vdp/formal-conformance", "@vdp/harvest"],
-      "why": "Portable layers (domain, application, protocols, transports, core, runtime) must stay free of node:fs and sockets; file system and host bindings belong to storage, host adapters and apps. @vdp/golden-sessions is a tool, not a layer — nothing imports it, and its CLI is the part that reads and writes the fixture files on disk. @vdp/formal-conformance is a tool whose CLI reads the vector files and runs the Haskell toolchain — the same file-and-process boundary golden-sessions owns, for the same reason (ADR 0045). @vdp/harvest is a tool whose CLI writes the observation, the ODX description and the PDX container to disk and spawns the optional odxtools cross-check — the same boundary again (ADR 0058)."
+      "allowedIn": ["@vdp/adapter-host", "@vdp/storage", "@vdp/web", "@vdp/golden-sessions", "@vdp/formal-conformance", "@vdp/harvest", "@vdp/simulators"],
+      "why": "Portable layers (domain, application, protocols, transports, core, runtime) must stay free of node:fs and sockets; file system and host bindings belong to storage, host adapters and apps. @vdp/golden-sessions is a tool, not a layer — nothing imports it, and its CLI is the part that reads and writes the fixture files on disk. @vdp/formal-conformance is a tool whose CLI reads the vector files and runs the Haskell toolchain — the same file-and-process boundary golden-sessions owns, for the same reason (ADR 0045). @vdp/harvest is a tool whose CLI writes the observation, the ODX description and the PDX container to disk and spawns the optional odxtools cross-check — the same boundary again (ADR 0058). @vdp/simulators is the virtual vehicle: it now contains the virtual DoIP entity, which *is* an entity and therefore binds real UDP and TCP sockets on the loopback (ADR 0061) — a tool, nothing imports it, and a network simulator without a socket would be a mock of itself."
     },
     "ui": {
       "package": "@vdp/web",

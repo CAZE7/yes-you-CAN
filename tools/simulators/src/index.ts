@@ -1,4 +1,5 @@
 export * from "./chaos-lab.js";
+export * from "./doip-entity.js";
 export * from "./faulty-link.js";
 export * from "./high-fidelity-vehicle.js";
 export * from "./scenario-file.js";

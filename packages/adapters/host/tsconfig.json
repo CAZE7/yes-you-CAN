@@ -14,6 +14,9 @@
       "path": "../../transport/can"
     },
     {
+      "path": "../../transport/doip"
+    },
+    {
       "path": "../elm327"
     },
     {

@@ -19,9 +19,10 @@ import type {
   CanBus,
   CanFilter,
   CanFrame,
+  ConnectionStatus,
   FrameListener,
 } from "@vdp/transport-can";
-import { frameMatchesFilters } from "@vdp/transport-can";
+import { ConnectionTracker, frameMatchesFilters } from "@vdp/transport-can";
 import {
   DEFAULT_INIT_SEQUENCE,
   formatIdentifier,
@@ -106,8 +107,11 @@ export class Elm327Adapter implements CanBus {
   }> = [];
   private currentLines: string[] = [];
   private lastCommand = "";
-  private txCount = 0;
-  private rxCount = 0;
+  /**
+   * The link's state, reason and counters — the one place this adapter says how
+   * it is doing (master prompt P1). `isOpen()` stays as the boolean view of it.
+   */
+  private readonly connection: ConnectionTracker;
 
   constructor(private readonly options: Elm327Options) {
     this.channel = options.channel ?? "elm0";
@@ -124,10 +128,15 @@ export class Elm327Adapter implements CanBus {
       name: options.name ?? "ELM327",
       channels: [this.channel],
     };
+    this.connection = new ConnectionTracker({
+      adapterId: this.info.id,
+      detail: `${this.info.name} @ ${this.channel}`,
+    });
   }
 
   async open(): Promise<void> {
     if (this.opened) return;
+    this.connection.connect("opening the serial link and running the init sequence");
     this.haltedReason = null;
     this.unsubscribeStream = this.options.stream.onData((chunk) => this.onChunk(chunk));
     // A stream that reports its own death must not leave this adapter claiming
@@ -139,17 +148,37 @@ export class Elm327Adapter implements CanBus {
     }
     this.opened = true;
 
-    for (const command of this.initSequence) {
-      const lines = await this.command(command);
-      // A silent ATZ must not erase a version that was identified before; the
-      // fallback keeps the previous reading instead of writing `undefined`.
-      if (command === "ATZ") {
-        const reported = lines.join(" ").trim();
-        if (reported) this.status.version = reported;
+    try {
+      for (const command of this.initSequence) {
+        const lines = await this.command(command);
+        // A silent ATZ must not erase a version that was identified before; the
+        // fallback keeps the previous reading instead of writing `undefined`.
+        if (command === "ATZ") {
+          const reported = lines.join(" ").trim();
+          if (reported) this.status.version = reported;
+        }
+        if (command === "ATDP") this.status.protocol = lines.join(" ").trim();
       }
-      if (command === "ATDP") this.status.protocol = lines.join(" ").trim();
+    } catch (error) {
+      // A handshake that did not complete is *not* an open adapter. Before, a
+      // device that stayed silent during the init sequence (wrong baud rate,
+      // clone with a different prompt timing, a Bluetooth link that never
+      // paired) left `opened = true` behind: the link reported itself as usable
+      // while no command had ever been answered, and the next request timed out
+      // as if the vehicle were silent (master prompt P1, wrong-bitrate case).
+      this.opened = false;
+      this.haltedReason = `initialisation failed: ${messageOf(error)}`;
+      this.connection.fail(`initialisation failed: ${messageOf(error)}`);
+      this.unsubscribeStream?.();
+      this.unsubscribeStream = null;
+      this.unsubscribeError?.();
+      this.unsubscribeError = null;
+      throw error;
     }
     this.log.info("ELM327 initialised", { version: this.status.version, channel: this.channel });
+    this.connection.connected(
+      `${this.info.name}${this.status.version ? ` ${this.status.version}` : ""} @ ${this.channel}`,
+    );
   }
 
   async close(): Promise<void> {
@@ -159,6 +188,7 @@ export class Elm327Adapter implements CanBus {
     this.unsubscribeError = null;
     this.opened = false;
     this.listeners = [];
+    this.connection.disconnected("closed by the caller");
     this.haltedReason = "adapter closed";
     for (const entry of this.pending) {
       clearTimeout(entry.timer);
@@ -176,6 +206,9 @@ export class Elm327Adapter implements CanBus {
     this.status.errors.push(messageOf(error));
     this.log.warn("the byte stream reported an error", { error: messageOf(error) });
     this.opened = false;
+    // The device is gone: this is an `error`, not a degradation — no frame can
+    // be carried any more, and only a reconnect policy (or a human) changes it.
+    this.connection.fail(`byte stream failed: ${messageOf(error)}`);
     this.currentTxId = null;
     this.haltedReason = `byte stream failed: ${messageOf(error)}`;
     for (const entry of this.pending) {
@@ -199,13 +232,17 @@ export class Elm327Adapter implements CanBus {
       this.currentTxId = frame.id;
     }
     const payload = formatSendPayload(frame);
-    this.txCount++;
+    this.connection.report({ tx: 1, at: Date.now() });
     const lines = await this.command(payload);
     for (const line of lines) {
       const error = isElmError(line);
       if (error) {
         this.status.errors.push(error);
         this.log.warn("ELM327 reported an error", { error, command: payload });
+        // The link is still there — the adapter refused a frame. That is exactly
+        // `degraded`: usable, but not trustworthy for this moment, and not an
+        // `error` (which would say the link is dead).
+        this.connection.degraded(`ELM327 refused the frame: ${error}`);
         // `CAN ERROR`, `BUFFER FULL` and `STOPPED` mean the frame never reached
         // the bus. Returning normally here tells ISO-TP the opposite, and it
         // waits for an answer that was never asked for — a timeout that reads
@@ -243,7 +280,13 @@ export class Elm327Adapter implements CanBus {
   }
 
   get counters(): { tx: number; rx: number } {
-    return { tx: this.txCount, rx: this.rxCount };
+    const status = this.connection.status();
+    return { tx: status.txCount ?? 0, rx: status.rxCount ?? 0 };
+  }
+
+  /** The link state, its reason, when it was entered and the frame counters. */
+  getStatus(): ConnectionStatus {
+    return this.connection.status();
   }
 
   /**
@@ -337,7 +380,7 @@ export class Elm327Adapter implements CanBus {
 
     const frame = parseFrameLine(trimmed, this.channel);
     if (frame) {
-      this.rxCount++;
+      this.connection.report({ rx: 1, at: Date.now() });
       this.log.raw("elm327 rx", { id: `0x${frame.id.toString(16)}`, payload: frame.payload });
       this.dispatch(frame);
     }
@@ -349,6 +392,9 @@ export class Elm327Adapter implements CanBus {
     clearTimeout(entry.timer);
     entry.resolve([...this.currentLines]);
     this.currentLines = [];
+    // The device answered: a `degraded` link is back to `connected`. No-op in
+    // every other state, so a healthy adapter never churns its listeners.
+    this.connection.healthy("the device answered again");
   }
 
   private dispatch(frame: CanFrame): void {

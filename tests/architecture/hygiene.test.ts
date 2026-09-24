@@ -459,7 +459,8 @@ test("modules stay reviewable: no production file above the size budget", () => 
     {
       file: "apps/web/src/backend.ts",
       reason:
-        "1590 lines — split tracked as AGENTS 0.E → docs/architecture/backlog.md E15; the wire contract moved to views.ts in " +
+        '1591 lines — the link state in `state()` (master prompt P1, ADR 0060: the panel shows "' +
+        "the adapter's six-valued connection state with its reason`) added 1: 1590 → 1591;  split tracked as AGENTS 0.E → docs/architecture/backlog.md E15; the wire contract moved to views.ts in " +
         "E19 (1326 → 1117), `get canBus()` (which nothing had used since the replay suites " +
         "moved to injected buses) is gone (1427 → 1419), and E24's chaos-in-the-path added the " +
         "wrapper in `start()`, the burst target and the refusal before a connection: 1419 → " +

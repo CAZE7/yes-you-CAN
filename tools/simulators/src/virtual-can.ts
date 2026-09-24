@@ -13,9 +13,10 @@ import type {
   CanBus,
   CanFilter,
   CanFrame,
+  ConnectionStatus,
   FrameListener,
 } from "@vdp/transport-can";
-import { frameMatchesFilters } from "@vdp/transport-can";
+import { ConnectionTracker, frameMatchesFilters } from "@vdp/transport-can";
 
 export interface VirtualCanOptions {
   channel?: string;
@@ -187,6 +188,8 @@ export class VirtualCanBus implements CanBus {
   private opened = false;
   txCount = 0;
   rxCount = 0;
+  /** Lifecycle of the virtual wire (master prompt P1); it has no device. */
+  private readonly connection: ConnectionTracker;
 
   constructor(
     private readonly network: VirtualCanWire,
@@ -196,6 +199,10 @@ export class VirtualCanBus implements CanBus {
     _options: VirtualCanOptions,
   ) {
     this.info = { id, kind: "virtual", name: `Virtual CAN ${id}`, channels: [channel] };
+    this.connection = new ConnectionTracker({
+      adapterId: id,
+      detail: `virtual CAN ${id} @ ${channel}`,
+    });
     this.capabilities = {
       can: capabilities.can ?? true,
       canFd: capabilities.canFd ?? false,
@@ -207,16 +214,24 @@ export class VirtualCanBus implements CanBus {
   }
 
   async open(): Promise<void> {
+    this.connection.connect("attaching to the virtual wire");
     this.opened = true;
+    this.connection.connected(undefined, "virtual wire attached");
   }
 
   async close(): Promise<void> {
     this.opened = false;
     this.listeners = [];
+    this.connection.disconnected("detached from the virtual wire");
   }
 
   isOpen(): boolean {
     return this.opened;
+  }
+
+  /** The virtual wire's state; same vocabulary as every physical adapter. */
+  getStatus(): ConnectionStatus {
+    return this.connection.status();
   }
 
   async send(frame: CanFrame): Promise<void> {

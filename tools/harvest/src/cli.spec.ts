@@ -417,6 +417,7 @@ async function recordSimulatorHarvest(): Promise<{
     capabilities: inner.capabilities,
     open: () => inner.open(),
     close: () => inner.close(),
+    getStatus: () => inner.getStatus(),
     isOpen: () => inner.isOpen(),
     send: async (frame) => {
       frames.push({

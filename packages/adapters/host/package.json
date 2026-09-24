@@ -30,6 +30,7 @@
     "@vdp/transport-can": "0.1.0",
     "@vdp/adapter-elm327": "0.1.0",
     "@vdp/adapter-canable": "0.1.0",
-    "@vdp/adapter-socketcan": "0.1.0"
+    "@vdp/adapter-socketcan": "0.1.0",
+    "@vdp/transport-doip": "0.1.0"
   }
 }

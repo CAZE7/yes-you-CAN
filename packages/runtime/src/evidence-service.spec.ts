@@ -10,7 +10,7 @@
 import assert from "node:assert/strict";
 import { genericPackage } from "@vdp/definitions";
 import { createLogger } from "@vdp/shared";
-import type { CanBus, CanFilter, CanFrame } from "@vdp/transport-can";
+import { type CanBus, type CanFilter, type CanFrame, connectionStatusOf } from "@vdp/transport-can";
 import { test } from "vitest";
 import { createDiagnosticRuntime } from "./runtime.js";
 
@@ -28,6 +28,7 @@ function makeSilentBus(): CanBus {
     async close() {
       open = false;
     },
+    getStatus: () => connectionStatusOf(open, "stub"),
     isOpen: () => open,
     async send(_frame: CanFrame) {},
     subscribe(_listener: (frame: CanFrame) => void, _filters?: readonly CanFilter[]) {

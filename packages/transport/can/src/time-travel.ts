@@ -13,9 +13,10 @@
 import type { Logger } from "@vdp/shared";
 import { createLogger } from "@vdp/shared";
 import type { CanBus, FrameListener } from "./bus.js";
+import { ConnectionTracker } from "./connection.js";
 import { type CanFilter, type CanFrame, createFrame, frameMatchesFilters } from "./frame.js";
 import type { ReplayFrameEntry } from "./replay.js";
-import type { AdapterCapabilities, AdapterInfo } from "./transport.js";
+import type { AdapterCapabilities, AdapterInfo, ConnectionStatus } from "./transport.js";
 
 export interface TimeTravelBookmark {
   id: string;
@@ -71,6 +72,20 @@ export class TimeTravelCanBus implements CanBus {
     [];
   private readonly stateListeners = new Set<(state: TimeTravelState) => void>();
   private readonly bookmarks: TimeTravelBookmark[] = [];
+  /**
+   * A replay has no wire, but it has a lifecycle, and the rest of the platform
+   * asks every bus the same question (master prompt P1): the tracker answers it
+   * with the honest detail instead of inventing a link.
+   */
+  private readonly connection = new ConnectionTracker({
+    adapterId: "time-travel-replay",
+    detail: "replay — no physical link",
+  });
+
+  /** The link state of this replay (there is none: the state is its lifecycle). */
+  getStatus(): ConnectionStatus {
+    return this.connection.status();
+  }
 
   constructor(options: TimeTravelOptions = {}) {
     this.log = options.logger ?? createLogger("time-travel", { level: "INFO" });
@@ -79,12 +94,15 @@ export class TimeTravelCanBus implements CanBus {
   }
 
   async open(): Promise<void> {
+    this.connection.connect("opening the recording");
     this.opened = true;
+    this.connection.connected(undefined, "recording loaded — replay is passive, sends are ignored");
   }
 
   async close(): Promise<void> {
     this.pause();
     this.opened = false;
+    this.connection.disconnected("replay finished");
   }
 
   isOpen(): boolean {

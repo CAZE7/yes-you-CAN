@@ -6,6 +6,8 @@ import {
   type CanBus,
   type CanFilter,
   type CanFrame,
+  type ConnectionStatus,
+  connectionStatusOf,
   createFrame,
   type FrameListener,
 } from "@vdp/transport-can";
@@ -31,6 +33,10 @@ class RecordingBus implements CanBus {
   async close(): Promise<void> {
     this.opened = false;
   }
+  getStatus(): ConnectionStatus {
+    return connectionStatusOf(this.opened, "recording");
+  }
+
   isOpen(): boolean {
     return this.opened;
   }

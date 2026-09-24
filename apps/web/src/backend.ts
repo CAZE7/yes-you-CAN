@@ -1448,6 +1448,7 @@ export class DemoBackend {
           }
         : { id: "none", name: "not connected", kind: "none", channels: [] },
       adapterSelection: this.selection,
+      ...(this.bus ? { connection: this.bus.getStatus() } : {}),
       ...(this.probe ? { adapterProbe: this.probe } : {}),
       transport: session
         ? {

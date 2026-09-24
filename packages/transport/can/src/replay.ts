@@ -13,8 +13,9 @@
 import type { Logger } from "@vdp/shared";
 import { createLogger, TransportError, toHex } from "@vdp/shared";
 import type { FrameListener } from "./bus.js";
+import { ConnectionTracker } from "./connection.js";
 import { type CanFilter, type CanFrame, frameMatchesFilters } from "./frame.js";
-import type { AdapterCapabilities, AdapterInfo } from "./transport.js";
+import type { AdapterCapabilities, AdapterInfo, ConnectionStatus } from "./transport.js";
 
 /** One recorded frame. Structurally compatible with the core session trace. */
 export interface ReplayFrameEntry {
@@ -115,6 +116,8 @@ export class ReplayTransport {
   private readonly pace: boolean;
   private opened = false;
   private clock = 0;
+  /** Lifecycle of the replay (master prompt P1): it has no wire to report. */
+  private readonly connection: ConnectionTracker;
   /** Scheduled response timers of a paced replay; cleared on close. */
   private readonly timers = new Set<ReturnType<typeof setTimeout>>();
 
@@ -128,6 +131,10 @@ export class ReplayTransport {
     this.pace = options.pace ?? false;
     this.log = (options.logger ?? createLogger("replay", { level: "INFO" })).child("replay");
     this.info = { ...REPLAY_INFO, channels: [this.channel], ...(options.info ?? {}) };
+    this.connection = new ConnectionTracker({
+      adapterId: this.info.id,
+      detail: "replay — no physical link",
+    });
     this.groupExchanges();
   }
 
@@ -150,12 +157,15 @@ export class ReplayTransport {
   }
 
   async open(): Promise<void> {
+    this.connection.connect("opening the recording");
     this.opened = true;
+    this.connection.connected(undefined, "recording ready — replay answers from the trace");
     this.log.info("replay opened", { exchanges: this.exchanges.length, channel: this.channel });
   }
 
   async close(): Promise<void> {
     this.opened = false;
+    this.connection.disconnected("replay finished");
     this.listeners.length = 0;
     // A paced replay owns timers; leaving them running would emit into a closed
     // transport (and keep a test runner alive).
@@ -165,6 +175,11 @@ export class ReplayTransport {
 
   isOpen(): boolean {
     return this.opened;
+  }
+
+  /** The replay's lifecycle state, in the vocabulary every bus answers with. */
+  getStatus(): ConnectionStatus {
+    return this.connection.status();
   }
 
   subscribe(listener: FrameListener, filters?: readonly CanFilter[]): () => void {

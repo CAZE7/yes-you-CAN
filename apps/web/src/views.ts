@@ -26,6 +26,7 @@ import type {
   AdapterSelection,
 } from "@vdp/adapter-host";
 import type { AnalysisResult } from "@vdp/ai";
+import type { ConnectionStatus } from "@vdp/transport-can";
 import type { DtcView, UnreadEcuView } from "./dtc-view.js";
 import type { EcuView } from "./ecu-view.js";
 import type { MarkerView, SampleView, TraceView } from "./trace-view.js";
@@ -40,6 +41,8 @@ export type {
   AdapterProbe,
   AdapterSelection,
 } from "@vdp/adapter-host";
+// The link state's shape (and its vocabulary) crossing the wire (ADR 0060).
+export type { AdapterConnectionState, ConnectionStatus } from "@vdp/transport-can";
 export type { DtcCheckView, DtcKnowledgeView, DtcPatternView } from "./dtc-knowledge-view.js";
 /**
  * The rows the projections own (`dtc-view.ts`, `ecu-view.ts`, `trace-view.ts`;
@@ -185,6 +188,13 @@ export interface AppState {
   vehicleResolution?: VehicleResolutionView;
   mileageKm?: number;
   adapter: { id: string; name: string; kind: string; channels: string[] };
+  /**
+   * The selected adapter's link state (master prompt P1). Absent while nothing is
+   * connected; otherwise the honest six-valued state with its reason, its
+   * timestamp and the frame counters — `isOpen()` alone could not tell "never
+   * opened" from "died mid-session" from "refusing frames" (ADR 0060).
+   */
+  connection?: ConnectionStatus;
   /** Adapter the user selected, including its settings, so the UI can show them. */
   adapterSelection: AdapterSelection;
   /** Live probe result of the selected adapter (never a guess). */

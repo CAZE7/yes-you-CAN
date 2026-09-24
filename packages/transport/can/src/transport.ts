@@ -6,18 +6,40 @@
  * ISO 14229-2 explicitly defines session services transport-independently (AGENTS 2, 5).
  */
 
-export type ConnectionState = "disconnected" | "connecting" | "connected" | "error";
+import type { AdapterConnectionState } from "./connection.js";
 
+/**
+ * State of a byte transport link.
+ *
+ * The vocabulary lives in {@link AdapterConnectionState} (connection.ts) and is
+ * shared with the frame layer, so `CanBus.getStatus()` and
+ * `VehicleTransport.getStatus()` answer the same question with the same words —
+ * `error` and `degraded` and `recovering` mean the same thing above and below
+ * ISO-TP (master prompt P1, ADR 0060).
+ */
+export type ConnectionState = AdapterConnectionState;
+
+/**
+ * What an adapter reports about its link (AGENTS 4).
+ *
+ * `state` is the honest headline; `stateReason` and `lastError` say why, and
+ * `since` pins when the state was entered — a UI never has to guess whether a
+ * disconnected adapter just closed or died an hour ago.
+ */
 export interface ConnectionStatus {
   state: ConnectionState;
   adapterId: string;
   /** Human readable detail, e.g. "ELM327 v2.1 @ /dev/ttyUSB0". */
   detail?: string;
+  /** Why the adapter is in this state, in its own words. */
+  stateReason?: string;
   /** Frames sent/received counters for the UI adapter panel. */
   txCount?: number;
   rxCount?: number;
   lastError?: string;
   lastActivityAt?: number;
+  /** Epoch ms when `state` was entered. */
+  since?: number;
 }
 
 /** Byte-oriented transport as mandated verbatim by AGENTS 4. */

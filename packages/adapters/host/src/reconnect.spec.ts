@@ -18,7 +18,14 @@
 
 import assert from "node:assert/strict";
 import { createLogger, MemorySink, TransportError } from "@vdp/shared";
-import type { CanBus, CanFilter, CanFrame, FrameListener } from "@vdp/transport-can";
+import {
+  type CanBus,
+  type CanFilter,
+  type CanFrame,
+  type ConnectionStatus,
+  connectionStatusOf,
+  type FrameListener,
+} from "@vdp/transport-can";
 import { test } from "vitest";
 import { settle, waitFor } from "../../../../tests/helpers/wait.js";
 import {
@@ -48,6 +55,9 @@ class FakeBus implements CanBus {
   async close(): Promise<void> {
     this.closes++;
     this.openState = false;
+  }
+  getStatus(): ConnectionStatus {
+    return connectionStatusOf(this.openState, this.info.id);
   }
   isOpen(): boolean {
     return this.openState;
@@ -364,4 +374,47 @@ test("a rebuild that finishes after close() is discarded, not adopted", async ()
     message: "a pair built after close() is closed, not adopted",
   });
   assert.equal(bus.isOpen(), false, "the session is over; no zombie link");
+});
+
+test("the supervisor names its states: recovering while reviving, error when the budget is spent", async () => {
+  // Master prompt P1: the four things a technician must tell apart — never
+  // opened, died mid-session, being revived, given up on — are four states, not
+  // one `false`. This is the policy's half of that promise.
+  const made = factory();
+  const bus = await superviseSerialBus({
+    adapterId: "elm327",
+    open: made.open,
+    policy: { attempts: 1, delayMs: 60 },
+  });
+  await bus.open();
+  assert.equal(bus.getStatus().state, "connected", "an opened, supervised bus is connected");
+  assert.equal(bus.getStatus().adapterId, "elm327");
+
+  // First incident: the policy has budget, so the state says so.
+  made.pairs[0]?.stream.die("bluetooth link lost");
+  await waitFor(() => bus.getStatus().state === "recovering", Boolean, {
+    timeoutMs: 500,
+    message: `the lost link must report \`recovering\`, got ${bus.getStatus().state}`,
+  });
+  assert.match(String(bus.getStatus().stateReason), /reconnect scheduled/);
+  await waitFor(() => bus.getStatus().state === "connected", Boolean, {
+    timeoutMs: 1000,
+    message: "a successful revival returns to `connected`",
+  });
+
+  // Second incident, and this time the device does not come back: the single
+  // attempt fails, the budget is spent, and that is an error with a reason —
+  // not a silent boolean and not an endless "recovering".
+  made.state.failNextOpens = 1;
+  made.pairs[1]?.stream.die("bluetooth link lost again");
+  await waitFor(() => bus.getStatus().state === "error", Boolean, {
+    timeoutMs: 500,
+    message: `a spent budget is \`error\`, got ${bus.getStatus().state}`,
+  });
+  assert.match(String(bus.getStatus().lastError), /no reconnect attempt left/);
+  assert.equal(
+    bus.getStatus().stateReason?.includes("no reconnect attempt left"),
+    true,
+    "the state reason names the end of the policy",
+  );
 });

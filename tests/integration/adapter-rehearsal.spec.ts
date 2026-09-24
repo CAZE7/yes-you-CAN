@@ -314,6 +314,26 @@ class SlcanDevice extends PtyDevice {
   }
 }
 
+/**
+ * A slcan firmware that proves it is there (`V`) and then refuses the bitrate
+ * command with BEL — the wrong-cable/wrong-firmware case. The reason must name
+ * the refused command, and the adapter must not claim to be open afterwards.
+ */
+class BitrateRefusingSlcanDevice extends SlcanDevice {
+  protected override async onCommand(line: string): Promise<void> {
+    if (line === "V") {
+      await this.writeOut("V0101\r");
+      return;
+    }
+    if (line.startsWith("S")) {
+      // Lawicel: BEL is the refusal.
+      await this.writeOut("\u0007");
+      return;
+    }
+    await this.writeOut("\r");
+  }
+}
+
 /* -------------------------------------------------------------- scenarios */
 
 interface ScenarioResult {
@@ -492,6 +512,80 @@ test.skipIf(!hasSocat())(
   },
 );
 
+/* ------------------------------------------------- connection state (master prompt P1) */
+
+test.skipIf(!hasSocat())(
+  "ELM327: a device that never answers leaves an error state, not a connected-but-silent bus",
+  async () => {
+    // The wrong-baud-rate / dead-device case: the PTY exists and the stream
+    // opens, but no firmware is behind it. Before P1 the adapter stayed
+    // `isOpen() === true` after a failed init sequence, and the following
+    // request timed out as if the vehicle were silent.
+    const pair = await createPtyPair();
+    const stream = await openSerialStream({ device: pair.a });
+    const adapter = new Elm327Adapter({
+      stream,
+      commandTimeoutMs: 200,
+      logger: createLogger("rehearsal", { level: "ERROR" }),
+    });
+    try {
+      await assert.rejects(adapter.open(), /timed out/);
+      const status = adapter.getStatus();
+      assert.equal(status.state, "error", "a failed handshake is an error, not an open link");
+      assert.equal(adapter.isOpen(), false, "an adapter that never handshook is not open");
+      assert.match(
+        String(status.lastError),
+        /initialisation failed: .*timed out/,
+        "the state carries the cause, so the technician reads the real reason",
+      );
+      assert.equal(status.adapterId, "elm327");
+      // A second attempt is a fresh try, not a poisoned adapter: open() clears
+      // the halt and reports `connecting` again before it fails.
+      await assert.rejects(adapter.open(), /timed out/);
+      assert.equal(adapter.getStatus().state, "error");
+    } finally {
+      await adapter.close().catch(() => undefined);
+      await stream.close().catch(() => undefined);
+      pair.dispose();
+    }
+  },
+);
+
+test.skipIf(!hasSocat())(
+  "CANable: a refused bitrate command fails the handshake with state `error` and the cause",
+  async () => {
+    const pair = await createPtyPair();
+    const device = new BitrateRefusingSlcanDevice(pair.b);
+    await device.start();
+    const stream = await openSerialStream({ device: pair.a });
+    const adapter = new CanableAdapter({
+      stream,
+      bitrate: "500k",
+      commandTimeoutMs: 300,
+      logger: createLogger("rehearsal", { level: "ERROR" }),
+    });
+    try {
+      await assert.rejects(
+        adapter.open(),
+        (error: unknown) =>
+          error instanceof TransportError &&
+          error.message.includes("S6") &&
+          error.message.includes("bitrate"),
+        `the refusal must name the command it refused — wire:\n${device.wireLog()}`,
+      );
+      const status = adapter.getStatus();
+      assert.equal(status.state, "error", "a refused handshake is an error state");
+      assert.equal(adapter.isOpen(), false);
+      assert.match(String(status.lastError), /slcan handshake failed/);
+    } finally {
+      await adapter.close().catch(() => undefined);
+      await stream.close().catch(() => undefined);
+      await device.stop();
+      pair.dispose();
+    }
+  },
+);
+
 /* ---------------------------------------------------- the bounded reconnect (E34) */
 
 test.skipIf(!hasSocat())(
@@ -532,6 +626,18 @@ test.skipIf(!hasSocat())(
         const goneDeadline = Date.now() + 3000;
         while (bus.isOpen() && Date.now() < goneDeadline) await tick(25);
         assert.equal(bus.isOpen(), false, "a dead link must not claim to be open");
+        // The state says which kind of "not open" this is: a policy is working on
+        // it (P1). `disconnected` here would read as "somebody closed it", and a
+        // bare boolean could not tell the two apart at all.
+        await waitFor(() => bus.getStatus().state === "recovering", Boolean, {
+          timeoutMs: 2000,
+          message: `the lost link must report \`recovering\`, got ${bus.getStatus().state}`,
+        });
+        assert.match(
+          String(bus.getStatus().stateReason),
+          /reconnect scheduled/,
+          "the state carries the policy's reason",
+        );
         await assert.rejects(
           () => connection.request(Uint8Array.from(TESTER_PRESENT), 1000),
           /not open|byte stream/,
@@ -548,6 +654,7 @@ test.skipIf(!hasSocat())(
         const deadline = Date.now() + 8000;
         while (!bus.isOpen() && Date.now() < deadline) await tick(50);
         assert.ok(bus.isOpen(), "the supervisor must revive the link within the budget");
+        assert.equal(bus.getStatus().state, "connected", "a revived link is a connected link");
         const after = await connection.request(Uint8Array.from(TESTER_PRESENT), 5000);
         assert.deepEqual(
           Array.from(after),
@@ -580,6 +687,16 @@ test.skipIf(!hasSocat())(
           { timeoutMs: 6000, message: "the two reconnect attempts must be spent and named" },
         );
         assert.equal(bus.isOpen(), false, "the final state is a closed bus");
+        // And the state names the end of the budget: `error` with the reason, so
+        // the panel says "the link is gone and nothing is retrying" instead of
+        // "offline" (P1).
+        const spent = bus.getStatus();
+        assert.equal(
+          spent.state,
+          "error",
+          `the spent budget is an error state, got ${spent.state}`,
+        );
+        assert.match(String(spent.lastError), /no reconnect attempt left/);
         assert.equal(
           sink.all().filter((record) => record.message === "adapter link restored").length,
           1,

@@ -30,7 +30,14 @@ import {
   type UdsServerOptions,
 } from "@vdp/protocols-uds";
 import { createLogger, fromHex } from "@vdp/shared";
-import type { CanBus, CanFilter, CanFrame, FrameListener } from "@vdp/transport-can";
+import {
+  type CanBus,
+  type CanFilter,
+  type CanFrame,
+  type ConnectionStatus,
+  connectionStatusOf,
+  type FrameListener,
+} from "@vdp/transport-can";
 import { describe, expect, test } from "vitest";
 import { tick, waitUntil } from "../../../../tests/helpers/wait.js";
 import { DtcScanner } from "../dtc/scanner.js";
@@ -166,6 +173,10 @@ class StubBus implements CanBus {
   async close(): Promise<void> {
     this.closed = true;
   }
+  getStatus(): ConnectionStatus {
+    return connectionStatusOf(this.opened, "stub");
+  }
+
   isOpen(): boolean {
     return this.opened;
   }

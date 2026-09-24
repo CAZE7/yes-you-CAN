@@ -48,6 +48,19 @@ export interface DoipSocket {
   isOpen(): boolean;
   /** True when the socket provides TLS (ISO 13400-2 port 3496). */
   isSecure?(): boolean;
+  /**
+   * The peer (or the OS) closed the connection — a vehicle that went to sleep,
+   * a Wi-Fi drop, an entity that restarted.
+   *
+   * Without this the transport kept claiming `connected` and every following
+   * request died in its own timeout: an answer that never came looked exactly
+   * like an ECU that answered nothing (AGENTS 34.21, ADR 0061). A socket that
+   * cannot report its death simply keeps the old behaviour — the timeout — but
+   * every socket this platform ships implements this.
+   */
+  onClose?(listener: (reason: string) => void): () => void;
+  /** A socket-level error (write failure, TLS alert); the link is unusable afterwards. */
+  onError?(listener: (error: Error) => void): () => void;
 }
 
 export interface DoipTransportOptions {
@@ -80,14 +93,27 @@ export class DoipTransport implements VehicleTransport {
   private queue: Uint8Array[] = [];
   private waiters: Array<{
     resolve: (payload: Uint8Array | null) => void;
+    reject: (error: Error) => void;
     timer: ReturnType<typeof setTimeout>;
   }> = [];
   private state: ConnectionStatus["state"] = "disconnected";
   private lastError: string | undefined;
+  private lastStateReason: string | undefined;
+  private changedAt = Date.now();
+  private unsubscribeClose: (() => void) | null = null;
+  private unsubscribeSocketError: (() => void) | null = null;
   private lastActivityAt: number | undefined;
   private txCount = 0;
   private rxCount = 0;
   private entityLogicalAddress: number | null = null;
+
+  /** Move to a state, remembering why and when — never a bare flag. */
+  private enter(state: ConnectionStatus["state"], reason: string, error?: string): void {
+    this.state = state;
+    this.lastStateReason = reason;
+    this.changedAt = Date.now();
+    if (error !== undefined) this.lastError = error;
+  }
 
   constructor(private readonly options: DoipTransportOptions) {
     this.log = (options.logger ?? createLogger("connection", { level: "INFO" })).child(
@@ -112,13 +138,24 @@ export class DoipTransport implements VehicleTransport {
 
   async connect(): Promise<void> {
     if (this.requireTls && !this.isSecure) {
-      this.state = "error";
-      this.lastError = "TLS is required but the socket is not secure (ISO 13400-2 port 3496)";
-      throw new TransportError(this.lastError);
+      const reason = "TLS is required but the socket is not secure (ISO 13400-2 port 3496)";
+      this.enter("error", reason, reason);
+      throw new TransportError(reason);
     }
-    this.state = "connecting";
+    this.enter("connecting", "opening the DoIP connection and activating routing");
     await this.options.socket.connect();
     this.unsubscribe = this.options.socket.onData((chunk) => this.onData(chunk));
+    // A connection that dies must say so here, not in the next request's
+    // timeout (ADR 0061). Both hooks are optional for sockets that cannot
+    // report their own death (a browser WebSocket double, a scripted test).
+    if (this.options.socket.onClose) {
+      this.unsubscribeClose = this.options.socket.onClose((reason) => this.onSocketDeath(reason));
+    }
+    if (this.options.socket.onError) {
+      this.unsubscribeSocketError = this.options.socket.onError((error) => {
+        this.onSocketDeath(messageOf(error));
+      });
+    }
     try {
       await this.activateRouting();
     } catch (error) {
@@ -127,12 +164,11 @@ export class DoipTransport implements VehicleTransport {
       // still subscribed, and the next connect() attempt would report a stale
       // state instead of the real reason (same rule the workbench backend
       // follows for a failed start, AGENTS 35 "Error Handling").
-      this.state = "error";
-      if (this.lastError === undefined) this.lastError = messageOf(error);
+      this.enter("error", messageOf(error), this.lastError ?? messageOf(error));
       await this.releaseSocket();
       throw error;
     }
-    this.state = "connected";
+    this.enter("connected", "routing activated");
     this.log.info("DoIP routing activated", {
       tester: `0x${this.testerAddress.toString(16)}`,
       target: `0x${this.targetAddress.toString(16)}`,
@@ -142,7 +178,47 @@ export class DoipTransport implements VehicleTransport {
 
   async disconnect(): Promise<void> {
     await this.releaseSocket();
-    this.state = "disconnected";
+    this.enter("disconnected", "closed by the caller");
+  }
+
+  /**
+   * The connection died. Record the reason, refuse further sends and — the part
+   * that used to be missing — settle what is in flight with the *cause* instead
+   * of letting it run into its own timeout.
+   */
+  private onSocketDeath(reason: string): void {
+    if (this.state === "disconnected") return;
+    this.enter(
+      "error",
+      `the DoIP connection died: ${reason}`,
+      `the DoIP connection died: ${reason}`,
+    );
+    this.log.warn("DoIP connection lost", {
+      target: `0x${this.targetAddress.toString(16)}`,
+      reason,
+    });
+    this.unsubscribe?.();
+    this.unsubscribe = null;
+    this.unsubscribeClose?.();
+    this.unsubscribeClose = null;
+    this.unsubscribeSocketError?.();
+    this.unsubscribeSocketError = null;
+    this.buffer = new Uint8Array();
+    this.settleWaiters(new TransportClosedError(`the DoIP connection died: ${reason}`));
+  }
+
+  /** Settle everything waiting with one error — a dead link has no answers. */
+  private settleWaiters(error: Error): void {
+    for (const waiter of this.waiters) {
+      clearTimeout(waiter.timer);
+      waiter.reject(error);
+    }
+    this.waiters = [];
+    for (const waiter of this.routingWaiters) {
+      clearTimeout(waiter.timer);
+      waiter.resolve(null);
+    }
+    this.routingWaiters = [];
   }
 
   /**
@@ -154,6 +230,10 @@ export class DoipTransport implements VehicleTransport {
   private async releaseSocket(): Promise<void> {
     this.unsubscribe?.();
     this.unsubscribe = null;
+    this.unsubscribeClose?.();
+    this.unsubscribeClose = null;
+    this.unsubscribeSocketError?.();
+    this.unsubscribeSocketError = null;
     try {
       await this.options.socket.close();
     } catch (error) {
@@ -172,28 +252,52 @@ export class DoipTransport implements VehicleTransport {
   }
 
   async send(data: Uint8Array): Promise<void> {
-    if (this.state !== "connected")
-      throw new TransportClosedError("DoIP transport is not connected");
+    this.requireUsable("send");
     const payload = encodeDiagnosticMessage(this.testerAddress, this.targetAddress, data);
     this.txCount++;
     this.lastActivityAt = Date.now();
     this.log.raw("doip tx", { type: "diagnosticMessage", bytes: payload.length });
-    await this.options.socket.send(encodeMessage(PAYLOAD_TYPE.DIAGNOSTIC_MESSAGE, payload));
+    try {
+      await this.options.socket.send(encodeMessage(PAYLOAD_TYPE.DIAGNOSTIC_MESSAGE, payload));
+    } catch (error) {
+      // The write failed: the connection is gone even if nobody told us yet.
+      // Report it through the same path as a peer-closed socket, so callers see
+      // one reason for one failure (ADR 0061).
+      this.onSocketDeath(messageOf(error));
+      throw error;
+    }
   }
 
   async receive(timeoutMs?: number): Promise<Uint8Array | null> {
-    if (this.state !== "connected")
-      throw new TransportClosedError("DoIP transport is not connected");
+    this.requireUsable("receive");
     const queued = this.queue.shift();
     if (queued) return queued;
     const limit = timeoutMs ?? this.receiveTimeoutMs;
-    return new Promise<Uint8Array | null>((resolve) => {
+    return new Promise<Uint8Array | null>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.waiters = this.waiters.filter((w) => w.resolve !== resolve);
         resolve(null);
       }, limit);
-      this.waiters.push({ resolve, timer });
+      this.waiters.push({ resolve, reject, timer });
     });
+  }
+
+  /**
+   * Refuse an operation on a link that cannot carry it, and say *why* it is down.
+   *
+   * The base message is unchanged (callers and tests match it), but the reason
+   * the connection died is appended: "not connected" alone tells a technician
+   * nothing about whether the car slept, the cable moved or routing was refused
+   * (ADR 0061).
+   */
+  private requireUsable(operation: string): void {
+    if (this.state === "connected" || this.state === "degraded") return;
+    const reason = this.lastError ?? this.lastStateReason;
+    throw new TransportClosedError(
+      reason === undefined
+        ? `DoIP transport is not connected (${operation})`
+        : `DoIP transport is not connected: ${reason}`,
+    );
   }
 
   getStatus(): ConnectionStatus {
@@ -201,10 +305,12 @@ export class DoipTransport implements VehicleTransport {
       state: this.state,
       adapterId: "doip",
       detail: `DoIP target 0x${this.targetAddress.toString(16)}${this.isSecure ? " (TLS)" : ""}`,
+      ...(this.lastStateReason !== undefined ? { stateReason: this.lastStateReason } : {}),
       txCount: this.txCount,
       rxCount: this.rxCount,
       ...(this.lastError ? { lastError: this.lastError } : {}),
       ...(this.lastActivityAt ? { lastActivityAt: this.lastActivityAt } : {}),
+      since: this.changedAt,
     };
   }
 
@@ -224,9 +330,9 @@ export class DoipTransport implements VehicleTransport {
     if (!response) throw new TransportError("no routing activation response within the timeout");
     const decoded = decodeRoutingActivationResponse(response);
     if (decoded.code !== 0x10) {
-      this.state = "error";
-      this.lastError = `routing activation refused: ${decoded.codeName}`;
-      throw new TransportError(this.lastError, { code: decoded.code, codeName: decoded.codeName });
+      const reason = `routing activation refused: ${decoded.codeName}`;
+      this.enter("error", reason, reason);
+      throw new TransportError(reason, { code: decoded.code, codeName: decoded.codeName });
     }
     this.entityLogicalAddress = decoded.entityLogicalAddress;
   }
@@ -297,6 +403,10 @@ export class DoipTransport implements VehicleTransport {
       }
       case PAYLOAD_TYPE.DIAGNOSTIC_MESSAGE_NEGATIVE_ACK: {
         const ack = decodeDiagnosticAck(payload);
+        // A NACK is *data*, not a broken link (the existing suite pins that): the
+        // entity is reachable and refused this one message. It is recorded as the
+        // last error so a report can name it, and the state stays `connected` —
+        // `degraded` is reserved for a link that carried a failure and survived.
         this.lastError = `diagnostic message negative ack 0x${ack.ackCode.toString(16)}`;
         this.log.warn(this.lastError);
         return;
@@ -329,6 +439,7 @@ export class DoipTransport implements VehicleTransport {
   }
 
   private deliver(payload: Uint8Array): void {
+    if (this.state === "degraded") this.enter("connected", "answers are arriving again");
     const waiter = this.waiters.shift();
     if (waiter) {
       clearTimeout(waiter.timer);
