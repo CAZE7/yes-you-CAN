@@ -434,3 +434,144 @@ test("a transient ELM error asks for a retry, a permanent one does not", async (
     );
   }
 });
+
+/* ------------------------------------------------ command serialisation
+ *
+ * Symptom (reproduced over a PTY with a windowed device emulator, regression
+ * documented in tests/integration/adapter-rehearsal.spec.ts): an ELM327 is
+ * half-duplex — input while a command's receive window is still open aborts it
+ * with `STOPPED`, and a second in-flight command shared exactly one
+ * `currentLines` collector, so two parallel commands meant "every multi-frame
+ * answer dies as `ISO-TP transmit failed: ELM327 refused the frame: STOPPED`".
+ * The device-level trigger is ISO-TP sending Flow Control from inside the
+ * frame listener, re-entrantly, while the triggering frame's TX still waits
+ * for its prompt. The guard: one command on the wire at a time.
+ */
+
+/**
+ * Drain microtasks until `needle` was written — the queue steps are promise
+ * continuations, so a bounded microtask flush is the deterministic substitute
+ * for a timer (AGENTS 31: no real time in unit tests).
+ */
+async function untilWritten(stream: MemoryByteStream, needle: string): Promise<void> {
+  for (let i = 0; i < 1000 && !stream.written.some((line) => line.includes(needle)); i++) {
+    await Promise.resolve();
+  }
+  assert.ok(
+    stream.written.some((line) => line.includes(needle)),
+    `"${needle}" was never written (got: ${JSON.stringify(stream.written)})`,
+  );
+}
+
+test("two overlapping commands run one at a time, in order, with their own lines", async () => {
+  const stream = new MemoryByteStream();
+  stream.open();
+  const adapter = new Elm327Adapter({
+    stream,
+    initSequence: [],
+    commandTimeoutMs: 500,
+  });
+  await adapter.open();
+
+  const first = adapter.command("ATDP");
+  const second = adapter.command("ATRV");
+  await untilWritten(stream, "ATDP");
+  assert.equal(
+    stream.written.filter((line) => line.includes("ATRV")).length,
+    0,
+    "the queued command must not reach the wire while the first waits for its prompt",
+  );
+  stream.emit("\rISO 15765-4 (CAN 11/500)\r\n>");
+  assert.deepEqual(await first, ["ISO 15765-4 (CAN 11/500)"]);
+  await untilWritten(stream, "ATRV");
+  stream.emit("\r14.1V\r\n>");
+  assert.deepEqual(await second, ["14.1V"]);
+});
+
+test("a command issued re-entrantly from a frame listener does not clobber the pending one", async () => {
+  const stream = new MemoryByteStream();
+  stream.open();
+  const adapter = new Elm327Adapter({
+    stream,
+    initSequence: [],
+    commandTimeoutMs: 500,
+  });
+  await adapter.open();
+
+  let reentrant: Promise<string[]> | null = null;
+  // The frame listener plays ISO-TP's part: a frame arrives and the reaction
+  // is another command (the Flow Control send) *while the triggering command
+  // is still waiting for its prompt*.
+  adapter.subscribe(() => {
+    reentrant = adapter.command("ATDP");
+  });
+
+  const first = adapter.command("0100");
+  await untilWritten(stream, "0100");
+  // The device answers with a frame line, prompt still owed.
+  stream.emit("\r7E8 04 41 00 BE 3F\r\n");
+  assert.ok(reentrant !== null, "the frame was dispatched");
+  await Promise.resolve();
+  assert.equal(
+    stream.written.some((line) => line.includes("ATDP")),
+    false,
+    "the re-entrant command stays queued behind the pending one",
+  );
+  stream.emit(">");
+  const firstLines = await first;
+  assert.deepEqual(
+    firstLines,
+    ["7E8 04 41 00 BE 3F"],
+    "clobbering currentLines used to make the triggering command lose its own frame line",
+  );
+  await untilWritten(stream, "ATDP");
+  stream.emit("\rAUTO, ISO 15765-4\r\n>");
+  assert.deepEqual(await reentrant, ["AUTO, ISO 15765-4"]);
+});
+
+test("a timed-out command dies alone: the queued successor still runs", async () => {
+  const stream = new MemoryByteStream();
+  stream.open();
+  const adapter = new Elm327Adapter({
+    stream,
+    initSequence: [],
+    commandTimeoutMs: 40,
+  });
+  await adapter.open();
+
+  const first = adapter.command("ATZ");
+  const second = adapter.command("ATDP");
+  await untilWritten(stream, "ATZ");
+  await assert.rejects(first, /timed out/, "the silent command times out");
+  // The queue survived the timeout: the next command heads to the wire.
+  await untilWritten(stream, "ATDP");
+  stream.emit("\rAUTO, ISO 15765-4\r\n>");
+  assert.deepEqual(await second, ["AUTO, ISO 15765-4"]);
+  assert.ok(
+    adapter.status.errors.some((message) => message.includes("timed out")),
+    "the timeout is on record, not swallowed",
+  );
+});
+
+test("close() fails the active and every queued command with the close as the reason", async () => {
+  const stream = new MemoryByteStream();
+  stream.open();
+  const adapter = new Elm327Adapter({
+    stream,
+    initSequence: [],
+    commandTimeoutMs: 5000,
+  });
+  await adapter.open();
+
+  const first = adapter.command("ATZ");
+  const second = adapter.command("ATDP");
+  await untilWritten(stream, "ATZ");
+  await adapter.close();
+  await assert.rejects(first, /adapter closed/, "the active command fails with the reason");
+  await assert.rejects(second, /adapter closed/, "the queued command fails with the reason");
+  await assert.rejects(
+    adapter.command("ATRV"),
+    /adapter closed/,
+    "a command issued after close fails fast instead of racing the wire",
+  );
+});

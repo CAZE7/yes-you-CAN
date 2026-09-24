@@ -125,3 +125,24 @@ test("registry creates adapters by id and lists them", () => {
   assert.ok(bus instanceof GenericCanAdapter);
   assert.throws(() => registry.create("missing"), /Unknown CAN adapter/);
 });
+
+test("two subscribers see one bus frame counted once, not as two listener deliveries", () => {
+  const bus = new RecordingBus();
+  const adapter = new GenericCanAdapter({ id: "x", displayName: "X", bus });
+  let a = 0;
+  let b = 0;
+  adapter.subscribe(() => {
+    a++;
+  });
+  adapter.subscribe(() => {
+    b++;
+  });
+  bus.emit(createFrame(0x7e0, fromHex("02 3E 80")));
+  assert.deepEqual([a, b], [1, 1], "every subscriber gets the frame");
+  assert.equal(
+    adapter.counters.rx,
+    1,
+    "the bus delivered one frame — the counter belongs to the bus, not to the subscriber count",
+  );
+  assert.equal(bus.listeners.length, 1, "one wrapped subscription serves both listeners");
+});

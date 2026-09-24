@@ -92,6 +92,7 @@ npm run test:coverage # Suite + V8-Coverage — global 90/80/90/90 als Projekt-D
                       # charts/reports/ai (maßgeblich ist vitest.config.ts,
                       # ADR 0017/0020/0022) — grün
 npm run demo          # Workbench mit Simulator auf http://localhost:8080
+npm run adapter:doctor -- --adapter <id> --device <pfad>  # Vorab-Check fürs Hardware-Datum: Einstellungen → Gerät → Handshake/Firmware → Fahrzeugseite, Exit 0/2/3 (docs/adapter-checkliste.md)
 npm run formal:conform # Konformanz-Vektoren gegen TS (und Haskell, wenn Toolchain da — sonst NOT RUN) (ADR 0045)
 npm run architecture:impact -- <datei|paket>  # Betroffene Pakete/ADRs/Tests aus der manifest-Kantengraph (ADR 0046)
 npm run ai:context:changed  # .ai/generated/changed-context.md — Topic-Bundles der geänderten Pakete (ADR 0046)

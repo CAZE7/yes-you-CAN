@@ -54,6 +54,7 @@
     "audit": "npm audit --audit-level=moderate",
     "ci": "npm run build && npm run typecheck && npm run check && npm run check:deps && npm run check:manifests && npm test",
     "demo": "npm run build && node apps/web/dist/src/server.js --demo --sessions=./sessions-local",
+    "adapter:doctor": "npm run build && node apps/web/dist/src/server.js --doctor",
     "check:deps": "node tools/architecture/check-dependencies.mjs",
     "check:manifests": "node tools/architecture/check-package-manifests.mjs",
     "architecture:impact": "node tools/architecture/impact.mjs",

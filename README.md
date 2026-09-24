@@ -3,7 +3,7 @@
 [![CI](https://github.com/CAZE7/yes-you-CAN/actions/workflows/ci.yml/badge.svg)](https://github.com/CAZE7/yes-you-CAN/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](./package.json)
-[![Tests](https://img.shields.io/badge/tests-2569%20passed-brightgreen)](#tests)
+[![Tests](https://img.shields.io/badge/tests-2629%20passed-brightgreen)](#tests)
 [![TypeScript](https://img.shields.io/badge/TypeScript-7%20%2F%20tsgo-blue)](./tsconfig.base.json)
 
 Fahrzeugdiagnose-Plattform: CAN und DoIP lesen, Steuergeräte identifizieren, das
@@ -324,7 +324,7 @@ Zeitraum aus, Doppelklick zeigt die gesamte Aufnahme.
 
 ## Tests
 
-2569 bestandene Tests plus 8 dokumentierte Skips — davon 5 die optionale
+2629 bestandene Tests plus 8 dokumentierte Skips — davon 5 die optionale
 `odxtools`-Gegenprüfung der Ernte, die ohne installierte Bibliothek ehrlich
 überspringt (2575 insgesamt) / 181 geprüfte Dateien von 183 (2 CI-Träger
 überspringen lokal, ADR 0029 §6) (`npm test` in 94 s; `npm run test:coverage`

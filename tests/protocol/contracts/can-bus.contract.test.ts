@@ -212,7 +212,20 @@ const subjects: CanBusSubject[] = [
     create: () => {
       const stream = new MemoryByteStream();
       stream.open();
-      const bus = new CanableAdapter({ stream, channel: "slcan0", logger });
+      // Every Lawicel command is answered: the V query with a text line, the
+      // rest with the empty-CR ack — the open() handshake the adapter proves
+      // its device with needs exactly that to succeed.
+      stream.responder = (command) => {
+        const trimmed = command.replace(/\r$/, "");
+        if (trimmed === "V") return "V0101\r";
+        return "\r";
+      };
+      const bus = new CanableAdapter({
+        stream,
+        channel: "slcan0",
+        logger,
+        commandTimeoutMs: 500,
+      });
       const respond = async (): Promise<void> => {
         for (const [id, payload] of payloads()) {
           const hex = toHex(payload).replace(/ /g, "");

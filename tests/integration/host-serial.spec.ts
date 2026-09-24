@@ -10,6 +10,7 @@
 import assert from "node:assert/strict";
 import { CanableAdapter } from "@vdp/adapter-canable";
 import { configureSerialPort, createHostAdapterCatalog, openSerialStream } from "@vdp/adapter-host";
+import { TransportError } from "@vdp/shared";
 import { createFrame } from "@vdp/transport-can";
 import { test } from "vitest";
 import { createDeviceSide, createPtyPair, hasSocat } from "../helpers/pty.js";
@@ -71,7 +72,7 @@ test.skipIf(!hasSocat())(
   "the slcan adapter drives a real serial port and parses frames coming back",
   async () => {
     const pair = await createPtyPair();
-    const device = createDeviceSide(pair.b);
+    const device = createDeviceSide(pair.b, { slcan: true });
     const _catalog = createHostAdapterCatalog();
     const stream = await openSerialStream({ device: pair.a });
     const adapter = new CanableAdapter({ stream, bitrate: "500k", channel: "slcan-test" });
@@ -86,13 +87,15 @@ test.skipIf(!hasSocat())(
         }),
       );
 
-      // The adapter configures the device before it opens the channel: the init
-      // sequence must reach the wire in order (S6 = 500k, Z1 = timestamps, O = open).
+      // The adapter proves and configures the device before it opens the
+      // channel: V handshake, then S6 = 500k, Z1 = timestamps, O = open.
       await device.waitFor("O");
       const init = device.received.join("");
+      assert.ok(init.indexOf("V") < init.indexOf("S6"), "the version handshake goes first");
       assert.match(init, /S6/, "bitrate command");
       assert.match(init, /Z1/, "timestamp command");
       assert.match(init, /O/, "open channel command");
+      assert.equal(adapter.version, "0101");
 
       // Frame from the ECU side → adapter listener.
       device.write("t7E83023E80\r");
@@ -133,3 +136,54 @@ test.skipIf(!hasSocat())("the catalog creates the adapter it advertised", async 
     pair.dispose();
   }
 });
+
+test.skipIf(!hasSocat())(
+  "slcan open() fails with the handshake reason when the wire stays silent (real serial port)",
+  async () => {
+    // Symptom before the handshake: open() reported success on a silent cable —
+    // the UI said `connected`, no frame ever arrived, and the failure read as a
+    // silent vehicle. Now the missing V-answer fails open() with the cause.
+    const pair = await createPtyPair();
+    const device = createDeviceSide(pair.b); // mode "silent": no answers at all
+    const stream = await openSerialStream({ device: pair.a });
+    const adapter = new CanableAdapter({
+      stream,
+      bitrate: "500k",
+      channel: "slcan-test",
+      commandTimeoutMs: 250,
+    });
+    await assert.rejects(
+      adapter.open(),
+      (error: unknown) =>
+        error instanceof TransportError &&
+        error.message.includes("version query") &&
+        error.message.includes("250 ms"),
+      "expected the handshake timeout to name itself",
+    );
+    assert.equal(adapter.isOpen(), false, "a failed open() must not pretend to be open");
+    await device.close().catch(() => undefined);
+    pair.dispose();
+  },
+);
+
+test.skipIf(!hasSocat())(
+  "the catalog closes a created slcan adapter cleanly even after a failed open()",
+  async () => {
+    const pair = await createPtyPair();
+    const device = createDeviceSide(pair.b);
+    const catalog = createHostAdapterCatalog();
+    const bus = await catalog.require("slcan").create(
+      {
+        device: pair.a,
+        bitrate: "500k",
+      },
+      {},
+    );
+    await assert.rejects(bus.open(), /version query/, {
+      // default commandTimeoutMs is 2 s — plenty for the silent device to be found out
+    } as never);
+    await bus.close();
+    await device.close().catch(() => undefined);
+    pair.dispose();
+  },
+);

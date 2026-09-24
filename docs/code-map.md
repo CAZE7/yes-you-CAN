@@ -16,6 +16,7 @@ nicht diese Datei.
 | NRC / Negativ-Antwort verhalten | `packages/protocols/uds/src/nrc.ts` | `client-engine.ts` (Retry-Logik), `tests/protocol/` |
 | ECU-Session-Verhalten (Timing, S3, TesterPresent) | `packages/protocols/uds/src/session-state.ts` + `timing.ts` | `client.ts` |
 | CAN-Adapter hinzufügen | `packages/adapters/<neuer>/` (neues Workspace-Paket) | `packages/adapters/host/src/catalog.ts` (Probe), `CanAdapterFactory` aus `@vdp/transport-can`, `architecture/architecture.yaml` (Package platzieren!), `package.json` (workspaces) |
+| Adapter-Verbindung vorab prüfen (Hardware-Tag) | `packages/adapters/host/src/doctor.ts` (+ `apps/web/src/doctor-cli.ts`, `npm run adapter:doctor`) | `packages/adapters/host/src/{catalog,serial,socketcan-fallback}.ts`, `docs/adapter-checkliste.md`, `tests/integration/adapter-rehearsal.spec.ts` |
 | Bus-Vertrag ändern | `packages/transport/can/src/bus.ts` | alle Adapter, `packages/core/src/diagnostics/ecu-links.ts`, `architecture.yaml` |
 | ISO-TP-Parameter / Segmentierung | `packages/transport/iso-tp/src/{connection,params}.ts` | `tests/protocol/` |
 | DoIP-Verhalten | `packages/transport/doip/src/` | `packages/runtime/src/transport.ts` (`DoipEcuLinkFactory`), `tests/integration/doip-engine.test.ts` |

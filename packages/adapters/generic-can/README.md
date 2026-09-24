@@ -41,6 +41,8 @@ Workbench/CLI → CanAdapterFactory.create(options) → GenericCanBus → (physi
 
 - **`CanBus`-Vertrag** aus `@vdp/transport-can` — kein zweites Bus-Interface.
 - **Adapter-Kette:** Hardware-Spezifika nur hier (Leitplanke 0.D).
+- **Eine wrapped Subscription statt je Hörer eine:** `rx` zählt *Bus*-Frames,
+  nicht Listener-Auslieferungen — zwei Hörer am selben Frame sind ein Zähler.
 
 ## Tests
 

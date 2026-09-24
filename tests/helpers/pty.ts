@@ -103,13 +103,19 @@ export interface DeviceSideOptions {
   /**
    * Answer every received command line with the ELM327 prompt sequence
    * (`OK\r>`). Needed for adapters that wait for a prompt before the next
-   * command; slcan needs no answers at all.
+   * command.
    */
   respondWithPrompt?: boolean;
+  /**
+   * Answer like a minimal Lawicel device: `V` gets a version line, every other
+   * command gets the empty-CR ack. The slcan open() handshake needs this — a
+   * silent device is a *finding* there, not a working double.
+   */
+  slcan?: boolean;
 }
 
 export function createDeviceSide(device: string, options: DeviceSideOptions = {}): DeviceSide {
-  const mode = options.respondWithPrompt ? "elm327" : "silent";
+  const mode = options.respondWithPrompt ? "elm327" : options.slcan ? "slcan" : "silent";
   const child = spawn(
     process.execPath,
     ["--input-type=module", "-e", DEVICE_SCRIPT, device, mode],
@@ -210,13 +216,20 @@ for (;;) {
     if (bytesRead === 0) break;
     const chunk = buffer.subarray(0, bytesRead);
     process.stdout.write(chunk);
-    if (mode === 'elm327') {
+    if (mode === 'elm327' || mode === 'slcan') {
       commandBuffer += chunk.toString('latin1');
       let index = commandBuffer.indexOf(CR);
       while (index >= 0) {
+        const command = commandBuffer.slice(0, index).toString('latin1');
         commandBuffer = commandBuffer.slice(index + 1);
-        // A real ELM327 answers AT commands with OK and always ends with the '>' prompt.
-        await handle.write(Buffer.from('OK' + CR + '>', 'latin1'));
+        if (mode === 'elm327') {
+          // A real ELM327 answers AT commands with OK and always ends with the '>' prompt.
+          await handle.write(Buffer.from('OK' + CR + '>', 'latin1'));
+        } else {
+          // Lawicel: the version query gets a text line, everything else the empty-CR ack.
+          const reply = command === 'V' ? 'V0101' + CR : CR;
+          await handle.write(Buffer.from(reply, 'latin1'));
+        }
         index = commandBuffer.indexOf(CR);
       }
     }

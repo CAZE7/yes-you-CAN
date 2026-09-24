@@ -34,6 +34,8 @@ export class GenericCanAdapter implements CanBus {
   private readonly log: Logger;
   private txCount = 0;
   private rxCount = 0;
+  private listeners: Array<{ listener: FrameListener; filters?: readonly CanFilter[] }> = [];
+  private unsubscribeWrapped: (() => void) | null = null;
 
   constructor(private readonly options: GenericCanOptions) {
     this.log = (options.logger ?? createLogger("can", { level: "INFO" })).child("can");
@@ -54,6 +56,7 @@ export class GenericCanAdapter implements CanBus {
   }
 
   async close(): Promise<void> {
+    this.detach();
     await this.options.bus.close();
   }
 
@@ -71,11 +74,38 @@ export class GenericCanAdapter implements CanBus {
     await this.options.bus.send(frame);
   }
 
+  /**
+   * One wrapped subscription for everyone, attached on demand: the rx counter
+   * counts *bus* frames, not listener deliveries — two subscribers used to
+   * count the same frame twice, which is a soap bubble, not a measurement.
+   * Filters are still applied, just locally, exactly as the other adapters do.
+   */
   subscribe(listener: FrameListener, filters?: readonly CanFilter[]): () => void {
-    return this.options.bus.subscribe((frame) => {
-      this.rxCount++;
-      listener(frame);
-    }, filters);
+    const entry = { listener, ...(filters ? { filters } : {}) };
+    this.listeners.push(entry);
+    if (!this.unsubscribeWrapped) {
+      this.unsubscribeWrapped = this.options.bus.subscribe((frame) => this.dispatch(frame));
+    }
+    return () => {
+      this.listeners = this.listeners.filter((entry2) => entry2 !== entry);
+      if (this.listeners.length === 0) this.detach();
+    };
+  }
+
+  private dispatch(frame: CanFrame): void {
+    this.rxCount++;
+    for (const entry of this.listeners) {
+      if (entry.filters && entry.filters.length > 0) {
+        const matches = entry.filters.some((f) => (frame.id & f.mask) === (f.id & f.mask));
+        if (!matches) continue;
+      }
+      entry.listener(frame);
+    }
+  }
+
+  private detach(): void {
+    this.unsubscribeWrapped?.();
+    this.unsubscribeWrapped = null;
   }
 
   get counters(): { tx: number; rx: number } {

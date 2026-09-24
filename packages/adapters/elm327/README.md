@@ -45,6 +45,11 @@ Serial-Stream (injectiert) → ELM327-Stream → Protocol → CanFrame → CanBu
 - **Stream injizierbar** (AGENTS 31: kein echter TTY-Test im `unit`-Projekt).
 - **CANable teilt diesen Stream** (`@vdp/adapter-canable` importiert dieses
   Paket) — eine zweite ELM327-Parsing-Kopie ist ein Defekt.
+- **Kommandos sind serialisiert** (Queue in `adapter.ts`): ein ELM327 ist
+  halbduplex — Eingabe im Empfangsfenster eines laufenden Kommandos bricht es
+  mit `STOPPED` ab (PIC18F25K80), und jede Multi-Frame-Antwort starb so als
+  „fälschlich schweigendes Steuergerät“. Regression: PTY-Rehearsal
+  (`tests/integration/adapter-rehearsal.spec.ts`).
 
 ## Tests
 
