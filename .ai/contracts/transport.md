@@ -1,9 +1,9 @@
 # Vertrag: Transport / Adapter
 
 **Verbindliche Quellen:** `packages/transport/*/README.md`,
-[`../docs/api/transport.md`](../docs/api/transport.md),
-[`../docs/flows/diagnostic-read.md`](../docs/flows/diagnostic-read.md),
-ADR 0001/0013/0039, [`../architecture/architecture.yaml`](../architecture/architecture.yaml)
+[`../docs/api/transport.md`](../../docs/api/transport.md),
+[`../docs/flows/diagnostic-read.md`](../../docs/flows/diagnostic-read.md),
+ADR 0001/0013/0039, [`../architecture/architecture.yaml`](../../architecture/architecture.yaml)
 (`@vdp/transport-*`, `@vdp/adapter-*`).
 
 ## Die Regeln, die du nicht brechen darfst

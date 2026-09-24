@@ -47,6 +47,8 @@ export function renderAdapters(payload) {
   device.value = payload.selected.config.device ?? payload.selected.config.channel ?? "";
   input("#adapter-baud").value = String(payload.selected.config.baudRate ?? "");
   input("#adapter-trace").value = payload.selected.config.trace ?? "";
+  const protocol = input("#adapter-protocol");
+  if (protocol) protocol.value = String(payload.selected.config.protocol ?? "");
   device.placeholder = selected?.requires.channel ? "can0" : "/dev/ttyUSB0";
 
   const probe = must("#adapter-probe");
@@ -101,6 +103,9 @@ export function selectionFromForm() {
   const bitrate = select("#adapter-bitrate").value;
   const baud = Number.parseInt(input("#adapter-baud").value, 10);
   const trace = input("#adapter-trace").value.trim();
+  // Only the serial ELM327 speaks ATSP; the field is hidden for every other
+  // adapter, and an empty value means "leave it at the default".
+  const protocol = input("#adapter-protocol")?.value.trim() ?? "";
   if (device) {
     if (entry?.requires.channel) config.channel = device;
     else config.device = device;
@@ -108,6 +113,8 @@ export function selectionFromForm() {
   if (bitrate) config.bitrate = bitrate;
   if (Number.isFinite(baud)) config.baudRate = baud;
   if (trace) config.trace = trace;
+  if (entry?.id === "elm327" && /^[0-9]$/.test(protocol))
+    config.protocol = Number.parseInt(protocol, 10);
   return { id, config };
 }
 

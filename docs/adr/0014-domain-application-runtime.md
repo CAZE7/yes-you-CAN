@@ -92,7 +92,7 @@ Weitere Festlegungen:
   der Zwischenphase und endet mit Phase 4.
 
 - **Die Naht gilt auch für alles, was am Draht beobachtet oder eingreift** (seit
-  2026-09-16, AGENTS 0.E E24): `openBus()` ist der eine Punkt, an dem die Workbench
+  2026-09-16, [AGENTS 0.E](../architecture/backlog.md) E24): `openBus()` ist der eine Punkt, an dem die Workbench
   einen Bus bekommt, und eine Schicht, die den Verkehr stören oder zählen will, muss
   **um** diesen Bus herum gebaut werden — nicht daneben. Ein `CanChaosBus`, den
   `injectChaos()` nach dem Verbinden selbst anlegte, zählte Rahmen, während Runtime,

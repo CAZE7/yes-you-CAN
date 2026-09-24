@@ -349,7 +349,7 @@ export interface ChaosStatusView {
    * `null` means no id was given, and `dropBurstScope` then says whether that was the
    * bus-wide form or nothing armed at all — the panel must not have to guess, because
    * a burst aimed at an id the vehicle does not talk on takes nothing and looks active
-   * either way (AGENTS 0.E E24).
+   * either way (AGENTS 0.E → docs/architecture/backlog.md E24).
    */
   dropBurstTarget: string | null;
   dropBurstScope: "none" | "bus-wide" | "targeted";

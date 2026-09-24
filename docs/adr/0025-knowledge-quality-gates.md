@@ -155,7 +155,7 @@ nicht zufällig, und sie wächst nicht unbeobachtet.
 ## Messwerte
 
 - Suite: **1300 Tests / 90 Dateien in ~25 s grün** (`npm test`; ein bloßes
-  `npx vitest run` meldet 91/1301, weil es `hardware` mitnimmt — AGENTS 0.A).
+  `npx vitest run` meldet 91/1301, weil es `hardware` mitnimmt — [AGENTS 0.A](../architecture/status.md)).
   Coverage global 96,48 Statements / 89,67 Zweige / 97,52 Funktionen /
   97,86 Zeilen; `packages/definitions` 97,91 / 94,15 / 100 / 99,08;
   `validate.ts` 94,22 / 92,06, `json.ts` 98,61 / 94,37, `knowledge.ts`

@@ -14,6 +14,8 @@ import {
   describeAdapterConfig,
   ELM327_DEFAULT_BAUD,
   formatAdapterHelp,
+  isWindowsBareComPort,
+  isWindowsComPortName,
   missingRequiredSettings,
   openSerialStream,
   parseAdapterArgv,
@@ -218,6 +220,92 @@ test("opening a device that does not exist produces an actionable error", async 
 });
 
 /* ------------------------------------------------------------- utilities */
+
+test("a 29-bit vehicle is reachable from the CLI without editing the code", () => {
+  const parsed = parseAdapterArgv(["--adapter=elm327", "--device=/dev/ttyUSB0", "--protocol=7"]);
+  assert.deepEqual(parsed.errors, []);
+  assert.equal(parsed.selection.config.protocol, 7);
+  assert.equal(parsed.selection.config.device, "/dev/ttyUSB0");
+
+  // Both forms, and the refusal: an unknown protocol number must not silently
+  // become 6, because 6 is 11-bit and a 29-bit vehicle would then never answer.
+  const inline = parseAdapterArgv(["--protocol=9"]);
+  assert.equal(inline.selection.config.protocol, 9);
+  const bad = parseAdapterArgv(["--protocol=42"]);
+  assert.equal(bad.selection.config.protocol, undefined, "a bad number does not take effect");
+  assert.match(bad.errors.join(" "), /ISO 15765-4/);
+  const word = parseAdapterArgv(["--protocol=seven"]);
+  assert.match(word.errors.join(" "), /ISO 15765-4/);
+});
+
+test("the protocol survives validation and shows up in the description", () => {
+  const catalog = createHostAdapterCatalog();
+  const { resolved: config } = validateSelection(catalog, {
+    id: "elm327",
+    config: { device: "/dev/ttyUSB0", protocol: 7 },
+  });
+  // The create path is the one that must not drop it: `formatIdentifier` already
+  // follows the frame's width, and `canProtocol` makes the bus the adapter
+  // listens on follow too. `ATSP7` itself is pinned in the adapter's own spec.
+  assert.equal(config.protocol, 7);
+  const described = describeAdapterConfig(catalog.list().find((e) => e.id === "elm327")!, config);
+  assert.match(described, /ISO 15765-4 protocol 7/, `description was: ${described}`);
+
+  // And it crosses the untrusted-body boundary as a number, never as a word.
+  const fromBody = selectionFromPayload({ id: "elm327", device: "COM3", protocol: "9" });
+  assert.equal(fromBody.config.protocol, 9);
+  assert.equal(
+    selectionFromPayload({ id: "elm327", protocol: "seven" }).config.protocol,
+    undefined,
+    "a word is not a protocol number",
+  );
+  assert.equal(
+    selectionFromPayload({ id: "elm327", protocol: 42 }).config.protocol,
+    undefined,
+    "and neither is an out-of-range one",
+  );
+});
+
+test("a Windows COM-port name is recognised in both spellings, and only the bare one is refused", () => {
+  // `fs.stat("COM3")` on Windows throws ENOENT for a port that exists, which the
+  // probe used to report as "is the adapter plugged in?" — an operator sent to
+  // look for a cable that is plugged in. The `\\.\` form the Win32 API wants is
+  // left to the filesystem, which resolves it.
+  assert.equal(isWindowsComPortName("COM3"), true);
+  assert.equal(isWindowsComPortName("com12"), true);
+  assert.equal(isWindowsComPortName("  COM7  "), true, "surrounding space is not a name");
+  assert.equal(isWindowsComPortName("\\\\.\\COM3"), true, "the device-path form is a port too");
+  assert.equal(isWindowsComPortName("COM"), false, "a name with no number is not a port");
+  assert.equal(isWindowsComPortName("COMX"), false);
+  assert.equal(isWindowsComPortName("/dev/ttyUSB0"), false);
+  assert.equal(isWindowsComPortName(""), false);
+
+  // The platform is injectable so the branch is testable from Linux.
+  assert.equal(isWindowsBareComPort("COM3", "win32"), true);
+  assert.equal(isWindowsBareComPort("\\\\.\\COM3", "win32"), false, "already prefixed");
+  assert.equal(isWindowsBareComPort("/dev/ttyUSB0", "win32"), false);
+  assert.equal(
+    isWindowsBareComPort("COM3", "linux"),
+    false,
+    "on POSIX a COM name is just a file name",
+  );
+});
+
+test("on this platform a COM name is answered by the filesystem, not by the Windows branch", async () => {
+  // Whatever platform the suite runs on, the probe must not take the Windows
+  // branch unless it really is Windows — otherwise a POSIX file named `COM3`
+  // would be refused with advice about a device path it does not need.
+  const catalog = createHostAdapterCatalog();
+  const described = await catalog.describe("elm327", { device: "COM3" });
+  if (process.platform === "win32") {
+    assert.equal(described.probe.available, false);
+    assert.match(described.probe.detail, /Windows port name/);
+    assert.match(described.probe.hints?.join(" ") ?? "", /device path/i);
+  } else {
+    assert.match(described.probe.detail, /not usable|is present/);
+    assert.doesNotMatch(described.probe.detail, /Windows port name/);
+  }
+});
 
 test("temporary files are not mistaken for usable serial devices", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vdp-host-"));

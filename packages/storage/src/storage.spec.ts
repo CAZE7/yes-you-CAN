@@ -228,7 +228,7 @@ test("a stored session from an older schema version is upgraded on load", async 
   assert.equal(loaded.appliedMigrations.length, 1);
 });
 
-/* ---------------------------------------- repository edge cases (AGENTS 0.E E4) */
+/* ---------------------------------------- repository edge cases (AGENTS 0.E → docs/architecture/backlog.md E4) */
 
 test("loading a missing or corrupted session fails with a clear StorageError", async () => {
   const root = await mkdtemp(join(tmpdir(), "vdp-storage-load-"));

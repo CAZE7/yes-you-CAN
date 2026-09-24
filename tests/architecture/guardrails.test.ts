@@ -5,16 +5,25 @@
  * proves the *discipline inside* the modules. This file proves the third thing
  * that was missing until 2026-09-14: that the **automatic guardrails still bite**.
  *
- * The situation it fixes: `ci.yml` ran `npm ci` → `npm run build` → `npm test`
+ * The situation it fixed: `ci.yml` ran `npm ci` → `npm run build` → `npm test`
  * only. Biome and both strict `--noEmit` passes were declared in `npm run ci`,
  * but nothing in CI called it, so a spec with a type error or a lint violation
- * could merge green. Workflow files cannot be changed with the current GitHub App
- * installation (`refusing to allow a GitHub App to create or update workflow …`,
- * re-measured 2026-09-14, see AGENTS 0.E E10/E20), so the gates are carried into
- * the test run instead: the `architecture` project runs them here. Measured cost
- * on a warm tree: Biome 0.82 s, `tsconfig.typecheck.json` 0.83 s,
- * `tsconfig.frontend.json` 0.31 s — ≈2 s on a ~21 s suite, and zero on the fast
- * `npm run test:unit` loop, which does not include this project.
+ * could merge green. Workflow files could not be written by the repository's
+ * GitHub App installation (`refusing to allow a GitHub App to create or update
+ * workflow …`, re-measured 2026-09-14 and again on 2026-09-24, see AGENTS 0.E
+ * (docs/architecture/backlog.md) E10/E20), so the gates were carried *into the test
+ * run* instead: the `architecture` project executed them here. Measured cost on a
+ * warm tree: Biome 0.82 s, `tsconfig.typecheck.json` 0.83 s,
+ * `tsconfig.frontend.json` 0.31 s — ≈2 s on a ~21 s suite.
+ *
+ * **That carrier is gone as of 2026-09-24** (ADR 0059): the four hardened
+ * workflows from ADR 0016 §3 are in the repository, pushed by its owner, and
+ * `ci.yml` now runs a quality job that executes every one of these gates itself.
+ * Running them a second time inside the suite is duplication, not a gate — so
+ * what remains here is the part a workflow cannot do for itself: proving that the
+ * workflow *still* carries them. The carrier became a self-description test, which
+ * is exactly the form AGENTS 0.E → docs/architecture/backlog.md E20 asked for once E10 was
+ * resolved. `npm run ci` still executes all of them locally, unchanged.
  *
  * The rules below are deliberately about *policy*, not about style preferences:
  *
@@ -38,7 +47,6 @@
  */
 
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { test } from "vitest";
@@ -373,7 +381,7 @@ const REQUIRED_STRICT_FLAGS = [
 
 /**
  * Flags that are deliberately *not* strict, with the measurement that keeps them
- * open. Turning them on is a task, not a config line (AGENTS 0.E E18/E19).
+ * open. Turning them on is a task, not a config line (AGENTS 0.E → docs/architecture/backlog.md E18/E19).
  *
  * Empty since 2026-09-14: E18 turned `exactOptionalPropertyTypes` on for the whole
  * workspace (88 errors migrated), E19 turned the frontend's `noImplicitAny` on
@@ -450,7 +458,7 @@ test("the workspace inherits strict TypeScript, and every relaxation is on the r
     relaxed,
     [],
     "a type-checking flag was switched off without a measurement — add it to RELAXED_FLAGS " +
-      "with the finding that keeps it open, or turn it on (AGENTS 0.E E18/E19):\n" +
+      "with the finding that keeps it open, or turn it on (AGENTS 0.E → docs/architecture/backlog.md E18/E19):\n" +
       relaxed.join("\n"),
   );
 
@@ -527,100 +535,92 @@ test("the browser project checks the front end against the wire contract", () =>
 
 /* ------------------------------------------------------ 5. the gates actually run */
 
-interface ToolResult {
-  code: number;
-  output: string;
-}
-
-/** Run a workspace binary; never throw, so the assertion can carry the output. */
-function runTool(binary: string, args: readonly string[]): ToolResult {
-  const executable = join(
-    root,
-    "node_modules",
-    ".bin",
-    process.platform === "win32" ? `${binary}.cmd` : binary,
-  );
-  try {
-    const output = execFileSync(executable, args as string[], {
-      cwd: root,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-      shell: process.platform === "win32",
-    });
-    return { code: 0, output };
-  } catch (error) {
-    const failed = error as { status?: number; stdout?: string; stderr?: string };
-    return { code: failed.status ?? 1, output: `${failed.stdout ?? ""}${failed.stderr ?? ""}` };
-  }
-}
-
 /**
- * The gates `npm run ci` declares, executed from inside the test run so that CI
- * (`npm ci` → `build` → `npm test`) enforces them today. `npm run ci` itself is
- * not spawned: it would run this suite again.
+ * Every quality gate has a carrier, and the carrier is named.
+ *
+ * Until 2026-09-24 this test *ran* `biome check .` and both `--noEmit` passes,
+ * because `ci.yml` could not be extended (ADR 0029). The workflow now runs a
+ * quality job that executes them itself, so re-running them here would pay twice
+ * and prove nothing the job does not already prove. What is left is the property
+ * that actually matters: **a gate nobody carries is a wish.** So this test reads
+ * the workflow and asserts that each gate is still invoked — if somebody drops
+ * `npm run check` from the quality job, this fails here rather than in a PR where
+ * a lint violation merges green.
+ *
+ * The mapping is asserted against the workflow text on purpose. Deriving it from
+ * `package.json` would make the test agree with whatever the workflow happens to
+ * say, which is the thing being checked.
  */
-test("the quality gates pass — biome check and both strict noEmit passes", {
-  timeout: 180_000,
-}, () => {
-  const biome = join(root, "node_modules", ".bin", "biome");
-  assert.ok(
-    existsSync(biome) || existsSync(`${biome}.cmd`),
-    "the toolchain is missing — run `npm ci` before the suite (the gates are part of the tests)",
-  );
+test("the workflow still carries every quality gate", () => {
+  const workflow = readFileSync(join(root, ".github", "workflows", "ci.yml"), "utf8");
 
-  const gates: ReadonlyArray<{ label: string; binary: string; args: string[]; hint: string }> = [
+  const gates: ReadonlyArray<{ label: string; pattern: RegExp; why: string }> = [
+    { label: "build", pattern: /npm run build\b/, why: "every project reference must compile" },
     {
-      label: "biome check .",
-      binary: "biome",
-      args: ["check", "."],
-      hint: "run `npm run check:fix` for the automatic part and read the rest",
+      label: "typecheck",
+      pattern: /npm run typecheck(:all)?\b/,
+      why: "the two strict noEmit passes over specs, tests and the checked frontend",
     },
     {
-      label: "tsc --noEmit -p tsconfig.typecheck.json",
-      binary: "tsc",
-      args: ["--noEmit", "-p", "tsconfig.typecheck.json"],
-      hint: "specs, tests and the vitest config must typecheck — `npm run build` does not cover them",
+      label: "biome",
+      pattern: /npm run check\b/,
+      why: "lint and format in one vocabulary (ADR 0029 §1)",
     },
     {
-      label: "tsc --noEmit -p tsconfig.frontend.json",
-      binary: "tsc",
-      args: ["--noEmit", "-p", "tsconfig.frontend.json"],
-      hint: "apps/web/public/*.js is checked JavaScript (checkJs)",
+      label: "dependencies",
+      pattern: /npm run check:deps\b/,
+      why: "the architecture rule in architecture.yaml",
+    },
+    {
+      label: "manifests",
+      pattern: /npm run check:manifests\b/,
+      why: "every package.json must match its imports (ADR 0042)",
+    },
+    {
+      label: "audit",
+      pattern: /npm run audit\b/,
+      why: "a new devDependency with a known vulnerability fails the build",
     },
   ];
 
-  const failures: string[] = [];
-  for (const gate of gates) {
-    const result = runTool(gate.binary, gate.args);
-    if (result.code !== 0) {
-      failures.push(`✗ ${gate.label} — ${gate.hint}\n${result.output.trim()}`);
-    }
-  }
+  const missing = gates
+    .filter((gate) => !gate.pattern.test(workflow))
+    .map((gate) => `✗ ${gate.label} — ${gate.why}`);
 
   assert.deepEqual(
-    failures,
+    missing,
     [],
-    "a guardrail is red — this test exists because CI cannot run `npm run ci` directly " +
-      `(AGENTS 0.E E10/E20):\n\n${failures.join("\n\n")}`,
+    `a quality gate lost its carrier — the quality job in ci.yml must run:\n${missing.join("\n")}\n\n` +
+      "Until 2026-09-24 these gates were executed from inside this suite, because the workflow " +
+      "could not be written. Now that it can, the gate lives there and this test only proves it " +
+      "is still there (AGENTS 0.E → docs/architecture/backlog.md E10/E20).",
   );
 });
 
 /* ------------------------------------------------------------------- 6. CI itself */
 
-test("CI still runs the gate carrier on both Node versions", () => {
+test("CI runs the suite on both Node versions, and the quality gates are not optional", () => {
   const workflow = readFileSync(join(root, ".github", "workflows", "ci.yml"), "utf8");
 
   assert.match(workflow, /npm ci\b/, "CI must install exactly the lockfile");
   assert.match(
     workflow,
     /run: npm test\b/,
-    "CI must run `npm test` — since ADR 0029 that is where the lint and typecheck gates live, " +
-      "so removing it would silently remove them",
+    "CI must run the suite — since ADR 0029 it is also the carrier of the coverage gates",
   );
   assert.match(
     workflow,
     /node-version: \[22, 24\]/,
     "the CI matrix is part of the contract: 22 (engines/.nvmrc) and 24 (next LTS)",
+  );
+
+  // The quality job and the test job are separate legs. Collapsing them into one
+  // would let a red lint run pass because the suite was green — the exact shape
+  // ADR 0016 §3 introduced the quality job to prevent.
+  const qualityJob = /jobs:\n(?:[\s\S]*?\n)? {2}quality:/.exec(workflow);
+  assert.ok(
+    qualityJob !== null,
+    "ci.yml must keep a separate `quality` job before the test matrix",
   );
 });
 

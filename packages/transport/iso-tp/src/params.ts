@@ -40,6 +40,37 @@ export const DEFAULT_TIMING: IsoTpTiming = {
   maxRetries: 0,
 };
 
+/**
+ * Timing for a link whose round trip costs more than a bus cycle: Bluetooth SPP
+ * (RFCOMM) measures 50–150 ms, and an ELM327 that has to switch its transmit
+ * identifier first spends two of those before the payload moves at all.
+ *
+ * `DEFAULT_TIMING` deliberately does not change. One second and no retries is
+ * right for a socket or a USB CANable, and loosening the default would quietly
+ * weaken every test that measures a timeout — a gate that waits longer passes
+ * more easily without anyone deciding that it should. A caller that knows its
+ * link is slow says so:
+ *
+ * ```ts
+ * new IsoTpConnection(bus, { txId: 0x7e0, rxId: 0x7e8, timing: SLOW_LINK_TIMING });
+ * ```
+ *
+ * The numbers are the same three bounds doubled plus a retry, which is what a
+ * 150 ms round trip needs to stay inside N_Bs and N_Cr without turning a real
+ * failure into a slow one.
+ */
+export const SLOW_LINK_TIMING: IsoTpTiming = {
+  nAsMs: 25,
+  sendTimeoutMs: 3000,
+  nBsMs: 2000,
+  nCrMs: 2000,
+  stMinMs: 0,
+  stMinTxMs: 0,
+  blockSize: 0,
+  wftMax: 8,
+  maxRetries: 2,
+};
+
 export interface IsoTpOptions {
   txId: number;
   rxId: number;

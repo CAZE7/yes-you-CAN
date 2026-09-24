@@ -2,12 +2,158 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version tags
 follow SemVer and match the platform version (`package.json`, `PLATFORM_VERSION`).
-The dense German milestone history of the engineering contract lives in `AGENTS.md`;
-this file is the release changelog.
+The dense German milestone history of the engineering contract lives in
+[`docs/changelog/agents-contract.md`](docs/changelog/agents-contract.md) — it was moved out
+of `AGENTS.md` on 2026-09-24 (ADR 0059), because it was 65 % of the bytes of the file and
+none of it was the norm. This file is the release changelog.
 
 ## [Unreleased]
 
+### Changed
+
+- **`AGENTS.md` ist wieder lesbar (ADR 0059).** Gemessen am 2026-09-24: 248.497 Bytes
+  auf 1.461 Zeilen, längste Zeile **7.653 Zeichen**, durchschnittlich 172 Zeichen — und
+  davon 65,3 % Chronik (162.192 B in 61 Versions-Bullets), 14.336 B Abschnitt 0.A
+  „Umsetzungsstand" und 26.684 B 0.E „Offene Verbesserungen". Die eigentliche Norm war
+  42 KB, also **17 %**. Drei Textarten mit drei Halbwertszeiten in einer Datei: die Norm
+  ändert sich bei jeder Entscheidung, Stand und Chronik bei jedem PR. **Ausgelagert,
+  ohne eine Referenz zu brechen:** Chronik →
+  [`docs/changelog/agents-contract.md`](docs/changelog/agents-contract.md), 0.A →
+  [`docs/architecture/status.md`](docs/architecture/status.md), 0.E →
+  [`docs/architecture/backlog.md`](docs/architecture/backlog.md). Die Abschnittsnummern
+  0.A/0.E **bleiben**, damit jedes „AGENTS 0.E E10" in Code-Kommentaren, ADRs und Tests
+  weiter auflösbar ist; 24 Dateien mit solchen Verweisen wurden nachgezogen.
+  **Nach dem Schnitt: 248.497 → 47.526 Bytes (1.461 → 1.298 Zeilen), längste Zeile
+  7.653 → 925.** Kein Satz der Norm wurde umformuliert; die Abschnitte 0–36 stehen
+  unverändert und in derselben Reihenfolge.
+- **Der Rust-Referenz-Crate sagt, was er ist (ADR 0059, [Backlog E25](docs/architecture/backlog.md)).**
+  Nachgemessen am 2026-09-24: drei der fünf in E25 geführten Befunde waren im Code
+  bereits geschlossen (der CAN-FD/32-bit-DL-Kopf von `isotp.rs`, und
+  `safety.rs::execute`, das das Permit-Ablaufdatum vom Aufrufer entgegennahm). Der
+  dritte — „zero-copy"/„zero-allocation" — ist in dieser Runde korrigiert, weil
+  `signal.rs` alloziert (`values.to_vec()`, zweimal `vec![0.0; n]`); `Cargo.toml`,
+  `lib.rs` und der `signal.rs`-Kopf sagen das jetzt, statt es zu behaupten. Neu:
+  `crates/yes_you_can_core/README.md` als Statuslabel (**nicht gebaut, nicht getestet,
+  nicht importiert**) und `tests/architecture/reference-crate.test.ts` als Tor — es
+  hält alle drei Tatsachen fest, scannt `.rs`/`.toml` nach ungemessenen
+  Performance-Claims (eine sich selbst negierende Zeile ist eine Korrektur, kein Claim)
+  und beißt nachweislich (ein wieder eingesetztes „High-Performance" im `lib.rs`-Kopf
+  lässt genau diesen Test fallen). Zwei Lesen-Befunde ohne Toolchain **nicht**
+  behoben, sondern an Datei und Zeile dokumentiert: `isotp.rs:57` panikt bei einer
+  Single Frame mit `SF_DL = 0` (`&data[1..=0]`), und `compute_fft` prüft nicht, dass
+  `timestamps` dieselbe Länge hat wie `values`.
+
+- **Zwei Zahlen in den Akten standen falsch, beide durch Nachmessen gefunden.**
+  (1) **Coverage:** global ist **94,04 / 85,88 / 95,83 / 95,39** (Statements /
+  Branches / Functions / Lines), nicht 93,64 / 85,44 / 95,53 / 94,95 — die alten
+  Zahlen stammen vom 2026-09-23. Der Sprung kommt vom Rebase auf `main`
+  (`flaky-reporter.spec.ts`, 5 Tests) plus den geborgenen Suites aus #36/#37; die
+  letzten beiden Hundertstel darunter sind der neue ELM327-Code, dessen
+  Windows-Zweige auf Linux nicht laufen. (2) **`flaky-reporter.ts` steht nicht bei 0 %.** ADR
+  0027 hatte die 0 % als Beweis dafür genommen, dass nichts die Datei ausführt; mit
+  dem Rebase auf `main` kam `tools/test-reporters/src/flaky-reporter.spec.ts` herein
+  (5 Tests, grün), und die Datei misst **100 % Statements / 86,66 % Zweige**. Der
+  Befund selbst steht unverändert — **keiner der vier CI-Jobs ruft den Reporter auf**
+  (`grep -rn flaky .github/workflows/` trifft nichts), also gibt es keinen einzigen
+  Flaky-Report aus der CI und `retry: isCi ? 2 : 0` bleibt unbewiesen ([Backlog
+  E9](docs/architecture/backlog.md)). Getestet ist sie, aufgerufen wird sie nicht.
+
+- **Ein transienter Bus-Fehler beendete die ganze Anfrage, statt einen Retry zu kaufen
+  ([Backlog E30](docs/architecture/backlog.md)).** Nachdem `send()` ELM-Fehler wirft
+  (E29 Punkt 3), erkannte `isRetryable()` nur noch `IsoTpError` mit `timeout: N_Bs`
+  oder `N_Cr`. `BUS BUSY` und `CAN ERROR` gingen als nicht-retrybar durch — auf
+  Bluetooth SPP mit 50–150 ms Funkverzögerung und Jitter routine, nicht Ausnahme.
+  `SLOW_LINK_TIMING.maxRetries: 2` war für genau diese Fehlerklasse nie wirksam.
+  Behoben in drei Teilen, weil der Fehler an einer Naht lag: `protocol.ts` führt
+  `ELM_TRANSIENT_ERRORS`/`isTransientElmError()` (transient: `NO DATA`, `BUFFER FULL`,
+  `BUS BUSY`, `BUS ERROR`, `CAN ERROR`, `UNABLE TO CONNECT`, `FB ERROR`, `STOPPED`;
+  permanent: `DATA ERROR`, `<DATA ERROR`, `ERR`, `?`); `adapter.ts` gibt
+  `retryable: isTransientElmError(error)` in die `TransportError`-Details; und
+  `isRetryable()` akzeptiert eine `TransportError` mit `details.retryable === true`,
+  wobei `transmit()` die Details des gefangenen Fehlers **verbreitet**, statt sie mit
+  `cause: messageOf(error)` in einen String zu platten — ohne diesen dritten Teil
+  starb das Flag auf dem Weg nach draußen und die ersten beiden Teile waren
+  wirkungslos. Die Aufteilung bleibt Absicht: der Adapter *klassifiziert*, ISO-TP
+  *entscheidet*. Drei Biss-Nachweise: `transmit()`-Verbreitung entfernt → rot,
+  `isRetryable` auf `return false` gezwungen → rot, `"BUS BUSY"` aus der Menge
+  genommen → rot. Zwei neue Tests, 78 grün in `iso-tp` + `elm327`, die Suite
+  insgesamt bei **2569 passed / 8 skipped**.
+
+- **Der ELM327-Pfad lief gegen einen Bluetooth-Adapter, auf vier Ebenen gleichzeitig
+  ([Backlog E29](docs/architecture/backlog.md)).** (1) Die Init-Sequenz schickte
+  `ATS0` — Leerzeichen aus — während `parseFrameLine` auf Leerzeichen splittet und
+  ein Ein-Token-Dokument verwirft: mit `ATS0` wird **jeder** empfangene Frame
+  verworfen. Jetzt `ATS1`. (2) `ATCAF0` fehlte, obwohl der Katalog den Adapter als
+  „raw CAN mode (ATH1/ATCAF0)" beschreibt: mit `CAF1` baut die Adapter-Firmware
+  eigene Flow-Control-Frames und beantwortet die des TypeScript-Stacks. Jetzt
+  dabei. (3) `send()` schluckte `CAN ERROR`/`BUFFER FULL`/`STOPPED` — ISO-TP hielt
+  den Frame für gesendet und wartete auf eine Antwort, die nie angefordert wurde.
+  Jetzt wirft `send()` mit Befehl und Frame-ID. (4) `ATSP6` war eine Konstante,
+  obwohl `formatIdentifier` 29-Bit schon kann: jetzt über `canProtocol`,
+  `--protocol=<6..9>` und ein Feld im Adapter-Panel, durchgereicht bis
+  `selectionFromPayload` (als Zahl, nie als Wort). Dazu: Zeilen enden an `\r\n`,
+  `\n` **und** bare `\r`; `ByteStream.onError?` ist optionaler Vertragsteil, den der
+  Adapter abonniert, damit ein Gerät, das weg ist, nicht weiter `connected: true`
+  meldet; und `SLOW_LINK_TIMING` (N_Bs/N_Cr 2000 ms, sendTimeout 3000 ms, 2 Retries)
+  als benanntes Profil für Bluetooth SPP — `DEFAULT_TIMING` bleibt 1000/0, denn ein
+  Default, der lockerer wird, lässt jedes Timeout-Gate leichter bestehen.
+- **Windows-COM-Ports wurden mit dem falschen Hinweis beantwortet.**
+  `fs.stat("COM3")` wirft unter Windows für jeden existierenden Port ENOENT — das
+  ist dokumentiertes Win32-/`node:fs`-Verhalten, **nicht** in dieser Arbeitsumgebung
+  gemessen (die ist Linux, AGENTS 34.21). Der Probe übersetzte das in „is the adapter plugged in?" — ein Operator sucht
+  nach einem Kabel, das steckt. Neu: `isWindowsComPortName` /
+  `isWindowsBareComPort` (Plattform injizierbar, damit der Zweig von Linux aus
+  testbar ist) und eine Antwort, die den echten Weg nennt — `\\.\COM3`. Die
+  Doku von `SerialStreamOptions.device` versprach vorher `COM3` als Beispiel; sie
+  sagt jetzt die Wahrheit über `node:fs` und über `stty`, das Windows nicht mitbringt.
+
+### Fixed
+
+- **Zehn kaputte relative Markdown-Links** — sechs in `.ai/contracts/*.md`
+  (`../docs/…` wo `../../docs/…` gemeint war) und vier in
+  `docs/standards/conformance.md` (`0053-…`/`0054-…` ohne `../adr/`). Die `.ai/`-Schicht
+  wird aus derselben Regel generiert wie `check:deps` (ADR 0043); eine Vertragsdatei,
+  die ins Nichts zeigt, ist ein Agent, der einem toten Zeiger folgt. Neu verankert als
+  Tor: [`tests/architecture/links.test.ts`](tests/architecture/links.test.ts) prüft alle
+  **443 relativen Links in 148 Markdown-Dateien** und lässt Fences sowie Inline-Code
+  aus — sonst würde das Gate das Dokumentieren der eigenen Syntax verbieten. Biss
+  nachgewiesen an einem Tempfile mit `[gone](./nowhere.md)`.
+
+- **Die Chronik der Spielregeln war zu einem Viertel doppelt.** Beim Auslagern
+  (ADR 0059) fiel auf, dass die 61 Versions-Bullets von `AGENTS.md` nur **46
+  verschiedene Versionen** trugen: 1.0–1.12 und 1.38 standen je zweimal darin. 13
+  der 14 Doppelungen sind byte-identisch und entfernt; bei 1.38 stehen zwei
+  *verschiedene* Einträge unter derselben Nummer — beides eigene Aussagen, beide
+  bleiben stehen (die Kollision ist ein eigener Befund, siehe
+  [Backlog E28](docs/architecture/backlog.md)). Kein Tor hat das bemerkt, weil die
+  Datei 45 KB groß war und niemand sie rückwärts las. Eintrag 1.48 der Chronik.
+
+### Infrastructure
+
+- **Die gehärtete CI aus ADR 0016 §3 liegt im Repository (2026-09-24).** Alle vier
+  Workflows sind auf `main`: `ci.yml` mit **Quality-Job** (`build` · `typecheck:all` ·
+  `check` · `check:deps` · `check:manifests` · `npm audit`) vor der Test-Matrix auf
+  Node 22 und 24 plus Coverage-Artefakt-Upload, dazu `codeql.yml`,
+  `dependency-review.yml` und der nächtliche `hardware.yml`-Smoke auf `vcan0`.
+- **Der Zweitträger fällt weg (ADR 0059).** Von 2026-09-14 bis 2026-09-24 lief `ci.yml`
+  nur mit `npm ci` → `build` → `npm test`, weil die GitHub-App keine Workflow-Dateien
+  schreiben durfte. In dieser Zeit führte der `architecture`-Projektlauf von `npm test`
+  `biome check .` und beide `--noEmit`-Pässe selbst aus (≈2 s auf einen 22,6-s-Lauf).
+  Da der Workflow das jetzt selbst tut, ist dieser Test auf eine reine
+  Selbstbeschreibung zurückgebaut: er liest `ci.yml` und fällt, wenn ein Tor seinen
+  Träger verliert — genau die Form, die [Backlog E20](docs/architecture/backlog.md) für den
+  Moment der Freischaltung vorgesehen hatte. `runTool`/`execFileSync` sind entfallen.
+- **Die Coverage-Gates behalten ihren Träger, und der Grund steht jetzt im Code.**
+  `ci.yml` lädt `coverage/` mit `if: always()` hoch — ein Artefakt, das kommt, ob die
+  Schwellen hielten oder nicht, ist ein Bericht, kein Tor. Getragen wird es von
+  `tests/architecture/coverage-gate.test.ts` (Kindlauf `npm run test:coverage`, nur
+  unter `CI`, Rekursionssperre, `retry: 0`). Der fehlende Workflow-Schritt ist
+  einzeilig und in [`CONTRIBUTING.md`](CONTRIBUTING.md) aufgeschrieben; er braucht
+  jemanden, der `.github/workflows/` schreiben darf — die GitHub-App-Integration kann
+  es weiterhin nicht (gemessen 2026-09-24 per `git push` und per API).
+
 ### Added
+
 
 - **Fahrzeug-Ernte: read-only auslesen, als Beobachtung behalten (ADR 0058).**
   Neues Werkzeug `tools/harvest` (`@vdp/harvest`, layer `tool`): `harvestVehicle()`

@@ -103,6 +103,17 @@ Workflow entfernt, entfernt sonst still die Gates.
 zurückgebaut werden. Für die Coverage-Gates gilt dasselbe Muster seit 2026-09-16 —
 aber als eigener Punkt, weil sie nicht kostenlos sind: §6.
 
+> **Nachtrag 2026-09-24 — dieser Punkt ist erledigt, aber nicht so, wie er hier
+> steht.** Der Quality-Job existiert inzwischen wirklich: `ci.yml` führt `build`,
+> `typecheck:all`, `check`, `check:deps`, `check:manifests` und `npm audit` in
+> einem eigenen Job vor der Test-Matrix. Der Zweitträger, der Biome und beide
+> `--noEmit`-Pässe ein zweites Mal in der Suite ausführte, war damit Doppelung
+> und ist **auf eine Selbstbeschreibung zurückgebaut**: `guardrails.test.ts` liest
+> den Workflow-Text und fällt, wenn eines der Tore seinen Träger verliert. Die
+> Berechtigung selbst ist weiterhin **nicht** da — die Dateien stehen vom Inhaber
+> auf `main` (`f6abf86`), nicht von der App. Details in
+> [E20](../architecture/backlog.md) und [ADR 0059](0059-the-contract-is-readable-again.md).
+
 ### 5. Keine Build-Orchestrierung auf Vorrat (kein Turborepo, kein Nx)
 
 `tsc -b` über 25 Projekte, Biome unter einer Sekunde, Suite ~22 s: es gibt
@@ -221,10 +232,12 @@ der CI-Weg.
   Guardrail-Test ist der Grund, warum die nächste Abschwächung nicht mehr
   unbemerkt passieren kann — und er hat beim Schreiben sofort zwei Format- und
   eine `noUnusedTemplateLiteral`-Verletzung in seinem eigenen PR gefunden.
-- **Was offen bleibt:** E10 (Workflow-Recht), E20 (Workflow führt `npm test`,
-  nicht `npm run ci` — durch §4 heute gleichwertig, aber die Gleichwertigkeit
-  hängt an einem Test), E18/E19 (die zwei gemessenen Strictness-Lücken), E11/E16
-  (Dateien knapp über ihren Coverage-Gates).
+- **Was offen bleibt:** E10 (Workflow-Recht — die Dateien liegen, das Recht
+  weiterhin nicht), E20 (Workflow führt `npm run test:coverage` nicht als
+  eigenen Schritt), E18/E19 (die zwei gemessenen Strictness-Lücken), E11/E16
+  (Dateien knapp über ihren Coverage-Gates). **Nachtrag 2026-09-24:** §4 und §6
+  stehen oben; der §4-Träger ist zurückgebaut, der §6-Träger bleibt, weil ein
+  Artefakt-Upload mit `if: always()` kein Tor ist.
 - **Was ausdrücklich nicht passiert:** keine zusätzliche Tooling-Ebene
   (ESLint, Orchestrator, weitere Scanner) ohne Befund. Reihenfolge bleibt:
   bestehende Architektur → härtere Guardrails → reale Fahrzeugdaten →

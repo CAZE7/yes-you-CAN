@@ -3,12 +3,26 @@
  *
  * The situation this closes: `vitest.config.ts` declares thresholds (90 % lines /
  * 80 % branches / 90 % functions globally, per-file floors per layer — ADR 0027,
- * ADR 0028) that no CI path ever executed. `npm test` runs without `--coverage`, and
- * `.github/workflows/ci.yml` cannot be extended from here: re-measured 2026-09-16,
- * the push is refused with `refusing to allow a GitHub App to create or update
- * workflow '.github/workflows/ci.yml' without 'workflows' permission` (AGENTS 0.E
- * E10/E20). A threshold nobody runs is a wish — it fails neither when coverage
- * drops nor when the floor is lowered, and both directions were open.
+ * ADR 0028) that no CI path ever executed. `npm test` runs without `--coverage`.
+ *
+ * **Measured 2026-09-24 — and this is the one gate that still needs a carrier.** The
+ * four hardened workflows are in the repository since today (ADR 0016 §3, pushed by
+ * its owner), and `ci.yml` runs a quality job that executes Biome, both `--noEmit`
+ * passes, `check:deps`, `check:manifests` and `npm audit` itself — so the carrier that
+ * used to sit in `guardrails.test.ts` became a self-description test (ADR 0059). The
+ * coverage gates have **no** such step: `ci.yml` uploads `coverage/` as an artifact
+ * with `if: always()`, and an artifact that is uploaded whether or not the thresholds
+ * held is a report, not a gate. A threshold nobody runs is a wish — it fails neither
+ * when coverage drops nor when the floor is lowered, and both directions were open.
+ *
+ * So this test keeps carrying it, and that is the honest remaining reason the carrier
+ * exists: the quality gates have a workflow step, the coverage gates have this file.
+ * The workflow cannot be extended from this repository's GitHub App installation —
+ * re-measured 2026-09-24, `git push` is refused with `refusing to allow a GitHub App
+ * to create or update workflow '.github/workflows/ci.yml' without 'workflows'
+ * permission`, and the contents API answers 403 (AGENTS 0.E E10/E20,
+ * `docs/architecture/backlog.md`). The one-line fix — a `run: npm run test:coverage`
+ * step in the `test` job — needs a commit from someone who can write that directory.
  *
  * The shape is the one ADR 0029 §4 used for Biome and TypeScript: put the gate in
  * the test run, because CI does run the tests. Three deliberate differences:

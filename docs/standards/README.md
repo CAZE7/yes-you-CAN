@@ -25,7 +25,10 @@ ist maschinell getornt, `tests/architecture/hygiene.test.ts`), AUTOSAR ebenso.
 
 **Formale Referenzseite: nicht verifiziert.** `npm run formal:conform` meldet
 wörtlich `haskell NOT RUN`, wenn keine GHC-Toolchain da ist; die Rust-Crate ist aus
-demselben Grund unverifiziert (AGENTS 0.E E25, fünf offene Befunde).
+demselben Grund unverifiziert ([AGENTS 0.E](../architecture/backlog.md) E25 — nachgemessen
+2026-09-24: drei der fünf Befunde sind im Code geschlossen, zwei Lesen-Befunde und das
+fehlende `signal.rs`-Test bleiben, und `tests/architecture/reference-crate.test.ts` hält
+den Status als Tor fest).
 
 ## Warum diese Dateien existieren
 

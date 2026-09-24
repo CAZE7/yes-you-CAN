@@ -3,7 +3,7 @@
 [![CI](https://github.com/CAZE7/yes-you-CAN/actions/workflows/ci.yml/badge.svg)](https://github.com/CAZE7/yes-you-CAN/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](./package.json)
-[![Tests](https://img.shields.io/badge/tests-2505%20passed-brightgreen)](#tests)
+[![Tests](https://img.shields.io/badge/tests-2569%20passed-brightgreen)](#tests)
 [![TypeScript](https://img.shields.io/badge/TypeScript-7%20%2F%20tsgo-blue)](./tsconfig.base.json)
 
 Fahrzeugdiagnose-Plattform: CAN und DoIP lesen, Steuergeräte identifizieren, das
@@ -15,8 +15,12 @@ Report exportieren, ohne Real-Fahrzeug testbar. Industriestandard-Toolchain: Typ
 Vitest 5, Biome, tsc-Projekt-Referenzen, Architekturtests, strikte Security-Baseline
 (ADR 0009) und deterministische Simulator/Replay-Tests statt Hardware-Abhängigkeit.
 
-Die Spezifikation liegt in [`AGENTS.md`](AGENTS.md), die Begründungen für den
-Aufbau in [`docs/adr/`](docs/adr/).
+Die Spezifikation liegt in [`AGENTS.md`](AGENTS.md) — seit 2026-09-24 auf die Norm
+reduziert (Chronik, Stand und Backlog stehen in
+[`docs/changelog/agents-contract.md`](docs/changelog/agents-contract.md),
+[`docs/architecture/status.md`](docs/architecture/status.md) und
+[`docs/architecture/backlog.md`](docs/architecture/backlog.md)). Die Begründungen
+für den Aufbau stehen in [`docs/adr/`](docs/adr/).
 
 ## Architektur lesen (auch für AI-Agenten)
 
@@ -262,31 +266,52 @@ npx vitest run packages/storage/src/storage.spec.ts
 npx biome check --write .   # auto-fix
 ```
 
-Qualitätstore: `npm run ci` prüft lokal genau das, was die CI prüft —
-`build` + `typecheck` + `biome check` + die komplette Suite. Der Workflow
-`.github/workflows/ci.yml` läuft auf Node 22 und 24 (`npm ci` → `build` →
-`npm test`).
+Qualitätstore: `npm run ci` prüft lokal genau das, was der Quality-Job der CI prüft —
+`build` + `typecheck` + `biome check` + `check:deps` + `check:manifests` + `audit` —
+plus die komplette Suite. Der Workflow `.github/workflows/ci.yml` läuft auf Node 22
+und 24.
 
-**Seit ADR 0029 (2026-09-14) sind die Gates auch in der CI scharf, ohne dass der
-Workflow geändert werden musste:** der `architecture`-Projektlauf von `npm test`
-führt `biome check .` und beide `--noEmit`-Pässe selbst aus und schlägt mit deren
-Ausgabe fehl (gemessen +2 s auf einen 22,6-s-Lauf). Dazu ist jede Regel, die
+**Die Gates hatten zwei Träger, und der zweite ist seit heute Geschichte (ADR 0029 →
+ADR 0059).** Vom 2026-09-14 bis 2026-09-24 lief `ci.yml` nur mit `npm ci` → `build` →
+`npm test`, weil die GitHub-App keine Workflow-Dateien schreiben durfte. In dieser
+Zeit trugen die Gates einen Zweitträger: der `architecture`-Projektlauf von `npm test`
+führte `biome check .` und beide `--noEmit`-Pässe selbst aus und schlug mit deren
+Ausgabe fehl (gemessen +2 s auf einen 22,6-s-Lauf). Seit heute steht dafür ein
+eigener Quality-Job im Workflow — der Zweitträger ist damit Doppelung, nicht Tor.
+Dazu ist jede Regel, die
 nicht `error` ist, mit Umfang und Messung auf dem Rekord
-(`tests/architecture/guardrails.test.ts`, 0.E E20); Produktionscode hat keinen
-Regel-Ausnahmepfad. Der 57-Punkte-Backlog gegen den gemessenen Stand liegt in
+([`tests/architecture/guardrails.test.ts`](tests/architecture/guardrails.test.ts), [Backlog E20](docs/architecture/backlog.md));
+Produktionscode hat keinen Regel-Ausnahmepfad. Der 57-Punkte-Backlog gegen den gemessenen Stand liegt in
 [`docs/architecture/master-backlog.md`](docs/architecture/master-backlog.md).
 
-**Stand 2026-09-12, bewusst offen (AGENTS 0.E, E10):** die gehärtete CI aus
-ADR 0016 §3 — Quality-Job (`lint` · `build` · `typecheck` · `npm audit`) vor der
-Test-Matrix, Coverage-Lauf mit Artefakt-Upload, `codeql.yml`,
-`dependency-review.yml` und der nächtliche `hardware.yml`-Smoke auf `vcan0` —
-ist fertig entwickelt, aber nicht im Repository: GitHub lehnt den Push von
-Workflow-Dateien ab, solange die GitHub-App-Installation keine
-`workflows`-Berechtigung hat (gemessen 2026-09-12:
-`refusing to allow a GitHub App to create or update workflow
-.github/workflows/ci.yml without 'workflows' permission`). Bis dahin gilt:
-`npm run ci` ist das Tor, nicht der Workflow. Details in
-[`CONTRIBUTING.md`](CONTRIBUTING.md).
+**Stand 2026-09-24 — die gehärtete CI aus ADR 0016 §3 liegt im Repository.** Die vier
+Workflows sind seit heute auf `main`: `ci.yml` mit **Quality-Job** (`build` ·
+`typecheck:all` · `check` · `check:deps` · `check:manifests` · `npm audit`) vor der
+**Test-Matrix** auf Node 22 und 24, plus Coverage-Artefakt-Upload; dazu `codeql.yml`
+(wöchentlich + auf jedem Push), `dependency-review.yml` (schlägt bei einer neuen
+Abhängigkeit mit moderater oder schwererer Verwundbarkeit fehl) und der nächtliche
+`hardware.yml`-Smoke auf `vcan0`.
+
+Zwei Dinge sind trotzdem offen und stehen hier, statt sie zu übergehen:
+
+1. **Die Coverage-Gates haben keinen eigenen Schritt.** `ci.yml` lädt `coverage/` als
+   Artefakt hoch (`if: always()`), aber kein Schritt ruft `npm run test:coverage` als
+   Tor auf. Getragen wird es von `tests/architecture/coverage-gate.test.ts`, das
+   *innerhalb* von `npm test` genau dieses Kommando als Kindlauf startet (nur unter
+   `CI`, mit Rekursionssperre, `retry: 0`) — ein Schritt, der 65 s kostet und den
+   Build tatsächlich rot macht. Ein eigener Schritt wäre die ehrlichere Form; er
+   braucht einen Commit in `.github/workflows/`.
+2. **Die GitHub-App-Integration kann weiterhin keine Workflow-Dateien schreiben.**
+   Gemessen 2026-09-24: `git push` → `refusing to allow a GitHub App to create or
+   update workflow '.github/workflows/ci.yml' without 'workflows' permission`, über
+   die API → `403`. Die vier Dateien sind heute vom Repository-Inhaber direkt
+   gepusht worden; für einen Commit *über die App* fehlt das Recht weiterhin. Wer es
+   freischalten will: GitHub → *Settings → Applications → Arena (GitHub App) →
+   Repository Permissions → **Workflows: Read & write***.
+
+Der Workflow deckt die lokalen Tore jetzt ab — `npm run ci` bleibt trotzdem das
+Tor für einen Commit, denn es ist die einzige Form, die ohne GitHub läuft. Details in
+[`CONTRIBUTING.md`](CONTRIBUTING.md) und [Backlog E10/E20](docs/architecture/backlog.md).
 
 ## Graphen
 
@@ -299,11 +324,11 @@ Zeitraum aus, Doppelklick zeigt die gesamte Aufnahme.
 
 ## Tests
 
-2505 bestandene Tests plus 8 dokumentierte Skips — davon 5 die optionale
+2569 bestandene Tests plus 8 dokumentierte Skips — davon 5 die optionale
 `odxtools`-Gegenprüfung der Ernte, die ohne installierte Bibliothek ehrlich
-überspringt (2513 insgesamt) / 175 geprüfte Dateien von 177 (2 CI-Träger
-überspringen lokal, ADR 0029 §6) (`npm test` in 85 s; `npm run test:coverage`
-in 96 s — gemessen 2026-09-23), Vitest 5 mit
+überspringt (2575 insgesamt) / 181 geprüfte Dateien von 183 (2 CI-Träger
+überspringen lokal, ADR 0029 §6) (`npm test` in 94 s; `npm run test:coverage`
+in 107 s — gemessen 2026-09-24), Vitest 5 mit
 Projektkonfiguration
 (ADR 0010, Schritt 1 — ersetzt ADR 0008). Seit ADR 0043 gehören dazu 18
 ausführbare Doku-Beispiele in `tests/examples/*.example.ts` (Projekt
@@ -311,13 +336,13 @@ ausführbare Doku-Beispiele in `tests/examples/*.example.ts` (Projekt
 `architecture`-Lauf prüft die Struktur *und*
 führt die Quality-Gates aus (ADR 0029) — unter `CI` auch die Coverage-Gates, als
 Kind-Lauf von `npm run test:coverage` (ADR 0029 §6), weil kein Workflow sie selbst
-aufrufen kann (0.E E20) — einschließlich
+aufrufen kann ([Backlog E20](docs/architecture/backlog.md)) — einschließlich
 `npm run check:manifests`, das verlangt, dass jedes `package.json` zu den
 tatsächlichen Importen passt (ADR 0042). Unit-Specs liegen co-lokatiert neben dem
 Code (`src/*.spec.ts`); Property-Tests laufen mit fast-check, Coverage-Gates mit
 `npm run test:coverage` (global 90 % lines / 80 % branches als
-Projekt-Durchschnitt, Ist 93,64 Statements / 85,44 Zweige / 95,53 Funktionen /
-94,95 Zeilen — gemessen am Stand vom 2026-09-23 nach der Ernte (ADR 0058), und die letzten Stellen wandern mit
+Projekt-Durchschnitt, Ist 94,04 Statements / 85,88 Zweige / 95,83 Funktionen /
+95,39 Zeilen — gemessen am Stand vom 2026-09-24 nach der Ernte (ADR 0058), und die letzten Stellen wandern mit
 Last und Node-Version (86,59 bis 86,71 Zweige auf demselben Baum,
 ADR 0029 §6) — seit ADR 0027 wird die ganze
 Fläche gemessen: `packages/**/src`, `apps/web/src/**` und `tools/**`, weil die
@@ -328,8 +353,7 @@ und seit ADR 0027 eine **Bodenschwelle** für `apps/web/src/**`, am 2026-09-16 v
 Workbench (Freeze Frame, Body-Limit, Marker, Adapter-Absagen, dazu die Replay-Quellen, der
 werfende Event-Listener und die Chaos-Arme von `backend.ts`) die dünnsten Dateien gehoben hatten —
 erst Tests, dann Gate (ADR 0017); `tools/**` ist
-gemessen, aber ohne Gate (dort steht `flaky-reporter.ts` bei 0 %, weil kein CI-Job ihn
-aufrufen kann — 0.E E10);
+gemessen, aber ohne Gate (dort steht `flaky-reporter.ts` — von keinem CI-Job aufgerufen, also gibt es keinen einzigen Flaky-Report aus der CI; die Datei selbst ist getestet: 100 % Statements, 86,66 % Zweige — [Backlog E9](docs/architecture/backlog.md));
 
 Hardware-Module `serial`/`binding` ausgenommen — maßgeblich ist
 `vitest.config.ts`, ADR 0017, 0020, 0022 und 0023). Test-Zeit ist ein Budget: Discovery läuft in Tests mit explizitem
@@ -344,7 +368,7 @@ Ebenen nach AGENTS 31:
 | Protokoll | `tests/protocol` |
 | Replay | `tests/replay` |
 | Regression | `tests/regression` |
-| Architektur | `tests/architecture` — Abhängigkeitsgraph ist ein Test (ADR 0015) |
+| Architektur | `tests/architecture` — Abhängigkeitsgraph ist ein Test (ADR 0015); dazu das Link-Gate über alle 443 relativen Markdown-Links (ADR 0059) und das Tor, das den Rust-Referenz-Crate außerhalb jedes Gates hält (E25) |
 | Hardware (vcan) | `tests/hardware` — `vcan0`, nightly/manual (`npm run test:hardware`) |
 
 Der Regressionskatalog dokumentiert jeden gefundenen Fehler mit Symptom. Es
@@ -367,8 +391,8 @@ nicht — der laufende Test schon.
 | `POST /api/simulator/scenario` | ein Szenario auf dem 5-ECU-Fahrzeug laufen lassen (ADR 0040) |
 | `POST /api/vehicle/resolve` | Fahrzeug bestimmen: Kandidaten mit Belegen und Widersprüchen (read-only) |
 | `POST /api/dtc/scan` | Fehlerspeicher lesen — antwortet in zwei Hälften: `dtcs` (die Codes) und `unread` (die Module, die nicht geantwortet haben, mit `ecuName`, `rxId` und Grund). Ein Bus, an dem niemand antwortet, liefert eine leere Code-Liste **und** die Liste der stummen Module; das Panel zählt sie in der Zusammenfassung als ` · N× nicht gelesen` (ADR 0049) |
-| `POST /api/dtc/snapshot` | Freeze Frame zu einem Code lesen: `rxId` als `0x7E8`, `7e8` oder Zahl, `code` Pflicht, Recordnummer optional (Default `0xff`); eine Adresse, die niemand auf dem Bus hat, ist `409` mit Satz, nicht `500` (AGENTS 0.E E23) |
-| `POST /api/chaos/inject` \| `/api/chaos/status` \| `/api/chaos/reset` | Rahmen verwerfen und Sequenzen korrumpieren **auf dem Bus der Sitzung** (seit 1.38; vorher zählte die Schicht nebenan, 0.E E24): `dropBurst` mit oder ohne `dropBurstCanId` (ohne = die nächsten N Rahmen dieser Verbindung), `dropRate` als Bruchteil 0…1, Korruptur je Antwort-Id; `status` meldet Ziel und Reichweite des Bursts (`dropBurstTarget`, `dropBurstScope`), ohne offene Verbindung antwortet der Aufruf `409` mit Satz statt stumm zu tun |
+| `POST /api/dtc/snapshot` | Freeze Frame zu einem Code lesen: `rxId` als `0x7E8`, `7e8` oder Zahl, `code` Pflicht, Recordnummer optional (Default `0xff`); eine Adresse, die niemand auf dem Bus hat, ist `409` mit Satz, nicht `500` ([AGENTS 0.E](docs/architecture/backlog.md) E23) |
+| `POST /api/chaos/inject` \| `/api/chaos/status` \| `/api/chaos/reset` | Rahmen verwerfen und Sequenzen korrumpieren **auf dem Bus der Sitzung** (seit 1.38; vorher zählte die Schicht nebenan, [Backlog E24](docs/architecture/backlog.md)): `dropBurst` mit oder ohne `dropBurstCanId` (ohne = die nächsten N Rahmen dieser Verbindung), `dropRate` als Bruchteil 0…1, Korruptur je Antwort-Id; `status` meldet Ziel und Reichweite des Bursts (`dropBurstTarget`, `dropBurstScope`), ohne offene Verbindung antwortet der Aufruf `409` mit Satz statt stumm zu tun |
 | `POST /api/live/start` \| `/stop` | Live-Messung |
 | `POST /api/analyze` | Analyse (lokaler Regel-Provider) — nennt, über welches Auto sie spricht, auf welcher Fassung sie beruht und welche Belege sie gelesen hat |
 | `POST /api/session/save` | Session persistieren |

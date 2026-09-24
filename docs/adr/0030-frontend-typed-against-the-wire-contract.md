@@ -1,7 +1,7 @@
 # ADR 27 — Das Browser-Frontend wird gegen den Wire-Contract typgeprüft
 
 **Status:** accepted · **Datum:** 2026-09-14 · **Betrifft:** `apps/web`, `tsconfig.frontend.json`,
-`tests/architecture/guardrails.test.ts` · **Löst ein:** E19 (AGENTS 0.E)
+`tests/architecture/guardrails.test.ts` · **Löst ein:** E19 ([AGENTS 0.E](../architecture/backlog.md))
 
 ## Kontext
 

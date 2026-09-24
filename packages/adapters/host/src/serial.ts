@@ -33,7 +33,16 @@ import {
 } from "@vdp/shared";
 
 export interface SerialStreamOptions {
-  /** Character device, e.g. `/dev/ttyUSB0` (Linux) or `COM3` (Windows). */
+  /**
+   * Character device, e.g. `/dev/ttyUSB0` (Linux).
+   *
+   * A Windows COM port is opened through its Win32 device path (`\\.\COM3`),
+   * not through the bare `COM3` name: `node:fs` resolves the first and returns
+   * ENOENT for the second, for every port that exists. The adapter catalog's
+   * probe says so instead of guessing (`isWindowsBareComPort`). Line settings
+   * additionally need `stty`, which Windows does not ship — see
+   * `configureSerialPort`.
+   */
   device: string;
   /** Human readable transport description for the UI adapter panel. */
   label?: string;
@@ -332,6 +341,13 @@ function serialOpenFlags(): number {
  * in a native addon would violate ADR 0002 (no runtime dependencies). `stty` is
  * present on every POSIX system and is the same mechanism a user would apply by
  * hand, which keeps the behaviour inspectable.
+ *
+ * **Windows has no `stty`.** `spawn` fails with ENOENT and this rejects with an
+ * `AdapterUnsupportedError` that names the two ways out — set the line settings
+ * in the device manager, or pass `configure: false`. That is the honest answer
+ * rather than a silent skip: on a Bluetooth RFCOMM port the baud rate is a dummy
+ * parameter anyway (the radio sets the real one), but on a wired ELM327 it is
+ * not, and a port opened at the wrong rate looks exactly like a silent vehicle.
  */
 export async function configureSerialPort(
   device: string,

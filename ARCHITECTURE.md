@@ -339,7 +339,7 @@ npm run ci                                     # alles in einem Tor
 npm run demo                                   # Workbench + Simulator
 ```
 
-Details und die Belege: [AGENTS.md §0.B](AGENTS.md) und ADR 0010/0016/0029.
+Details und die Belege: [AGENTS.md §0.B](AGENTS.md) (der Vertrag) und ADR 0010/0016/0029.
 
 ## 9. Wie diese Datei gepflegt wird
 

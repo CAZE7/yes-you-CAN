@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { fromHex, toHex } from "@vdp/shared";
+import { fromHex, TransportError, toHex } from "@vdp/shared";
 import type {
   AdapterCapabilities,
   AdapterInfo,
@@ -1040,4 +1040,75 @@ describe("ISO-TP wire conformance guards", () => {
     );
     assert.equal(pair.wire.frames.length, 0);
   });
+});
+
+/**
+ * An adapter that refuses every send — the ELM327 adapter on a bad radio day.
+ * `attempts` is what proves whether the retry window was used at all.
+ */
+class FailingBus implements CanBus {
+  readonly info = INFO;
+  readonly capabilities: AdapterCapabilities = {
+    can: true,
+    canFd: false,
+    doip: false,
+    isoTpOffload: false,
+    channels: 1,
+  };
+  attempts = 0;
+
+  constructor(private readonly failure: TransportError) {}
+
+  async open(): Promise<void> {}
+  async close(): Promise<void> {}
+  isOpen(): boolean {
+    return true;
+  }
+  async send(): Promise<void> {
+    this.attempts++;
+    throw this.failure;
+  }
+  subscribe(): () => void {
+    return () => undefined;
+  }
+}
+
+test("an adapter that declares a failure transient buys the configured retries", async () => {
+  // The flag has to cross two boundaries: out of the adapter, and through
+  // transmit()'s own re-wrap. Before this, transmit() rebuilt the error with
+  // `cause: messageOf(...)` — a string — so `retryable` died on the way out and
+  // one transient `BUS BUSY` killed the whole request instead of buying a retry.
+  // `SLOW_LINK_TIMING.maxRetries` only ever applied to N_Bs/N_Cr.
+  const transient = new FailingBus(
+    new TransportError("ELM327 refused the frame: BUS BUSY", {
+      retryable: true,
+      command: "03 22 F1 90",
+    }),
+  );
+  const connection = new IsoTpConnection(transient, {
+    txId: 0x7e0,
+    rxId: 0x7e8,
+    sleep: async () => undefined,
+    timing: { nBsMs: 15, nCrMs: 15, nAsMs: 0, maxRetries: 2 },
+  });
+  connection.open();
+  await assert.rejects(connection.request(fromHex("22 F1 90")), /BUS BUSY/);
+  assert.equal(transient.attempts, 3, "one attempt plus both configured retries");
+  assert.equal(connection.stats.retries, 2);
+
+  const permanent = new FailingBus(
+    new TransportError("ELM327 refused the frame: DATA ERROR", {
+      retryable: false,
+    }),
+  );
+  const strict = new IsoTpConnection(permanent, {
+    txId: 0x7e0,
+    rxId: 0x7e8,
+    sleep: async () => undefined,
+    timing: { nBsMs: 15, nCrMs: 15, nAsMs: 0, maxRetries: 2 },
+  });
+  strict.open();
+  await assert.rejects(strict.request(fromHex("22 F1 90")), /DATA ERROR/);
+  assert.equal(permanent.attempts, 1, "a refusal the adapter calls permanent is not retried");
+  assert.equal(strict.stats.retries, 0);
 });

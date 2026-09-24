@@ -6,6 +6,9 @@ dist/
 .env.*
 !.env.example
 *.log
+# Committed trace fixtures are witnesses, not build output — and `candump -l`
+# writes `*.log`, so the fixtures keep the extension a real log has.
+!tests/fixtures/traces/*.log
 sessions-local/
 harvest-local/
 coverage/

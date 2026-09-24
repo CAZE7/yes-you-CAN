@@ -46,6 +46,7 @@ const ADAPTER_FLAGS = [
   "channel",
   "bitrate",
   "baud",
+  "protocol",
   "trace",
   "listen-only",
   "configure-port",
@@ -108,6 +109,14 @@ export function parseAdapterArgv(
       if (!Number.isFinite(baud) || baud <= 0)
         errors.push(`--baud must be a positive integer, got "${value}"`);
       else config.baudRate = baud;
+    } else if (name === "protocol") {
+      const protocol = Number.parseInt(value, 10);
+      // Fail closed, like `--baud`: an unrecognised protocol number must not
+      // silently become the default, because the default is 11-bit and a
+      // 29-bit vehicle would then never answer.
+      if (!Number.isFinite(protocol) || protocol < 0 || protocol > 9)
+        errors.push(`--protocol must be an ISO 15765-4 number 0-9, got "${value}"`);
+      else config.protocol = protocol;
     }
   }
 
@@ -185,6 +194,13 @@ export function selectionFromPayload(
   if (typeof baud === "number" && Number.isFinite(baud)) config.baudRate = Math.trunc(baud);
   else if (typeof baud === "string" && /^\d+$/.test(baud))
     config.baudRate = Number.parseInt(baud, 10);
+  // Same trust boundary as `baudRate`: an untrusted body gets a *number* or
+  // nothing. A string like "seven" must not reach `ATSP`.
+  const protocol = record["protocol"];
+  if (typeof protocol === "number" && Number.isInteger(protocol) && protocol >= 0 && protocol <= 9)
+    config.protocol = protocol;
+  else if (typeof protocol === "string" && /^\d$/.test(protocol.trim()))
+    config.protocol = Number.parseInt(protocol.trim(), 10);
   return { id: text("id") ?? defaultId, config };
 }
 

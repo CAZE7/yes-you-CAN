@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
-import { AdapterUnsupportedError, fromHex, toHex } from "@vdp/shared";
-import { createFrame } from "@vdp/transport-can";
+import { AdapterUnsupportedError, asError, fromHex, TransportError, toHex } from "@vdp/shared";
+import { type CanFrame, createFrame } from "@vdp/transport-can";
 import { describe, test } from "vitest";
 import {
   assertCanSupport,
+  DEFAULT_INIT_SEQUENCE,
+  ELM_CAN_PROTOCOLS,
   Elm327Adapter,
   formatIdentifier,
   formatSendPayload,
@@ -148,12 +150,107 @@ test("echo frames from cheap clones are suppressed and not dispatched as rx", as
   assert.deepEqual(received, ["0x7e8"]);
 });
 
-test("ELM errors are surfaced in the adapter status, not swallowed", async () => {
+test("an ELM error fails the send and is still on record", async () => {
   const { stream } = createFakeElm({ error: "NO DATA" });
   const adapter = new Elm327Adapter({ stream, commandTimeoutMs: 500 });
   await adapter.open();
-  await adapter.send(createFrame(0x7e0, fromHex("22 F1 90")));
+  // Both halves matter. The throw is the contract: `NO DATA` means the frame
+  // never reached the bus, so returning normally would tell ISO-TP the opposite
+  // and make it wait for an answer nobody was asked for. The record is the
+  // evidence: `status.errors` is what the UI panel and a trace show.
+  await assert.rejects(
+    adapter.send(createFrame(0x7e0, fromHex("22 F1 90"))),
+    (error: unknown) =>
+      error instanceof TransportError &&
+      error.message.includes("NO DATA") &&
+      error.details?.command === "03 22 F1 90" &&
+      error.details?.frameId === 0x7e0,
+    "the refusal names the error and the command that caused it",
+  );
   assert.deepEqual(adapter.status.errors, ["NO DATA"]);
+});
+
+test("the AT init sequence asks for the wire format the parser reads", async () => {
+  // `parseFrameLine` splits on whitespace and needs a two-digit DLC, so the
+  // sequence must ask for spaces (`ATS1`) and must not let the adapter's own
+  // firmware build flow control frames (`ATCAF0`) while the platform runs its
+  // own ISO-TP. These three are one claim: the two ends must agree.
+  const sequence = DEFAULT_INIT_SEQUENCE;
+  assert.ok(sequence.includes("ATS1"), "spaces on — the parser splits on them");
+  assert.ok(!sequence.includes("ATS0"), "spaces off would drop every frame");
+  assert.ok(sequence.includes("ATCAF0"), "auto-formatting off — ISO-TP is ours");
+  assert.ok(sequence.includes("ATH1"), "headers on — no identifier, no frame");
+  assert.ok(sequence.includes("ATSP6"), "11-bit 500 kBaud by default");
+});
+
+test("a 29-bit bus is reachable without editing the default sequence", async () => {
+  const { stream } = createFakeElm();
+  const adapter = new Elm327Adapter({
+    stream,
+    commandTimeoutMs: 500,
+    canProtocol: ELM_CAN_PROTOCOLS.CAN_29BIT_500K,
+  });
+  await adapter.open();
+  const commands = stream.written.map((line) => line.trim());
+  assert.ok(commands.includes("ATSP7"), "protocol 7 is ISO 15765-4, 29-bit");
+  assert.ok(!commands.includes("ATSP6"), "and the 11-bit default is not sent too");
+  // The default is untouched, so the other 2 500 tests that rely on it hold.
+  assert.ok(DEFAULT_INIT_SEQUENCE.includes("ATSP6"));
+});
+
+test("a bare carriage return ends a line as surely as a newline", async () => {
+  // An ELM327 with `ATL0`, and many Bluetooth SPP links, end lines with `\r`
+  // alone and only put the prompt `>` at the very end. Splitting on `\n` alone
+  // then glues both frames into one line, which `parseFrameLine` rejects — the
+  // bus looks silent rather than chatty. Two frames, not one: a single frame
+  // still reaches the parser through the prompt path, which is exactly the
+  // masking that would let this bug survive.
+  const stream = new MemoryByteStream();
+  stream.open();
+  stream.responder = (command) =>
+    command.replace(/\r$/, "").startsWith("AT") ? "OK\r>" : "7E8 03 62 F1 90\r7E9 03 62 F1 91\r>";
+  const adapter = new Elm327Adapter({ stream, commandTimeoutMs: 500 });
+  const frames: CanFrame[] = [];
+  adapter.subscribe((frame) => frames.push(frame));
+  await adapter.open();
+  await adapter.send(createFrame(0x7e0, fromHex("22 F1 90")));
+  assert.equal(frames.length, 2, "both frames arrived, each on its own carriage return");
+  assert.deepEqual([...frames[0]!.payload], [0x62, 0xf1, 0x90]);
+  assert.deepEqual([...frames[1]!.payload], [0x62, 0xf1, 0x91]);
+});
+
+test("a stream that reports its own death takes the adapter down with it", async () => {
+  const stream = new MemoryByteStream();
+  stream.open();
+  let answering = true;
+  stream.responder = (command) => {
+    if (!answering) return null; // the device stopped talking
+    return command.startsWith("AT") ? "OK\r>" : "7E8 03 62 F1 90\r>";
+  };
+  const adapter = new Elm327Adapter({ stream, commandTimeoutMs: 5_000 });
+  await adapter.open();
+  assert.equal(adapter.isOpen(), true);
+
+  // One request in flight — and then the link goes away underneath it. The
+  // point is that it fails *now*, with the stream's own reason, instead of
+  // walking into its own timeout five seconds later.
+  answering = false;
+  const inFlight = adapter.command("ATRV").then(
+    () => {
+      throw new Error("a command whose stream died must not resolve");
+    },
+    (error: unknown) => asError(error),
+  );
+  stream.emitError(new Error("the Bluetooth link dropped"));
+
+  const failure = await inFlight;
+  assert.match(failure.message, /byte stream failed: the Bluetooth link dropped/);
+  assert.equal(adapter.isOpen(), false, "an adapter whose device left is not an adapter");
+  assert.equal(
+    adapter.status.errors.some((entry) => entry.includes("Bluetooth")),
+    true,
+    "the reason is on record, not just the state change",
+  );
 });
 
 test("battery voltage can be read for the safety layer", async () => {
@@ -295,4 +392,45 @@ describe("MemoryByteStream edges", () => {
     await stream.close();
     assert.equal(stream.isOpen(), false);
   });
+});
+
+test("a transient ELM error asks for a retry, a permanent one does not", async () => {
+  // The classification lives here, the decision lives in ISO-TP (`isRetryable`
+  // in connection.ts). This pins the contract between them: an adapter error
+  // that the adapter itself calls transient must carry `retryable: true` into
+  // the details, because that flag is the only channel between the two layers.
+  // Without it a single `BUS BUSY` on a Bluetooth SPP link kills the whole
+  // request instead of buying one more attempt.
+  const transient = [
+    "NO DATA",
+    "BUFFER FULL",
+    "BUS BUSY",
+    "BUS ERROR",
+    "CAN ERROR",
+    "UNABLE TO CONNECT",
+    "FB ERROR",
+    "STOPPED",
+  ];
+  for (const error of transient) {
+    const { stream } = createFakeElm({ error });
+    const adapter = new Elm327Adapter({ stream, commandTimeoutMs: 500 });
+    await adapter.open();
+    await assert.rejects(
+      adapter.send(createFrame(0x7e0, fromHex("22 F1 90"))),
+      (thrown: unknown) => thrown instanceof TransportError && thrown.details?.retryable === true,
+      `${error} must be classified transient`,
+    );
+  }
+
+  const permanent = ["DATA ERROR", "<DATA ERROR", "ERR", "?"];
+  for (const error of permanent) {
+    const { stream } = createFakeElm({ error });
+    const adapter = new Elm327Adapter({ stream, commandTimeoutMs: 500 });
+    await adapter.open();
+    await assert.rejects(
+      adapter.send(createFrame(0x7e0, fromHex("22 F1 90"))),
+      (thrown: unknown) => thrown instanceof TransportError && thrown.details?.retryable === false,
+      `${error} must be classified permanent`,
+    );
+  }
 });

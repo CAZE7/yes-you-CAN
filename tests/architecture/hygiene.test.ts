@@ -312,7 +312,7 @@ test("no debugger statements and no unresolved work markers", () => {
     },
   ];
   assertGate(
-    "work markers must be tracked in AGENTS 0.E, not left in the source",
+    "work markers must be tracked in AGENTS 0.E → docs/architecture/backlog.md, not left in the source",
     findViolations(/\b(?:TODO|FIXME|HACK)\b/g, () => true, selfReference, "raw"),
     selfReference,
   );
@@ -459,7 +459,7 @@ test("modules stay reviewable: no production file above the size budget", () => 
     {
       file: "apps/web/src/backend.ts",
       reason:
-        "1571 lines — split tracked as AGENTS 0.E E15; the wire contract moved to views.ts in " +
+        "1571 lines — split tracked as AGENTS 0.E → docs/architecture/backlog.md E15; the wire contract moved to views.ts in " +
         "E19 (1326 → 1117), `get canBus()` (which nothing had used since the replay suites " +
         "moved to injected buses) is gone (1427 → 1419), and E24's chaos-in-the-path added the " +
         "wrapper in `start()`, the burst target and the refusal before a connection: 1419 → " +
@@ -479,12 +479,15 @@ test("modules stay reviewable: no production file above the size budget", () => 
     {
       file: "packages/transport/iso-tp/src/connection.ts",
       reason:
-        "845 lines — the production N_Cr timer (AGENTS 1.45, tracked as 0.E E26) added " +
+        "861 lines — the production N_Cr timer (AGENTS 1.45, tracked as 0.E E26) added " +
         "60 on 2026-09-23: the `crTimer` field and its doc block, `armCrTimeout()`/`clearCrTimeout()` " +
         "with the timeout callback, the arm points in the First-Frame and Consecutive-Frame branches, " +
         "the disarms in the Single-Frame/completion/sequence-error paths and in `close()`, and the " +
-        "`checkCrTimeout()` doc block: 785 → 845. The split candidate is the timeout machinery as a " +
-        "small collaborator module (rx-state timers); until then the budget only keeps the *rest* " +
+        "`checkCrTimeout()` doc block: 785 → 845. The retry classification (0.E E30) added 16 on " +
+        "2026-09-24: the `VdpError` import, the second half of `isRetryable()` that accepts an " +
+        "adapter-declared transient, and `transmit()` spreading the caught error's `details` instead " +
+        "of flattening them into a string — 845 → 861. The split candidate is the timeout machinery " +
+        "as a small collaborator module (rx-state timers); until then the budget only keeps the *rest* " +
         "from growing unnoticed",
     },
   ];
@@ -520,7 +523,7 @@ test("modules stay reviewable: no production file above the size budget", () => 
 
   // A reason that states a size has to state the *measured* one. Both numbers in
   // this list were prose nobody checked, and they rotted by ~300 and ~550 lines
-  // while the files grew — until one of them was copied into AGENTS 0.E and an ADR
+  // while the files grew — until one of them was copied into AGENTS 0.E → docs/architecture/backlog.md and an ADR
   // (measured 2026-09-16: `backend.ts` claimed 1117 and ran 1420, `app.js` claimed
   // 1097 and ran 1642). An exemption whose evidence is stale is a description of a
   // file that does not exist, and it stops being a reason to allow anything.

@@ -1,11 +1,23 @@
-//! High-Performance Automotive Signal Processing & Anomaly Engine.
+//! Automotive Signal Processing & Anomaly Engine.
 //!
-//! Provides zero-allocation, vectorized statistical computations:
+//! Provides descriptive statistics, a spectrum estimate and a correlation:
 //! - Skewness (Fisher-Pearson coefficient of asymmetry)
 //! - Kurtosis (Fisher's definition with excess kurtosis)
 //! - Radix-2 Cooley-Tukey FFT with Hann Windowing and SNR estimation
-//! - Real-time Hampel filter for anomaly detection
 //! - Cross-signal Pearson correlation coefficient
+//!
+//! ## What this module is not
+//!
+//! - **Not zero-allocation.** `compute_statistics` clones the input to sort it
+//!   (`values.to_vec()`), `compute_fft` allocates its two work buffers
+//!   (`vec![0.0; n]` twice). `cross_correlation` is the only allocation-free
+//!   entry point. The module header used to claim "zero-allocation, vectorized";
+//!   that was a claim without a measurement (AGENTS 0.E E25, finding 2), and it
+//!   is corrected here rather than defended.
+//! - **Not vectorized.** Every loop is scalar. No SIMD intrinsics are used.
+//! - **Not tested.** There is no `#[cfg(test)]` block in this file — see
+//!   `crates/yes_you_can_core/README.md`. A statistic nobody checks is a
+//!   statistic nobody should quote.
 
 use std::f64::consts::PI;
 

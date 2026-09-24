@@ -68,7 +68,7 @@ Zwei Fallen für jeden Checker, der aus diesem Fund einen Guard baut:
 6. **Tsconfig-Referenzen mitziehen**: `apps/web`/`ai`/`reports`/`trace-analyzer`/`oem`/
    `diagnostic-ir`/`transport-doip` — Referenzen sind Build-Reihenfolge und würden nach
    einer Manifestkorrektur eine Kante behaupten, die es nicht mehr gibt.
-7. **Das Tor ist `npm run ci`** (nicht `ci.yml`; AGENTS 0.E E10/E20: Workflow-Dateien sind
+7. **Das Tor ist `npm run ci`** (nicht `ci.yml`; [AGENTS 0.E](../architecture/backlog.md) E10/E20: Workflow-Dateien sind
    mit der aktuellen App nicht schreibbar), und der `architecture`-Testlauf führt das
    Werkzeug aus wie die anderen Gates auch (Muster ADR 0029): pinned wiring + grüner Lauf auf
    diesem Baum + sieben Fixtures, die beweisen, dass es beißt — inklusive der beiden

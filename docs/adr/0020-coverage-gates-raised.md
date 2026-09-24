@@ -1,6 +1,6 @@
 # 0020 — Coverage-Gates nach DoIP- und Chart-Nachtest angehoben
 
-Status: accepted · Datum: 2026-09-12 · Bezug: ADR 0011, 0016 §2, 0017; AGENTS 0.E (E4)
+Status: accepted · Datum: 2026-09-12 · Bezug: ADR 0011, 0016 §2, 0017; [AGENTS 0.E](../architecture/backlog.md) (E4)
 
 ## Kontext
 
@@ -45,7 +45,7 @@ Die nachgetesteten Dateien:
 `core/src/diagnostics/ecu-session.ts` liegt bei 85,6 / 65,3 und
 `adapters/host/src/catalog.ts` bei 68,0 / 48,6 — beide direkt an ihrer Grenze.
 Ihre Anhebung ist erst nach eigenem Nachtest zulässig und steht als offener
-Punkt in AGENTS 0.E.
+Punkt in [AGENTS 0.E](../architecture/backlog.md).
 
 ## Konsequenzen
 
