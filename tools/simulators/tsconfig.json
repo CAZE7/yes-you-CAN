@@ -24,6 +24,9 @@
     },
     {
       "path": "../../packages/core"
+    },
+    {
+      "path": "../../packages/transport/doip"
     }
   ],
   "exclude": ["src/**/*.spec.ts"]

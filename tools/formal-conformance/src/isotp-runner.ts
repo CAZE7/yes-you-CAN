@@ -24,6 +24,7 @@ import {
   type CanBus,
   type CanFilter,
   type CanFrame,
+  type ConnectionStatus,
   createFrame,
   type FrameListener,
 } from "@vdp/transport-can";
@@ -83,6 +84,13 @@ class ScriptedBus implements CanBus {
   }
   isOpen(): boolean {
     return this.opened;
+  }
+  getStatus(): ConnectionStatus {
+    return {
+      state: this.opened ? "connected" : "disconnected",
+      adapterId: "scripted-bus",
+      detail: "formal conformance vector bus",
+    };
   }
   async send(frame: CanFrame): Promise<void> {
     this.sent.push(frame);

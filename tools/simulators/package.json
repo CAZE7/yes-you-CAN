@@ -4,7 +4,7 @@
   "private": true,
   "license": "MIT",
   "type": "module",
-  "description": "Virtual CAN network and virtual vehicle/ECU simulator (AGENTS 32) — no hardware needed for tests or development.",
+  "description": "Virtual CAN network and virtual vehicle/ECU simulator (AGENTS 32) \u2014 no hardware needed for tests or development.",
   "repository": {
     "type": "git",
     "url": "https://github.com/CAZE7/yes-you-CAN.git",
@@ -27,6 +27,7 @@
     "@vdp/transport-iso-tp": "0.1.0",
     "@vdp/protocols-uds": "0.1.0",
     "@vdp/definitions": "0.1.0",
-    "@vdp/core": "0.1.0"
+    "@vdp/core": "0.1.0",
+    "@vdp/transport-doip": "0.1.0"
   }
 }

@@ -33,7 +33,7 @@ import { type DecodedSignal, SignalDecoder } from "../measurements/decoder.js";
 import type { LiveDataEngine } from "../measurements/live.js";
 import { MeasurementRecorder } from "../measurements/recorder.js";
 import { SafetyManager } from "../safety/safety-manager.js";
-import type { EcuSession, VehicleSession } from "../session/session.js";
+import { createSession, type EcuSession, VehicleSession } from "../session/session.js";
 import type { VehicleIdentity } from "../vehicle/identity.js";
 import { deriveTxId } from "./discovery.js";
 import type { DtcScanReport } from "./dtc-access.js";
@@ -88,9 +88,50 @@ export class DiagnosticEngine {
     return result;
   }
 
-  /** Attach one ECU by address — the entry point for DoIP/ethernet (AGENTS 5, 36). */
-  attach(target: EcuTarget & { definitionEcuId?: string }): Promise<EcuHandle> {
-    return this.context.attacher.attachExplicit(target);
+  /**
+   * Attach one ECU by address — the entry point for DoIP/ethernet (AGENTS 5, 36).
+   *
+   * When nothing is connected yet and the transport seam can describe itself
+   * (DoIP does, see {@link EcuLinkFactory.describe}), this opens the session
+   * record the rest of the platform hangs off: the diagnostic IR, the evidence
+   * set, the report and the recording all need a session, and an explicitly
+   * attached ECU used to produce a handle without one — which made the DoIP path
+   * end at the handle (master prompt P2, ADR 0061). A factory that cannot
+   * describe its transport keeps the old behaviour: the raw session record is
+   * absent rather than invented.
+   */
+  async attach(target: EcuTarget & { definitionEcuId?: string }): Promise<EcuHandle> {
+    const handle = await this.context.attacher.attachExplicit(target);
+    if (this.session === null) {
+      const described = this.context.links.describeTransport();
+      if (described === undefined) {
+        this.log.debug("attach without a session record", {
+          rxId: `0x${target.rxId.toString(16)}`,
+          reason: "the link factory does not describe its transport",
+        });
+        return handle;
+      }
+      const activePackage = this.definitions[0];
+      this.session = new VehicleSession(
+        createSession({
+          adapter: described.adapter,
+          transport: described.transport,
+          ...(activePackage
+            ? { definitionPackage: { oem: activePackage.oem, version: activePackage.version } }
+            : {}),
+          ...(this.options.platformVersion !== undefined
+            ? { platformVersion: this.options.platformVersion }
+            : {}),
+          ...(this.options.clock ? { clock: this.options.clock } : {}),
+        }),
+      );
+      this.log.info("session opened by an explicit attach", {
+        transport: described.transport.kind,
+        channel: described.transport.channel,
+      });
+    }
+    this.session.upsertEcu(handle.session.record);
+    return handle;
   }
 
   async disconnect(): Promise<void> {

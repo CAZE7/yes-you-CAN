@@ -5,16 +5,17 @@
  * The frame layer stays dumb — no ISO-TP, no UDS (AGENTS 6).
  */
 
-import { createLogger, type Logger, TransportError } from "@vdp/shared";
+import { createLogger, type Logger, messageOf, TransportError } from "@vdp/shared";
 import type {
   AdapterCapabilities,
   AdapterInfo,
   CanBus,
   CanFilter,
   CanFrame,
+  ConnectionStatus,
   FrameListener,
 } from "@vdp/transport-can";
-import { frameMatchesFilters } from "@vdp/transport-can";
+import { ConnectionTracker, frameMatchesFilters } from "@vdp/transport-can";
 import type { SocketCanBinding, SocketCanChannel, SocketCanFrameData } from "./binding.js";
 
 export interface SocketCanOptions {
@@ -49,8 +50,8 @@ export class SocketCanAdapter implements CanBus {
   private channel: SocketCanChannel | null = null;
   private listeners: Array<{ listener: FrameListener; filters?: readonly CanFilter[] }> = [];
   private unsubscribe: (() => void) | null = null;
-  private txCount = 0;
-  private rxCount = 0;
+  /** The link's state, reason and counters (master prompt P1). */
+  private readonly connection: ConnectionTracker;
 
   constructor(private readonly options: SocketCanOptions) {
     this.iface = options.iface ?? "can0";
@@ -61,6 +62,10 @@ export class SocketCanAdapter implements CanBus {
       name: `SocketCAN ${this.iface}`,
       channels: [this.iface],
     };
+    this.connection = new ConnectionTracker({
+      adapterId: this.info.id,
+      detail: `${this.info.name} (${options.binding.name})`,
+    });
     this.capabilities = {
       can: true,
       canFd: options.canFd ?? false,
@@ -73,14 +78,27 @@ export class SocketCanAdapter implements CanBus {
 
   async open(): Promise<void> {
     if (this.channel) return;
-    const channel = await this.options.binding.open(this.iface);
-    if (this.options.bitrate && channel.setBitrate) await channel.setBitrate(this.options.bitrate);
+    this.connection.connect(`opening ${this.iface} through ${this.options.binding.name}`);
+    let channel: SocketCanChannel;
+    try {
+      channel = await this.options.binding.open(this.iface);
+      if (this.options.bitrate && channel.setBitrate)
+        await channel.setBitrate(this.options.bitrate);
+    } catch (error) {
+      // Interface missing, permission denied, bitrate refused: the link is not
+      // there and the reason has to survive (master prompt P1).
+      this.connection.fail(`cannot open ${this.iface}: ${messageOf(error)}`);
+      throw error;
+    }
     this.unsubscribe = channel.onData((frame) => this.handleFrame(frame));
     this.channel = channel;
     this.log.info("SocketCAN channel opened", {
       iface: this.iface,
       binding: this.options.binding.name,
     });
+    this.connection.connected(
+      `${this.info.name} (${this.options.binding.name}${this.options.bitrate ? `, ${this.options.bitrate} bit/s` : ""})`,
+    );
   }
 
   async close(): Promise<void> {
@@ -89,6 +107,7 @@ export class SocketCanAdapter implements CanBus {
     await this.channel?.close();
     this.channel = null;
     this.listeners = [];
+    this.connection.disconnected("closed by the caller");
   }
 
   isOpen(): boolean {
@@ -99,17 +118,26 @@ export class SocketCanAdapter implements CanBus {
     if (!this.channel) throw new TransportError("SocketCAN channel is not open");
     if (frame.fd && !this.capabilities.canFd)
       throw new TransportError("CAN-FD frame sent to a CAN-FD incapable interface");
-    this.txCount++;
     // fd/brs travel with the frame: a binding that supports CAN-FD needs them,
     // and silently dropping them is how a 64-byte ISO-TP FD segment ends up on
     // the wire as a classic frame the kernel has to refuse (ISO 11898-1).
-    await this.channel.send({
-      id: frame.id,
-      extended: frame.extended,
-      data: frame.payload,
-      fd: frame.fd,
-      ...(frame.brs === undefined ? {} : { brs: frame.brs }),
-    });
+    this.connection.report({ tx: 1, at: Date.now() });
+    try {
+      await this.channel.send({
+        id: frame.id,
+        extended: frame.extended,
+        data: frame.payload,
+        fd: frame.fd,
+        ...(frame.brs === undefined ? {} : { brs: frame.brs }),
+      });
+    } catch (error) {
+      // The kernel refused the frame while the socket is still open (bus off,
+      // a full queue, a vanished interface reported per write). That is a
+      // degradation of a link that is still there — the next frame that goes
+      // through clears it, and the reason stays readable until then.
+      this.connection.degraded(`send refused by the kernel: ${messageOf(error)}`);
+      throw error;
+    }
   }
 
   subscribe(listener: FrameListener, filters?: readonly CanFilter[]): () => void {
@@ -121,11 +149,18 @@ export class SocketCanAdapter implements CanBus {
   }
 
   get counters(): { tx: number; rx: number } {
-    return { tx: this.txCount, rx: this.rxCount };
+    const status = this.connection.status();
+    return { tx: status.txCount ?? 0, rx: status.rxCount ?? 0 };
+  }
+
+  /** The link state, its reason, when it was entered and the frame counters. */
+  getStatus(): ConnectionStatus {
+    return this.connection.status();
   }
 
   private handleFrame(frame: SocketCanFrameData): void {
-    this.rxCount++;
+    this.connection.report({ rx: 1, at: Date.now() });
+    this.connection.healthy("frames are arriving again");
     const canFrame: CanFrame = {
       timestamp: Date.now(),
       id: frame.id,

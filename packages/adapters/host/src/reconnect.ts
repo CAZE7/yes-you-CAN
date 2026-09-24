@@ -34,33 +34,33 @@
  */
 
 import {
-  AdapterUnsupportedError,
   asError,
   createLogger,
+  DEFAULT_RECONNECT_POLICY,
   type Logger,
   messageOf,
+  type ReconnectPolicy,
 } from "@vdp/shared";
-import type { CanBus, CanFilter, CanFrame, FrameListener } from "@vdp/transport-can";
 
-/** The reconnect policy of a supervised serial bus. Bounded and named, never a loop. */
-export interface ReconnectPolicy {
-  /**
-   * Reconnect attempts per link loss. `0` disables the supervisor entirely
-   * (the final state of today, immediately). Finite by contract: the catalog
-   * refuses values above `MAX_RECONNECT_ATTEMPTS`.
-   */
-  attempts: number;
-  /** Wait before each attempt — the operator's window to replug the device. */
-  delayMs: number;
-}
+// The policy vocabulary lives in the foundation layer, because DoIP needs the
+// same rule for its connection (ADR 0061). Re-exported here so every existing
+// import of this module keeps working — the names did not move for callers.
+export {
+  DEFAULT_RECONNECT_POLICY,
+  MAX_RECONNECT_ATTEMPTS,
+  MAX_RECONNECT_DELAY_MS,
+  type ReconnectPolicy,
+  reconnectPolicyOf,
+} from "@vdp/shared";
 
-/** One attempt after two seconds: enough to notice a replug, small enough to stay honest. */
-export const DEFAULT_RECONNECT_POLICY: ReconnectPolicy = { attempts: 1, delayMs: 2000 };
-
-/** The policy is bounded by contract; this is the bound (a loop in config is still a loop). */
-export const MAX_RECONNECT_ATTEMPTS = 10;
-/** Likewise the delay: an hour of "reconnecting" is a dead bus wearing a heartbeat. */
-export const MAX_RECONNECT_DELAY_MS = 60_000;
+import {
+  type CanBus,
+  type CanFilter,
+  type CanFrame,
+  type ConnectionStatus,
+  ConnectionTracker,
+  type FrameListener,
+} from "@vdp/transport-can";
 
 /**
  * The stream surface the supervisor needs — `SerialByteStream` satisfies it.
@@ -85,26 +85,6 @@ export interface SupervisedBusOptions {
   logger?: Logger;
 }
 
-/** Resolve the policy from adapter config values, refusing unbounded input. */
-export function reconnectPolicyOf(config: {
-  reconnectAttempts?: number;
-  reconnectDelayMs?: number;
-}): ReconnectPolicy {
-  const attempts = config.reconnectAttempts ?? DEFAULT_RECONNECT_POLICY.attempts;
-  const delayMs = config.reconnectDelayMs ?? DEFAULT_RECONNECT_POLICY.delayMs;
-  if (!Number.isInteger(attempts) || attempts < 0 || attempts > MAX_RECONNECT_ATTEMPTS) {
-    throw new AdapterUnsupportedError(
-      `reconnectAttempts must be an integer between 0 and ${MAX_RECONNECT_ATTEMPTS}, got ${String(config.reconnectAttempts)}`,
-    );
-  }
-  if (!Number.isInteger(delayMs) || delayMs < 0 || delayMs > MAX_RECONNECT_DELAY_MS) {
-    throw new AdapterUnsupportedError(
-      `reconnectDelayMs must be an integer between 0 and ${MAX_RECONNECT_DELAY_MS}, got ${String(config.reconnectDelayMs)}`,
-    );
-  }
-  return { attempts, delayMs };
-}
-
 /** One subscription made through the wrapper, so a revival can re-register it. */
 interface Registration {
   listener: FrameListener;
@@ -126,6 +106,20 @@ export async function superviseSerialBus(options: SupervisedBusOptions): Promise
   let closing = false;
   let attemptsSpent = 0;
   let timer: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * The supervisor's own state during an incident (master prompt P1).
+   *
+   * Without a link the bus below is closed and reports only that; the two things
+   * only this policy knows — "a revival is in flight" and "the budget is spent"
+   * — are exactly the states `recovering` and `error` exist for. Outside an
+   * incident the supervisor stays a pure passthrough and reports the state of
+   * the adapter it currently wraps.
+   */
+  const supervision = new ConnectionTracker({
+    adapterId: options.adapterId,
+    detail: `${options.adapterId} (supervised, ${policy.attempts} reconnect attempt(s), ${policy.delayMs} ms)`,
+  });
+  let incident = false;
 
   const watchStream = (): void => {
     current.stream.onError((error) => {
@@ -139,15 +133,18 @@ export async function superviseSerialBus(options: SupervisedBusOptions): Promise
 
   const onStreamDeath = (error: Error): void => {
     if (closing) return;
+    incident = true;
     if (attemptsSpent >= policy.attempts) {
       log.warn("adapter link is down — no reconnect attempt left", {
         adapter: options.adapterId,
         reason: messageOf(error),
         attempts: policy.attempts,
       });
+      supervision.fail(`link lost and no reconnect attempt left: ${messageOf(error)}`);
       return;
     }
     attemptsSpent++;
+    supervision.recovering(`link lost (${messageOf(error)}) — reconnect scheduled`);
     log.warn("adapter link lost — reconnect scheduled", {
       adapter: options.adapterId,
       reason: messageOf(error),
@@ -161,8 +158,11 @@ export async function superviseSerialBus(options: SupervisedBusOptions): Promise
     }, policy.delayMs);
   };
 
+  // `close()` cancels the pending timer (and `onStreamDeath` refuses to schedule
+  // one afterwards), so this function cannot start after the session ended —
+  // there is deliberately no "closing" guard at the top. What can happen is
+  // `close()` *during* the rebuild, and that case is handled below.
   const revive = async (reason: string): Promise<void> => {
-    if (closing) return;
     // A pair that was built but not adopted must give its descriptor back —
     // `open()` runs the init sequence and can legitimately fail on a device
     // that reappeared but does not answer yet.
@@ -187,6 +187,11 @@ export async function superviseSerialBus(options: SupervisedBusOptions): Promise
       current = pair;
       watchStream();
       attemptsSpent = 0;
+      incident = false;
+      supervision.connected(
+        `${pair.bus.info.name} (revived by the reconnect policy)`,
+        `link restored after ${reason}`,
+      );
       log.info("adapter link restored", {
         adapter: options.adapterId,
         reason,
@@ -224,6 +229,15 @@ export async function superviseSerialBus(options: SupervisedBusOptions): Promise
     },
     open: () => current.bus.open(),
     isOpen: () => current.bus.isOpen(),
+    // During an incident the supervisor's own state is the truth (the adapter
+    // below is closed and can only say "disconnected"); outside one, the honest
+    // answer is the wrapped adapter's (master prompt P1). Either way the id is
+    // the selected adapter's: this wrapper is the object the platform holds, and
+    // a technician picked `elm327`, not `fake`.
+    getStatus: (): ConnectionStatus => ({
+      ...(incident ? supervision.status() : current.bus.getStatus()),
+      adapterId: options.adapterId,
+    }),
     send: (frame: CanFrame) => current.bus.send(frame),
     subscribe: (listener: FrameListener, filters?: readonly CanFilter[]) => {
       const registration: Registration = {
@@ -241,6 +255,7 @@ export async function superviseSerialBus(options: SupervisedBusOptions): Promise
     },
     close: async () => {
       closing = true;
+      incident = false;
       if (timer !== null) {
         clearTimeout(timer);
         timer = null;

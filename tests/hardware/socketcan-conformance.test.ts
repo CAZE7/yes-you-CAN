@@ -85,6 +85,7 @@ class SocketCanPair implements ConformancePair {
       capabilities: t.capabilities,
       open: () => t.open(),
       close: () => t.close(),
+      getStatus: () => t.getStatus(),
       isOpen: () => t.isOpen(),
       async send(frame: CanFrame): Promise<void> {
         await t.send(frame);

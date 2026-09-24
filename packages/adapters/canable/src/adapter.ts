@@ -11,9 +11,10 @@ import type {
   CanBus,
   CanFilter,
   CanFrame,
+  ConnectionStatus,
   FrameListener,
 } from "@vdp/transport-can";
-import { frameMatchesFilters } from "@vdp/transport-can";
+import { ConnectionTracker, frameMatchesFilters } from "@vdp/transport-can";
 import {
   BITRATES,
   formatSlcanFrame,
@@ -87,9 +88,9 @@ export class CanableAdapter implements CanBus {
   private unsubscribeStream: (() => void) | null = null;
   private unsubscribeError: (() => void) | null = null;
   private opened = false;
-  private txCount = 0;
-  private rxCount = 0;
   private errors = 0;
+  /** The link's state, reason and counters (master prompt P1). */
+  private readonly connection: ConnectionTracker;
 
   constructor(private readonly options: CanableOptions) {
     this.channel = options.channel ?? "slcan0";
@@ -103,10 +104,15 @@ export class CanableAdapter implements CanBus {
       name: options.name ?? "CANable (slcan)",
       channels: [this.channel],
     };
+    this.connection = new ConnectionTracker({
+      adapterId: this.info.id,
+      detail: `${this.info.name} @ ${this.channel}`,
+    });
   }
 
   async open(): Promise<void> {
     if (this.opened) return;
+    this.connection.connect("running the slcan handshake (V, bitrate, open)");
     this.unsubscribeStream = this.options.stream.onData((chunk) => this.onChunk(chunk));
     // A stream that reports its own death must not leave this adapter claiming
     // to be open (same contract as the ELM327 adapter): without this, a pulled
@@ -122,9 +128,17 @@ export class CanableAdapter implements CanBus {
     try {
       await this.handshakeAndConfigure();
     } catch (error) {
+      // close() clears the subscriptions and the pending command; the state is
+      // set *after* it, because a failed handshake is an error and not a clean
+      // close — a silent cable, a wrong baud rate and a foreign device all have
+      // to leave `error` with their own reason behind (master prompt P1).
       await this.close();
+      this.connection.fail(`slcan handshake failed: ${messageOf(error)}`);
       throw error;
     }
+    this.connection.connected(
+      `${this.info.name}${this.version ? ` ${this.version}` : ""} @ ${this.channel} (${this.bitrate}${this.listenOnly ? ", listen-only" : ""})`,
+    );
   }
 
   /** V handshake, then the channel setup — see {@link open} for the failure contract. */
@@ -191,6 +205,7 @@ export class CanableAdapter implements CanBus {
     this.opened = false;
     this.listeners = [];
     this.failPending(new TransportError("slcan adapter closed"));
+    this.connection.disconnected("closed by the caller");
   }
 
   /**
@@ -202,6 +217,8 @@ export class CanableAdapter implements CanBus {
     this.log.warn("the byte stream reported an error", { error: messageOf(error) });
     this.opened = false;
     this.failPending(new TransportError(`slcan link failed: ${messageOf(error)}`));
+    // The device is gone; only a reconnect policy or a human changes that.
+    this.connection.fail(`slcan link failed: ${messageOf(error)}`);
   }
 
   isOpen(): boolean {
@@ -217,7 +234,7 @@ export class CanableAdapter implements CanBus {
   async send(frame: CanFrame): Promise<void> {
     if (!this.opened) throw new TransportError("slcan adapter is not open");
     if (frame.fd) throw new TransportError("slcan does not support CAN-FD");
-    this.txCount++;
+    this.connection.report({ tx: 1, at: Date.now() });
     await this.write(formatSlcanFrame(frame));
   }
 
@@ -230,7 +247,13 @@ export class CanableAdapter implements CanBus {
   }
 
   get counters(): { tx: number; rx: number; errors: number } {
-    return { tx: this.txCount, rx: this.rxCount, errors: this.errors };
+    const status = this.connection.status();
+    return { tx: status.txCount ?? 0, rx: status.rxCount ?? 0, errors: this.errors };
+  }
+
+  /** The link state, its reason, when it was entered and the frame counters. */
+  getStatus(): ConnectionStatus {
+    return this.connection.status();
   }
 
   /** Run a config command and wait for its empty ack line (CR) or its refusal (BEL). */
@@ -309,6 +332,8 @@ export class CanableAdapter implements CanBus {
     if (isSlcanError(chunk)) {
       this.errors++;
       this.log.warn("slcan reported BEL (command error)");
+      // BEL means the device is there and said no: `degraded`, not `error`.
+      this.connection.degraded("slcan reported BEL (command refused)");
       const pending = this.pending;
       if (pending) {
         this.failPending(
@@ -337,7 +362,9 @@ export class CanableAdapter implements CanBus {
     if (line.trim().length === 0) return;
     const frame = parseSlcanLine(line, this.channel);
     if (!frame) return;
-    this.rxCount++;
+    this.connection.report({ rx: 1, at: Date.now() });
+    // Frames are flowing again: a `degraded` channel is back to normal.
+    this.connection.healthy("frames are arriving again");
     this.log.raw("slcan rx", { id: `0x${frame.id.toString(16)}`, payload: frame.payload });
     // One filter vocabulary for every adapter (`frameMatchesFilters`), so a
     // filter that states `extended` means it on this adapter too.

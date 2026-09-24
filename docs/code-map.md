@@ -19,8 +19,12 @@ nicht diese Datei.
 | Seriell-Verbindung begrenzt wieder aufnehmen (E34) | `packages/adapters/host/src/reconnect.ts` (`superviseSerialBus`, Policy `reconnectAttempts`/`reconnectDelayMs`) | `packages/adapters/host/src/catalog.ts` (elm327/slcan create), `packages/adapters/host/src/selection.ts` (Flags), `tests/integration/adapter-rehearsal.spec.ts` (PTY-Beweis) |
 | Adapter-Verbindung vorab prüfen (Hardware-Tag) | `packages/adapters/host/src/doctor.ts` (+ `apps/web/src/doctor-cli.ts`, `npm run adapter:doctor`; im Arbeitsplatz: `apps/web/src/adapter-routes.ts` `POST /api/adapter/doctor`) | `packages/adapters/host/src/{catalog,serial,socketcan-fallback}.ts`, `docs/adapter-checkliste.md`, `tests/integration/adapter-rehearsal.spec.ts` |
 | Bus-Vertrag ändern | `packages/transport/can/src/bus.ts` | alle Adapter, `packages/core/src/diagnostics/ecu-links.ts`, `architecture.yaml` |
+| Adapter-Zustand / „warum ist der Link weg?“ | `packages/transport/can/src/connection.ts` (`AdapterConnectionState`, `ConnectionTracker`) | jeder Adapter (`getStatus()`), `packages/adapters/host/src/reconnect.ts` (`recovering`/`error`), `apps/web/src/backend.ts` (`state().connection`), Panel in `apps/web/public/app.js`, ADR 0060 |
 | ISO-TP-Parameter / Segmentierung | `packages/transport/iso-tp/src/{connection,params}.ts` | `tests/protocol/` |
-| DoIP-Verhalten | `packages/transport/doip/src/` | `packages/runtime/src/transport.ts` (`DoipEcuLinkFactory`), `tests/integration/doip-engine.test.ts` |
+| DoIP-Verhalten | `packages/transport/doip/src/` | `packages/runtime/src/transport.ts` (`DoipEcuLinkFactory`, `SupervisedDoipLink`), `tests/integration/doip-engine.test.ts`, `tests/integration/doip-pipeline.test.ts`, ADR 0061 |
+| DoIP-Socket (real) / Discovery-Socket | `packages/adapters/host/src/doip-socket.ts` | `@vdp/transport-doip` (die Verträge `DoipSocket`/`DoipDatagramSocket`), ADR 0061 |
+| Virtuelle DoIP-Entity (Test/Demo) | `tools/simulators/src/doip-entity.ts` | `tools/simulators/src/index.ts`, `tests/integration/doip-pipeline.test.ts` |
+| Eine Sitzung für explizit angebundene ECUs | `packages/core/src/diagnostics/engine.ts` (`attach()`) + `ecu-links.ts` (`EcuLinkFactory.describe()`) | `packages/runtime/src/transport.ts` (`describe()`), ADR 0061 |
 | Neues IR-Objekt / neue Observations-Form | `packages/diagnostic-ir/src/` (neues Modul + Export in `index.ts`) | `packages/core/src/session/observation.ts` (Erzeugung), `packages/runtime/src/mappers.ts`, `docs/api/diagnostic-ir.md`, ADR (Regel 34.15) |
 | DTC-Analyse / -Ablauf | `packages/core/src/dtc/` (scanner, freeze-frame, clear) | `packages/diagnostic-ir/src/dtc.ts`, `packages/runtime/src/dtc-service.ts` (`DtcService`, ADR 0049 aus `services.ts` geteilt), `docs/flows/dtc-analysis.md` |
 | Scan über alle Module / „wer hat nicht geantwortet?" | `packages/core/src/diagnostics/dtc-access.ts` (`scanAll` → `DtcScanReport`) | `packages/runtime/src/dtc-service.ts`, `packages/application/src/queries.ts` (`GetDtcScanGaps`), `apps/web/src/dtc-view.ts` + `public/app.js` (`#dtc-unread`), ADR 0049 |
@@ -52,6 +56,14 @@ nicht diese Datei.
 | Szenariodatei (.json) ändern / ergänzen | `tools/simulators/src/scenario-file.ts` (`parseScenarioFile` — die Grammatik) | `tools/simulators/scenario.schema.json` + `scenarios/README.md` (dieselbe Grammatik, im selben PR), `tests/integration/scenario-file.test.ts`, ADR 0046 |
 | Konformanz-Vektor ändern / ergänzen | `tools/formal-conformance/vectors/{isotp,safety}.json` (der Vertrag) | `tools/formal-conformance/src/{vectors,isotp-runner,safety-runner}.ts`, `formal/*.hs` (Referenzseite — dieselbe Datei, keine Abschrift!), `npm run formal:conform`, ADR 0045 |
 | Formales Referenzmodell (Haskell) ändern | `formal/` (Runner: `formal/README.md`) | Dieselbe Vektordatei, `tests/protocol/formal-conformance.test.ts` (Skip mit Grund ohne Toolchain), ADR 0045 |
+
+## Wo steht, was noch fehlt
+
+| Frage | Stelle |
+|---|---|
+| Was ist in diesem Sprint umgesetzt, was nicht? | [`docs/architecture/production-readiness-sprint-2026-09-24.md`](architecture/production-readiness-sprint-2026-09-24.md) (IMPLEMENTED / VERIFIED / NOT VERIFIED / RISKS / NEXT 10 / Scorecard) |
+| Offener Arbeitsvorrat mit Priorität | [`docs/architecture/backlog.md`](architecture/backlog.md) (0.E) |
+| Stand je Bereich (Snapshot mit Datum) | [`docs/architecture/status.md`](architecture/status.md) (0.A) |
 
 ## Regelmuster (wiederkehrende Fragen)
 

@@ -89,6 +89,18 @@ async function loadHistory() {
 /* ----------------------------------------------------------------- state */
 
 /**
+ * The link state as one line: the state's own word plus why, when the adapter
+ * gave a reason (ADR 0060). The projection labels, it does not interpret.
+ *
+ * @param {import("../src/views.js").ConnectionStatus} status
+ * @returns {string}
+ */
+function connectionLabel(status) {
+  const reason = status.stateReason ?? status.lastError;
+  return reason ? `${status.state} · ${reason}` : status.state;
+}
+
+/**
  * Connection, adapter, session and vehicle header.
  *
  * @param {AppState} data
@@ -107,6 +119,7 @@ function renderConnection(data) {
     ["Adapter", `${data.adapter.name} (${data.adapter.id})`],
     ["Typ", data.adapter.kind],
     ["Kanäle", data.adapter.channels.join(", ") || "—"],
+    ["Link", data.connection ? connectionLabel(data.connection) : null],
     ["Transport", `${data.transport.kind} · ${data.transport.channel} · MTU ${data.transport.mtu}`],
   ]);
   kv("#vehicle-info", [

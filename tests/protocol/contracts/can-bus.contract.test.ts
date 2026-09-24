@@ -27,8 +27,13 @@ import { GenericCanAdapter } from "@vdp/adapter-generic-can";
 import { FakeSocketCanBinding, SocketCanAdapter } from "@vdp/adapter-socketcan";
 import { AdapterUnsupportedError, createLogger, fromHex, TransportError, toHex } from "@vdp/shared";
 import { CanChaosBus, createVirtualCanNetwork } from "@vdp/simulators";
-import type { CanBus, CanFrame } from "@vdp/transport-can";
-import { createFrame, ReplayTransport } from "@vdp/transport-can";
+import {
+  ADAPTER_CONNECTION_STATES,
+  type CanBus,
+  type CanFrame,
+  createFrame,
+  ReplayTransport,
+} from "@vdp/transport-can";
 import { test } from "vitest";
 
 const logger = createLogger("contract", { level: "ERROR" });
@@ -70,6 +75,7 @@ function withSendLog(bus: CanBus): { bus: CanBus; sent: CanFrame[] } {
       capabilities: bus.capabilities,
       open: () => bus.open(),
       close: () => bus.close(),
+      getStatus: () => bus.getStatus(),
       isOpen: () => bus.isOpen(),
       subscribe: (listener, filters) => bus.subscribe(listener, filters),
       send: async (frame) => {
@@ -285,6 +291,39 @@ for (const subject of subjects) {
       assert.equal(bus.isOpen(), false, "closing twice is not an error");
       await bus.open();
       assert.equal(bus.isOpen(), true, "a closed bus can be opened again");
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  test(`${subject.name}: reports its link state honestly, never a hidden one`, async () => {
+    // Master prompt P1: `isOpen()` is a boolean view of a state machine. A bus
+    // that is closed says `disconnected`, an opened one says `connected`, and no
+    // subject may invent a state outside the fixed vocabulary (a hidden
+    // "somewhere in between" is what made a dead link read as a silent vehicle).
+    const fixture = await subject.create();
+    const { bus } = withSendLog(fixture.bus);
+    try {
+      const closed = bus.getStatus();
+      assert.equal(closed.state, "disconnected", `${subject.name}: a fresh bus is disconnected`);
+      assert.ok(
+        ADAPTER_CONNECTION_STATES.includes(closed.state),
+        `${subject.name}: "${closed.state}" is not part of the vocabulary`,
+      );
+      await bus.open();
+      const open = bus.getStatus();
+      assert.equal(open.state, "connected", `${subject.name}: an open bus says so`);
+      assert.ok(
+        ADAPTER_CONNECTION_STATES.includes(open.state),
+        `${subject.name}: "${open.state}" is not part of the vocabulary`,
+      );
+      assert.equal(
+        open.state,
+        bus.isOpen() ? "connected" : "disconnected",
+        `${subject.name}: getStatus() and isOpen() must not contradict each other`,
+      );
+      await bus.close();
+      assert.equal(bus.getStatus().state, "disconnected", `${subject.name}: closed means closed`);
     } finally {
       await fixture.cleanup();
     }

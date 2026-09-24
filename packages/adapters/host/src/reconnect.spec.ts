@@ -18,7 +18,14 @@
 
 import assert from "node:assert/strict";
 import { createLogger, MemorySink, TransportError } from "@vdp/shared";
-import type { CanBus, CanFilter, CanFrame, FrameListener } from "@vdp/transport-can";
+import {
+  type CanBus,
+  type CanFilter,
+  type CanFrame,
+  type ConnectionStatus,
+  connectionStatusOf,
+  type FrameListener,
+} from "@vdp/transport-can";
 import { test } from "vitest";
 import { settle, waitFor } from "../../../../tests/helpers/wait.js";
 import {
@@ -48,6 +55,9 @@ class FakeBus implements CanBus {
   async close(): Promise<void> {
     this.closes++;
     this.openState = false;
+  }
+  getStatus(): ConnectionStatus {
+    return connectionStatusOf(this.openState, this.info.id);
   }
   isOpen(): boolean {
     return this.openState;
@@ -364,4 +374,129 @@ test("a rebuild that finishes after close() is discarded, not adopted", async ()
     message: "a pair built after close() is closed, not adopted",
   });
   assert.equal(bus.isOpen(), false, "the session is over; no zombie link");
+});
+
+test("the supervisor names its states: recovering while reviving, error when the budget is spent", async () => {
+  // Master prompt P1: the four things a technician must tell apart — never
+  // opened, died mid-session, being revived, given up on — are four states, not
+  // one `false`. This is the policy's half of that promise.
+  const made = factory();
+  const bus = await superviseSerialBus({
+    adapterId: "elm327",
+    open: made.open,
+    policy: { attempts: 1, delayMs: 60 },
+  });
+  await bus.open();
+  assert.equal(bus.getStatus().state, "connected", "an opened, supervised bus is connected");
+  assert.equal(bus.getStatus().adapterId, "elm327");
+
+  // First incident: the policy has budget, so the state says so.
+  made.pairs[0]?.stream.die("bluetooth link lost");
+  await waitFor(() => bus.getStatus().state === "recovering", Boolean, {
+    timeoutMs: 500,
+    message: `the lost link must report \`recovering\`, got ${bus.getStatus().state}`,
+  });
+  assert.match(String(bus.getStatus().stateReason), /reconnect scheduled/);
+  await waitFor(() => bus.getStatus().state === "connected", Boolean, {
+    timeoutMs: 1000,
+    message: "a successful revival returns to `connected`",
+  });
+
+  // Second incident, and this time the device does not come back: the single
+  // attempt fails, the budget is spent, and that is an error with a reason —
+  // not a silent boolean and not an endless "recovering".
+  made.state.failNextOpens = 1;
+  made.pairs[1]?.stream.die("bluetooth link lost again");
+  await waitFor(() => bus.getStatus().state === "error", Boolean, {
+    timeoutMs: 500,
+    message: `a spent budget is \`error\`, got ${bus.getStatus().state}`,
+  });
+  assert.match(String(bus.getStatus().lastError), /no reconnect attempt left/);
+  assert.equal(
+    bus.getStatus().stateReason?.includes("no reconnect attempt left"),
+    true,
+    "the state reason names the end of the policy",
+  );
+});
+
+test("without a policy the supervisor takes the documented default (one attempt, 2 s)", async () => {
+  // The default is part of the contract (`DEFAULT_RECONNECT_POLICY`) — and the
+  // socketcan hardening in CI has no socat, so the default must be pinned here
+  // and not only on a PTY (where the rehearsal tests skip without socat).
+  const made = factory();
+  const sink = new MemorySink();
+  const logger = createLogger("can", { level: "DEBUG" }, [sink]);
+  const bus = await superviseSerialBus({ adapterId: "elm327", open: made.open, logger });
+  await bus.open();
+  made.pairs[0]?.stream.die("usb removed");
+
+  const lost = sink
+    .all()
+    .find((record) => record.message === "adapter link lost — reconnect scheduled");
+  assert.ok(lost, "the loss is logged even without an explicit policy");
+  assert.equal(lost?.fields?.["attempts"], 1, "the default budget is one attempt");
+  assert.equal(lost?.fields?.["delayMs"], 2000, "the default delay is two seconds");
+  assert.equal(bus.getStatus().state, "recovering", "the default policy schedules a revival");
+
+  // And the scheduled timer is cancelled by close(): this test must not wait 2 s.
+  await bus.close();
+});
+
+test("a stream death reported after close() is ignored — an ended session revives nothing", async () => {
+  const made = factory();
+  const sink = new MemorySink();
+  const logger = createLogger("can", { level: "DEBUG" }, [sink]);
+  const bus = await superviseSerialBus({
+    adapterId: "elm327",
+    open: made.open,
+    policy: { attempts: 1, delayMs: 10 },
+    logger,
+  });
+  await bus.open();
+  await bus.close();
+  const loggedWhenClosed = sink.all().length;
+
+  // The device is unplugged while the session is already shutting down; the
+  // supervisor must not read that as an incident (no timer, no state flip).
+  made.pairs[0]?.stream.die("usb yanked during shutdown");
+  await settle(40, "a death after close() must not schedule a rebuild");
+  assert.equal(made.pairs.length, 1, "the session is over; nothing is rebuilt");
+  assert.equal(sink.all().length, loggedWhenClosed, "and nothing is logged as an incident");
+  assert.notEqual(bus.getStatus().state, "recovering", "no phantom recovery after close()");
+});
+
+test("double unsubscribe is harmless, and a filterless subscription is revived filterless", async () => {
+  const made = factory();
+  const bus = await superviseSerialBus({
+    adapterId: "elm327",
+    open: made.open,
+    policy: { attempts: 1, delayMs: 10 },
+  });
+  await bus.open();
+  const seen: number[] = [];
+  const off = bus.subscribe((f) => {
+    seen.push(f.id);
+  });
+  off();
+  // The second call finds the registration gone: it must neither throw nor
+  // remove somebody else's subscription (the registry is spliced by identity).
+  off();
+  bus.subscribe((f) => {
+    seen.push(f.id + 0x1000);
+  });
+
+  made.pairs[0]?.stream.die("usb removed");
+  await waitFor(() => bus.isOpen(), Boolean, {
+    timeoutMs: 500,
+    message: "the supervisor revives the link",
+  });
+  assert.equal(made.pairs[1]?.bus.subscribers.length, 1, "only the live subscription survives");
+  assert.equal(
+    made.pairs[1]?.bus.subscribers[0]?.filters,
+    undefined,
+    "a subscription without filters is re-registered without filters",
+  );
+  made.pairs[1]?.bus.emit(frame(0x10));
+  assert.deepEqual(seen, [0x1010], "the revived listener fires");
+  await bus.close();
 });

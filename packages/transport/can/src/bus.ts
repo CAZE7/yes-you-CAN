@@ -4,7 +4,7 @@
  */
 
 import type { CanFilter, CanFrame } from "./frame.js";
-import type { AdapterCapabilities, AdapterInfo } from "./transport.js";
+import type { AdapterCapabilities, AdapterInfo, ConnectionStatus } from "./transport.js";
 
 export type FrameListener = (frame: CanFrame) => void;
 
@@ -14,6 +14,16 @@ export interface CanBus {
   open(): Promise<void>;
   close(): Promise<void>;
   isOpen(): boolean;
+  /**
+   * The link's state, its reason and its counters (master prompt P1).
+   *
+   * Required, not optional: `isOpen()` alone cannot distinguish "never opened",
+   * "died mid-session", "device answers but refuses frames" and "a reconnect is
+   * in flight", and those four want four different reactions from a technician.
+   * An adapter that has no link to report (a replay, the virtual wire) still
+   * answers — with the state it honestly is in.
+   */
+  getStatus(): ConnectionStatus;
   send(frame: CanFrame): Promise<void>;
   /** Subscribe to received frames; returns an unsubscribe function. */
   subscribe(listener: FrameListener, filters?: readonly CanFilter[]): () => void;

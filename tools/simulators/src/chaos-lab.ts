@@ -17,6 +17,7 @@ import type {
   CanBus,
   CanFilter,
   CanFrame,
+  ConnectionStatus,
   FrameListener,
 } from "@vdp/transport-can";
 import { frameMatchesFilters } from "@vdp/transport-can";
@@ -112,6 +113,15 @@ export class CanChaosBus implements CanBus {
 
   clearRules(): void {
     this.rules.length = 0;
+  }
+
+  /**
+   * The chaos proxy has no link of its own: it reports the state of the bus it
+   * wraps, so a disturbed inner link stays visible through the fault injector
+   * (master prompt P1).
+   */
+  getStatus(): ConnectionStatus {
+    return this.innerBus.getStatus();
   }
 
   async open(): Promise<void> {

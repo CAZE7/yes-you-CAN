@@ -61,6 +61,7 @@ class VirtualCanPair implements ConformancePair {
       capabilities: inner.capabilities,
       open: () => inner.open(),
       close: () => inner.close(),
+      getStatus: () => inner.getStatus(),
       isOpen: () => inner.isOpen(),
       send: async (frame: CanFrame): Promise<void> => {
         await inner.send(frame);

@@ -131,6 +131,15 @@ must appear in the allowlist — a new package without an entry fails the suite.
 Use simulator and `ReplayTransport` instead of a real car wherever possible
 (AGENTS 32, ADR 0005).
 
+**PTY suites are evidence, not a gate carrier.** `tests/integration/adapter-rehearsal.spec.ts`
+and `host-serial.spec.ts` build a real serial link with `socat` and skip when it is
+missing — and the GitHub runners do not ship `socat` (measured 2026-09-24: the CI job
+failed with `ERROR: Coverage for branches (77.27%) does not meet "packages/adapters/**/src/**"
+threshold (78%)` and **no** failing test, E38). A production path that only these suites
+cover therefore loses its coverage in CI. Every branch a PTY suite touches needs a
+socat-free unit test as well; the PTY suite proves the integration, the unit test
+carries the gate.
+
 ## Security
 
 - Server binds `127.0.0.1` by default (ADR 0009). Exposing it (`VDP_HOST=0.0.0.0` /

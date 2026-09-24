@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import { fromHex, TransportError, toHex } from "@vdp/shared";
-import type {
-  AdapterCapabilities,
-  AdapterInfo,
-  CanBus,
-  CanFilter,
-  CanFrame,
-  FrameListener,
+import {
+  type AdapterCapabilities,
+  type AdapterInfo,
+  type CanBus,
+  type CanFilter,
+  type CanFrame,
+  type ConnectionStatus,
+  connectionStatusOf,
+  type FrameListener,
 } from "@vdp/transport-can";
 import { test } from "vitest";
 import { settle } from "../../../../tests/helpers/wait.js";
@@ -87,6 +89,10 @@ class VirtualBus implements CanBus {
   async close(): Promise<void> {
     this.opened = false;
   }
+  getStatus(): ConnectionStatus {
+    return connectionStatusOf(this.opened, "virtual-test-bus");
+  }
+
   isOpen(): boolean {
     return this.opened;
   }
@@ -1125,6 +1131,9 @@ class FailingBus implements CanBus {
 
   async open(): Promise<void> {}
   async close(): Promise<void> {}
+  getStatus(): ConnectionStatus {
+    return connectionStatusOf(true, "failing-test-bus");
+  }
   isOpen(): boolean {
     return true;
   }

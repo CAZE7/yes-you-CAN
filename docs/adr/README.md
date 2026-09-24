@@ -77,3 +77,5 @@ AI-Context-Topics) steht in [`architecture/architecture.yaml`](../../architectur
 | [0057](0057-provenance-and-replay-same-recording-same-diagnosis.md) | Provenance und Replay: dieselbe Aufnahme, dieselbe Diagnose | accepted (Implementierung läuft) |
 | [0058](0058-harvest-as-observation.md) | Eine Ernte ist eine Beobachtung: read-only auslesen, als ODX beschreiben, mit `observed` als Quelle | accepted |
 | [0059](0059-the-contract-is-readable-again.md) | Der Vertrag ist wieder lesbar: Chronik, Stand und Backlog sind nicht die Norm | accepted |
+| [0060](0060-adapter-connection-state.md) | Der Adapter hat einen Zustand, nicht nur ein Boolean: sechs Werte, eine Maschine, sichtbar | accepted |
+| [0061](0061-doip-end-to-end.md) | DoIP endet nicht am Handle: reale Sockets, Verbindungszustand, Sitzung, virtuelle Entity | accepted |

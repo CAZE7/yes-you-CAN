@@ -15,6 +15,7 @@ import {
   type CanBus,
   type CanFilter,
   type CanFrame,
+  type ConnectionStatus,
   type FrameListener,
   frameMatchesFilters,
 } from "@vdp/transport-can";
@@ -63,6 +64,16 @@ export class GenericCanAdapter implements CanBus {
 
   isOpen(): boolean {
     return this.options.bus.isOpen();
+  }
+
+  /**
+   * This adapter is a proxy: it has no link of its own, so it reports the
+   * wrapped bus's state instead of inventing one (master prompt P1). The
+   * `adapterId` stays the one the caller knows this wrapper by.
+   */
+  getStatus(): ConnectionStatus {
+    const status = this.options.bus.getStatus();
+    return { ...status, adapterId: this.options.id, detail: this.info.name };
   }
 
   async send(frame: CanFrame): Promise<void> {

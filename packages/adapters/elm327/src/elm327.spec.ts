@@ -193,6 +193,55 @@ test("an ELM error fails the send and is still on record", async () => {
   assert.deepEqual(adapter.status.errors, ["NO DATA"]);
 });
 
+test("a refused frame degrades the link, and the next answer heals it (P1)", async () => {
+  // `BUS BUSY` / `BUFFER FULL` mean the device is there and said no. The link is
+  // still usable — that is `degraded`, not `error` — and the state must say so
+  // while it lasts, then go back to `connected` on the next answered command.
+  const { stream } = createFakeElm({ error: "BUS BUSY" });
+  const adapter = new Elm327Adapter({ stream, commandTimeoutMs: 500 });
+  await adapter.open();
+  assert.equal(adapter.getStatus().state, "connected", "a handshaken adapter is connected");
+
+  await assert.rejects(() => adapter.send(createFrame(0x7e0, fromHex("22 F1 90"))));
+  const degraded = adapter.getStatus();
+  assert.equal(degraded.state, "degraded", "a refused frame is a degraded link, not a dead one");
+  assert.match(String(degraded.stateReason), /BUS BUSY/);
+  assert.equal(degraded.lastError, undefined, "a degraded link is not an error");
+  assert.equal(adapter.isOpen(), true, "degraded is usable: the adapter is still open");
+
+  // The device answers a command again (ATRV goes through the same command
+  // queue): the state returns to `connected` and the reason disappears.
+  await adapter.readVoltage();
+  assert.equal(adapter.getStatus().state, "connected");
+  assert.equal(adapter.getStatus().stateReason, "the device answered again");
+});
+
+test("malformed frame lines are dropped, and the state never claims a frame arrived", async () => {
+  // A garbled line is the third classic wire failure next to silence and an
+  // explicit error. It must not become a frame (a guessed frame is worse than a
+  // dropped one), and it must not change the link state into something nicer
+  // than reality either.
+  const stream = new MemoryByteStream();
+  stream.open();
+  stream.responder = (command) => {
+    const trimmed = command.replace(/\r$/, "");
+    if (trimmed === "ATZ") return "ELM327 v2.1\r\n>";
+    if (trimmed.startsWith("AT")) return "OK\r\n>";
+    // A frame line with an odd byte count, then one that is valid.
+    return "7E8 03 62 F1\r\n7E8 02 50 03\r\n>";
+  };
+  const adapter = new Elm327Adapter({ stream, commandTimeoutMs: 500 });
+  const frames: CanFrame[] = [];
+  await adapter.open();
+  adapter.subscribe((frame) => frames.push(frame));
+  await adapter.send(createFrame(0x7e0, fromHex("22 F1 90")));
+  assert.equal(frames.length, 1, "exactly one well-formed frame, the truncated one is dropped");
+  assert.equal(toHex(frames[0]?.payload ?? new Uint8Array()), "50 03");
+  assert.equal(adapter.getStatus().state, "connected");
+  assert.equal(adapter.getStatus().rxCount, 1, "the counter counts frames, not lines");
+  assert.equal(adapter.getStatus().txCount, 1);
+});
+
 test("the AT init sequence asks for the wire format the parser reads", async () => {
   // `parseFrameLine` splits on whitespace and needs a two-digit DLC, so the
   // sequence must ask for spaces (`ATS1`) and must not let the adapter's own
