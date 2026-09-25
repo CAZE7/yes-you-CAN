@@ -29,7 +29,6 @@ import {
 } from "@vdp/shared";
 import { handleAdapterApi } from "./adapter-routes.js";
 import { createWebAdapterCatalog, SIMULATOR_ADAPTER_ID } from "./adapters.js";
-import { isDocumentPath, sandboxPreviewHost, trustedHosts } from "./host-rules.js";
 import {
   AUTH_REFUSAL,
   type Authenticator,
@@ -40,6 +39,7 @@ import {
 } from "./auth.js";
 import { DemoBackend } from "./backend.js";
 import { runDoctorCli } from "./doctor-cli.js";
+import { isDocumentPath, sandboxPreviewHost, trustedHosts } from "./host-rules.js";
 import { RateLimiter } from "./rate-limit.js";
 import {
   HttpError,
@@ -238,8 +238,6 @@ export class WebServer {
       stream.write(frame);
     }
   }
-
-
 
   private async handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
     const url = new URL(request.url ?? "/", "http://localhost");
