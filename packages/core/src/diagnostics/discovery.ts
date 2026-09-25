@@ -172,8 +172,13 @@ export class EcuDiscovery {
     // A probe that cannot be written must not abort the scan: the listener is armed
     // already, and ECUs that answer a previous broadcast are worth collecting even
     // when this adapter is unhappy (§34.26 — every probe path reports, none throws).
+    // The sub-function is the *un*-suppressed one: the point of the functional
+    // broadcast is to collect the responders' physical response identifiers, and
+    // ISO 14229-1 §9.4 forbids a positive response to a TesterPresent that carries
+    // the suppressPosRspMsgIndication bit (0x80) — with the bit set, every
+    // conformant ECU stays silent and the functional half of the scan is dead.
     try {
-      await conn.sendOnly(new Uint8Array([serviceId, 0x80]));
+      await conn.sendOnly(new Uint8Array([serviceId, 0x00]));
       this.log.debug("functional probe sent", {
         functionalId: `0x${functionalId.toString(16)}`,
         serviceId: `0x${serviceId.toString(16)}`,

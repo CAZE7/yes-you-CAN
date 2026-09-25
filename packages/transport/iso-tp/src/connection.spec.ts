@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { fromHex, TransportError, toHex } from "@vdp/shared";
+import { fromHex, IsoTpError, TransportError, toHex } from "@vdp/shared";
 import {
   type AdapterCapabilities,
   type AdapterInfo,
@@ -132,6 +132,8 @@ interface Pair {
   wire: Wire;
   tester: IsoTpConnection;
   ecu: IsoTpConnection;
+  /** The tester's bus, exposed so a test can inject frames the ECU would send. */
+  testerBus: VirtualBus;
   requests: Uint8Array[];
   respond(payload: Uint8Array | null): void;
 }
@@ -185,6 +187,7 @@ function createPair(
     wire,
     tester,
     ecu,
+    testerBus,
     requests,
     respond(payload) {
       responder = () => {
@@ -268,6 +271,34 @@ test("sequence number wraps at 16 consecutive frames", () => {
   assert.equal(conn.frameCountFor(8), 2);
   // 6 bytes in the First Frame + 7 bytes per Consecutive Frame
   assert.equal(conn.frameCountFor(6 + 7 * 15), 16, "sequence counter wraps after 15 CFs");
+});
+
+test("frameCountFor matches transmit() on CAN FD, where a Single Frame leaves two PCI bytes", () => {
+  const wire = createWire();
+  const bus = new VirtualBus(wire);
+  bus.capabilities.canFd = true;
+  // 64-byte frames: a Single Frame carries at most 62 payload bytes
+  // (PCI 0x00 + explicit length), so 63 already needs First + Consecutive.
+  const fd = new IsoTpConnection(bus, {
+    txId: 0x7e0,
+    rxId: 0x7e8,
+    fd: true,
+    sleep: async () => undefined,
+  });
+  assert.equal(fd.frameCountFor(62), 1, "62 bytes fit the FD Single Frame escape form");
+  assert.equal(fd.frameCountFor(63), 2, "63 bytes do not fit — transmit() segments them");
+  assert.equal(fd.frameCountFor(64), 2);
+  // Extended addressing eats one more byte: Single Frame capacity is 61.
+  const fdExtended = new IsoTpConnection(bus, {
+    txId: 0x7e0,
+    rxId: 0x7e8,
+    fd: true,
+    addressing: "extended",
+    targetAddress: 1,
+    sleep: async () => undefined,
+  });
+  assert.equal(fdExtended.frameCountFor(61), 1);
+  assert.equal(fdExtended.frameCountFor(62), 2);
 });
 
 test("sequence error aborts the request with an ISO-TP error", async () => {
@@ -358,6 +389,89 @@ test("response timeout surfaces as ISO-TP timeout error", async () => {
   const pair = createPair({ timing: { nBsMs: 20, nCrMs: 20 } });
   await assert.rejects(pair.tester.request(fromHex("22 F1 90"), 25), /timeout/i);
   assert.equal(pair.tester.stats.timeouts, 1);
+});
+
+test("a response timeout carries which request it was and that the ECU stayed silent", async () => {
+  const pair = createPair({ timing: { nBsMs: 20, nCrMs: 20 } });
+  const error = await pair.tester.request(fromHex("22 F1 90"), 25).then(
+    () => assert.fail("the request was supposed to time out"),
+    (caught: unknown) => caught,
+  );
+  assert.ok(error instanceof IsoTpError, "a timeout is a typed ISO-TP error");
+  // The error names the request, not only the deadline — the workshop's first
+  // question ("which read was that?") is answered by the error itself.
+  assert.equal(error.details["request"], toHex(fromHex("22 F1 90")));
+  assert.equal(error.details["txId"], "0x7E0");
+  assert.equal(error.details["rxId"], "0x7E8");
+  assert.equal(error.details["silent"], true, "no frame from the ECU means silent");
+  assert.deepEqual(error.details["frames"], []);
+});
+
+test("a response timeout lists the frames the ECU sent while we waited, even the ones it dropped", async () => {
+  const pair = createPair({ timing: { nBsMs: 20, nCrMs: 20 } });
+  const promise = pair.tester.request(fromHex("22 F1 90"), 40);
+  await tick();
+  // The ECU speaks back on our response id, but the Single Frame declares 5 bytes
+  // it does not carry — the connection drops it. That drop is exactly what a
+  // diagnosis needs to see, so it must still be on the timeout's witness list.
+  pair.testerBus.inject(0x7e8, fromHex("05 AA BB CC"));
+  const error = await promise.then(
+    () => assert.fail("the request was supposed to time out"),
+    (caught: unknown) => caught,
+  );
+  assert.ok(error instanceof IsoTpError);
+  assert.equal(error.details["silent"], undefined, "the ECU was not silent");
+  const frames = error.details["frames"] as Array<{ id: number; data: string }>;
+  assert.equal(frames.length, 1, "the dropped frame is the witness");
+  assert.equal(frames[0]?.id, 0x7e8);
+  assert.equal(frames[0]?.data, toHex(fromHex("05 AA BB CC")));
+});
+
+test("an N_Cr timeout names the Consecutive traffic that arrived after the First Frame", async () => {
+  const wire = createWire();
+  const testerBus = new VirtualBus(wire);
+  const tester = new IsoTpConnection(testerBus, {
+    txId: 0x7e0,
+    rxId: 0x7e8,
+    sleep: async () => undefined,
+    timing: { nCrMs: 40, nBsMs: 5000, maxRetries: 0 },
+  });
+  tester.open();
+  const promise = tester.request(fromHex("22 F1 90"), 5000);
+  await tick();
+  // The ECU announces 18 bytes, delivers the first chunk, then goes silent —
+  // nothing after the First Frame, so the N_Cr witness is empty and marked silent.
+  testerBus.inject(0x7e8, fromHex("10 12 62 F1 90 AA AA AA"));
+  const error = await promise.then(
+    () => assert.fail("the request was supposed to time out"),
+    (caught: unknown) => caught,
+  );
+  assert.ok(error instanceof IsoTpError);
+  assert.equal(error.details["timeout"], "N_Cr");
+  assert.equal(error.details["silent"], true, "no Consecutive Frame came after the First");
+  assert.deepEqual(error.details["frames"], []);
+});
+
+test("an N_Bs timeout names the exchange it was part of, silent or not", async () => {
+  const wire = createWire();
+  const testerBus = new VirtualBus(wire);
+  const tester = new IsoTpConnection(testerBus, {
+    txId: 0x7e0,
+    rxId: 0x7e8,
+    sleep: async () => undefined,
+    timing: { nBsMs: 15, nCrMs: 15, maxRetries: 0 },
+  });
+  tester.open();
+  // 30 bytes forces the multi-frame path; nobody sends Flow Control → N_Bs.
+  const error = await tester.request(new Uint8Array(30).fill(0x11)).then(
+    () => assert.fail("the request was supposed to time out"),
+    (caught: unknown) => caught,
+  );
+  assert.ok(error instanceof IsoTpError);
+  assert.equal(error.details["timeout"], "N_Bs");
+  assert.equal(error.details["txId"], "0x7E0");
+  assert.equal(error.details["rxId"], "0x7E8");
+  assert.equal(error.details["silent"], true, "no Flow Control and nothing else arrived");
 });
 
 test("N_Bs timeout triggers a retry when maxRetries is configured", async () => {

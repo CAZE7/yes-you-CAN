@@ -130,8 +130,15 @@ describe("RequestResponseLink", () => {
     const link = new RequestResponseLink(fakeTransport({ response: null }), {
       defaultTimeoutMs: 42,
     });
-    await assert.rejects(() => link.request(new Uint8Array([0x10, 0x03])), TransportClosedError);
+    const error = await link.request(new Uint8Array([0x10, 0x03])).then(
+      () => assert.fail("the request was supposed to time out"),
+      (caught: unknown) => caught,
+    );
+    assert.ok(error instanceof TransportClosedError);
     assert.deepEqual(link.stats, { requests: 1, responses: 0, timeouts: 1 });
+    // The timeout names the bytes it waited for — a DoIP stall must say which read.
+    assert.equal(error.details["request"], "10 03");
+    assert.equal(error.details["timeoutMs"], 42);
   });
 
   test("a failed send propagates and releases the serialisation lock", async () => {

@@ -1,5 +1,11 @@
 import assert from "node:assert/strict";
-import { DefinitionError, fromHex, toHex, UdsNegativeResponseError } from "@vdp/shared";
+import {
+  DefinitionError,
+  fromHex,
+  TransportTimeoutError,
+  toHex,
+  UdsNegativeResponseError,
+} from "@vdp/shared";
 import { test } from "vitest";
 import { settle, waitFor } from "../../../../tests/helpers/wait.js";
 import {
@@ -314,6 +320,48 @@ test("a missing final response after NRC 0x78 surfaces as a timeout", async () =
   server.resetSession();
   await assert.rejects(client.readDid(0x1234), /P2\*/);
   assert.equal(client.stats.timeouts, 1);
+});
+
+test("a link-layer timeout is rethrown carrying which UDS service and which bytes failed", async () => {
+  // A transport that times out (ISO-TP / DoIP) throws a typed VdpError. The UDS
+  // client must not lose the request's identity on the way up: the error that a
+  // scan or a report finally sees must name the service and the exact payload.
+  class SilentLink implements UdsLink {
+    async request(): Promise<Uint8Array> {
+      throw new TransportTimeoutError("no response from the ECU", { timeoutMs: 50 });
+    }
+    async sendOnly(): Promise<void> {
+      throw new TransportTimeoutError("no response from the ECU");
+    }
+    async receive(): Promise<Uint8Array | null> {
+      return null;
+    }
+  }
+  const client = new UdsClient(new SilentLink(), { name: "silent-ecu", timing: { p2Ms: 50 } });
+  const error = await client.readDid(0x1234).then(
+    () => assert.fail("the read was supposed to time out"),
+    (caught: unknown) => caught,
+  );
+  assert.ok(error instanceof TransportTimeoutError, "the transport error type survives");
+  // The fingerprint the client added: which service, which bytes, which ECU.
+  assert.equal(error.details["sid"], "0x22");
+  assert.equal(error.details["request"], toHex(fromHex("22 12 34")));
+  assert.equal(error.details["ecu"], "silent-ecu");
+  // The transport's own evidence is preserved, not overwritten.
+  assert.equal(error.details["timeoutMs"], 50);
+});
+
+test("an NRC is rethrown carrying which UDS service and which bytes asked for it", async () => {
+  const { client } = createPair({ dids: BASE_DIDS });
+  const error = await client.readDid(0xdead).then(
+    () => assert.fail("the read was supposed to be refused"),
+    (caught: unknown) => caught,
+  );
+  assert.ok(error instanceof UdsNegativeResponseError);
+  assert.equal(error.details["sid"], "0x22");
+  assert.equal(error.details["request"], toHex(fromHex("22 de ad")));
+  // The error's own fields stay the authority; the fingerprint only adds.
+  assert.equal(error.serviceId, 0x22);
 });
 
 test("unknown DID produces requestOutOfRange (0x31) with a typed error", async () => {

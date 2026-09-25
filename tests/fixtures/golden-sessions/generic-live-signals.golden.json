@@ -202,8 +202,8 @@
     },
     "measurements": [
       {
-        "timestamp": "2026-09-22T11:56:38.727Z",
-        "t": 84,
+        "timestamp": "2026-09-24T21:01:48.819Z",
+        "t": 85,
         "signal": "abs.wheel_speed_front_left",
         "value": 41,
         "rawValue": 4100,
@@ -212,8 +212,8 @@
         "outOfRange": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.727Z",
-        "t": 84,
+        "timestamp": "2026-09-24T21:01:48.820Z",
+        "t": 86,
         "signal": "abs.wheel_speed_front_right",
         "value": 41,
         "rawValue": 4100,
@@ -222,8 +222,8 @@
         "outOfRange": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.727Z",
-        "t": 84,
+        "timestamp": "2026-09-24T21:01:48.820Z",
+        "t": 86,
         "signal": "abs.brake_pedal",
         "value": 0,
         "rawValue": 0,
@@ -232,8 +232,8 @@
         "outOfRange": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.729Z",
-        "t": 86,
+        "timestamp": "2026-09-24T21:01:48.823Z",
+        "t": 89,
         "signal": "engine.vin",
         "value": "REDACTED-VIN-0000",
         "rawValue": "REDACTED-VIN-0000",
@@ -241,8 +241,8 @@
         "outOfRange": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.729Z",
-        "t": 86,
+        "timestamp": "2026-09-24T21:01:48.823Z",
+        "t": 89,
         "signal": "engine.spare_part_number",
         "value": "ENGINE-f187",
         "rawValue": "ENGINE-f187",
@@ -250,8 +250,8 @@
         "outOfRange": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.729Z",
-        "t": 86,
+        "timestamp": "2026-09-24T21:01:48.823Z",
+        "t": 89,
         "signal": "engine.application_software",
         "value": "ENGINE-f181",
         "rawValue": "ENGINE-f181",
@@ -259,8 +259,8 @@
         "outOfRange": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.729Z",
-        "t": 86,
+        "timestamp": "2026-09-24T21:01:48.823Z",
+        "t": 89,
         "signal": "engine.serial_number",
         "value": "ENGINE-f18c",
         "rawValue": "ENGINE-f18c",
@@ -268,8 +268,8 @@
         "outOfRange": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.729Z",
-        "t": 86,
+        "timestamp": "2026-09-24T21:01:48.823Z",
+        "t": 89,
         "signal": "engine.rpm",
         "value": 840.5,
         "rawValue": 3362,
@@ -278,8 +278,8 @@
         "outOfRange": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.729Z",
-        "t": 86,
+        "timestamp": "2026-09-24T21:01:48.823Z",
+        "t": 89,
         "signal": "engine.coolant_temperature",
         "value": 21,
         "rawValue": 61,
@@ -288,8 +288,8 @@
         "outOfRange": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.729Z",
-        "t": 86,
+        "timestamp": "2026-09-24T21:01:48.823Z",
+        "t": 89,
         "signal": "engine.load",
         "value": 16.1,
         "rawValue": 41,
@@ -298,8 +298,8 @@
         "outOfRange": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.729Z",
-        "t": 86,
+        "timestamp": "2026-09-24T21:01:48.823Z",
+        "t": 89,
         "signal": "vehicle.speed",
         "value": 41,
         "rawValue": 41,
@@ -308,8 +308,8 @@
         "outOfRange": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.729Z",
-        "t": 86,
+        "timestamp": "2026-09-24T21:01:48.823Z",
+        "t": 89,
         "signal": "engine.intake_air_temperature",
         "value": 25,
         "rawValue": 65,
@@ -318,8 +318,8 @@
         "outOfRange": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.729Z",
-        "t": 86,
+        "timestamp": "2026-09-24T21:01:48.823Z",
+        "t": 89,
         "signal": "engine.throttle_position",
         "value": 11.4,
         "rawValue": 29,
@@ -328,8 +328,8 @@
         "outOfRange": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.729Z",
-        "t": 86,
+        "timestamp": "2026-09-24T21:01:48.823Z",
+        "t": 89,
         "signal": "engine.short_term_fuel_trim",
         "value": 2.3,
         "rawValue": 131,
@@ -338,8 +338,8 @@
         "outOfRange": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.729Z",
-        "t": 86,
+        "timestamp": "2026-09-24T21:01:48.823Z",
+        "t": 89,
         "signal": "engine.long_term_fuel_trim",
         "value": 2.3,
         "rawValue": 131,
@@ -348,8 +348,8 @@
         "outOfRange": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.729Z",
-        "t": 86,
+        "timestamp": "2026-09-24T21:01:48.823Z",
+        "t": 89,
         "signal": "engine.intake_manifold_pressure",
         "value": 31,
         "rawValue": 31,
@@ -358,8 +358,8 @@
         "outOfRange": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.729Z",
-        "t": 86,
+        "timestamp": "2026-09-24T21:01:48.823Z",
+        "t": 89,
         "signal": "engine.timing_advance",
         "value": 8,
         "rawValue": 144,
@@ -368,8 +368,8 @@
         "outOfRange": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.729Z",
-        "t": 86,
+        "timestamp": "2026-09-24T21:01:48.823Z",
+        "t": 89,
         "signal": "engine.maf_airflow",
         "value": 4.3,
         "rawValue": 430,
@@ -378,8 +378,8 @@
         "outOfRange": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.729Z",
-        "t": 86,
+        "timestamp": "2026-09-24T21:01:48.823Z",
+        "t": 89,
         "signal": "engine.fuel_rail_pressure",
         "value": 320,
         "rawValue": 32,
@@ -388,8 +388,8 @@
         "outOfRange": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.729Z",
-        "t": 86,
+        "timestamp": "2026-09-24T21:01:48.823Z",
+        "t": 89,
         "signal": "engine.runtime",
         "value": 0,
         "rawValue": 0,
@@ -398,8 +398,8 @@
         "outOfRange": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.729Z",
-        "t": 86,
+        "timestamp": "2026-09-24T21:01:48.823Z",
+        "t": 89,
         "signal": "engine.fuel_system_status",
         "value": 2,
         "rawValue": 2,
@@ -408,8 +408,8 @@
         "outOfRange": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.729Z",
-        "t": 86,
+        "timestamp": "2026-09-24T21:01:48.823Z",
+        "t": 89,
         "signal": "transmission.oil_temperature",
         "value": 30,
         "rawValue": 70,
@@ -418,8 +418,8 @@
         "outOfRange": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.729Z",
-        "t": 86,
+        "timestamp": "2026-09-24T21:01:48.823Z",
+        "t": 89,
         "signal": "transmission.gear_position",
         "value": 3,
         "rawValue": 3,
@@ -431,56 +431,56 @@
     "markers": [
       {
         "id": "marker_1",
-        "t": 87,
-        "timestamp": "2026-09-22T11:56:38.730Z",
+        "t": 89,
+        "timestamp": "2026-09-24T21:01:48.823Z",
         "label": "C0035",
         "kind": "dtc",
         "detail": "ABS / Brake Control Unit · Status 0x2F"
       },
       {
         "id": "marker_2",
-        "t": 87,
-        "timestamp": "2026-09-22T11:56:38.730Z",
+        "t": 89,
+        "timestamp": "2026-09-24T21:01:48.823Z",
         "label": "U0121",
         "kind": "dtc",
         "detail": "ABS / Brake Control Unit · Status 0x08"
       },
       {
         "id": "marker_3",
-        "t": 87,
-        "timestamp": "2026-09-22T11:56:38.730Z",
+        "t": 89,
+        "timestamp": "2026-09-24T21:01:48.823Z",
         "label": "P0420",
         "kind": "dtc",
         "detail": "Engine Control Unit · Status 0x2F"
       },
       {
         "id": "marker_4",
-        "t": 87,
-        "timestamp": "2026-09-22T11:56:38.730Z",
+        "t": 89,
+        "timestamp": "2026-09-24T21:01:48.823Z",
         "label": "P0300",
         "kind": "dtc",
         "detail": "Engine Control Unit · Status 0x08"
       },
       {
         "id": "marker_5",
-        "t": 87,
-        "timestamp": "2026-09-22T11:56:38.730Z",
+        "t": 89,
+        "timestamp": "2026-09-24T21:01:48.823Z",
         "label": "P0171",
         "kind": "dtc",
         "detail": "Engine Control Unit · Status 0x08"
       },
       {
         "id": "marker_6",
-        "t": 87,
-        "timestamp": "2026-09-22T11:56:38.730Z",
+        "t": 90,
+        "timestamp": "2026-09-24T21:01:48.824Z",
         "label": "P0700",
         "kind": "dtc",
         "detail": "Transmission Control Unit · Status 0x2F"
       },
       {
         "id": "marker_7",
-        "t": 87,
-        "timestamp": "2026-09-22T11:56:38.730Z",
+        "t": 90,
+        "timestamp": "2026-09-24T21:01:48.824Z",
         "label": "P0715",
         "kind": "dtc",
         "detail": "Transmission Control Unit · Status 0x08"
@@ -489,21 +489,21 @@
     "dtcs": [],
     "trace": [
       {
-        "timestamp": "2026-09-22T11:56:38.644Z",
-        "t": 90078198643,
+        "timestamp": "2026-09-24T21:01:48.735Z",
+        "t": 90283708734,
         "canId": 2015,
         "canIdHex": "0x7DF",
         "direction": "tx",
         "dlc": 8,
-        "payload": "023E80AAAAAAAAAA",
-        "payloadHex": "023E80AAAAAAAAAA",
+        "payload": "023E00AAAAAAAAAA",
+        "payloadHex": "023E00AAAAAAAAAA",
         "channel": "vcan0",
         "extended": false,
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.674Z",
-        "t": 90078198673,
+        "timestamp": "2026-09-24T21:01:48.765Z",
+        "t": 90283708764,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -515,8 +515,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.674Z",
-        "t": 90078198673,
+        "timestamp": "2026-09-24T21:01:48.765Z",
+        "t": 90283708764,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -528,8 +528,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.676Z",
-        "t": 90078198675,
+        "timestamp": "2026-09-24T21:01:48.767Z",
+        "t": 90283708766,
         "canId": 2017,
         "canIdHex": "0x7E1",
         "direction": "tx",
@@ -541,8 +541,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.676Z",
-        "t": 90078198675,
+        "timestamp": "2026-09-24T21:01:48.767Z",
+        "t": 90283708766,
         "canId": 2025,
         "canIdHex": "0x7E9",
         "direction": "rx",
@@ -554,8 +554,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.677Z",
-        "t": 90078198676,
+        "timestamp": "2026-09-24T21:01:48.768Z",
+        "t": 90283708767,
         "canId": 1811,
         "canIdHex": "0x713",
         "direction": "tx",
@@ -567,8 +567,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.677Z",
-        "t": 90078198676,
+        "timestamp": "2026-09-24T21:01:48.768Z",
+        "t": 90283708767,
         "canId": 1915,
         "canIdHex": "0x77B",
         "direction": "rx",
@@ -580,8 +580,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.679Z",
-        "t": 90078198678,
+        "timestamp": "2026-09-24T21:01:48.769Z",
+        "t": 90283708768,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -593,8 +593,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.679Z",
-        "t": 90078198678,
+        "timestamp": "2026-09-24T21:01:48.770Z",
+        "t": 90283708769,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -606,8 +606,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.680Z",
-        "t": 90078198679,
+        "timestamp": "2026-09-24T21:01:48.771Z",
+        "t": 90283708770,
         "canId": 2017,
         "canIdHex": "0x7E1",
         "direction": "tx",
@@ -619,8 +619,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.680Z",
-        "t": 90078198679,
+        "timestamp": "2026-09-24T21:01:48.771Z",
+        "t": 90283708770,
         "canId": 2025,
         "canIdHex": "0x7E9",
         "direction": "rx",
@@ -632,8 +632,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.681Z",
-        "t": 90078198680,
+        "timestamp": "2026-09-24T21:01:48.772Z",
+        "t": 90283708771,
         "canId": 2018,
         "canIdHex": "0x7E2",
         "direction": "tx",
@@ -645,8 +645,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.682Z",
-        "t": 90078198681,
+        "timestamp": "2026-09-24T21:01:48.773Z",
+        "t": 90283708772,
         "canId": 2019,
         "canIdHex": "0x7E3",
         "direction": "tx",
@@ -658,8 +658,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.684Z",
-        "t": 90078198683,
+        "timestamp": "2026-09-24T21:01:48.775Z",
+        "t": 90283708774,
         "canId": 2020,
         "canIdHex": "0x7E4",
         "direction": "tx",
@@ -671,8 +671,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.685Z",
-        "t": 90078198684,
+        "timestamp": "2026-09-24T21:01:48.776Z",
+        "t": 90283708775,
         "canId": 2021,
         "canIdHex": "0x7E5",
         "direction": "tx",
@@ -684,8 +684,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.686Z",
-        "t": 90078198685,
+        "timestamp": "2026-09-24T21:01:48.777Z",
+        "t": 90283708776,
         "canId": 2022,
         "canIdHex": "0x7E6",
         "direction": "tx",
@@ -697,8 +697,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.687Z",
-        "t": 90078198686,
+        "timestamp": "2026-09-24T21:01:48.779Z",
+        "t": 90283708778,
         "canId": 2023,
         "canIdHex": "0x7E7",
         "direction": "tx",
@@ -710,8 +710,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.719Z",
-        "t": 90078198718,
+        "timestamp": "2026-09-24T21:01:48.810Z",
+        "t": 90283708809,
         "canId": 1811,
         "canIdHex": "0x713",
         "direction": "tx",
@@ -723,8 +723,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.720Z",
-        "t": 90078198719,
+        "timestamp": "2026-09-24T21:01:48.810Z",
+        "t": 90283708809,
         "canId": 1915,
         "canIdHex": "0x77B",
         "direction": "rx",
@@ -736,8 +736,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.720Z",
-        "t": 90078198719,
+        "timestamp": "2026-09-24T21:01:48.811Z",
+        "t": 90283708810,
         "canId": 1811,
         "canIdHex": "0x713",
         "direction": "tx",
@@ -749,8 +749,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.720Z",
-        "t": 90078198719,
+        "timestamp": "2026-09-24T21:01:48.811Z",
+        "t": 90283708810,
         "canId": 1915,
         "canIdHex": "0x77B",
         "direction": "rx",
@@ -762,8 +762,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.720Z",
-        "t": 90078198719,
+        "timestamp": "2026-09-24T21:01:48.811Z",
+        "t": 90283708810,
         "canId": 1915,
         "canIdHex": "0x77B",
         "direction": "rx",
@@ -775,8 +775,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.720Z",
-        "t": 90078198719,
+        "timestamp": "2026-09-24T21:01:48.811Z",
+        "t": 90283708810,
         "canId": 1811,
         "canIdHex": "0x713",
         "direction": "tx",
@@ -788,8 +788,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.720Z",
-        "t": 90078198719,
+        "timestamp": "2026-09-24T21:01:48.811Z",
+        "t": 90283708810,
         "canId": 1915,
         "canIdHex": "0x77B",
         "direction": "rx",
@@ -801,8 +801,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.720Z",
-        "t": 90078198719,
+        "timestamp": "2026-09-24T21:01:48.811Z",
+        "t": 90283708810,
         "canId": 1811,
         "canIdHex": "0x713",
         "direction": "tx",
@@ -814,8 +814,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.720Z",
-        "t": 90078198719,
+        "timestamp": "2026-09-24T21:01:48.811Z",
+        "t": 90283708810,
         "canId": 1915,
         "canIdHex": "0x77B",
         "direction": "rx",
@@ -827,8 +827,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.720Z",
-        "t": 90078198719,
+        "timestamp": "2026-09-24T21:01:48.811Z",
+        "t": 90283708810,
         "canId": 1811,
         "canIdHex": "0x713",
         "direction": "tx",
@@ -840,8 +840,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.720Z",
-        "t": 90078198719,
+        "timestamp": "2026-09-24T21:01:48.811Z",
+        "t": 90283708810,
         "canId": 1915,
         "canIdHex": "0x77B",
         "direction": "rx",
@@ -853,8 +853,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.721Z",
-        "t": 90078198720,
+        "timestamp": "2026-09-24T21:01:48.811Z",
+        "t": 90283708810,
         "canId": 1811,
         "canIdHex": "0x713",
         "direction": "tx",
@@ -866,8 +866,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.721Z",
-        "t": 90078198720,
+        "timestamp": "2026-09-24T21:01:48.812Z",
+        "t": 90283708811,
         "canId": 1915,
         "canIdHex": "0x77B",
         "direction": "rx",
@@ -879,8 +879,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.721Z",
-        "t": 90078198720,
+        "timestamp": "2026-09-24T21:01:48.812Z",
+        "t": 90283708811,
         "canId": 1811,
         "canIdHex": "0x713",
         "direction": "tx",
@@ -892,8 +892,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.721Z",
-        "t": 90078198720,
+        "timestamp": "2026-09-24T21:01:48.812Z",
+        "t": 90283708811,
         "canId": 1915,
         "canIdHex": "0x77B",
         "direction": "rx",
@@ -905,8 +905,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.721Z",
-        "t": 90078198720,
+        "timestamp": "2026-09-24T21:01:48.812Z",
+        "t": 90283708811,
         "canId": 1811,
         "canIdHex": "0x713",
         "direction": "tx",
@@ -918,8 +918,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.721Z",
-        "t": 90078198720,
+        "timestamp": "2026-09-24T21:01:48.812Z",
+        "t": 90283708811,
         "canId": 1915,
         "canIdHex": "0x77B",
         "direction": "rx",
@@ -931,8 +931,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.721Z",
-        "t": 90078198720,
+        "timestamp": "2026-09-24T21:01:48.812Z",
+        "t": 90283708811,
         "canId": 1811,
         "canIdHex": "0x713",
         "direction": "tx",
@@ -944,8 +944,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.721Z",
-        "t": 90078198720,
+        "timestamp": "2026-09-24T21:01:48.812Z",
+        "t": 90283708811,
         "canId": 1915,
         "canIdHex": "0x77B",
         "direction": "rx",
@@ -957,8 +957,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.721Z",
-        "t": 90078198720,
+        "timestamp": "2026-09-24T21:01:48.812Z",
+        "t": 90283708811,
         "canId": 1811,
         "canIdHex": "0x713",
         "direction": "tx",
@@ -970,8 +970,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.721Z",
-        "t": 90078198720,
+        "timestamp": "2026-09-24T21:01:48.812Z",
+        "t": 90283708811,
         "canId": 1915,
         "canIdHex": "0x77B",
         "direction": "rx",
@@ -983,8 +983,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.722Z",
-        "t": 90078198721,
+        "timestamp": "2026-09-24T21:01:48.812Z",
+        "t": 90283708811,
         "canId": 1811,
         "canIdHex": "0x713",
         "direction": "tx",
@@ -996,8 +996,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.722Z",
-        "t": 90078198721,
+        "timestamp": "2026-09-24T21:01:48.813Z",
+        "t": 90283708812,
         "canId": 1915,
         "canIdHex": "0x77B",
         "direction": "rx",
@@ -1009,8 +1009,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.722Z",
-        "t": 90078198721,
+        "timestamp": "2026-09-24T21:01:48.813Z",
+        "t": 90283708812,
         "canId": 1811,
         "canIdHex": "0x713",
         "direction": "tx",
@@ -1022,8 +1022,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.722Z",
-        "t": 90078198721,
+        "timestamp": "2026-09-24T21:01:48.813Z",
+        "t": 90283708812,
         "canId": 1915,
         "canIdHex": "0x77B",
         "direction": "rx",
@@ -1035,8 +1035,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.722Z",
-        "t": 90078198721,
+        "timestamp": "2026-09-24T21:01:48.813Z",
+        "t": 90283708812,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -1048,8 +1048,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.722Z",
-        "t": 90078198721,
+        "timestamp": "2026-09-24T21:01:48.813Z",
+        "t": 90283708812,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -1061,8 +1061,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.722Z",
-        "t": 90078198721,
+        "timestamp": "2026-09-24T21:01:48.813Z",
+        "t": 90283708812,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -1074,8 +1074,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.722Z",
-        "t": 90078198721,
+        "timestamp": "2026-09-24T21:01:48.813Z",
+        "t": 90283708812,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -1087,8 +1087,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.722Z",
-        "t": 90078198721,
+        "timestamp": "2026-09-24T21:01:48.813Z",
+        "t": 90283708812,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -1100,8 +1100,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.722Z",
-        "t": 90078198721,
+        "timestamp": "2026-09-24T21:01:48.813Z",
+        "t": 90283708812,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -1113,8 +1113,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.722Z",
-        "t": 90078198721,
+        "timestamp": "2026-09-24T21:01:48.813Z",
+        "t": 90283708812,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -1126,8 +1126,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.722Z",
-        "t": 90078198721,
+        "timestamp": "2026-09-24T21:01:48.813Z",
+        "t": 90283708812,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -1139,8 +1139,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.722Z",
-        "t": 90078198721,
+        "timestamp": "2026-09-24T21:01:48.813Z",
+        "t": 90283708812,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -1152,8 +1152,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.722Z",
-        "t": 90078198721,
+        "timestamp": "2026-09-24T21:01:48.813Z",
+        "t": 90283708812,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -1165,8 +1165,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.722Z",
-        "t": 90078198721,
+        "timestamp": "2026-09-24T21:01:48.814Z",
+        "t": 90283708813,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -1178,8 +1178,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.722Z",
-        "t": 90078198721,
+        "timestamp": "2026-09-24T21:01:48.814Z",
+        "t": 90283708813,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -1191,8 +1191,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.723Z",
-        "t": 90078198722,
+        "timestamp": "2026-09-24T21:01:48.814Z",
+        "t": 90283708813,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -1204,8 +1204,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.723Z",
-        "t": 90078198722,
+        "timestamp": "2026-09-24T21:01:48.814Z",
+        "t": 90283708813,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -1217,8 +1217,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.723Z",
-        "t": 90078198722,
+        "timestamp": "2026-09-24T21:01:48.814Z",
+        "t": 90283708813,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -1230,8 +1230,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.723Z",
-        "t": 90078198722,
+        "timestamp": "2026-09-24T21:01:48.814Z",
+        "t": 90283708813,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -1243,8 +1243,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.723Z",
-        "t": 90078198722,
+        "timestamp": "2026-09-24T21:01:48.814Z",
+        "t": 90283708813,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -1256,8 +1256,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.723Z",
-        "t": 90078198722,
+        "timestamp": "2026-09-24T21:01:48.814Z",
+        "t": 90283708813,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -1269,8 +1269,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.723Z",
-        "t": 90078198722,
+        "timestamp": "2026-09-24T21:01:48.814Z",
+        "t": 90283708813,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -1282,8 +1282,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.723Z",
-        "t": 90078198722,
+        "timestamp": "2026-09-24T21:01:48.814Z",
+        "t": 90283708813,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -1295,8 +1295,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.723Z",
-        "t": 90078198722,
+        "timestamp": "2026-09-24T21:01:48.814Z",
+        "t": 90283708813,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -1308,8 +1308,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.723Z",
-        "t": 90078198722,
+        "timestamp": "2026-09-24T21:01:48.814Z",
+        "t": 90283708813,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -1321,8 +1321,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.723Z",
-        "t": 90078198722,
+        "timestamp": "2026-09-24T21:01:48.814Z",
+        "t": 90283708813,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -1334,8 +1334,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.723Z",
-        "t": 90078198722,
+        "timestamp": "2026-09-24T21:01:48.814Z",
+        "t": 90283708813,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -1347,8 +1347,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.723Z",
-        "t": 90078198722,
+        "timestamp": "2026-09-24T21:01:48.815Z",
+        "t": 90283708814,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -1360,8 +1360,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.723Z",
-        "t": 90078198722,
+        "timestamp": "2026-09-24T21:01:48.815Z",
+        "t": 90283708814,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -1373,8 +1373,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.723Z",
-        "t": 90078198722,
+        "timestamp": "2026-09-24T21:01:48.815Z",
+        "t": 90283708814,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -1386,8 +1386,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.723Z",
-        "t": 90078198722,
+        "timestamp": "2026-09-24T21:01:48.815Z",
+        "t": 90283708814,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -1399,8 +1399,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.723Z",
-        "t": 90078198722,
+        "timestamp": "2026-09-24T21:01:48.815Z",
+        "t": 90283708814,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -1412,8 +1412,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.723Z",
-        "t": 90078198722,
+        "timestamp": "2026-09-24T21:01:48.815Z",
+        "t": 90283708814,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -1425,8 +1425,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.723Z",
-        "t": 90078198722,
+        "timestamp": "2026-09-24T21:01:48.815Z",
+        "t": 90283708814,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -1438,8 +1438,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.724Z",
-        "t": 90078198723,
+        "timestamp": "2026-09-24T21:01:48.815Z",
+        "t": 90283708814,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -1451,8 +1451,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.724Z",
-        "t": 90078198723,
+        "timestamp": "2026-09-24T21:01:48.815Z",
+        "t": 90283708814,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -1464,8 +1464,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.724Z",
-        "t": 90078198723,
+        "timestamp": "2026-09-24T21:01:48.815Z",
+        "t": 90283708814,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -1477,8 +1477,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.724Z",
-        "t": 90078198723,
+        "timestamp": "2026-09-24T21:01:48.815Z",
+        "t": 90283708814,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -1490,8 +1490,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.724Z",
-        "t": 90078198723,
+        "timestamp": "2026-09-24T21:01:48.815Z",
+        "t": 90283708814,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -1503,8 +1503,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.724Z",
-        "t": 90078198723,
+        "timestamp": "2026-09-24T21:01:48.816Z",
+        "t": 90283708815,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -1516,8 +1516,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.724Z",
-        "t": 90078198723,
+        "timestamp": "2026-09-24T21:01:48.816Z",
+        "t": 90283708815,
         "canId": 2017,
         "canIdHex": "0x7E1",
         "direction": "tx",
@@ -1529,8 +1529,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.724Z",
-        "t": 90078198723,
+        "timestamp": "2026-09-24T21:01:48.816Z",
+        "t": 90283708815,
         "canId": 2025,
         "canIdHex": "0x7E9",
         "direction": "rx",
@@ -1542,8 +1542,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.724Z",
-        "t": 90078198723,
+        "timestamp": "2026-09-24T21:01:48.816Z",
+        "t": 90283708815,
         "canId": 2017,
         "canIdHex": "0x7E1",
         "direction": "tx",
@@ -1555,8 +1555,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.724Z",
-        "t": 90078198723,
+        "timestamp": "2026-09-24T21:01:48.816Z",
+        "t": 90283708815,
         "canId": 2025,
         "canIdHex": "0x7E9",
         "direction": "rx",
@@ -1568,8 +1568,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.724Z",
-        "t": 90078198723,
+        "timestamp": "2026-09-24T21:01:48.816Z",
+        "t": 90283708815,
         "canId": 2025,
         "canIdHex": "0x7E9",
         "direction": "rx",
@@ -1581,8 +1581,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.724Z",
-        "t": 90078198723,
+        "timestamp": "2026-09-24T21:01:48.816Z",
+        "t": 90283708815,
         "canId": 2017,
         "canIdHex": "0x7E1",
         "direction": "tx",
@@ -1594,8 +1594,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.724Z",
-        "t": 90078198723,
+        "timestamp": "2026-09-24T21:01:48.816Z",
+        "t": 90283708815,
         "canId": 2025,
         "canIdHex": "0x7E9",
         "direction": "rx",
@@ -1607,8 +1607,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.724Z",
-        "t": 90078198723,
+        "timestamp": "2026-09-24T21:01:48.816Z",
+        "t": 90283708815,
         "canId": 2017,
         "canIdHex": "0x7E1",
         "direction": "tx",
@@ -1620,8 +1620,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.724Z",
-        "t": 90078198723,
+        "timestamp": "2026-09-24T21:01:48.816Z",
+        "t": 90283708815,
         "canId": 2025,
         "canIdHex": "0x7E9",
         "direction": "rx",
@@ -1633,8 +1633,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.724Z",
-        "t": 90078198723,
+        "timestamp": "2026-09-24T21:01:48.816Z",
+        "t": 90283708815,
         "canId": 2025,
         "canIdHex": "0x7E9",
         "direction": "rx",
@@ -1646,8 +1646,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.724Z",
-        "t": 90078198723,
+        "timestamp": "2026-09-24T21:01:48.816Z",
+        "t": 90283708815,
         "canId": 2017,
         "canIdHex": "0x7E1",
         "direction": "tx",
@@ -1659,8 +1659,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.725Z",
-        "t": 90078198724,
+        "timestamp": "2026-09-24T21:01:48.816Z",
+        "t": 90283708815,
         "canId": 2025,
         "canIdHex": "0x7E9",
         "direction": "rx",
@@ -1672,8 +1672,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.725Z",
-        "t": 90078198724,
+        "timestamp": "2026-09-24T21:01:48.817Z",
+        "t": 90283708816,
         "canId": 2017,
         "canIdHex": "0x7E1",
         "direction": "tx",
@@ -1685,8 +1685,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.725Z",
-        "t": 90078198724,
+        "timestamp": "2026-09-24T21:01:48.817Z",
+        "t": 90283708816,
         "canId": 2025,
         "canIdHex": "0x7E9",
         "direction": "rx",
@@ -1698,8 +1698,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.725Z",
-        "t": 90078198724,
+        "timestamp": "2026-09-24T21:01:48.817Z",
+        "t": 90283708816,
         "canId": 2017,
         "canIdHex": "0x7E1",
         "direction": "tx",
@@ -1711,8 +1711,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.725Z",
-        "t": 90078198724,
+        "timestamp": "2026-09-24T21:01:48.817Z",
+        "t": 90283708816,
         "canId": 2025,
         "canIdHex": "0x7E9",
         "direction": "rx",
@@ -1724,8 +1724,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.725Z",
-        "t": 90078198724,
+        "timestamp": "2026-09-24T21:01:48.817Z",
+        "t": 90283708816,
         "canId": 2017,
         "canIdHex": "0x7E1",
         "direction": "tx",
@@ -1737,8 +1737,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.725Z",
-        "t": 90078198724,
+        "timestamp": "2026-09-24T21:01:48.817Z",
+        "t": 90283708816,
         "canId": 2025,
         "canIdHex": "0x7E9",
         "direction": "rx",
@@ -1750,8 +1750,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.725Z",
-        "t": 90078198724,
+        "timestamp": "2026-09-24T21:01:48.817Z",
+        "t": 90283708816,
         "canId": 2017,
         "canIdHex": "0x7E1",
         "direction": "tx",
@@ -1763,8 +1763,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.725Z",
-        "t": 90078198724,
+        "timestamp": "2026-09-24T21:01:48.817Z",
+        "t": 90283708816,
         "canId": 2025,
         "canIdHex": "0x7E9",
         "direction": "rx",
@@ -1776,8 +1776,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.725Z",
-        "t": 90078198724,
+        "timestamp": "2026-09-24T21:01:48.817Z",
+        "t": 90283708816,
         "canId": 2017,
         "canIdHex": "0x7E1",
         "direction": "tx",
@@ -1789,8 +1789,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.725Z",
-        "t": 90078198724,
+        "timestamp": "2026-09-24T21:01:48.817Z",
+        "t": 90283708816,
         "canId": 2025,
         "canIdHex": "0x7E9",
         "direction": "rx",
@@ -1802,8 +1802,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.725Z",
-        "t": 90078198724,
+        "timestamp": "2026-09-24T21:01:48.817Z",
+        "t": 90283708816,
         "canId": 2017,
         "canIdHex": "0x7E1",
         "direction": "tx",
@@ -1815,8 +1815,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.725Z",
-        "t": 90078198724,
+        "timestamp": "2026-09-24T21:01:48.818Z",
+        "t": 90283708817,
         "canId": 2025,
         "canIdHex": "0x7E9",
         "direction": "rx",
@@ -1828,8 +1828,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.725Z",
-        "t": 90078198724,
+        "timestamp": "2026-09-24T21:01:48.818Z",
+        "t": 90283708817,
         "canId": 2017,
         "canIdHex": "0x7E1",
         "direction": "tx",
@@ -1841,8 +1841,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.725Z",
-        "t": 90078198724,
+        "timestamp": "2026-09-24T21:01:48.818Z",
+        "t": 90283708817,
         "canId": 2025,
         "canIdHex": "0x7E9",
         "direction": "rx",
@@ -1854,8 +1854,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.725Z",
-        "t": 90078198724,
+        "timestamp": "2026-09-24T21:01:48.818Z",
+        "t": 90283708817,
         "canId": 1811,
         "canIdHex": "0x713",
         "direction": "tx",
@@ -1867,8 +1867,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.725Z",
-        "t": 90078198724,
+        "timestamp": "2026-09-24T21:01:48.818Z",
+        "t": 90283708817,
         "canId": 1915,
         "canIdHex": "0x77B",
         "direction": "rx",
@@ -1880,8 +1880,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.725Z",
-        "t": 90078198724,
+        "timestamp": "2026-09-24T21:01:48.818Z",
+        "t": 90283708817,
         "canId": 1811,
         "canIdHex": "0x713",
         "direction": "tx",
@@ -1893,8 +1893,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.725Z",
-        "t": 90078198724,
+        "timestamp": "2026-09-24T21:01:48.818Z",
+        "t": 90283708817,
         "canId": 1915,
         "canIdHex": "0x77B",
         "direction": "rx",
@@ -1906,8 +1906,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.725Z",
-        "t": 90078198724,
+        "timestamp": "2026-09-24T21:01:48.818Z",
+        "t": 90283708817,
         "canId": 1915,
         "canIdHex": "0x77B",
         "direction": "rx",
@@ -1919,8 +1919,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.726Z",
-        "t": 90078198725,
+        "timestamp": "2026-09-24T21:01:48.818Z",
+        "t": 90283708817,
         "canId": 1811,
         "canIdHex": "0x713",
         "direction": "tx",
@@ -1932,8 +1932,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.726Z",
-        "t": 90078198725,
+        "timestamp": "2026-09-24T21:01:48.818Z",
+        "t": 90283708817,
         "canId": 1915,
         "canIdHex": "0x77B",
         "direction": "rx",
@@ -1945,8 +1945,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.726Z",
-        "t": 90078198725,
+        "timestamp": "2026-09-24T21:01:48.818Z",
+        "t": 90283708817,
         "canId": 1811,
         "canIdHex": "0x713",
         "direction": "tx",
@@ -1958,8 +1958,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.726Z",
-        "t": 90078198725,
+        "timestamp": "2026-09-24T21:01:48.818Z",
+        "t": 90283708817,
         "canId": 1915,
         "canIdHex": "0x77B",
         "direction": "rx",
@@ -1971,8 +1971,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.726Z",
-        "t": 90078198725,
+        "timestamp": "2026-09-24T21:01:48.819Z",
+        "t": 90283708818,
         "canId": 1915,
         "canIdHex": "0x77B",
         "direction": "rx",
@@ -1984,8 +1984,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.726Z",
-        "t": 90078198725,
+        "timestamp": "2026-09-24T21:01:48.819Z",
+        "t": 90283708818,
         "canId": 1811,
         "canIdHex": "0x713",
         "direction": "tx",
@@ -1997,8 +1997,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.726Z",
-        "t": 90078198725,
+        "timestamp": "2026-09-24T21:01:48.819Z",
+        "t": 90283708818,
         "canId": 1915,
         "canIdHex": "0x77B",
         "direction": "rx",
@@ -2010,8 +2010,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.726Z",
-        "t": 90078198725,
+        "timestamp": "2026-09-24T21:01:48.819Z",
+        "t": 90283708818,
         "canId": 1811,
         "canIdHex": "0x713",
         "direction": "tx",
@@ -2023,8 +2023,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.726Z",
-        "t": 90078198725,
+        "timestamp": "2026-09-24T21:01:48.819Z",
+        "t": 90283708818,
         "canId": 1915,
         "canIdHex": "0x77B",
         "direction": "rx",
@@ -2036,8 +2036,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.727Z",
-        "t": 90078198726,
+        "timestamp": "2026-09-24T21:01:48.820Z",
+        "t": 90283708819,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -2049,8 +2049,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.727Z",
-        "t": 90078198726,
+        "timestamp": "2026-09-24T21:01:48.820Z",
+        "t": 90283708819,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2062,8 +2062,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.727Z",
-        "t": 90078198726,
+        "timestamp": "2026-09-24T21:01:48.820Z",
+        "t": 90283708819,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -2075,8 +2075,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.727Z",
-        "t": 90078198726,
+        "timestamp": "2026-09-24T21:01:48.820Z",
+        "t": 90283708819,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2088,8 +2088,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.727Z",
-        "t": 90078198726,
+        "timestamp": "2026-09-24T21:01:48.820Z",
+        "t": 90283708819,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2101,8 +2101,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.727Z",
-        "t": 90078198726,
+        "timestamp": "2026-09-24T21:01:48.820Z",
+        "t": 90283708819,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -2114,8 +2114,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.727Z",
-        "t": 90078198726,
+        "timestamp": "2026-09-24T21:01:48.820Z",
+        "t": 90283708819,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2127,8 +2127,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.727Z",
-        "t": 90078198726,
+        "timestamp": "2026-09-24T21:01:48.820Z",
+        "t": 90283708819,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -2140,8 +2140,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.727Z",
-        "t": 90078198726,
+        "timestamp": "2026-09-24T21:01:48.820Z",
+        "t": 90283708819,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2153,8 +2153,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.727Z",
-        "t": 90078198726,
+        "timestamp": "2026-09-24T21:01:48.820Z",
+        "t": 90283708819,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2166,8 +2166,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.727Z",
-        "t": 90078198726,
+        "timestamp": "2026-09-24T21:01:48.820Z",
+        "t": 90283708819,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -2179,8 +2179,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.727Z",
-        "t": 90078198726,
+        "timestamp": "2026-09-24T21:01:48.820Z",
+        "t": 90283708819,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2192,8 +2192,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.727Z",
-        "t": 90078198726,
+        "timestamp": "2026-09-24T21:01:48.820Z",
+        "t": 90283708819,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -2205,8 +2205,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.727Z",
-        "t": 90078198726,
+        "timestamp": "2026-09-24T21:01:48.820Z",
+        "t": 90283708819,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2218,8 +2218,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.727Z",
-        "t": 90078198726,
+        "timestamp": "2026-09-24T21:01:48.821Z",
+        "t": 90283708820,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2231,8 +2231,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.727Z",
-        "t": 90078198726,
+        "timestamp": "2026-09-24T21:01:48.821Z",
+        "t": 90283708820,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -2244,8 +2244,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.727Z",
-        "t": 90078198726,
+        "timestamp": "2026-09-24T21:01:48.821Z",
+        "t": 90283708820,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2257,8 +2257,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.727Z",
-        "t": 90078198726,
+        "timestamp": "2026-09-24T21:01:48.821Z",
+        "t": 90283708820,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -2270,8 +2270,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.727Z",
-        "t": 90078198726,
+        "timestamp": "2026-09-24T21:01:48.821Z",
+        "t": 90283708820,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2283,8 +2283,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.727Z",
-        "t": 90078198726,
+        "timestamp": "2026-09-24T21:01:48.821Z",
+        "t": 90283708820,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2296,8 +2296,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.727Z",
-        "t": 90078198726,
+        "timestamp": "2026-09-24T21:01:48.821Z",
+        "t": 90283708820,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -2309,8 +2309,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.727Z",
-        "t": 90078198726,
+        "timestamp": "2026-09-24T21:01:48.821Z",
+        "t": 90283708820,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2322,8 +2322,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.728Z",
-        "t": 90078198727,
+        "timestamp": "2026-09-24T21:01:48.821Z",
+        "t": 90283708820,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -2335,8 +2335,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.728Z",
-        "t": 90078198727,
+        "timestamp": "2026-09-24T21:01:48.821Z",
+        "t": 90283708820,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2348,8 +2348,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.728Z",
-        "t": 90078198727,
+        "timestamp": "2026-09-24T21:01:48.822Z",
+        "t": 90283708821,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -2361,8 +2361,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.728Z",
-        "t": 90078198727,
+        "timestamp": "2026-09-24T21:01:48.822Z",
+        "t": 90283708821,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2374,8 +2374,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.728Z",
-        "t": 90078198727,
+        "timestamp": "2026-09-24T21:01:48.822Z",
+        "t": 90283708821,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -2387,8 +2387,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.728Z",
-        "t": 90078198727,
+        "timestamp": "2026-09-24T21:01:48.822Z",
+        "t": 90283708821,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2400,8 +2400,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.728Z",
-        "t": 90078198727,
+        "timestamp": "2026-09-24T21:01:48.822Z",
+        "t": 90283708821,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -2413,8 +2413,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.728Z",
-        "t": 90078198727,
+        "timestamp": "2026-09-24T21:01:48.822Z",
+        "t": 90283708821,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2426,8 +2426,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.728Z",
-        "t": 90078198727,
+        "timestamp": "2026-09-24T21:01:48.822Z",
+        "t": 90283708821,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -2439,8 +2439,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.728Z",
-        "t": 90078198727,
+        "timestamp": "2026-09-24T21:01:48.822Z",
+        "t": 90283708821,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2452,8 +2452,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.728Z",
-        "t": 90078198727,
+        "timestamp": "2026-09-24T21:01:48.822Z",
+        "t": 90283708821,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -2465,8 +2465,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.728Z",
-        "t": 90078198727,
+        "timestamp": "2026-09-24T21:01:48.822Z",
+        "t": 90283708821,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2478,8 +2478,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.728Z",
-        "t": 90078198727,
+        "timestamp": "2026-09-24T21:01:48.822Z",
+        "t": 90283708821,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -2491,8 +2491,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.728Z",
-        "t": 90078198727,
+        "timestamp": "2026-09-24T21:01:48.822Z",
+        "t": 90283708821,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2504,8 +2504,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.728Z",
-        "t": 90078198727,
+        "timestamp": "2026-09-24T21:01:48.822Z",
+        "t": 90283708821,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -2517,8 +2517,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.728Z",
-        "t": 90078198727,
+        "timestamp": "2026-09-24T21:01:48.822Z",
+        "t": 90283708821,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2530,8 +2530,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.728Z",
-        "t": 90078198727,
+        "timestamp": "2026-09-24T21:01:48.822Z",
+        "t": 90283708821,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -2543,8 +2543,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.728Z",
-        "t": 90078198727,
+        "timestamp": "2026-09-24T21:01:48.822Z",
+        "t": 90283708821,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2556,8 +2556,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.729Z",
-        "t": 90078198728,
+        "timestamp": "2026-09-24T21:01:48.823Z",
+        "t": 90283708822,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -2569,8 +2569,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.729Z",
-        "t": 90078198728,
+        "timestamp": "2026-09-24T21:01:48.823Z",
+        "t": 90283708822,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2582,8 +2582,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.729Z",
-        "t": 90078198728,
+        "timestamp": "2026-09-24T21:01:48.823Z",
+        "t": 90283708822,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -2595,8 +2595,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.729Z",
-        "t": 90078198728,
+        "timestamp": "2026-09-24T21:01:48.823Z",
+        "t": 90283708822,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2608,8 +2608,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.729Z",
-        "t": 90078198728,
+        "timestamp": "2026-09-24T21:01:48.823Z",
+        "t": 90283708822,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -2621,8 +2621,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.729Z",
-        "t": 90078198728,
+        "timestamp": "2026-09-24T21:01:48.823Z",
+        "t": 90283708822,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2634,8 +2634,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.729Z",
-        "t": 90078198728,
+        "timestamp": "2026-09-24T21:01:48.823Z",
+        "t": 90283708822,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -2647,8 +2647,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.729Z",
-        "t": 90078198728,
+        "timestamp": "2026-09-24T21:01:48.823Z",
+        "t": 90283708822,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2660,8 +2660,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.729Z",
-        "t": 90078198728,
+        "timestamp": "2026-09-24T21:01:48.823Z",
+        "t": 90283708822,
         "canId": 2017,
         "canIdHex": "0x7E1",
         "direction": "tx",
@@ -2673,8 +2673,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.729Z",
-        "t": 90078198728,
+        "timestamp": "2026-09-24T21:01:48.823Z",
+        "t": 90283708822,
         "canId": 2025,
         "canIdHex": "0x7E9",
         "direction": "rx",
@@ -2686,8 +2686,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.729Z",
-        "t": 90078198728,
+        "timestamp": "2026-09-24T21:01:48.823Z",
+        "t": 90283708822,
         "canId": 2017,
         "canIdHex": "0x7E1",
         "direction": "tx",
@@ -2699,8 +2699,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.729Z",
-        "t": 90078198728,
+        "timestamp": "2026-09-24T21:01:48.823Z",
+        "t": 90283708822,
         "canId": 2025,
         "canIdHex": "0x7E9",
         "direction": "rx",
@@ -2712,8 +2712,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.729Z",
-        "t": 90078198728,
+        "timestamp": "2026-09-24T21:01:48.823Z",
+        "t": 90283708822,
         "canId": 1811,
         "canIdHex": "0x713",
         "direction": "tx",
@@ -2725,8 +2725,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.729Z",
-        "t": 90078198728,
+        "timestamp": "2026-09-24T21:01:48.823Z",
+        "t": 90283708822,
         "canId": 1915,
         "canIdHex": "0x77B",
         "direction": "rx",
@@ -2738,8 +2738,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.730Z",
-        "t": 90078198729,
+        "timestamp": "2026-09-24T21:01:48.823Z",
+        "t": 90283708822,
         "canId": 1811,
         "canIdHex": "0x713",
         "direction": "tx",
@@ -2751,8 +2751,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.730Z",
-        "t": 90078198729,
+        "timestamp": "2026-09-24T21:01:48.823Z",
+        "t": 90283708822,
         "canId": 1915,
         "canIdHex": "0x77B",
         "direction": "rx",
@@ -2764,8 +2764,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.730Z",
-        "t": 90078198729,
+        "timestamp": "2026-09-24T21:01:48.823Z",
+        "t": 90283708822,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -2777,8 +2777,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.730Z",
-        "t": 90078198729,
+        "timestamp": "2026-09-24T21:01:48.823Z",
+        "t": 90283708822,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2790,8 +2790,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.730Z",
-        "t": 90078198729,
+        "timestamp": "2026-09-24T21:01:48.823Z",
+        "t": 90283708822,
         "canId": 2016,
         "canIdHex": "0x7E0",
         "direction": "tx",
@@ -2803,8 +2803,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.730Z",
-        "t": 90078198729,
+        "timestamp": "2026-09-24T21:01:48.823Z",
+        "t": 90283708822,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2816,8 +2816,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.730Z",
-        "t": 90078198729,
+        "timestamp": "2026-09-24T21:01:48.823Z",
+        "t": 90283708822,
         "canId": 2024,
         "canIdHex": "0x7E8",
         "direction": "rx",
@@ -2829,8 +2829,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.730Z",
-        "t": 90078198729,
+        "timestamp": "2026-09-24T21:01:48.823Z",
+        "t": 90283708822,
         "canId": 2017,
         "canIdHex": "0x7E1",
         "direction": "tx",
@@ -2842,8 +2842,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.730Z",
-        "t": 90078198729,
+        "timestamp": "2026-09-24T21:01:48.823Z",
+        "t": 90283708822,
         "canId": 2025,
         "canIdHex": "0x7E9",
         "direction": "rx",
@@ -2855,8 +2855,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.730Z",
-        "t": 90078198729,
+        "timestamp": "2026-09-24T21:01:48.823Z",
+        "t": 90283708822,
         "canId": 2017,
         "canIdHex": "0x7E1",
         "direction": "tx",
@@ -2868,8 +2868,8 @@
         "fd": false
       },
       {
-        "timestamp": "2026-09-22T11:56:38.730Z",
-        "t": 90078198729,
+        "timestamp": "2026-09-24T21:01:48.823Z",
+        "t": 90283708822,
         "canId": 2025,
         "canIdHex": "0x7E9",
         "direction": "rx",

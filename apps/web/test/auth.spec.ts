@@ -12,7 +12,7 @@
  */
 
 import assert from "node:assert/strict";
-import type { IncomingMessage } from "node:http";
+import { get as httpGet, type IncomingMessage } from "node:http";
 import { afterAll, describe, test } from "vitest";
 import {
   AUTH_COOKIE,
@@ -187,6 +187,30 @@ describe("over a real socket — a route that is only protected in a unit test i
     });
   });
 
+  test("the ?token= exchange does not apply to API routes — header or cookie is the API's token path", async () => {
+    await withToken(async (base) => {
+      const response = await fetch(`${base}/api/state?token=s3cret`, { redirect: "manual" });
+      assert.equal(
+        response.status,
+        401,
+        "a token in the API URL is not a credential — the JSON contract is not broken by a 302",
+      );
+      assert.equal(response.headers.getSetCookie().length, 0, "no cookie is set for an API URL");
+      const body = (await response.json()) as { error: string };
+      assert.match(body.error, /not authenticated/);
+    });
+  });
+
+  test("the ?token= exchange does not apply to assets — the asset is served with the cookie", async () => {
+    await withToken(async (base) => {
+      const response = await fetch(`${base}/app.js?token=s3cret`, { redirect: "manual" });
+      assert.equal(response.status, 401, "the token in the asset URL is not a credential");
+      assert.equal(response.headers.getSetCookie().length, 0, "no cookie is set for an asset URL");
+      const served = await fetch(`${base}/app.js`, { headers: { cookie: "vdp_session=s3cret" } });
+      assert.equal(served.status, 200, "with the proper credential the asset is served");
+    });
+  });
+
   test("without a token configured the server behaves exactly as before", async () => {
     const server = new WebServer({ port: 0, liveIntervalMs: 60 });
     servers.push(server);
@@ -229,6 +253,64 @@ describe("over a real socket — a route that is only protected in a unit test i
     const body = (await response.json()) as { error: string };
     assert.match(body.error, /forbidden/);
     assert.match(body.error, /origin/i);
+  });
+
+  test("binding 0.0.0.0 no longer trusts arbitrary Host headers", async () => {
+    // `0.0.0.0` is a bind address, not a hostname. The old check treated it as
+    // "trust every Host header"; a forged Host must now be refused like any
+    // other untrusted one.
+    const server = new WebServer({ port: 0, host: "0.0.0.0", liveIntervalMs: 60 });
+    const { port } = await server.listen();
+    try {
+      const status = await new Promise<number>((resolve, reject) => {
+        httpGet(
+          {
+            host: "127.0.0.1",
+            port,
+            path: "/api/state",
+            headers: { host: "not-this-server.example.com" },
+          },
+          (res) => {
+            res.resume();
+            res.on("end", () => resolve(res.statusCode ?? 0));
+          },
+        ).on("error", reject);
+      });
+      assert.equal(status, 403, "a forged Host header is refused, not waved through");
+    } finally {
+      await server.close();
+    }
+  });
+
+  test("the sandbox preview host is trusted — it is derived, not wildcarded", async () => {
+    // Inside the sandbox the browser reaches the server as
+    // `{port}-{sandboxId}.e2b.app`; the server derives that host from the
+    // environment and its bound port instead of trusting the whole domain.
+    const previous = process.env.E2B_SANDBOX_ID;
+    process.env.E2B_SANDBOX_ID = "sandbox-for-test";
+    const server = new WebServer({ port: 0, liveIntervalMs: 60 });
+    const { port } = await server.listen();
+    try {
+      const status = await new Promise<number>((resolve, reject) => {
+        httpGet(
+          {
+            host: "127.0.0.1",
+            port,
+            path: "/api/state",
+            headers: { host: `${port}-sandbox-for-test.e2b.app` },
+          },
+          (res) => {
+            res.resume();
+            res.on("end", () => resolve(res.statusCode ?? 0));
+          },
+        ).on("error", reject);
+      });
+      assert.equal(status, 200, "the browser arrives with the preview host, not localhost");
+    } finally {
+      if (previous === undefined) delete process.env.E2B_SANDBOX_ID;
+      else process.env.E2B_SANDBOX_ID = previous;
+      await server.close();
+    }
   });
 });
 
@@ -274,5 +356,51 @@ describe("validateRequestOrigin — CSRF and DNS rebinding protections", () => {
     const res = validateRequestOrigin(req);
     assert.equal(res.ok, false);
     assert.match(res.reason ?? "", /untrusted Host/);
+  });
+
+  test("a host that merely shares the preview platform's domain is not trusted", () => {
+    // The old check trusted `*.e2b.app` — which is also every *other* sandbox's
+    // host, i.e. a host an attacker may well control. Trust is explicit now.
+    const req = {
+      method: "GET",
+      headers: { host: "9999-other-sandbox.e2b.app" },
+    } as unknown as IncomingMessage;
+    const res = validateRequestOrigin(req);
+    assert.equal(res.ok, false);
+    assert.match(res.reason ?? "", /untrusted Host/);
+  });
+
+  test("an explicitly trusted host passes, case-insensitively", () => {
+    const req = {
+      method: "GET",
+      headers: { host: "8080-my-sandbox.e2b.app" },
+    } as unknown as IncomingMessage;
+    assert.equal(
+      validateRequestOrigin(req, { trustedHosts: ["8080-my-sandbox.e2b.app"] }).ok,
+      true,
+    );
+    assert.equal(
+      validateRequestOrigin(req, { trustedHosts: ["8080-My-Sandbox.E2B.app"] }).ok,
+      true,
+      "hostnames are case-insensitive",
+    );
+  });
+
+  test("a mutating cross-origin request passes when the origin host is trusted", () => {
+    // The proxy may present the origin with an explicit port, which makes it
+    // differ from the Host header — the origin *host* is then checked against
+    // the trust list instead of a domain wildcard.
+    const req = {
+      method: "POST",
+      headers: {
+        host: "8080-my-sandbox.e2b.app",
+        origin: "https://8080-my-sandbox.e2b.app:443",
+      },
+    } as unknown as IncomingMessage;
+    assert.equal(
+      validateRequestOrigin(req, { trustedHosts: ["8080-my-sandbox.e2b.app"] }).ok,
+      true,
+    );
+    assert.equal(validateRequestOrigin(req).ok, false, "without the trust entry it is refused");
   });
 });

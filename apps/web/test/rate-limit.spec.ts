@@ -69,6 +69,46 @@ describe("RateLimiter — the decision", () => {
     assert.equal(limiter.size, 0);
     assert.equal(limiter.checkApi("1.2.3.4", 0).allowed, true);
   });
+
+  test("the window map is capped: a rotating source address cannot grow it without bound", () => {
+    const limiter = new RateLimiter({ maxRequests: 1, windowMs: 60_000, maxTrackedIps: 5 });
+    for (let i = 0; i < 20; i++) {
+      limiter.checkApi(`10.0.0.${i}`, 0);
+    }
+    assert.equal(limiter.size, 5, "no matter how many IPs arrive, the map never exceeds the cap");
+    assert.equal(
+      limiter.checkApi("10.0.0.19", 10).allowed,
+      false,
+      "the latest IP is still tracked and rate-limited",
+    );
+    assert.equal(
+      limiter.checkApi("10.0.0.0", 10).allowed,
+      true,
+      "the oldest IP was evicted and starts a fresh window",
+    );
+  });
+
+  test("expired windows are swept before any eviction", () => {
+    const limiter = new RateLimiter({ maxRequests: 1, windowMs: 100, maxTrackedIps: 5 });
+    for (let i = 0; i < 5; i++) limiter.checkApi(`10.0.0.${i}`, 0);
+    // At t=150 every tracked window is expired: the sweep makes room, nothing
+    // live is evicted.
+    limiter.checkApi("10.0.0.9", 150);
+    assert.equal(limiter.size, 1, "only the new IP is tracked after the sweep");
+  });
+
+  test("when nothing is expired, the oldest tracked IP is evicted", () => {
+    const limiter = new RateLimiter({ maxRequests: 1, windowMs: 60_000, maxTrackedIps: 5 });
+    for (let i = 0; i < 5; i++) limiter.checkApi(`10.0.0.${i}`, 0);
+    limiter.checkApi("10.0.0.9", 10);
+    assert.equal(limiter.size, 5);
+    assert.equal(
+      limiter.checkApi("10.0.0.4", 10).allowed,
+      false,
+      "the newest tracked window survived",
+    );
+    assert.equal(limiter.checkApi("10.0.0.0", 10).allowed, true, "the oldest one was evicted");
+  });
 });
 
 describe("over a real socket — 429 when hammering", () => {

@@ -15,6 +15,7 @@ import {
   toHex,
   UdsNegativeResponseError,
   UdsTimeoutError,
+  VdpError,
 } from "@vdp/shared";
 import {
   type DtcSeverity,
@@ -392,7 +393,17 @@ export class UdsClient {
       bytes[2] ?? 0,
       recordNumber & 0xff,
     ]);
-    if (response.length < 7) return null;
+    // A positive answer shorter than 7 bytes is a broken frame, not "no record":
+    // even an empty record still carries DTC(3) + status + record number. Reading
+    // it as `null` would report "no environment data recorded" for a message that
+    // was cut off on the bus — the one mistake a technician cannot afford
+    // (ADR 0033/0039, the same rule `parseDtcReport` already applies).
+    if (response.length < 7) {
+      throw new ProtocolError(
+        `malformed DTC snapshot record: ${response.length} byte(s); expected 7 header byte(s) plus the record data`,
+        { response: toHex(response), dtc },
+      );
+    }
     return { recordNumber: response[6] ?? recordNumber, data: response.subarray(7).slice() };
   }
 
@@ -408,7 +419,14 @@ export class UdsClient {
       bytes[2] ?? 0,
       recordNumber & 0xff,
     ]);
-    if (response.length < 7) return null;
+    // Same rule as the snapshot record above: a positive answer under 7 bytes is
+    // a broken frame (ADR 0033/0039), not "no extended data recorded".
+    if (response.length < 7) {
+      throw new ProtocolError(
+        `malformed DTC extended data record: ${response.length} byte(s); expected 7 header byte(s) plus the record data`,
+        { response: toHex(response), dtc },
+      );
+    }
     return { recordNumber: response[6] ?? recordNumber, data: response.subarray(7).slice() };
   }
 
@@ -537,6 +555,24 @@ export class UdsClient {
     return this.transmit(new Uint8Array([serviceId, ...data]), options, serviceId);
   }
 
+  /**
+   * Attach the failing request's bytes to a typed error, so the caller (and the
+   * log) can say which UDS service and which payload it was. Values the error
+   * already carries win over the fingerprint; non-typed errors are rethrown
+   * untouched — there is no `details` to enrich.
+   */
+  private withRequestFingerprint(
+    error: unknown,
+    evidence: { sid: string; request: string },
+  ): unknown {
+    if (error instanceof VdpError) {
+      for (const [key, value] of Object.entries(evidence)) {
+        if (error.details[key] === undefined) error.details[key] = value;
+      }
+    }
+    return error;
+  }
+
   private async transmit(
     payload: Uint8Array,
     options: RequestOptions,
@@ -555,6 +591,15 @@ export class UdsClient {
       return new Uint8Array();
     }
 
+    // Every failure of this request is logged once at warn level with the bytes
+    // that failed, so a session log shows *which* service went wrong without
+    // having to enable raw protocol logging.
+    const failureEvidence = {
+      ecu: this.name,
+      sid: `0x${serviceId.toString(16)}`,
+      request: toHex(payload),
+    };
+
     let attempt = 0;
     for (;;) {
       let response: Uint8Array;
@@ -562,7 +607,11 @@ export class UdsClient {
         response = await this.link.request(payload, timeoutMs);
       } catch (error) {
         this.stats.timeouts++;
-        throw error;
+        this.log.warn("uds request failed at the link layer", {
+          ...failureEvidence,
+          error: messageOf(error),
+        });
+        throw this.withRequestFingerprint(error, failureEvidence);
       }
       try {
         return await this.evaluateResponse(serviceId, response);
@@ -574,7 +623,16 @@ export class UdsClient {
           await this.sleep(20);
           continue;
         }
-        throw error;
+        // A negative response is the ECU *answering* — a refusal is data, and the
+        // probe path expects NRC 0x11 as a normal outcome. It is logged at debug
+        // (the error itself carries the fingerprint and the NRC name); only a link-
+        // layer failure is warned, because that is the communication failing.
+        this.log.debug("uds request refused or unresolvable", {
+          ...failureEvidence,
+          error: messageOf(error),
+          ...(nrc !== undefined ? { nrc: nrcName(nrc) } : {}),
+        });
+        throw this.withRequestFingerprint(error, failureEvidence);
       }
     }
   }

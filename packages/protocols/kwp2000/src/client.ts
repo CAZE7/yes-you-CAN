@@ -144,6 +144,17 @@ export class Kwp2000Client {
    */
   async readFaultCodes(subFunction = 0x01): Promise<KwpFaultRecord[]> {
     const response = await this.request(KWP_SID.READ_DIAGNOSTIC_TROUBLE_CODES, [subFunction]);
+    // A body that does not divide into whole (DTC high, DTC low, status) records
+    // is a broken answer, not an empty fault memory: reading it as `[]` would
+    // report "no faults stored" for a frame that was cut off on the bus — the one
+    // mistake a technician cannot afford (ADR 0039).
+    const body = response.length - 2;
+    if (body < 0 || body % 3 !== 0) {
+      throw new ProtocolError(
+        `malformed KWP2000 fault code response: ${response.length} byte(s); expected 2 header byte(s) plus whole 3-byte records`,
+        { response: toHex(response) },
+      );
+    }
     const records: KwpFaultRecord[] = [];
     for (let offset = 2; offset + 2 < response.length; offset += 3) {
       const high = response[offset] ?? 0;

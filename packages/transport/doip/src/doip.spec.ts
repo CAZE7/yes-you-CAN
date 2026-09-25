@@ -414,6 +414,113 @@ test("receive() called before the answer arrives resolves with the payload", asy
   assert.deepEqual(await pending, fromHex("7E 00"), "the waiter is served, nothing is queued");
 });
 
+test("a diagnostic message from a foreign ECU is dropped, not answered to our request", async () => {
+  const endpoint = new FakeDoipEndpoint();
+  const transport = new DoipTransport({
+    socket: endpoint,
+    targetAddress: 0x1000,
+    activationTimeoutMs: 500,
+  });
+  await transport.connect();
+  // Another ECU (0x1100) on the same entity answers a request nobody here made.
+  // Delivering it would hand the UDS layer a payload it reads as its own answer.
+  endpoint.emit(
+    encodeMessage(
+      PAYLOAD_TYPE.DIAGNOSTIC_MESSAGE,
+      encodeDiagnosticMessage(0x1100, 0x0e00, fromHex("7E 00")),
+    ),
+  );
+  const pending = transport.receive(300);
+  assert.equal(await pending, null, "the foreign message must not satisfy our receive");
+  // A message that is not addressed to us is dropped as well.
+  endpoint.emit(
+    encodeMessage(
+      PAYLOAD_TYPE.DIAGNOSTIC_MESSAGE,
+      encodeDiagnosticMessage(0x1000, 0x0e01, fromHex("7E 00")),
+    ),
+  );
+  assert.equal(await transport.receive(300), null);
+  // The expected pair still gets through.
+  endpoint.emit(
+    encodeMessage(
+      PAYLOAD_TYPE.DIAGNOSTIC_MESSAGE,
+      encodeDiagnosticMessage(0x1000, 0x0e00, fromHex("7E 00")),
+    ),
+  );
+  assert.deepEqual(await transport.receive(300), fromHex("7E 00"));
+});
+
+test("a peer that declares a huge payload length cannot grow the reassembly buffer", async () => {
+  const endpoint = new FakeDoipEndpoint();
+  const transport = new DoipTransport({
+    socket: endpoint,
+    targetAddress: 0x1000,
+    activationTimeoutMs: 500,
+    maxMessageBytes: 1_024,
+  });
+  await transport.connect();
+  // Header declaring a ~4 GiB payload: if the buffer followed that peer data,
+  // a trickle of bytes would grow memory without bound.
+  endpoint.emit(fromHex("02 FD 00 05 FF FF FF FF"));
+  assert.match(transport.getStatus().lastError ?? "", /byte cap/);
+  // The framing is dropped, not fatal: the next valid message still works.
+  endpoint.emit(
+    encodeMessage(
+      PAYLOAD_TYPE.DIAGNOSTIC_MESSAGE,
+      encodeDiagnosticMessage(0x1000, 0x0e00, fromHex("7E 00")),
+    ),
+  );
+  assert.deepEqual(await transport.receive(50), fromHex("7E 00"));
+  assert.equal(transport.getStatus().state, "connected");
+});
+
+test("a single oversized chunk is dropped before it can dominate memory", async () => {
+  const endpoint = new FakeDoipEndpoint();
+  const transport = new DoipTransport({
+    socket: endpoint,
+    targetAddress: 0x1000,
+    activationTimeoutMs: 500,
+    maxMessageBytes: 64,
+  });
+  await transport.connect();
+  endpoint.emit(new Uint8Array(64 + DOIP_HEADER_LENGTH + 1));
+  assert.match(transport.getStatus().lastError ?? "", /reassembly buffer exceeded/);
+  // The stream is not poisoned by the oversized chunk.
+  endpoint.emit(
+    encodeMessage(
+      PAYLOAD_TYPE.DIAGNOSTIC_MESSAGE,
+      encodeDiagnosticMessage(0x1000, 0x0e00, fromHex("7E 00")),
+    ),
+  );
+  assert.deepEqual(await transport.receive(50), fromHex("7E 00"));
+});
+
+test("the response queue is bounded: the oldest answer goes, and the loss is counted", async () => {
+  const endpoint = new FakeDoipEndpoint();
+  const transport = new DoipTransport({
+    socket: endpoint,
+    targetAddress: 0x1000,
+    activationTimeoutMs: 500,
+    maxQueuedResponses: 2,
+  });
+  await transport.connect();
+  const diag = (uds: string) =>
+    encodeMessage(
+      PAYLOAD_TYPE.DIAGNOSTIC_MESSAGE,
+      encodeDiagnosticMessage(0x1000, 0x0e00, fromHex(uds)),
+    );
+  endpoint.emit(diag("7E 01"));
+  endpoint.emit(diag("7E 02"));
+  endpoint.emit(diag("7E 03")); // queue full → 01 dropped
+  endpoint.emit(diag("7E 04")); // queue full → 02 dropped, 03 and 04 remain
+  assert.equal(transport.getStatus().droppedRxCount, 2);
+  // The newest answers are the ones a pending request can still match.
+  assert.deepEqual(await transport.receive(50), fromHex("7E 03"));
+  assert.deepEqual(await transport.receive(50), fromHex("7E 04"));
+  assert.equal(await transport.receive(20), null);
+  assert.equal(transport.getStatus().state, "connected");
+});
+
 test("disconnect() settles a pending receive with null", async () => {
   const endpoint = new FakeDoipEndpoint();
   const transport = new DoipTransport({

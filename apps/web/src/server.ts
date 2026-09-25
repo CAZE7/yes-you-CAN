@@ -39,6 +39,7 @@ import {
 } from "./auth.js";
 import { DemoBackend } from "./backend.js";
 import { runDoctorCli } from "./doctor-cli.js";
+import { isDocumentPath, sandboxPreviewHost, trustedHosts } from "./host-rules.js";
 import { RateLimiter } from "./rate-limit.js";
 import {
   HttpError,
@@ -126,6 +127,8 @@ export class WebServer {
   private readonly streams = new Set<ServerResponse>();
   private readonly rateLimiter: RateLimiter;
   private unsubscribe?: () => void;
+  /** The host the sandbox preview proxy fronts this server as (see `listen()`). */
+  private previewHost: string | undefined;
 
   constructor(private readonly options: ServerOptions = {}) {
     // Built here rather than as a field initializer: parameter properties are
@@ -205,6 +208,9 @@ export class WebServer {
     const address = this.server?.address();
     const port =
       typeof address === "object" && address ? address.port : (this.options.port ?? 8080);
+    // Inside the sandbox the preview proxy fronts this server as
+    // `{port}-{sandboxId}.e2b.app`, trusted explicitly (see host-rules.ts).
+    this.previewHost = sandboxPreviewHost(port);
     if (this.options.demo) {
       await this.backend.start();
     }
@@ -252,7 +258,9 @@ export class WebServer {
     }
 
     // Origin and Host validation (CY-02 CSRF & DNS rebinding protection)
-    const originCheck = validateRequestOrigin(request, { allowedHost: this.options.host });
+    const originCheck = validateRequestOrigin(request, {
+      trustedHosts: trustedHosts(this.options.host, this.previewHost),
+    });
     if (!originCheck.ok) {
       return sendJson(
         response,
@@ -264,8 +272,13 @@ export class WebServer {
     // The one-time exchange: the operator opens the workbench with the token in the
     // URL and gets a cookie back. Putting the token in the served HTML instead would
     // not be a token — whoever can reach the server could read it back.
+    //
+    // It is a *document* flow, so it is restricted to the HTML pages — never to
+    // /api/ (a 302 breaks the JSON contract; an API caller carries the token in
+    // the header or the cookie), never to /lib/ or an asset (a token in an asset
+    // URL only multiplies where it can leak: proxy logs, Referer).
     const queryToken = url.searchParams.get("token");
-    if (queryToken !== null) {
+    if (queryToken !== null && isDocumentPath(path)) {
       const cookie = this.auth.cookieFor(queryToken);
       if (cookie === undefined) throw new HttpError(401, "the token in the URL does not match");
       response.writeHead(302, { ...SECURITY_HEADERS, "set-cookie": cookie, location: path });

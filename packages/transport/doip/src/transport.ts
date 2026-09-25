@@ -77,7 +77,29 @@ export interface DoipTransportOptions {
   logger?: Logger;
   /** Require a TLS socket — recommended once DoIP is used productively (AGENTS 26/27). */
   requireTls?: boolean;
+  /**
+   * Hard cap for a single DoIP message (header + payload) in bytes. The
+   * payloads this transport carries are small (a UDS response is at most 4095
+   * bytes), so 64 KiB has vast headroom. A peer that declares more — or that
+   * trickles bytes into the reassembly buffer — is broken or hostile, and the
+   * buffer must not follow its declared length (unbounded growth under a
+   * sustained flood).
+   */
+  maxMessageBytes?: number;
+  /**
+   * Hard cap for diagnostic responses queued ahead of the next receive(). The
+   * link is 1:1 request/response; a queue past a handful of unanswered
+   * messages means the peer floods or the consumer stalled. The oldest queued
+   * answer is dropped (it is the least likely answer to the pending request)
+   * and the loss is counted in the status.
+   */
+  maxQueuedResponses?: number;
 }
+
+/** 64 KiB — far beyond any UDS payload, far short of an addressable DoIP length. */
+export const DEFAULT_MAX_MESSAGE_BYTES = 65_536;
+/** A 1:1 link should never be this far behind its peer. */
+export const DEFAULT_MAX_QUEUED_RESPONSES = 16;
 
 export class DoipTransport implements VehicleTransport {
   private readonly log: Logger;
@@ -87,6 +109,9 @@ export class DoipTransport implements VehicleTransport {
   private readonly activationTimeoutMs: number;
   private readonly receiveTimeoutMs: number;
   private readonly requireTls: boolean;
+  private readonly maxMessageBytes: number;
+  private readonly maxQueuedResponses: number;
+  private droppedRxCount = 0;
 
   private buffer: Uint8Array = new Uint8Array();
   private unsubscribe: (() => void) | null = null;
@@ -125,6 +150,8 @@ export class DoipTransport implements VehicleTransport {
     this.activationTimeoutMs = options.activationTimeoutMs ?? 3000;
     this.receiveTimeoutMs = options.receiveTimeoutMs ?? 5000;
     this.requireTls = options.requireTls ?? false;
+    this.maxMessageBytes = options.maxMessageBytes ?? DEFAULT_MAX_MESSAGE_BYTES;
+    this.maxQueuedResponses = options.maxQueuedResponses ?? DEFAULT_MAX_QUEUED_RESPONSES;
   }
 
   /** Logical address the DoIP entity assigned us (from the routing activation response). */
@@ -308,6 +335,7 @@ export class DoipTransport implements VehicleTransport {
       ...(this.lastStateReason !== undefined ? { stateReason: this.lastStateReason } : {}),
       txCount: this.txCount,
       rxCount: this.rxCount,
+      ...(this.droppedRxCount > 0 ? { droppedRxCount: this.droppedRxCount } : {}),
       ...(this.lastError ? { lastError: this.lastError } : {}),
       ...(this.lastActivityAt ? { lastActivityAt: this.lastActivityAt } : {}),
       since: this.changedAt,
@@ -355,6 +383,18 @@ export class DoipTransport implements VehicleTransport {
 
   private onData(chunk: Uint8Array): void {
     this.buffer = concat(this.buffer, chunk);
+    // Defense in depth against a huge single chunk: once the buffer exceeds
+    // the largest allowed message plus its header, no valid message can live
+    // inside it — reset before we grow without bound.
+    if (this.buffer.length > this.maxMessageBytes + DOIP_HEADER_LENGTH) {
+      const reason = `DoIP reassembly buffer exceeded ${
+        this.maxMessageBytes + DOIP_HEADER_LENGTH
+      } bytes — framing dropped`;
+      this.lastError = reason;
+      this.log.error(reason);
+      this.buffer = new Uint8Array();
+      return;
+    }
     for (;;) {
       if (this.buffer.length < DOIP_HEADER_LENGTH) return;
       let header: DoipHeader;
@@ -366,7 +406,19 @@ export class DoipTransport implements VehicleTransport {
         this.buffer = new Uint8Array();
         return;
       }
+      // The declared length is peer data, not a contract: a hostile entity can
+      // claim gigabytes and trickle bytes. The reassembly buffer must not
+      // follow that declaration (unbounded growth under a sustained flood).
       const total = DOIP_HEADER_LENGTH + header.payloadLength;
+      if (total > this.maxMessageBytes) {
+        const reason = `DoIP message declares ${header.payloadLength} payload bytes, above the ${
+          this.maxMessageBytes
+        } byte cap — framing dropped`;
+        this.lastError = reason;
+        this.log.error(reason);
+        this.buffer = new Uint8Array();
+        return;
+      }
       if (this.buffer.length < total) return;
       const payload = this.buffer.subarray(DOIP_HEADER_LENGTH, total).slice();
       // Copy so the underlying buffer is not aliased by later appends.
@@ -393,6 +445,26 @@ export class DoipTransport implements VehicleTransport {
           type: "diagnosticMessage",
           from: `0x${decoded.sourceAddress.toString(16)}`,
         });
+        // This transport is a 1:1 link to one target ECU (ISO 13400-2): a
+        // diagnostic message is only ours when the entity says it came from the
+        // ECU we addressed and is addressed to us. A message from any other
+        // logical address — another ECU's unsolicited traffic, or an entity
+        // that forwards forged addresses — must not be delivered, because the
+        // UDS layer above treats the next message it receives as the answer to
+        // the request it just sent. Dropping it (with the proof logged) is the
+        // only attribution-safe choice.
+        if (
+          decoded.sourceAddress !== this.targetAddress ||
+          decoded.targetAddress !== this.testerAddress
+        ) {
+          this.log.warn("diagnostic message from an unexpected address — dropped", {
+            from: `0x${decoded.sourceAddress.toString(16)}`,
+            to: `0x${decoded.targetAddress.toString(16)}`,
+            expectedFrom: `0x${this.targetAddress.toString(16)}`,
+            expectedTo: `0x${this.testerAddress.toString(16)}`,
+          });
+          return;
+        }
         this.deliver(decoded.udsPayload);
         return;
       }
@@ -445,6 +517,18 @@ export class DoipTransport implements VehicleTransport {
       clearTimeout(waiter.timer);
       waiter.resolve(payload);
       return;
+    }
+    if (this.queue.length >= this.maxQueuedResponses) {
+      // The consumer is not keeping up (or the peer floods): the queue must not
+      // grow without bound. The oldest queued answer is the least likely to
+      // belong to the request the caller is making next, so it goes — and the
+      // loss is named, not hidden (a dropped UDS answer is data loss).
+      this.queue.shift();
+      this.droppedRxCount++;
+      this.log.warn("response queue overflow — oldest queued answer dropped", {
+        queued: this.queue.length,
+        dropped: this.droppedRxCount,
+      });
     }
     this.queue.push(payload);
   }

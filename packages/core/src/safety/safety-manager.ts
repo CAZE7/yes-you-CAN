@@ -95,6 +95,13 @@ export interface SafetyManagerOptions {
   minBatteryVoltage?: number;
   /** Permit lifetime in ms. */
   permitTtlMs?: number;
+  /**
+   * Time source for permit issuance and expiry checks. Defaults to the wall
+   * clock; tests and the write port inject a fake clock so permit expiry is
+   * deterministic instead of a Date.now() mock or a real wait (ADR 0019: no
+   * test may wait for the wall clock).
+   */
+  now?: () => number;
   logger?: Logger;
 }
 
@@ -104,6 +111,7 @@ export class SafetyManager {
   private readonly log: Logger;
   private readonly minBatteryVoltage: number;
   private readonly permitTtlMs: number;
+  private readonly now: () => number;
   private readonly auditLog: Array<{
     timestamp: string;
     action: string;
@@ -115,6 +123,7 @@ export class SafetyManager {
     this.log = (options.logger ?? createLogger("safety", { level: "INFO" })).child("safety");
     this.minBatteryVoltage = options.minBatteryVoltage ?? DEFAULT_MIN_BATTERY_VOLTAGE;
     this.permitTtlMs = options.permitTtlMs ?? 60_000;
+    this.now = options.now ?? Date.now;
   }
 
   get audit(): ReadonlyArray<{ timestamp: string; action: string; ecuId: string; detail: string }> {
@@ -261,7 +270,7 @@ export class SafetyManager {
         risk: context.risk,
       });
     }
-    const issuedAt = Date.now();
+    const issuedAt = this.now();
     const permit: WritePermit = {
       id: createId("permit"),
       issuedAt: new Date(issuedAt).toISOString(),
@@ -285,14 +294,14 @@ export class SafetyManager {
       throw new SafetyViolationError("permit was issued for a different ECU", ["ecu mismatch"], {
         permit: permit.id,
       });
-    if (Date.parse(permit.expiresAt) < Date.now())
+    if (Date.parse(permit.expiresAt) < this.now())
       throw new SafetyViolationError("write permit expired", ["permit expired"], {
         permit: permit.id,
       });
   }
 
   recordAudit(action: string, ecuId: string, detail: string): void {
-    this.auditLog.push({ timestamp: nowIso(), action, ecuId, detail });
+    this.auditLog.push({ timestamp: nowIso(this.now), action, ecuId, detail });
     this.log.info("audit", { action, ecuId, detail });
   }
 

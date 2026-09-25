@@ -347,6 +347,11 @@ export class DoipEcuLinkFactory implements EcuLinkFactory {
   } {
     const channel = this.options.endpoint ?? "doip";
     const tester = this.options.testerAddress ?? 0x0e00;
+    // The target is what the open link actually carries — and only that. The
+    // description feeds the session record, which is where the platform proves
+    // where a measurement was taken; an address nobody opened is an invented
+    // value (AGENTS 24), so with no open link the field is absent, not 0.
+    const target = this.openLinks.values().next().value?.targetAddress;
     return {
       adapter: {
         id: "doip",
@@ -358,7 +363,9 @@ export class DoipEcuLinkFactory implements EcuLinkFactory {
         kind: "doip",
         channel,
         mtu: this.options.mtu ?? 65535,
-        doipAddresses: { testerAddress: tester, targetAddress: 0 },
+        ...(target !== undefined
+          ? { doipAddresses: { testerAddress: tester, targetAddress: target } }
+          : {}),
       },
     };
   }

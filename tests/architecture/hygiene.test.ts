@@ -482,7 +482,7 @@ test("modules stay reviewable: no production file above the size budget", () => 
     {
       file: "packages/transport/iso-tp/src/connection.ts",
       reason:
-        "888 lines — the production N_Cr timer (AGENTS 1.45, tracked as 0.E E26) added " +
+        "1007 lines — the production N_Cr timer (AGENTS 1.45, tracked as 0.E E26) added " +
         "60 on 2026-09-23: the `crTimer` field and its doc block, `armCrTimeout()`/`clearCrTimeout()` " +
         "with the timeout callback, the arm points in the First-Frame and Consecutive-Frame branches, " +
         "the disarms in the Single-Frame/completion/sequence-error paths and in `close()`, and the " +
@@ -492,8 +492,16 @@ test("modules stay reviewable: no production file above the size budget", () => 
         "of flattening them into a string — 845 → 861. The receiver buffer bound (0.E E32) added 27 " +
         "on 2026-09-24: the `maxReceiveBytes` field, its constructor wiring and the Flow-Control-" +
         "Overflow branch in the First-Frame handler with the doc block that names ISO 15765-2 " +
-        "Table 14 — 861 → 888. The split candidate is the timeout machinery " +
-        "as a small collaborator module (rx-state timers); until then the budget only keeps the *rest* " +
+        "Table 14 — 861 → 888. The `frameCountFor` fix (CAN-FD Single-Frame capacity) added 5 on " +
+        "2026-09-24: the bound now derives from `singleFrameCapacity` with the comment that names " +
+        "ISO 15765-2 §9.4.2 — 888 → 893. The timeout witness (2026-09-25) added 114: the " +
+        "`WitnessFrame` interface and `WITNESS_LIMIT`, the `witness`/`witnessSeq` fields, " +
+        "`recordWitness()`/`witnessSince()` and their call in `handleFrame()` before the filter, " +
+        "and the evidence enrichment of the response, N_Bs, N_Cr and WFTmax timeout errors " +
+        "(request bytes, txId/rxId, the frames the ECU sent while the request waited, and the " +
+        "`silent` marker) — 893 → 1007. The split candidate is now sharper: the witness ring and " +
+        "the timeout machinery both read the same frame stream, so a small collaborator module " +
+        "(rx-state + witness) is the natural seam; until then the budget only keeps the *rest* " +
         "from growing unnoticed",
     },
   ];
