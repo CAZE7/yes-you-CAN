@@ -36,6 +36,8 @@ export interface ConnectionStatus {
   /** Frames sent/received counters for the UI adapter panel. */
   txCount?: number;
   rxCount?: number;
+  /** Received messages dropped by the adapter because its buffers overflowed. */
+  droppedRxCount?: number;
   lastError?: string;
   lastActivityAt?: number;
   /** Epoch ms when `state` was entered. */

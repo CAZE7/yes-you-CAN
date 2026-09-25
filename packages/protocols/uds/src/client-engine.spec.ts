@@ -173,11 +173,13 @@ describe("tester present scheduler", () => {
 });
 
 describe("degenerate parse paths", () => {
-  test("snapshot and extended data return null on short responses", async () => {
+  test("snapshot and extended data throw on short responses — a cut frame is not 'no record'", async () => {
     const link = scriptedLink([new Uint8Array([0x59, 0x04]), new Uint8Array([0x59, 0x06])]);
     const client = new UdsClient(link, { logger, sleep: NO_SLEEP });
-    assert.equal(await client.readDtcSnapshotRecord("P0420"), null);
-    assert.equal(await client.readDtcExtendedDataRecord("P0420"), null);
+    // A positive answer under 7 bytes is a broken frame, not "no environment data":
+    // even an empty record carries DTC(3) + status + record number (ADR 0033/0039).
+    await assert.rejects(client.readDtcSnapshotRecord("P0420"), ProtocolError);
+    await assert.rejects(client.readDtcExtendedDataRecord("P0420"), ProtocolError);
   });
 
   test("readVin returns null when the ECU returns no usable data", async () => {

@@ -340,9 +340,22 @@ export class WritePort {
       transaction.abort("no permit recorded — write refused (AGENTS 26)");
       return this.result(operation, transaction, false, ["no write permit was issued"], []);
     }
-    const executeReport = await transaction.stage("execute", () =>
-      operation.execute(transaction, input, prepared as Prepared, permit),
-    );
+    // The permit's own validity is re-checked at the bus gate — inside the
+    // execute stage, before any frame may reach the wire (SafetyManager
+    // verifyPermit: ECU binding and TTL). The permit was issued earlier, and a
+    // permit that is stale — or was issued for another ECU — must not reach the
+    // vehicle, however recent the confirmation feels. The re-check lives in the
+    // stage body on purpose: a refusal is a failed write, so it takes the
+    // failed write's path — rollback policy, audit journal, permit outcome
+    // (formal model `flow-expired-permit-is-rechecked-before-the-bus-sees-a-frame`).
+    const executeReport = await transaction.stage("execute", async () => {
+      try {
+        this.options.safety.verifyPermit(permit, binding.ecuId);
+      } catch (error) {
+        return { ok: false, reasons: [messageOf(error)] };
+      }
+      return operation.execute(transaction, input, prepared as Prepared, permit);
+    });
     if (executeReport.state !== "ok") {
       return this.rollbackAndFinish(
         operation,

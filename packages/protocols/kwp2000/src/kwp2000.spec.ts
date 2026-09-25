@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import type { UdsLink } from "@vdp/protocols-uds";
-import { fromHex, toHex, UdsNegativeResponseError } from "@vdp/shared";
+import { fromHex, ProtocolError, toHex, UdsNegativeResponseError } from "@vdp/shared";
 import { test } from "vitest";
 import { KWP_LOCAL_ID, KWP_SID, Kwp2000Client, kwpServiceName } from "./index.js";
 
@@ -81,6 +81,14 @@ test("fault codes are decoded with their KWP2000 status bits", async () => {
   assert.equal(faults[1]?.raw, "5678");
   assert.equal(faults[1]?.testFailed, true);
   assert.equal(faults[1]?.confirmed, false);
+});
+
+test("a truncated fault code list is a broken answer, not an empty fault memory", async () => {
+  // The last record is missing its status byte: reading the rest as `[]` would
+  // report "no faults stored" for a frame that was cut off on the bus (ADR 0039).
+  const { link } = createLink(() => fromHex("58 01 12 34 0D 56 78"));
+  const client = new Kwp2000Client(link);
+  await assert.rejects(client.readFaultCodes(), ProtocolError);
 });
 
 test("session start and fault clearing use the KWP2000 services", async () => {

@@ -103,6 +103,23 @@ test("responders come from what the bus reports, and our own echo is not a respo
   assert.equal(ecu.extended, false);
 });
 
+test("the functional probe is sent unsuppressed — a suppressed TesterPresent may not be answered", async () => {
+  // ISO 14229-1 §9.4: a TesterPresent with the suppressPosRspMsgIndication bit
+  // set must not receive a positive response. The functional broadcast exists to
+  // collect responders, so it must ask without suppressing (0x00), or every
+  // conformant ECU stays silent and the functional half of the scan is dead.
+  const bus = new StubBus();
+  const discovery = new EcuDiscovery(bus, { windowMs: 1, sleep: async () => undefined });
+  await discovery.discover();
+  const functional = bus.sent.find((frame) => frame.id === 0x7df && frame.payload[0] === 0x02);
+  assert.ok(functional, "the functional TesterPresent was sent on 0x7DF");
+  assert.deepEqual(
+    Array.from(functional.payload.subarray(1, 3)),
+    [0x3e, 0x00],
+    "TesterPresent sub-function is 0x00 — a response is expected",
+  );
+});
+
 test("the 11-bit and 29-bit conventions map both ways", () => {
   assert.equal(deriveTxId(0x7e8, false), 0x7e0);
   assert.equal(deriveTxId(0x7ef, false), 0x7e7);

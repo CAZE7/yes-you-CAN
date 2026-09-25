@@ -239,13 +239,20 @@ describe("permits", () => {
     );
   });
 
-  test("verifyPermit accepts only unexpired permits for the same ECU", () => {
-    const manager = new SafetyManager({ permitTtlMs: 5_000 });
+  test("verifyPermit is deterministic: expiry is checked against the injected clock", () => {
+    let fakeNow = 1_000_000;
+    const manager = new SafetyManager({ permitTtlMs: 5_000, now: () => fakeNow });
     const permit = manager.requestPermit(OK_CONTEXT, OK_STATE);
+    assert.equal(Date.parse(permit.issuedAt), 1_000_000);
+    assert.equal(Date.parse(permit.expiresAt), 1_005_000);
     manager.verifyPermit(permit, "ecu_1");
     assert.throws(() => manager.verifyPermit(permit, "ecu_other"), /different ECU/);
-    const expired: typeof permit = { ...permit, expiresAt: new Date(Date.now() - 1).toISOString() };
-    assert.throws(() => manager.verifyPermit(expired, "ecu_1"), /expired/);
+    // The TTL boundary is inclusive: exactly at expiry the permit is still valid.
+    fakeNow = 1_005_000;
+    manager.verifyPermit(permit, "ecu_1");
+    // One ms later it is expired — no wall-clock wait, no Date.now() mock.
+    fakeNow = 1_005_001;
+    assert.throws(() => manager.verifyPermit(permit, "ecu_1"), /expired/);
   });
 
   test("recordResult lands in the audit log with the outcome and detail", () => {

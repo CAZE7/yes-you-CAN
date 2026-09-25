@@ -7,7 +7,7 @@
  * which keeps the UDS layer completely transport agnostic (AGENTS 5, 36).
  */
 
-import { type Logger, TransportClosedError } from "@vdp/shared";
+import { type Logger, TransportClosedError, toHex } from "@vdp/shared";
 import type { UdsLink } from "./link.js";
 
 /** Structural subset of VehicleTransport — deliberately not importing it. */
@@ -49,7 +49,12 @@ export class RequestResponseLink implements UdsLink {
       const response = await this.transport.receive(limit);
       if (!response) {
         this.stats.timeouts++;
-        throw new TransportClosedError(`no response within ${limit} ms`, { timeoutMs: limit });
+        // The timeout names the bytes it was waiting for, so a DoIP session that
+        // stalls does not surface as "no response" with no way to say which read.
+        throw new TransportClosedError(`no response within ${limit} ms`, {
+          timeoutMs: limit,
+          request: toHex(payload),
+        });
       }
       this.stats.responses++;
       return response;

@@ -25,6 +25,15 @@ export interface RateLimitOptions {
   windowMs?: number;
   /** Max concurrent SSE streams per IP (default 10). */
   maxStreams?: number;
+  /**
+   * Max distinct IPs tracked at once (default 10_000). Without a cap the window
+   * map is bounded only by the number of source addresses that ever talked to
+   * the server — with a rotating source (an attacker, a large NAT) that grows
+   * forever. When the cap is hit, expired windows are swept and the oldest
+   * entries evicted, so the memory stays bounded no matter who hammers the
+   * port; the evicted IPs simply start a fresh window on their next request.
+   */
+  maxTrackedIps?: number;
 }
 
 export interface RateLimitResult {
@@ -45,8 +54,10 @@ interface WindowState {
  * In-memory rate limiter.
  *
  * No timers, no cleanup interval — windows reset lazily on the next request from
- * that IP. The map is bounded by the number of distinct IPs that ever talked to
- * the server, which on a bench is 1 and on a workshop network is small.
+ * that IP. The window map is hard-capped by `maxTrackedIps` (expired entries are
+ * swept, then the oldest tracked IPs evicted when the cap is hit), so a rotating
+ * source address cannot grow it without bound — on a bench the map holds 1 IP,
+ * on a workshop network a handful, under attack still at most the cap.
  */
 export class RateLimiter {
   private readonly windows = new Map<string, WindowState>();
@@ -54,11 +65,13 @@ export class RateLimiter {
   private readonly maxRequests: number;
   private readonly windowMs: number;
   private readonly maxStreams: number;
+  private readonly maxTrackedIps: number;
 
   constructor(options: RateLimitOptions = {}) {
     this.maxRequests = options.maxRequests ?? 100;
     this.windowMs = options.windowMs ?? 60_000;
     this.maxStreams = options.maxStreams ?? 10;
+    this.maxTrackedIps = options.maxTrackedIps ?? 10_000;
   }
 
   /** Extract client IP from request (socket, not X-Forwarded-For — no proxy). */
@@ -72,7 +85,12 @@ export class RateLimiter {
   checkApi(ip: string, now = Date.now()): RateLimitResult {
     const state = this.windows.get(ip);
     if (state === undefined || now - state.windowStart >= this.windowMs) {
-      // New window
+      // New window. If the map is at its cap, make room first so a rotating
+      // source address cannot grow it without bound: expired windows go first,
+      // then the oldest tracked IPs (the evicted IP starts a fresh window).
+      if (this.windows.size >= this.maxTrackedIps && state === undefined) {
+        this.evictUntilFitting(now);
+      }
       this.windows.set(ip, { count: 1, windowStart: now });
       return { allowed: true, current: 1 };
     }
@@ -104,6 +122,23 @@ export class RateLimiter {
       this.streams.delete(ip);
     } else {
       this.streams.set(ip, current - 1);
+    }
+  }
+
+  /**
+   * Bring the window map under its cap: expired windows first, then the oldest
+   * tracked IPs (the map keeps first-seen order, and a window reset does not
+   * refresh it). Eviction degrades the limit for those IPs — they simply start
+   * a fresh window on their next request — instead of letting the map, and
+   * with it the process, grow without bound.
+   */
+  private evictUntilFitting(now: number): void {
+    for (const [key, window] of this.windows) {
+      if (now - window.windowStart >= this.windowMs) this.windows.delete(key);
+    }
+    for (const key of this.windows.keys()) {
+      if (this.windows.size < this.maxTrackedIps) break;
+      this.windows.delete(key);
     }
   }
 

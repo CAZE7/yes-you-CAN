@@ -13,6 +13,7 @@ import {
   type Logger,
   messageOf,
   TransportError,
+  toHex,
   VdpError,
 } from "@vdp/shared";
 import { type CanBus, type CanFrame, createFrame } from "@vdp/transport-can";
@@ -46,6 +47,30 @@ export interface IsoTpStats {
 
 const FC_QUEUE_LIMIT = 16;
 
+/**
+ * How many frames of the ECU's own traffic a timeout carries as evidence.
+ *
+ * A response timeout without the bus's story is a dead end: "no answer in 500 ms"
+ * says nothing about *why*. With the frames the ECU addressed to this connection
+ * during the wait, the same timeout already answers the workshop's next question —
+ * the ECU was silent (dead, or its wire), it answered with something unusable
+ * (a dropped frame is captured too, because it is recorded before the filter),
+ * or it kept speaking another address (extended-source mismatch). 32 frames is
+ * one N_Bs window at 10 ms stMin, at 4 bytes per frame of bookkeeping.
+ */
+const WITNESS_LIMIT = 32;
+
+/** One frame the ECU addressed to this connection — a timeout's witness. */
+interface WitnessFrame {
+  /** Monotonic per connection, so a window can be cut at the request's start. */
+  seq: number;
+  /** `now()` at arrival — the connection's clock, injectable in tests. */
+  at: number;
+  id: number;
+  /** Payload as hex, ready for a log line or a session record. */
+  data: string;
+}
+
 interface FlowControlFrame {
   status: number;
   blockSize: number;
@@ -60,6 +85,8 @@ interface RxState {
   lastFrameAt: number;
   /** Consecutive frames received since the last Flow Control we sent. */
   blockCount: number;
+  /** The witness sequence the First Frame was recorded at, so N_Cr can name what came after it. */
+  witnessBase: number;
 }
 
 interface PendingRequest {
@@ -95,6 +122,14 @@ export class IsoTpConnection {
   private readonly mtu: number;
   /** Receive buffer bound — see `IsoTpOptions.maxReceiveBytes`. */
   private readonly maxReceiveBytes: number;
+  /**
+   * The ECU's own traffic, recorded before any filter drops it — the witness a
+   * timeout attaches to its error. A frame that was later rejected (bad length,
+   * wrong extended source, sequence error) is exactly the one a diagnosis needs
+   * to see, so it is captured on arrival, not on acceptance.
+   */
+  private readonly witness: WitnessFrame[] = [];
+  private witnessSeq = 0;
   private rxState: RxState | null = null;
   /**
    * The live N_Cr timer of the active reception.
@@ -177,14 +212,21 @@ export class IsoTpConnection {
     this.crTimer = setTimeout(() => {
       this.crTimer = null;
       if (this.rxState === null) return;
+      const base = this.rxState.witnessBase;
       this.rxState = null;
       this.stats.timeouts++;
+      // The witness since the First Frame is the Consecutive traffic we got (or
+      // did not) — a partial reception shows up as a short list, a dead sender as none.
+      const frames = this.witnessSince(base);
       this.log.warn("N_Cr timeout — the sender stopped mid-message, reception aborted", {
         nCrMs: this.timing.nCrMs,
+        frames,
       });
       this.failPending(
         new IsoTpError(`N_Cr timeout: Consecutive Frame missing for ${this.timing.nCrMs} ms`, {
           timeout: "N_Cr",
+          frames,
+          ...(frames.length === 0 ? { silent: true } : {}),
         }),
       );
     }, this.timing.nCrMs);
@@ -195,6 +237,23 @@ export class IsoTpConnection {
       clearTimeout(this.crTimer);
       this.crTimer = null;
     }
+  }
+
+  /** Record one of the ECU's frames for the witness ring, before any filter. */
+  private recordWitness(frame: CanFrame): void {
+    this.witnessSeq += 1;
+    this.witness.push({
+      seq: this.witnessSeq,
+      at: this.now(),
+      id: frame.id,
+      data: toHex(frame.payload),
+    });
+    if (this.witness.length > WITNESS_LIMIT) this.witness.shift();
+  }
+
+  /** The frames the ECU sent after sequence `seq` — empty when it stayed silent. */
+  private witnessSince(seq: number): WitnessFrame[] {
+    return this.witness.filter((frame) => frame.seq > seq);
   }
 
   onUnsolicited(listener: (payload: Uint8Array) => void): () => void {
@@ -287,7 +346,10 @@ export class IsoTpConnection {
     // (no Flow Control arrived), an N_Cr/response timeout while waiting
     // (AGENTS 7 "Timeouts" + "Retries").
     for (;;) {
-      const responsePromise = this.awaitResponse(deadline);
+      // The witness window is cut at the attempt's start, so a retry's timeout
+      // names the frames of *its* window, not the whole request's history.
+      const witnessBase = this.witnessSeq;
+      const responsePromise = this.awaitResponse(deadline, payload, witnessBase);
       // If the transmit side fails and we retry, this promise is abandoned —
       // mark it handled so it cannot surface as an unhandled rejection.
       responsePromise.catch(() => undefined);
@@ -307,7 +369,11 @@ export class IsoTpConnection {
 
   private pendingSequence = 0;
 
-  private awaitResponse(timeoutMs: number): Promise<Uint8Array> {
+  private awaitResponse(
+    timeoutMs: number,
+    request: Uint8Array,
+    witnessBase: number,
+  ): Promise<Uint8Array> {
     return new Promise<Uint8Array>((resolve, reject) => {
       if (this.pending) {
         // One slot per connection is what makes a response reach the right requester.
@@ -335,11 +401,28 @@ export class IsoTpConnection {
         settled = true;
         if (this.pending?.id === id) this.pending = null;
         this.stats.timeouts++;
+        // The error carries the bus's story, not only the deadline: which request
+        // timed out, and every frame the ECU addressed to us while we waited.
+        // An empty witness is itself the finding — the ECU was silent.
+        const frames = this.witnessSince(witnessBase);
+        const evidence = {
+          timeoutMs,
+          timeout: "response",
+          request: toHex(request),
+          txId: hex(this.options.txId),
+          rxId: hex(this.options.rxId),
+          frames,
+          ...(frames.length === 0 ? { silent: true } : {}),
+        };
+        this.log.warn("ISO-TP response timeout", evidence);
         reject(
-          new IsoTpError(`ISO-TP response timeout after ${timeoutMs} ms`, {
-            timeoutMs,
-            timeout: "response",
-          }),
+          new IsoTpError(
+            `ISO-TP response timeout after ${timeoutMs} ms` +
+              (frames.length === 0
+                ? " (the ECU sent nothing)"
+                : ` (the ECU sent ${frames.length} frame(s))`),
+            evidence,
+          ),
         );
       }, timeoutMs);
       this.pending = {
@@ -418,6 +501,9 @@ export class IsoTpConnection {
   }
 
   private async sendMultiFrame(payload: Uint8Array): Promise<void> {
+    // The N_Bs windows of this transmission all cut their witness at its start,
+    // so a Flow-Control timeout names the frames of this message's own exchange.
+    const witnessBase = this.witnessSeq;
     const capacity = this.framePayloadCapacity;
     const length = payload.length;
     // The 32-bit escape form of FF_DL exists for CAN FD (ISO 15765-2 §9.5.2); on
@@ -452,7 +538,7 @@ export class IsoTpConnection {
     first.set(payload.subarray(0, firstChunkLength), ffHeader.length);
     await this.writeFrame(this.padded(first));
 
-    const fc = await this.awaitFlowControl();
+    const fc = await this.awaitFlowControl(witnessBase);
     let offset = firstChunkLength;
     let sequence = 1;
     let inBlock = 0;
@@ -471,7 +557,7 @@ export class IsoTpConnection {
       if (offset >= length) break;
       if (stMin > 0) await this.sleep(stMin);
       if (currentBlock > 0 && inBlock >= currentBlock) {
-        const next = await this.awaitFlowControl();
+        const next = await this.awaitFlowControl(witnessBase);
         currentBlock = next.blockSize;
         stMin = next.stMinMs;
         inBlock = 0;
@@ -491,7 +577,7 @@ export class IsoTpConnection {
   private fcQueue: FlowControlFrame[] = [];
   private waitCount = 0;
 
-  private awaitFlowControl(): Promise<FlowControlFrame> {
+  private awaitFlowControl(witnessBase: number): Promise<FlowControlFrame> {
     return new Promise<FlowControlFrame>((resolve, reject) => {
       const settle = (fc: FlowControlFrame): void => {
         if (fc.status === FLOW_STATUS.WAIT) {
@@ -499,14 +585,17 @@ export class IsoTpConnection {
           this.waitCount += 1;
           if (this.waitCount > this.timing.wftMax) {
             this.stats.timeouts++;
+            const frames = this.witnessSince(witnessBase);
             reject(
               new IsoTpError("WFTmax exceeded while waiting for Flow Control", {
                 timeout: "WFTmax",
+                frames,
+                ...(frames.length === 0 ? { silent: true } : {}),
               }),
             );
             return;
           }
-          this.awaitFlowControl().then(resolve, reject);
+          this.awaitFlowControl(witnessBase).then(resolve, reject);
           return;
         }
         if (fc.status === FLOW_STATUS.OVERFLOW) {
@@ -545,9 +634,20 @@ export class IsoTpConnection {
       const timer = setTimeout(() => {
         this.fcWaiters = this.fcWaiters.filter((w) => w !== waiter);
         this.stats.timeouts++;
+        // As with the response timeout, the witness is the diagnosis: the sender
+        // is transmitting, and the receiver's silence is what this error is about.
+        const frames = this.witnessSince(witnessBase);
+        this.log.warn("N_Bs timeout — no Flow Control frame", {
+          nBsMs: this.timing.nBsMs,
+          frames,
+        });
         reject(
           new IsoTpError(`N_Bs timeout: no Flow Control frame within ${this.timing.nBsMs} ms`, {
             timeout: "N_Bs",
+            txId: hex(this.options.txId),
+            rxId: hex(this.options.rxId),
+            frames,
+            ...(frames.length === 0 ? { silent: true } : {}),
           }),
         );
       }, this.timing.nBsMs);
@@ -632,6 +732,10 @@ export class IsoTpConnection {
   private readonly writeWaiters: Array<(reason: Error) => void> = [];
 
   private handleFrame(frame: CanFrame): void {
+    // Captured before the filter: a frame this connection later drops (bad
+    // length, wrong extended source, a stray on another sub-connection) is the
+    // one a timeout most needs to name.
+    this.recordWitness(frame);
     this.stats.rxFrames++;
     this.log.raw("isotp rx", { id: hex(frame.id), data: frame.payload });
     let body = frame.payload;
@@ -736,6 +840,10 @@ export class IsoTpConnection {
         nextSequence: 1,
         lastFrameAt: this.now(),
         blockCount: 0,
+        // The First Frame was just recorded by the witness, so this base makes the
+        // N_Cr window exactly "what came after the First Frame" — the Consecutive
+        // Frames we were waiting for.
+        witnessBase: this.witnessSeq,
       };
       this.armCrTimeout();
       void this.sendFlowControl(FLOW_STATUS.CONTINUE_TO_SEND);
@@ -847,12 +955,18 @@ export class IsoTpConnection {
     const state = this.rxState;
     if (!state) return false;
     if (this.now() - state.lastFrameAt > this.timing.nCrMs) {
+      const base = state.witnessBase;
       this.clearCrTimeout();
       this.rxState = null;
       this.stats.timeouts++;
+      // Same evidence as the armed timer's path: the manual evaluation the
+      // conformance runner drives must not tell a less complete story.
+      const frames = this.witnessSince(base);
       this.failPending(
         new IsoTpError(`N_Cr timeout: Consecutive Frame missing for ${this.timing.nCrMs} ms`, {
           timeout: "N_Cr",
+          frames,
+          ...(frames.length === 0 ? { silent: true } : {}),
         }),
       );
       return true;
@@ -862,10 +976,15 @@ export class IsoTpConnection {
 
   /** Internal helper exposed for tests: number of frames needed for a payload. */
   frameCountFor(payloadLength: number): number {
-    const capacity = this.framePayloadCapacity - 1;
-    if (payloadLength <= capacity) return 1;
+    // A payload fits one frame only up to the Single Frame capacity — on CAN FD
+    // that is two bytes below the frame capacity (PCI 0x00 + length byte), not
+    // one. Deriving the bound from `framePayloadCapacity - 1` (the Consecutive
+    // Frame capacity) called a 63-byte FD payload a Single Frame that
+    // `transmit()` would have sent as a multi-frame message (ISO 15765-2 §9.4.2).
+    if (payloadLength <= this.singleFrameCapacity) return 1;
+    const consecutiveCapacity = this.framePayloadCapacity - 1;
     const firstChunk = this.framePayloadCapacity - 2;
-    return 1 + Math.ceil((payloadLength - firstChunk) / capacity);
+    return 1 + Math.ceil((payloadLength - firstChunk) / consecutiveCapacity);
   }
 }
 

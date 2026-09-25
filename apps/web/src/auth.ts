@@ -138,13 +138,20 @@ export interface OriginValidationResult {
 /**
  * Validate Host and Origin headers to protect against DNS rebinding and
  * cross-site request forgery (CSRF) on mutating routes (ISO 21434 / CY-02).
+ *
+ * `trustedHosts` is an *explicit* list of the hostnames a browser uses to reach
+ * this server (the sandbox preview host, a named bind host). It is deliberately
+ * exact-match: a wildcard such as `*.e2b.app` would also trust every *other*
+ * sandbox's host, which is not the server this request was meant for.
  */
 export function validateRequestOrigin(
   request: IncomingMessage,
-  options: { allowedHost?: string | undefined } = {},
+  options: { trustedHosts?: readonly string[] | undefined } = {},
 ): OriginValidationResult {
   const method = (request.method ?? "GET").toUpperCase();
   const hostHeader = request.headers.host;
+  const trustedHosts = (options.trustedHosts ?? []).map((host) => host.toLowerCase());
+  const isTrustedHost = (hostName: string): boolean => trustedHosts.includes(hostName);
 
   // 1. Host header validation against DNS rebinding
   if (hostHeader) {
@@ -158,12 +165,8 @@ export function validateRequestOrigin(
       /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostName) ||
       /^192\.168\.\d{1,3}\.\d{1,3}$/.test(hostName) ||
       /^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(hostName);
-    const isE2bOrAllowed =
-      hostName.endsWith(".e2b.app") ||
-      (options.allowedHost !== undefined &&
-        (hostName === options.allowedHost.toLowerCase() || options.allowedHost === "0.0.0.0"));
 
-    if (!isLocalhost && !isPrivateIp && !isE2bOrAllowed) {
+    if (!isLocalhost && !isPrivateIp && !isTrustedHost(hostName)) {
       return {
         ok: false,
         reason: `untrusted Host header "${hostHeader}" — potential DNS rebinding attack`,
@@ -191,7 +194,7 @@ export function validateRequestOrigin(
           (originHostname === "localhost" || originHostname === "127.0.0.1") &&
           (hostHostname === "localhost" || hostHostname === "127.0.0.1");
 
-        if (!bothLocal && !originHostname.endsWith(".e2b.app")) {
+        if (!bothLocal && !isTrustedHost(originHostname)) {
           return {
             ok: false,
             reason: `cross-origin mutating request refused: origin "${originHeader}" does not match host "${hostHeader}"`,
